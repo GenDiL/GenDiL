@@ -28,7 +28,7 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - Anisotropic polynomial orders and quadrature rules
 - Continuous and Discontinuous Galerkin methods
 - Interfaces with MFEM and Caliper libraries
-- OpenMP, CUDA support
+- OpenMP, CUDA, HIP support
 
 ## Getting Started
 ### Requirements
