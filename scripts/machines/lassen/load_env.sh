@@ -1,0 +1,1 @@
+module purge && module load cuda/12.2.2 gcc/12.2.1 cmake/3.23.1

@@ -1,0 +1,40 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+if (@USE_OPENMP@)
+    find_dependency(OpenMP REQUIRED)
+endif()
+
+if (@USE_MFEM@)
+    set(MFEM_DIR "@MFEM_DIR@" CACHE PATH "")
+    find_dependency(MFEM)
+endif()
+
+if (@USE_RAJA@)
+    set(RAJA_DIR "@RAJA_DIR@" CACHE PATH "")
+    find_dependency(RAJA)
+endif()
+
+if (@USE_CALIPER@)
+    set(caliper_DIR "@caliper_DIR@" CACHE PATH "")
+    find_dependency(caliper)
+endif()
+
+set(GENDIL_USE_CUDA "@USE_CUDA@")
+set(GENDIL_USE_HIP "@USE_HIP@")
+
+include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+
+set(GENDIL_INCLUDE_DIRS "@PACKAGE_INCLUDE_INSTALL_DIR@")
+
+# Provide additional variables for convenience
+set(GENDIL_LIBRARIES GENDIL::GENDIL)
+
+# For backwards compatibility
+set(GENDIL_FOUND TRUE)
+
+# Configurations
+set(CMAKE_INSTALL_PREFIX @CMAKE_INSTALL_PREFIX@)
+
+check_required_components("@PROJECT_NAME@")
