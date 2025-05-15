@@ -1,3 +1,5 @@
+name: CI
+
 on:
   push:
     branches: [ main ]
@@ -5,36 +7,33 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  MFEM_INSTALL: $HOME/.local/mfem
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         compiler: [gcc, clang]
-        std: [c++17]
-    env:
-      MFEM_INSTALL: $HOME/.local/mfem
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup build tools
+      - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Clone MFEM (master)
-        run: git clone --depth 1 https://github.com/mfem/mfem.git
-
-      - name: Build & install MFEM
+      - name: Clone & install MFEM
         run: |
-          mkdir mfem/build && cd mfem/build
-          cmake -DCMAKE_INSTALL_PREFIX=$MFEM_INSTALL \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DMFEM_USE_MPI=OFF \
-                -DMFEM_USE_METIS_5=OFF \
-                -DMFEM_USE_SUNDIALS=OFF \
-                ..
+          git clone --depth 1 https://github.com/mfem/mfem.git
+          mkdir -p mfem/build && cd mfem/build
+          cmake \
+            -DCMAKE_INSTALL_PREFIX=$MFEM_INSTALL \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMFEM_USE_MPI=OFF \
+            ..
           cmake --build . --target install -- -j$(nproc)
 
       - name: Configure GenDiL
@@ -42,7 +41,6 @@ jobs:
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
-            -DCMAKE_CXX_STANDARD=${{ matrix.std }} \
             -DUSE_MFEM=ON \
             -DMFEM_DIR=$MFEM_INSTALL/lib/cmake/mfem
 
