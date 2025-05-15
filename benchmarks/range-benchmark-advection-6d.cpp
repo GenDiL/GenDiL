@@ -3,14 +3,11 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 
-#include <mfem.hpp>
-
 #include <gendil/gendil.hpp>
 
 #include <chrono>
 
 using namespace std;
-using namespace mfem;
 using namespace gendil;
 
 template < Integer order, Integer num_quad_1d = order + 2 >
@@ -61,42 +58,33 @@ void test_advection_6D(
 
    // Kernel configuration
 #if defined(GENDIL_USE_DEVICE)
-   #if defined(GENDIL_USE_CUDA)
-   const char device_config[] = "cuda";
-   #elif defined(GENDIL_USE_HIP)
-   const char device_config[] = "hip";
-   #endif
    // using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>;
    // using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>;
    using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>;
    constexpr size_t NumSharedDimensions = Dim;
    using KernelPolicy = ThreadFirstKernelConfiguration< ThreadLayout, NumSharedDimensions >;
 #else
-   const char device_config[] = "cpu";
    using KernelPolicy = SerialKernelConfiguration;
 #endif
-   mfem::Device device(device_config);
 
    auto adv_operator = MakeAdvectionOperator< KernelPolicy >( fe_space, int_rules, advection_field );
 
    const Integer num_iter = 5;
    double throughput( 0.0 );
    {
-      FiniteElementVector dofs_in( fe_space );
-      FiniteElementVector dofs_out( fe_space );
+      const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
-      const Integer num_elem_dofs = finite_element.GetNumDofs();
-      const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       dofs_in = 1.0;
-      adv_operator.Mult( dofs_in, dofs_out );
+      adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         adv_operator.Mult( dofs_out, dofs_in );
-         adv_operator.Mult( dofs_in, dofs_out );
+         adv_operator( dofs_out, dofs_in );
+         adv_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();

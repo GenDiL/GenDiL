@@ -2,29 +2,15 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-
-#include <mfem.hpp>
-
 #include <gendil/gendil.hpp>
 
 #include <chrono>
 
 using namespace std;
-using namespace mfem;
 using namespace gendil;
 
 int main(int argc, char *argv[])
-{
-#if defined(GENDIL_USE_CUDA)
-   const char device_config[] = "cuda";
-#elif defined(GENDIL_USE_HIP)
-   const char device_config[] = "hip";
-#else
-   const char device_config[] = "cpu";
-#endif
-   mfem::Device device(device_config);
-   device.Print();
-   
+{   
    const Integer num_elem_1d = 5;
    /////////
    // mesh 1
@@ -105,27 +91,27 @@ int main(int argc, char *argv[])
    auto sol_operator = MakeSpeedOfLightOperator< KernelPolicy >( fe_space, int_rules );
    auto mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( fe_space, int_rules, sigma );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   Vector dofs_in( num_dofs );
+   Vector dofs_out( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "Order:" << order << "\n";
    std::cout << "Num Quads:" << num_quad << "\n";
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Number of dofs:" << num_dofs << "\n";
 
    dofs_in = 1.0;
-   sol_operator.Mult( dofs_in, dofs_out );
+   sol_operator( dofs_in, dofs_out );
 
    GENDIL_DEVICE_SYNC;
    const Integer num_iter = 5;
    const auto sol_start = std::chrono::steady_clock::now();
    for ( Integer iter = 0; iter < num_iter; iter++ )
    {
-      sol_operator.Mult( dofs_out, dofs_in );
-      sol_operator.Mult( dofs_in, dofs_out );
+      sol_operator( dofs_out, dofs_in );
+      sol_operator( dofs_in, dofs_out );
    }
    GENDIL_DEVICE_SYNC;
    const auto sol_end = std::chrono::steady_clock::now();
@@ -143,8 +129,8 @@ int main(int argc, char *argv[])
    const auto start = std::chrono::steady_clock::now();
    for ( Integer iter = 0; iter < num_iter; iter++ )
    {
-      mass_operator.Mult( dofs_out, dofs_in );
-      mass_operator.Mult( dofs_in, dofs_out );
+      mass_operator( dofs_out, dofs_in );
+      mass_operator( dofs_in, dofs_out );
    }
    GENDIL_DEVICE_SYNC;
    const auto end = std::chrono::steady_clock::now();
