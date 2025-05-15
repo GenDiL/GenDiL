@@ -8,7 +8,8 @@
 #include "gendil/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include <mfem.hpp>
+#include "gendil/MatrixFreeOperators/KernelOperators/vector.hpp"
+#include "gendil/MatrixFreeOperators/KernelOperators/DoFIO/evectorview.hpp"
 
 namespace gendil {
 
@@ -141,7 +142,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename IntegrationRule >
-class LinearForm : public mfem::Vector
+class LinearForm : public Vector
 {
    using fe_space_type = FiniteElementSpace;
    using finite_element_type = typename fe_space_type::finite_element_type;
@@ -178,6 +179,7 @@ public:
     * 
     * @param finite_element_space The finite element space associated to the operator.
     * @param int_rules The integration rule used by the operator.
+    * @param lambda The analytical function to initialize the LinearForm.
     */
    template < typename Lambda >
    LinearForm( const FiniteElementSpace & finite_element_space,
