@@ -110,12 +110,12 @@ int main(int argc, char *argv[])
 
    auto advection_operator = MakeAdvectionOperator< KernelPolicy >( fe_space, int_rules, adv, zero );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out_mf( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out_mf( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Total number of dofs: " << num_dofs << "\n";
 
@@ -129,10 +129,10 @@ int main(int argc, char *argv[])
    /// Using MFEM partial assembly DG
    auto non_periodic_mesh = mfem::Mesh::MakeCartesian3D( num_elem_1d, num_elem_1d, num_elem_1d, mfem::Element::Type::HEXAHEDRON, 1.0, 1.0, 1.0, false );
    // Create translation vectors defining the periodicity
-   Vector x_translation({1.0, 0.0, 0.0});
-   Vector y_translation({0.0, 1.0, 0.0});
-   Vector z_translation({0.0, 0.0, 1.0});
-   std::vector<Vector> translations = {x_translation, y_translation, z_translation};
+   mfem::Vector x_translation({1.0, 0.0, 0.0});
+   mfem::Vector y_translation({0.0, 1.0, 0.0});
+   mfem::Vector z_translation({0.0, 0.0, 1.0});
+   std::vector<mfem::Vector> translations = {x_translation, y_translation, z_translation};
    // Create the periodic mesh using the vertex mapping defined by the translation vectors
    Mesh periodic_mesh = Mesh::MakePeriodic(non_periodic_mesh, non_periodic_mesh.CreatePeriodicVertexMapping(translations));
    int dim = non_periodic_mesh.Dimension();
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
    
    GridFunction dofs_out_pa( &fes );
 
-   auto adv_func = [=](const Vector& x, Vector& v)
+   auto adv_func = [=](const mfem::Vector& x, mfem::Vector& v)
    {
       const Real X = x(0);
       const Real Y = x(1);

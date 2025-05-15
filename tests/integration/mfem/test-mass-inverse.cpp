@@ -105,15 +105,15 @@ int main(int argc, char *argv[])
    auto mass_inverse_operator = MakeMassInverseFiniteElementOperator< KernelPolicy >( fe_space, int_rules, sigma );
    auto mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( fe_space, int_rules, sigma );
 
-   FiniteElementVector rhs( fe_space );
-   FiniteElementVector solution_gendil_local( fe_space );
-   FiniteElementVector solution_gendil_global( fe_space );
-   FiniteElementVector solution_mfem( fe_space );
-   FiniteElementVector diff( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector rhs( num_dofs );
+   mfem::Vector solution_gendil_local( num_dofs );
+   mfem::Vector solution_gendil_global( num_dofs );
+   mfem::Vector solution_mfem( num_dofs );
+   mfem::Vector diff( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Total number of dofs: " << num_dofs << "\n";
 
@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
    
    GridFunction dofs_out_pa( &fes );
 
-   auto sigma_func = [=](const Vector& X)
+   auto sigma_func = [=](const mfem::Vector& X)
    {
       const Real x = X(0);
       const Real y = X(1);

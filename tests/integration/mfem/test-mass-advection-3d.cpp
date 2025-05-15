@@ -132,12 +132,12 @@ int main(int argc, char *argv[])
    auto advection_operator = MakeMassAdvectionOperator< KernelPolicy >( fe_space, int_rules, adv, zero );
    auto mixed_mass_operator = MakeMixedMassOperator< KernelPolicy >( fe_space, fe_space, int_rules, f );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out_mf( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out_mf( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Total number of dofs: " << num_dofs << "\n";
 

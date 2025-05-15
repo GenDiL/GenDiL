@@ -136,12 +136,14 @@ int main(int argc, char *argv[])
    // auto L2_projection_operator = MakeLinfProjection< TrialKernelPolicy >( fe_space_6D, fe_space_3D, int_rule_6D, int_rule_3D );
    auto Linf_projection_operator = MakeLinfProjection< TrialKernelPolicy >( fe_space_6D, fe_space_3D, int_rule_6D, int_rule_3D );
 
-   FiniteElementVector dofs_in( fe_space_6D );
-   FiniteElementVector dofs_out( fe_space_3D );
+   const Integer num_dofs_6D = fe_space_6D.GetNumberOfFiniteElementDofs();
+   const Integer num_dofs_3D = fe_space_3D.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs_6D );
+   mfem::Vector dofs_out( num_dofs_3D );
 
    const Integer num_elem_dofs = phase_finite_element.GetNumDofs();
    const Integer num_elem = fe_space_6D.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
+   const Integer num_dofs = num_dofs_6D;
    std::cout << "Order:" << order << "\n";
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Number of dofs:" << num_dofs << "\n";
