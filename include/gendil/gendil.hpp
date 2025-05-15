@@ -8,7 +8,7 @@
 // The set of utilities
 #include "gendil/Utilities/utilities.hpp"
 
-// Interfaces to external libraries
+// The interfaces to external libraries
 #include "gendil/Interfaces/interfaces.hpp"
 
 // The mesh interfaces
@@ -25,6 +25,3 @@
 
 // The different matrix-free operators
 #include "gendil/MatrixFreeOperators/matrixfreeoperators.hpp"
-
-// The interfaces with external libraries
-#include "gendil/Interfaces/interfaces.hpp"

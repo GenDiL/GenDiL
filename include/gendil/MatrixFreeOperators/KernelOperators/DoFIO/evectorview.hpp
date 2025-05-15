@@ -11,10 +11,10 @@
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
-
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/FiniteElementMethod/finiteelementorders.hpp"
 #include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/MatrixFreeOperators/KernelOperators/vector.hpp"
 
 namespace gendil {
 
@@ -130,6 +130,51 @@ auto MakeEVectorView(
    else // H1Restriction
    {
       return MakeIndirectedTensor( finite_element_space, data );
+   }
+}
+
+template < typename KernelPolicy, typename FiniteElementSpace >
+auto MakeReadOnlyEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   const Vector & data )
+{
+   if constexpr ( is_serial_v< KernelPolicy > )
+   {
+      return MakeEVectorView( finite_element_space, data.ReadHostData() );
+   }
+   else
+   {
+      return MakeEVectorView( finite_element_space, data.ReadDeviceData() );
+   }
+}
+
+template < typename KernelPolicy, typename FiniteElementSpace >
+auto MakeWriteOnlyEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   Vector & data )
+{
+   if constexpr ( is_serial_v< KernelPolicy > )
+   {
+      return MakeEVectorView( finite_element_space, data.WriteHostData() );
+   }
+   else
+   {
+      return MakeEVectorView( finite_element_space, data.WriteDeviceData() );
+   }
+}
+
+template < typename KernelPolicy, typename FiniteElementSpace >
+auto MakeReadWriteEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   Vector & data )
+{
+   if constexpr ( is_serial_v< KernelPolicy > )
+   {
+      return MakeEVectorView( finite_element_space, data.ReadWriteHostData() );
+   }
+   else
+   {
+      return MakeEVectorView( finite_element_space, data.ReadWriteDeviceData() );
    }
 }
 
