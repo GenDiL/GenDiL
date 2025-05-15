@@ -6,5 +6,5 @@
 // Factories to build gendil unstructured meshes from MFEM meshes.
 #include "meshfactories.hpp"
 
-// An mfem::Vector initialized with a gendil::FiniteElementSpace.
-#include "finiteelementvector.hpp"
+// An mfem::Vector wrapper to interface between gendil::Vector and mfem::Vector.
+#include "vector.hpp"

@@ -445,6 +445,9 @@ public:
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {
+      static_assert(
+         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
+         "DiffusionOperator::operator() only supports L2Restriction" );
       DiffusionExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,
@@ -456,6 +459,14 @@ public:
            kappa,
            dofs_in,
            dofs_out );
+   }
+
+   void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
+   {
+      auto dofs_in = MakeReadOnlyEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+
+      Apply( dofs_in, dofs_out );
    }
 
    #ifdef GENDIL_USE_MFEM

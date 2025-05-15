@@ -286,7 +286,10 @@ template <
    typename TestFiniteElementSpace,
    typename TrialIntegrationRule,
    typename TestIntegrationRule >
-class L2Projection : public mfem::Operator
+class L2Projection
+#ifdef GENDIL_USE_MFEM
+: public mfem::Operator
+#endif // GENDIL_USE_MFEM
 {
 protected:
    using trial_fe_space_type = TrialFiniteElementSpace;
@@ -361,7 +364,9 @@ public:
       const TestFiniteElementSpace & test_finite_element_space,
       const TrialIntegrationRule & trial_int_rule,
       const TestIntegrationRule & test_int_rule ) :
+#ifdef GENDIL_USE_MFEM
          mfem::Operator( test_finite_element_space.GetNumberOfFiniteElementDofs(), trial_finite_element_space.GetNumberOfFiniteElementDofs() ),
+#endif
          trial_finite_element_space( trial_finite_element_space ),
          test_finite_element_space( test_finite_element_space ),
          trial_int_rule( trial_int_rule ),
@@ -397,6 +402,15 @@ public:
          this->test_element_quad_data,
          dofs_in,
          dofs_out );
+   }
+
+   void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
+   {
+      dofs_vector_out = 0.0;
+      auto dofs_in = MakeReadOnlyEVectorView< TrialKernelConfiguration >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeReadWriteEVectorView< TestKernelConfiguration >( this->finite_element_space, dofs_vector_out );
+
+      Apply( dofs_in, dofs_out );
    }
 
    #ifdef GENDIL_USE_MFEM

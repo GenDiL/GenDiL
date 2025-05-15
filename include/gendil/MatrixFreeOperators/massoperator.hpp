@@ -196,6 +196,23 @@ public:
            dofs_out );
    }
 
+   void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
+   {
+      if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+      {
+         auto dofs_in = MakeReadOnlyEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+         auto dofs_out = MakeWriteOnlyEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+         Apply( dofs_in, dofs_out );
+      }
+      else // H1
+      {
+         dofs_vector_out = 0.0;
+         auto dofs_in = MakeReadOnlyEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+         auto dofs_out = MakeReadWriteEVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+         Apply( dofs_in, dofs_out );
+      }
+   }
+
    #ifdef GENDIL_USE_MFEM
    /**
     * @brief Apply the mass operator.

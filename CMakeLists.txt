@@ -18,7 +18,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-lim
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-unused-local-typedefs") # supress some warnings
 
 # Options for third-party dependencies
-option(USE_MFEM "Enables MFEM interface." ON)
+option(USE_MFEM "Enables MFEM interface." OFF)
 option(USE_OPENMP "Enables OpenMP parallelization features." ON)
 option(USE_CUDA "Enables CUDA support." OFF)
 option(USE_HIP "Enables HIP support." OFF)

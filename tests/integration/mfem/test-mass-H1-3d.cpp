@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
    
    GridFunction dofs_out_pa( &fes );
 
-   auto sigma_func = [=](const Vector& X)
+   auto sigma_func = [=](const mfem::Vector& X)
    {
       const Real x = X(0);
       const Real y = X(1);
@@ -137,12 +137,12 @@ int main(int argc, char *argv[])
    blf_pa.AddDomainIntegrator(new MassIntegrator(sigma_cf,ir));
    blf_pa.Assemble();
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out_mf( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out_mf( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Total number of dofs: " << num_dofs << "\n";
 

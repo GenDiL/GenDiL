@@ -113,12 +113,12 @@ int main(int argc, char *argv[])
    auto sol_operator = MakeFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rules );
    auto adv_operator = MakeAdvectionOperator<KernelPolicy>( fe_space, int_rules, advection_field );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "Order:" << order << "\n";
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Number of dofs:" << num_dofs << "\n";

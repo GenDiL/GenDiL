@@ -93,10 +93,12 @@ int main(int argc, char *argv[])
 #endif
 
    std::cout << "Computing struct linear form\n";
-   auto struct_rhs = MakeLinearForm< KernelPolicy >( struct_fe_space, int_rule, f);
+   auto struct_rhs_g = MakeLinearForm< KernelPolicy >( struct_fe_space, int_rule, f);
    std::cout << "Computing unstruct linear form\n";
-   auto unstruct_rhs = MakeLinearForm< KernelPolicy >( unstruct_fe_space, int_rule, f);
+   auto unstruct_rhs_g = MakeLinearForm< KernelPolicy >( unstruct_fe_space, int_rule, f);
 
+   mfem::Vector struct_rhs = struct_rhs_g.ToMFEMVector();
+   mfem::Vector unstruct_rhs = unstruct_rhs_g.ToMFEMVector();
    struct_rhs -= unstruct_rhs;
 
    const double tol = 1e-10;
@@ -127,8 +129,10 @@ int main(int argc, char *argv[])
    auto struct_adv_operator_with_bc = MakeAdvectionOperator< KernelPolicy >( struct_fe_space, int_rule, advection_field, boundary_field );
    auto unstruct_adv_operator_with_bc = MakeAdvectionOperator< KernelPolicy >( unstruct_fe_space, int_rule, advection_field, boundary_field );
 
-   FiniteElementVector struct_v( struct_fe_space );
-   FiniteElementVector unstruct_v( unstruct_fe_space );
+   const Integer num_dofs_struct = struct_fe_space.GetNumberOfFiniteElementDofs();
+   const Integer num_dofs_unstruct = unstruct_fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector struct_v( num_dofs_struct );
+   mfem::Vector unstruct_v( num_dofs_unstruct );
 
    std::cout << "Computing struct advection\n";
    struct_adv_operator_with_bc.Mult( unstruct_rhs, struct_v );

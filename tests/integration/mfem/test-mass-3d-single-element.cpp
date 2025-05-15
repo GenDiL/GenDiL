@@ -10,7 +10,6 @@
 #include <chrono>
 
 using namespace std;
-using namespace mfem;
 using namespace gendil;
 
 int main(int argc, char *argv[])
@@ -115,14 +114,14 @@ int main(int argc, char *argv[])
    auto mass_operator_2d = MakeMassFiniteElementOperator< ThreadingPolicy2d >( fe_space, int_rules, sigma );
    auto mass_operator_3d = MakeMassFiniteElementOperator< ThreadingPolicy3d >( fe_space, int_rules, sigma );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out_mf_1d( fe_space );
-   FiniteElementVector dofs_out_mf_2d( fe_space );
-   FiniteElementVector dofs_out_mf_3d( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out_mf_1d( num_dofs );
+   mfem::Vector dofs_out_mf_2d( num_dofs );
+   mfem::Vector dofs_out_mf_3d( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-   const Integer num_dofs = num_elem * num_elem_dofs;
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Total number of dofs: " << num_dofs << "\n";
 

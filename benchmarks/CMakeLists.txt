@@ -36,23 +36,20 @@ macro(add_my_benchmark target_name source_file)
 
 endmacro()
 
-if(MFEM_FOUND)
-  add_custom_target(
-    benchmarks
-    ALL # OPTIONAL: Use ALL to make the target always built
-    COMMENT "Building all benchmarks"
-  )
-  add_my_benchmark(benchmark-sol-3d benchmark-sol-3d.cpp)
-  add_my_benchmark(benchmark-mass-3d benchmark-mass-3d.cpp)
-  add_my_benchmark(range-benchmark-mass-3d range-benchmark-mass-3d.cpp)
-  add_my_benchmark(range-benchmark-mass-4d range-benchmark-mass-4d.cpp)
-  add_my_benchmark(range-benchmark-mass-5d range-benchmark-mass-5d.cpp)
-  add_my_benchmark(benchmark-mass-6d benchmark-mass-6d.cpp)
-  add_my_benchmark(range-benchmark-mass-6d range-benchmark-mass-6d.cpp)
-  add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
-  add_my_benchmark(range-benchmark-advection-3d range-benchmark-advection-3d.cpp)
-  add_my_benchmark(range-benchmark-advection-4d range-benchmark-advection-4d.cpp)
-  add_my_benchmark(range-benchmark-advection-5d range-benchmark-advection-5d.cpp)
-  add_my_benchmark(benchmark-advection-6d benchmark-advection-6d.cpp)
-  add_my_benchmark(range-benchmark-advection-6d range-benchmark-advection-6d.cpp)
-endif(MFEM_FOUND)
+add_custom_target(
+  benchmarks
+  ALL # OPTIONAL: Use ALL to make the target always built
+  COMMENT "Building all benchmarks"
+)
+add_my_benchmark(benchmark-mass-3d benchmark-mass-3d.cpp)
+add_my_benchmark(range-benchmark-mass-3d range-benchmark-mass-3d.cpp)
+add_my_benchmark(range-benchmark-mass-4d range-benchmark-mass-4d.cpp)
+add_my_benchmark(range-benchmark-mass-5d range-benchmark-mass-5d.cpp)
+add_my_benchmark(benchmark-mass-6d benchmark-mass-6d.cpp)
+add_my_benchmark(range-benchmark-mass-6d range-benchmark-mass-6d.cpp)
+add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
+add_my_benchmark(range-benchmark-advection-3d range-benchmark-advection-3d.cpp)
+add_my_benchmark(range-benchmark-advection-4d range-benchmark-advection-4d.cpp)
+add_my_benchmark(range-benchmark-advection-5d range-benchmark-advection-5d.cpp)
+add_my_benchmark(benchmark-advection-6d benchmark-advection-6d.cpp)
+add_my_benchmark(range-benchmark-advection-6d range-benchmark-advection-6d.cpp)

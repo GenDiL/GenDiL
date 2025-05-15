@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-
+#ifdef GENDIL_USE_MFEM
 #include <mfem.hpp>
+#endif
 
 #include <gendil/gendil.hpp>
 
 #include <chrono>
 
 using namespace std;
-using namespace mfem;
 using namespace gendil;
 
 int main(int argc, char *argv[])
@@ -81,21 +81,27 @@ int main(int argc, char *argv[])
    };
 
 #if defined(GENDIL_USE_DEVICE)
+#ifdef GENDIL_USE_MFEM
    #if defined(GENDIL_USE_CUDA)
    const char device_config[] = "cuda";
    #elif defined(GENDIL_USE_HIP)
    const char device_config[] = "hip";
    #endif
+#endif
    constexpr Integer NumSharedDimensions = 3;
    // using ThreadLayout = ThreadBlockLayout<num_quad,num_quad>;
    using ThreadLayout = ThreadBlockLayout<num_quad,num_quad,num_quad>;
    using KernelPolicy = ThreadFirstKernelConfiguration< ThreadLayout, NumSharedDimensions >;
 #else
+#ifdef GENDIL_USE_MFEM
    const char device_config[] = "cpu";
+#endif
    using KernelPolicy = SerialKernelConfiguration;
 #endif
+#ifdef GENDIL_USE_MFEM
    mfem::Device device(device_config);
    device.Print();
+#endif
 
    auto sol_operator = MakeFaceSpeedOfLightOperator< KernelPolicy >( cart3d_fe_space, int_rules );
    auto adv_operator = MakeAdvectionOperator< KernelPolicy >( fe_space, int_rules, advection_field );
@@ -107,23 +113,23 @@ int main(int argc, char *argv[])
    std::cout << "Num quad:" << num_quad << "\n";
    {
       std::cout << "\n Speed-of-light face operator. \n";
-      FiniteElementVector dofs_in( fe_space );
-      FiniteElementVector dofs_out( fe_space );
+      const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
       dofs_in = 1.0;
-      sol_operator.Mult( dofs_in, dofs_out );
+      sol_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         sol_operator.Mult( dofs_out, dofs_in );
-         sol_operator.Mult( dofs_in, dofs_out );
+         sol_operator( dofs_out, dofs_in );
+         sol_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -140,23 +146,23 @@ int main(int argc, char *argv[])
 
    {
       std::cout << "\n Cartesian 3d mesh advection operator. \n";
-      FiniteElementVector dofs_in( fe_space );
-      FiniteElementVector dofs_out( fe_space );
+      const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = cart3d_fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
       dofs_in = 1.0;
-      cart3d_adv_operator.Mult( dofs_in, dofs_out );
+      cart3d_adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         cart3d_adv_operator.Mult( dofs_out, dofs_in );
-         cart3d_adv_operator.Mult( dofs_in, dofs_out );
+         cart3d_adv_operator( dofs_out, dofs_in );
+         cart3d_adv_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -173,23 +179,23 @@ int main(int argc, char *argv[])
 
    {
       std::cout << "\n Tensor mesh advection operator. \n";
-      FiniteElementVector dofs_in( fe_space );
-      FiniteElementVector dofs_out( fe_space );
+      const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
       dofs_in = 1.0;
-      adv_operator.Mult( dofs_in, dofs_out );
+      adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         adv_operator.Mult( dofs_out, dofs_in );
-         adv_operator.Mult( dofs_in, dofs_out );
+         adv_operator( dofs_out, dofs_in );
+         adv_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -207,30 +213,31 @@ int main(int argc, char *argv[])
    const std::chrono::duration<double> gendil_elapsed_seconds = gendil_end - gendil_start;
    std::cout << "gendil Setup + Run time:" << gendil_elapsed_seconds.count() << "s\n";
 
+#ifdef GENDIL_USE_MFEM
    // MFEM operator
    const auto mfem_start = std::chrono::steady_clock::now();
    const int dim = 3;
    auto non_periodic_mesh = mfem::Mesh::MakeCartesian3D( num_elem_1d, num_elem_1d, num_elem_1d, mfem::Element::Type::HEXAHEDRON, 1.0, 1.0, 1.0, false );
-   DG_FECollection fec(order, dim, BasisType::GaussLobatto);
+   mfem::DG_FECollection fec(order, dim, mfem::BasisType::GaussLobatto);
    mfem::FiniteElementSpace mfem_fespace(&non_periodic_mesh, &fec);
    
-   auto adv_func = [=](const Vector& x, Vector& v)
+   auto adv_func = [=](const mfem::Vector& x, mfem::Vector& v)
    {
       v[0] = 1.0;
       v[1] = 1.0;
       v[2] = 1.0;
    };
-   VectorFunctionCoefficient velocity(3, adv_func);
+   mfem::VectorFunctionCoefficient velocity(3, adv_func);
 
-   BilinearForm mfem_operator(&mfem_fespace);
-   mfem_operator.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   mfem::BilinearForm mfem_operator(&mfem_fespace);
+   mfem_operator.SetAssemblyLevel(mfem::AssemblyLevel::PARTIAL);
    constexpr double alpha = 1.0; // Should discretize div(adv*psi)
    mfem_operator.AddDomainIntegrator(
-      new ConservativeConvectionIntegrator(velocity, alpha));
+      new mfem::ConservativeConvectionIntegrator(velocity, alpha));
    mfem_operator.AddInteriorFaceIntegrator(
-      new ConservativeDGTraceIntegrator(velocity, alpha));
+      new mfem::ConservativeDGTraceIntegrator(velocity, alpha));
    mfem_operator.AddBdrFaceIntegrator(
-      new ConservativeDGTraceIntegrator(velocity, alpha));
+      new mfem::ConservativeDGTraceIntegrator(velocity, alpha));
    mfem_operator.Assemble();
 
    {
@@ -276,12 +283,12 @@ int main(int argc, char *argv[])
       HexMesh<1> unstruct_mesh = MakeHexMesh< 1 >( non_periodic_mesh );
       auto fe_space = MakeFiniteElementSpace( unstruct_mesh, finite_element );
       auto adv_operator = MakeAdvectionOperator< KernelPolicy >( fe_space, int_rules, advection_field );
-      FiniteElementVector dofs_in( fe_space );
-      FiniteElementVector dofs_out( fe_space );
+      const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+      mfem::Vector dofs_in( num_dofs );
+      mfem::Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
       dofs_in = 1.0;
@@ -309,6 +316,7 @@ int main(int argc, char *argv[])
    const auto unstruct_end = std::chrono::steady_clock::now();
    const std::chrono::duration<double> unstruct_elapsed_seconds = unstruct_end - unstruct_start;
    std::cout << "Unstruct gendil Setup + Run time:" << unstruct_elapsed_seconds.count() << "s\n";
+#endif
 
    return 0;
 }

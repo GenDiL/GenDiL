@@ -2,15 +2,15 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-
+#ifdef GENDIL_USE_MFEM
 #include <mfem.hpp>
+#endif
 
 #include <gendil/gendil.hpp>
 
 #include <chrono>
 
 using namespace std;
-using namespace mfem;
 using namespace gendil;
 
 int main(int argc, char *argv[])
@@ -41,8 +41,10 @@ int main(int argc, char *argv[])
    // Tensor product Mesh
    auto struct_mesh = MakeCartesianProductMesh( mesh_1, mesh_2, mesh_3 );
 
+#ifdef GENDIL_USE_MFEM
    auto mfem_unstructured_mesh = mfem::Mesh::MakeCartesian3D( num_elem_1d, num_elem_1d, num_elem_1d, mfem::Element::Type::HEXAHEDRON, 1.0, 1.0, 1.0, false );
    HexMesh<1> unstruct_mesh = MakeHexMesh< 1 >( mfem_unstructured_mesh );
+#endif
 
    ///////////////////////
    // Finite Element Space
@@ -60,7 +62,9 @@ int main(int argc, char *argv[])
    // Finite element space
    auto struct_fe_space = MakeFiniteElementSpace( struct_mesh, finite_element );
    auto cart3d_fe_space = MakeFiniteElementSpace( cart3d_mesh, finite_element );
+#ifdef GENDIL_USE_MFEM
    auto unstruct_fe_space = MakeFiniteElementSpace( unstruct_mesh, finite_element );
+#endif
 
    constexpr Integer Dim = GetDim( struct_fe_space );
 
@@ -79,23 +83,29 @@ int main(int argc, char *argv[])
 
    // Kernel configuration
 #if defined(GENDIL_USE_DEVICE)
+#ifdef GENDIL_USE_MFEM
    #if defined(GENDIL_USE_CUDA)
    const char device_config[] = "cuda";
    #elif defined(GENDIL_USE_HIP)
    const char device_config[] = "hip";
    #endif
+#endif
    constexpr Integer NumSharedDimensions = 3;
    using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d>;
    // using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>;
    using KernelPolicy = ThreadFirstKernelConfiguration< ThreadLayout, NumSharedDimensions >;
 #else
+#ifdef GENDIL_USE_MFEM
    const char device_config[] = "cpu";
+#endif
    using KernelPolicy = SerialKernelConfiguration;
 #endif
+#ifdef GENDIL_USE_MFEM
    mfem::Device device(device_config);
    device.Print();
+#endif
 
-   auto sol_operator = MakeSpeedOfLightOperator< KernelPolicy >( unstruct_fe_space, int_rules );
+   auto sol_operator = MakeSpeedOfLightOperator< KernelPolicy >( struct_fe_space, int_rules );
 
    auto sigma = [=] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X ) -> Real
    {
@@ -107,40 +117,46 @@ int main(int argc, char *argv[])
 
    auto struct_mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( struct_fe_space, int_rules, sigma );
    auto cart3d_mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( cart3d_fe_space, int_rules, sigma );
+#ifdef GENDIL_USE_MFEM
    auto unstruct_mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( unstruct_fe_space, int_rules, sigma );
 
    // MFEM operator
    const int dim = 3;
-   DG_FECollection fec(order, dim, BasisType::GaussLobatto);
+   mfem::DG_FECollection fec(order, dim, mfem::BasisType::GaussLobatto);
    mfem::FiniteElementSpace mfem_fespace(&mfem_unstructured_mesh, &fec);
-   BilinearForm mfem_operator(&mfem_fespace);
-   mfem_operator.SetAssemblyLevel(AssemblyLevel::PARTIAL);
-   mfem_operator.AddDomainIntegrator(new MassIntegrator);
+   mfem::BilinearForm mfem_operator(&mfem_fespace);
+   mfem_operator.SetAssemblyLevel(mfem::AssemblyLevel::PARTIAL);
+   mfem_operator.AddDomainIntegrator(new mfem::MassIntegrator);
    mfem_operator.Assemble();
    mfem_operator.Finalize();
+#endif
 
    std::cout << "Order:" << order << "\n";
    std::cout << "Quad pts:" << num_quad_1d << "\n";
    const Integer num_iter = 5;
-   double sof_throughput( 0.0 ), struct_throughput( 0.0 ), cart3d_throughput( 0.0 ), unstruct_throughput( 0.0 ), mfem_throughput( 0.0 );
+   double sof_throughput( 0.0 ), struct_throughput( 0.0 ), cart3d_throughput( 0.0 );
+#ifdef GENDIL_USE_MFEM
+   double unstruct_throughput( 0.0 ), mfem_throughput( 0.0 );
+#endif
+
    {
       std::cout << "\n Speed of light operator. \n";
-      FiniteElementVector dofs_in( struct_fe_space );
-      FiniteElementVector dofs_out( struct_fe_space );
+      const Integer num_dofs = struct_fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = struct_fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
       dofs_in = 1.0;
-      sol_operator.Mult( dofs_in, dofs_out );
+      sol_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         sol_operator.Mult( dofs_out, dofs_in );
-         sol_operator.Mult( dofs_in, dofs_out );
+         sol_operator( dofs_out, dofs_in );
+         sol_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -157,22 +173,22 @@ int main(int argc, char *argv[])
    }
    {
       std::cout << "\n Tensor mesh mass operator. \n";
-      FiniteElementVector dofs_in( struct_fe_space );
-      FiniteElementVector dofs_out( struct_fe_space );
+      const Integer num_dofs = struct_fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = struct_fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
       dofs_in = 1.0;
-      struct_mass_operator.Mult( dofs_in, dofs_out );
+      struct_mass_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         struct_mass_operator.Mult( dofs_out, dofs_in );
-         struct_mass_operator.Mult( dofs_in, dofs_out );
+         struct_mass_operator( dofs_out, dofs_in );
+         struct_mass_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -189,22 +205,22 @@ int main(int argc, char *argv[])
    }
    {
       std::cout << "\n Cartesian 3d mesh mass operator. \n";
-      FiniteElementVector dofs_in( cart3d_fe_space );
-      FiniteElementVector dofs_out( cart3d_fe_space );
+      const Integer num_dofs = cart3d_fe_space.GetNumberOfFiniteElementDofs();
+      Vector dofs_in( num_dofs );
+      Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = cart3d_fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
       dofs_in = 1.0;
-      cart3d_mass_operator.Mult( dofs_in, dofs_out );
+      cart3d_mass_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
       const auto start = std::chrono::steady_clock::now();
       for ( Integer iter = 0; iter < num_iter; iter++ )
       {
-         cart3d_mass_operator.Mult( dofs_out, dofs_in );
-         cart3d_mass_operator.Mult( dofs_in, dofs_out );
+         cart3d_mass_operator( dofs_out, dofs_in );
+         cart3d_mass_operator( dofs_in, dofs_out );
       }
       GENDIL_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
@@ -219,14 +235,15 @@ int main(int argc, char *argv[])
       cart3d_throughput = num_dofs / time_per_iter;
       std::cout << "Throughput:" << cart3d_throughput << "Dofs/s\n";
    }
+#ifdef GENDIL_USE_MFEM
    {
       std::cout << "\n Unstructured 3d mesh mass operator. \n";
-      FiniteElementVector dofs_in( unstruct_fe_space );
-      FiniteElementVector dofs_out( unstruct_fe_space );
+      const Integer num_dofs = unstruct_fe_space.GetNumberOfFiniteElementDofs();
+      mfem::Vector dofs_in( num_dofs );
+      mfem::Vector dofs_out( num_dofs );
 
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = unstruct_fe_space.GetNumberOfFiniteElements();
-      const Integer num_dofs = num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
       dofs_in = 1.0;
       unstruct_mass_operator.Mult( dofs_in, dofs_out );
@@ -283,10 +300,14 @@ int main(int argc, char *argv[])
       mfem_throughput = num_dofs / time_per_iter;
       std::cout << "Throughput:" << mfem_throughput << "Dofs/s\n";
    }
+#endif
 
    std::cout << "\nSpeedup struct/speed of light: " << struct_throughput / sof_throughput << "\n";
+
+#ifdef GENDIL_USE_MFEM
    std::cout << "\nSpeedup struct/unstruct: " << struct_throughput / unstruct_throughput << "\n";
    std::cout << "\nSpeedup unstruct/mfem: " << unstruct_throughput / mfem_throughput << "\n";
+#endif
 
    // dofs_out.Print( mfem::out, num_elem_dofs );
 

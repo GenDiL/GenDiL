@@ -8,6 +8,7 @@
 #include <utility>
 #include <array>
 #include <iostream>
+#include <tuple>
 #ifdef GENDIL_USE_CUDA
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>

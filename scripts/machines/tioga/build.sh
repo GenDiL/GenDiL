@@ -11,6 +11,7 @@ export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$ROCM_PATH/lib/cmake/hip:$ROCM_PATH/
 export CXX=hipcc
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install_tioga \
+      -D USE_MFEM=ON \
       -D MFEM_DIR=../mfem/build_tioga \
       -D USE_HIP=ON \
       -D ROCM_ROOT_DIR="/opt/rocm-${ROCM_VER}" \
@@ -20,6 +21,6 @@ cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_HIP_ARCHITECTURES="gfx90a" \
       ..
 
-make VERBOSE=1 -j 16 && make test && make install
+make -j 16 && make test && make install
 
 cd ..

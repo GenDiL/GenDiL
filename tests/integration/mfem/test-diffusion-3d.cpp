@@ -95,8 +95,9 @@ int main(int argc, char ** argv)
    const double kappa = (order+1)*(order+1);
    auto diffusion_operator = MakeDiffusionOperator< KernelPolicy >( fe_space, int_rules, velocity, sigma, kappa );
 
-   FiniteElementVector dofs_in( fe_space );
-   FiniteElementVector dofs_out_mf( fe_space );
+   const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
+   mfem::Vector dofs_in( num_dofs );
+   mfem::Vector dofs_out_mf( num_dofs );
 
    const Integer num_elem_dofs = finite_element.GetNumDofs();
    const Integer num_elem = fe_space.GetNumberOfFiniteElements();
@@ -114,10 +115,10 @@ int main(int argc, char ** argv)
    auto non_periodic_mesh = mfem::Mesh::MakeCartesian3D( num_elem_1d, num_elem_1d, num_elem_1d, mfem::Element::Type::HEXAHEDRON, 1.0, 1.0, 1.0, false );
 
    // Create translation vectors defining the periodicity
-   Vector x_translation({1.0, 0.0, 0.0});
-   Vector y_translation({0.0, 1.0, 0.0});
-   Vector z_translation({0.0, 0.0, 1.0});
-   std::vector<Vector> translations = {x_translation, y_translation, z_translation};
+   mfem::Vector x_translation({1.0, 0.0, 0.0});
+   mfem::Vector y_translation({0.0, 1.0, 0.0});
+   mfem::Vector z_translation({0.0, 0.0, 1.0});
+   std::vector<mfem::Vector> translations = {x_translation, y_translation, z_translation};
    // Create the periodic mesh using the vertex mapping defined by the translation vectors
    // Mesh periodic_mesh = Mesh::MakePeriodic(non_periodic_mesh, non_periodic_mesh.CreatePeriodicVertexMapping(translations));
    int dim = non_periodic_mesh.Dimension();
@@ -126,7 +127,7 @@ int main(int argc, char ** argv)
 
    GridFunction dofs_out_pa( &fes );
 
-   auto velocity_mfem = [=]( const Vector & X ) -> Real
+   auto velocity_mfem = [=]( const mfem::Vector & X ) -> Real
    {
       const Real x = X[0];
       const Real y = X[1];
