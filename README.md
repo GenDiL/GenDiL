@@ -44,6 +44,7 @@ cd build
 
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install \
+      -D USE_MFEM=ON \
       -D MFEM_DIR=../mfem/build \
       ..
 
