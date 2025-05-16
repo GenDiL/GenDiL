@@ -32,7 +32,7 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - Matrix-free operator evaluation
 
 ### Third-Party Integrations & Parallelization Support
-- Interfaces with MFEM, RAJA, and Caliper libraries
+- Interfaces with the [MFEM](https://github.com/mfem/mfem), [RAJA](https://github.com/LLNL/RAJA), and [Caliper](https://github.com/LLNL/Caliper) libraries.
 - Support for OpenMP, CUDA, HIP parallelization models
 
 ## Getting Started
