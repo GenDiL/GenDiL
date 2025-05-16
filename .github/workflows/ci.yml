@@ -7,9 +7,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-env:
-  MFEM_INSTALL: $HOME/.local/mfem
-
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -25,16 +22,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Clone & install MFEM
+      - name: Clone & build MFEM (master)
         run: |
           git clone --depth 1 https://github.com/mfem/mfem.git
-          mkdir -p mfem/build && cd mfem/build
+          mkdir -p mfem/build
+          cd mfem/build
           cmake \
-            -DCMAKE_INSTALL_PREFIX=$MFEM_INSTALL \
             -DCMAKE_BUILD_TYPE=Release \
             -DMFEM_USE_MPI=OFF \
             ..
-          cmake --build . --target install -- -j$(nproc)
+          cmake --build . -- -j$(nproc)
 
       - name: Configure GenDiL
         run: |
@@ -42,9 +39,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
             -DUSE_MFEM=ON \
-            -DMFEM_DIR=$MFEM_INSTALL/lib/cmake/mfem
+            -DMFEM_DIR=${{ github.workspace }}/mfem/build
 
-      - name: Build
+      - name: Build GenDiL
         run: cmake --build build -- -j$(nproc)
 
       - name: Run tests
