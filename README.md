@@ -8,6 +8,7 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Citing GenDiL](#citation)
 - [Contributing](#contributing)
 - [License](#license)
 <!-- tocstop -->
