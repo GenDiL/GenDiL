@@ -36,6 +36,7 @@ jobs:
 
       - name: Configure GenDiL
         run: |
+          MFEM_ROOT=$RUNNER_TEMP/mfem
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
