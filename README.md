@@ -26,12 +26,14 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - High-dimension mesh construction through Cartesian product
 
 ### Finite Element Method
-- Arbitrary dimension hypercube finite elements
-- Matrix-free operator evaluation
-- Anisotropic polynomial orders and quadrature rules
 - Continuous and Discontinuous Galerkin methods
-- Interfaces with MFEM and Caliper libraries
-- OpenMP, CUDA, HIP support
+- Arbitrary dimension hypercube finite elements
+- Anisotropic polynomial orders and quadrature rules
+- Matrix-free operator evaluation
+
+### Third-Party Integrations & Parallelization Support
+- Interfaces with MFEM, RAJA, and Caliper libraries
+- Support for OpenMP, CUDA, HIP parallelization models
 
 ## Getting Started
 ### Requirements
