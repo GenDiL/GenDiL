@@ -66,7 +66,7 @@ namespace detail {
         std::array< size_t, Dim > const & sizes,
         Permutation< Dim > const & orientations )
     {
-        std::array< int, Dim > strides;
+        std::array< int, Dim > strides{};
         size_t current_stride = 1;
         for (size_t i = 0; i < Dim; i++)
         {
