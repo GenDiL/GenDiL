@@ -40,6 +40,7 @@ jobs:
           MFEM_ROOT=$RUNNER_TEMP/mfem
           cmake -B build -S . \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
             -DUSE_MFEM=ON \
             -DMFEM_DIR=$MFEM_ROOT/build
