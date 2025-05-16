@@ -1,3 +1,5 @@
+[![CI](https://github.com/GenDiL/GenDiL/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GenDiL/GenDiL/actions)
+
 # GenDiL
 
 <!-- toc -->

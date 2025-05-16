@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [g++, clang++]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libomp-dev
+
+      - name: Clone & build MFEM
+        run: |
+          MFEM_ROOT=$RUNNER_TEMP/mfem
+          git clone --depth 1 https://github.com/mfem/mfem.git $MFEM_ROOT
+          mkdir -p $MFEM_ROOT/build
+          cd $MFEM_ROOT/build
+          cmake \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DMFEM_USE_MPI=OFF \
+            $MFEM_ROOT
+          cmake --build . -- -j$(nproc)
+
+      - name: Configure GenDiL
+        run: |
+          MFEM_ROOT=$RUNNER_TEMP/mfem
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DUSE_MFEM=ON \
+            -DMFEM_DIR=$MFEM_ROOT/build
+
+      - name: Build GenDiL
+        run: cmake --build build -- -j$(nproc)
+
+      - name: Run tests
+        run: cmake --build build --target test
+
+      - name: Run clang-tidy
+        if: matrix.compiler == 'clang'
+        run: |
+          cd build
+          run-clang-tidy -p .
