@@ -30,6 +30,7 @@ jobs:
           cd $MFEM_ROOT/build
           cmake \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
             -DMFEM_USE_MPI=OFF \
             $MFEM_ROOT
           cmake --build . -- -j$(nproc)
