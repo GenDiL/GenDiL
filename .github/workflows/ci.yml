@@ -22,15 +22,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libomp-dev
 
-      - name: Clone & build MFEM (master)
+      - name: Clone & build MFEM
         run: |
-          git clone --depth 1 https://github.com/mfem/mfem.git
-          mkdir -p mfem/build
-          cd mfem/build
+          MFEM_ROOT=$RUNNER_TEMP/mfem
+          git clone --depth 1 https://github.com/mfem/mfem.git $MFEM_ROOT
+          mkdir -p $MFEM_ROOT/build
+          cd $MFEM_ROOT/build
           cmake \
             -DCMAKE_BUILD_TYPE=Release \
             -DMFEM_USE_MPI=OFF \
-            ..
+            $MFEM_ROOT
           cmake --build . -- -j$(nproc)
 
       - name: Configure GenDiL
@@ -39,7 +40,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
             -DUSE_MFEM=ON \
-            -DMFEM_DIR=${{ github.workspace }}/mfem/build
+            -DMFEM_DIR=$MFEM_ROOT/build
 
       - name: Build GenDiL
         run: cmake --build build -- -j$(nproc)
