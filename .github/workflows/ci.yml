@@ -51,7 +51,7 @@ jobs:
         run: cmake --build build --target test
 
       - name: Run clang-tidy
-        if: matrix.compiler == 'clang'
+        if: matrix.compiler == 'clang++'
         run: |
           cd build
           run-clang-tidy -p .
