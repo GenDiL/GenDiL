@@ -1,3 +1,4 @@
+[![DOI](https://zenodo.org/badge/DOI/10.11578/dc.20250507.2.svg)](https://doi.org/10.11578/dc.20250507.2)
 [![CI](https://github.com/GenDiL/GenDiL/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GenDiL/GenDiL/actions)
 
 # GenDiL
@@ -71,6 +72,23 @@ Executables are organized in three categories: benchmarks, tests, and examples.
 - Examples show standard use cases of the library.
 - Tests verify the correctness of the library.
 - Benchmarks measure the performance of the library.
+
+## Citing GenDiL
+
+If you use GenDiL in your publications or presentations, please cite it as follows:
+
+```bibtex
+@misc{doecode_154944,
+  title        = {GenDiL},
+  author       = {Dudouit, Yohann and Holec, Milan and Rotem, Amit Y.},
+  abstractNote = {The GenDiL library is a collection of C++ software abstractions designed to discretize and solve partial differential equations (PDEs) for high‐performance computing (HPC) applications. Its primary focus is on modern C++ generic programming, which helps ensure portability across various hardware architectures.},
+  doi          = {10.11578/dc.20250507.2},
+  url          = {https://doi.org/10.11578/dc.20250507.2},
+  howpublished = {[Computer Software] \url{https://doi.org/10.11578/dc.20250507.2}},
+  year         = {2025},
+  month        = {march}
+}
+```
 
 ## Contributing
 

@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use GenDiL in your research, please cite it as below."
+title: "Generic Discretization Library"
+version: "0.0.2"
+doi: "10.11578/dc.20250507.2"
+authors:
+  - family-names: "Dudouit"
+    given-names: "Yohann"
+    orcid: 0000-0001-5831-561X
+  - family-names: "Holec"
+    given-names: "Milan"
+  - family-names: "Rotem"
+    given-names: "Amit Y."
+repository-code: "https://github.com/GenDiL/GenDiL"
+repository-artifact: "https://doi.org/10.11578/dc.20250507.2"
+date-released: "2025-03-18"
