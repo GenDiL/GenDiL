@@ -8,7 +8,6 @@
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/hypercubecell.hpp"
-#include "gendil/Meshes/MeshDataStructures/emptyhalo.hpp"
 
 
 namespace gendil {
