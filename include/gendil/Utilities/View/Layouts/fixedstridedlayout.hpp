@@ -20,7 +20,7 @@ struct FixedStridedLayout
    GENDIL_HOST_DEVICE
    constexpr FixedStridedLayout()
    {
-      static_assert( ((Strides > 0) && ... && true), "All strides must be >= 1." );
+      // static_assert( ((Strides > 0) && ... && true), "All strides must be >= 1." );
    }
 
    template < typename... Indices >

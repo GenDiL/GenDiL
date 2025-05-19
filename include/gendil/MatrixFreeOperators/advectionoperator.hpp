@@ -8,6 +8,7 @@
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctions.hpp"
 #include "gendil/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctions.hpp"
+#include "gendil/MatrixFreeOperators/KernelOperators/Halo/synchronizehalo.hpp"
 
 namespace gendil {
 
@@ -23,6 +24,7 @@ namespace gendil {
  * @tparam ElementQuadData The type of the finite element data structure needed to perform computation at quadrature points.
  * @tparam ElementFaceDofToQuad The type of the finite element data structure needed to perform computation at quadrature points on each face.
  * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
+ * @tparam HaloDofs The type of the halo degrees of freedom.
  * @param fe_space The finite element space.
  * @param element_index The index of the finite element in the finite element space.
  * @param mesh_quad_data The mesh data at quadrature points needed to perform the computation.
@@ -30,6 +32,7 @@ namespace gendil {
  * @param element_quad_data The finite element data at quadrature points need to perform the computation.
  * @param element_face_quad_data The finite element data at quadrature points need to perform the computation on each face.
  * @param adv The function to evaluate the advection vector at physical coordinates.
+ * @param halo_dofs The halo degrees of freedom for the finite element space.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
  */
@@ -42,7 +45,8 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Adv >
+   typename Adv,
+   typename HaloDofs >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithoutBC(
    const KernelContext & kernel_conf,
@@ -53,6 +57,7 @@ void AdvectionFusedOperatorWithoutBC(
    const ElementQuadData & element_quad_data,
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv & adv,
+   const HaloDofs & halo_dofs,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -117,7 +122,7 @@ void AdvectionFusedOperatorWithoutBC(
       {
          using FaceType = std::remove_reference_t< decltype( face_info ) >;
 
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in, halo_dofs );
 
          constexpr Integer face_index = FaceType::local_face_index;
          constexpr Integer neighbor_face_index = FaceType::neighbor_local_face_index;
@@ -186,6 +191,7 @@ void AdvectionFusedOperatorWithoutBC(
  * @tparam ElementFaceDofToQuad The type of the finite element data structure needed to perform computation at quadrature points on each face.
  * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
  * @tparam BCType The advected field on the boundary conditions described by a function.
+ * @tparam HaloDofs The type of the halo degrees of freedom.
  * @param fe_space The finite element space.
  * @param element_index The index of the finite element in the finite element space.
  * @param mesh_quad_data The mesh data at quadrature points needed to perform the computation.
@@ -193,6 +199,7 @@ void AdvectionFusedOperatorWithoutBC(
  * @param element_quad_data The finite element data at quadrature points need to perform the computation.
  * @param element_face_quad_data The finite element data at quadrature points need to perform the computation on each face.
  * @param adv The function to evaluate the advection vector at physical coordinates.
+ * @param halo_dofs The halo degrees of freedom for the finite element space.
  * @param boundary_field The function to evaluate the advected field on the boundary.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
@@ -207,7 +214,8 @@ template <
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename HaloDofs >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithBC(
    const KernelContext & kernel_conf,
@@ -219,6 +227,7 @@ void AdvectionFusedOperatorWithBC(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv & adv,
    BCType & boundary_field,
+   const HaloDofs & halo_dofs,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -283,7 +292,7 @@ void AdvectionFusedOperatorWithBC(
       {
          using FaceType = std::remove_reference_t< decltype( face_info ) >;
 
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in, halo_dofs );
 
          constexpr Integer face_index = FaceType::local_face_index;
          constexpr Integer neighbor_face_index = FaceType::neighbor_local_face_index;
@@ -402,12 +411,14 @@ void AdvectionFusedOperatorWithBC(
  * @tparam ElementQuadData The type of the finite element data structure needed to perform computation at quadrature points.
  * @tparam ElementFaceDofToQuad The type of the finite element data structure needed to perform computation at quadrature points on each face.
  * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
+ * @tparam HaloDofs The type of the halo degrees of freedom.
  * @param fe_space The finite element space.
  * @param mesh_quad_data The mesh data at quadrature points needed to perform the computation.
  * @param mesh_face_quad_data The mesh data at quadrature points needed to perform the computation on each face.
  * @param element_quad_data The finite element data at quadrature points need to perform the computation.
  * @param element_face_quad_data The finite element data at quadrature points need to perform the computation on each face.
  * @param adv The function to evaluate the advection vector at physical coordinates.
+ * @param halo_dofs The halo degrees of freedom for the finite element space.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
  */
@@ -420,7 +431,8 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Adv >
+   typename Adv,
+   typename HaloDofs >
 void AdvectionExplicitOperatorWithoutBC(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
@@ -428,6 +440,7 @@ void AdvectionExplicitOperatorWithoutBC(
    const ElementQuadData & element_quad_data,
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
+   const HaloDofs & halo_dofs,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -449,6 +462,7 @@ void AdvectionExplicitOperatorWithoutBC(
             element_quad_data,
             element_face_quad_data,
             adv,
+            halo_dofs,
             dofs_in,
             dofs_out );
       }
@@ -468,6 +482,7 @@ void AdvectionExplicitOperatorWithoutBC(
  * @tparam ElementFaceDofToQuad The type of the finite element data structure needed to perform computation at quadrature points on each face.
  * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
  * @tparam BCType The advected field on the boundary conditions described by a function.
+ * @tparam HaloDofs The type of the halo degrees of freedom.
  * @param fe_space The finite element space.
  * @param mesh_quad_data The mesh data at quadrature points needed to perform the computation.
  * @param mesh_face_quad_data The mesh data at quadrature points needed to perform the computation on each face.
@@ -475,6 +490,7 @@ void AdvectionExplicitOperatorWithoutBC(
  * @param element_face_quad_data The finite element data at quadrature points need to perform the computation on each face.
  * @param adv The function to evaluate the advection vector at physical coordinates.
  * @param boundary_field The function to evaluate the advected field on the boundary.
+ * @param halo_dofs The halo degrees of freedom for the finite element space.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
  */
@@ -488,7 +504,8 @@ template <
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename HaloDofs >
 void AdvectionExplicitOperatorWithBC(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
@@ -497,6 +514,7 @@ void AdvectionExplicitOperatorWithBC(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
    BCType & boundary_field,
+   const HaloDofs & halo_dofs,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -519,6 +537,7 @@ void AdvectionExplicitOperatorWithBC(
             element_face_quad_data,
             adv,
             boundary_field,
+            halo_dofs,
             dofs_in,
             dofs_out );
       }
@@ -544,11 +563,16 @@ class AdvectionOperator
    : public MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
-   Adv adv;
-   BCType boundary_field;
-
    using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
    using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   using InteriorHaloDofs = typename FiniteElementSpace::halo_type::interior_halo_type< Real, DofShape >;
+   using ExteriorHaloDofs = typename FiniteElementSpace::halo_type::exterior_halo_type< Real, DofShape >;
+
+   Adv adv;
+   BCType boundary_field;
+   InteriorHaloDofs interior_halo_dofs;
+   ExteriorHaloDofs exterior_halo_dofs;
 
 public:
    /**
@@ -565,7 +589,9 @@ public:
                       BCType && boundary_field ) :
       base( finite_element_space, int_rules ),
       adv( adv ),
-      boundary_field( boundary_field )
+      boundary_field( boundary_field ),
+      interior_halo_dofs( finite_element_space ),
+      exterior_halo_dofs( finite_element_space )
    { }
 
    /**
@@ -580,6 +606,7 @@ public:
       static_assert(
          std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
          "AdvectionOperator::operator() only supports L2Restriction" );
+      SynchronizeHalo( this->finite_element_space, dofs_in, interior_halo_dofs, exterior_halo_dofs );
       if constexpr ( !std::is_same_v< BCType, Empty > )
       {
          AdvectionExplicitOperatorWithBC< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >(
@@ -590,6 +617,7 @@ public:
             this->element_face_quad_data,
             adv,
             boundary_field,
+            exterior_halo_dofs,
             dofs_in,
             dofs_out );
       }
@@ -602,6 +630,7 @@ public:
             this->element_quad_data,
             this->element_face_quad_data,
             adv,
+            exterior_halo_dofs,
             dofs_in,
             dofs_out );
       }

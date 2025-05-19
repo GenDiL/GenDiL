@@ -23,6 +23,7 @@ struct CartesianMesh
    // Requires C++20
    // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
    using boundary_type = bool;
+   using halo_type = EmptyHalo<Dim>;
 
    std::array< GlobalIndex, Dim > sizes;
    const std::array< Real, Dim > h;

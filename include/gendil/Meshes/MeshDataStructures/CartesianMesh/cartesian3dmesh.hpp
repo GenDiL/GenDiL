@@ -11,6 +11,7 @@
 #include "gendil/Meshes/Cells/ReferenceCells/cubecell.hpp"
 #include "gendil/Meshes/Connectivities/cartesianconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/periodiccartesianconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/emptyhalo.hpp"
 
 namespace gendil {
 
@@ -24,6 +25,7 @@ struct Cartesian3DMeshBase
    static constexpr Integer Dim = 3;
    using connectivity_type = Connectivity;
    using cell_type = CubeCell;
+   using halo_type = EmptyHalo<Dim>;
 
    const Real h_x, h_y, h_z; // size of the elements
    connectivity_type connectivity; // number of elements per dimension

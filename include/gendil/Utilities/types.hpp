@@ -11,6 +11,9 @@
 #include <iostream>
 #include <tuple>
 #include <functional>
+#ifdef GENDIL_USE_MPI
+#include <mpi.h>
+#endif
 #ifdef GENDIL_USE_CUDA
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>

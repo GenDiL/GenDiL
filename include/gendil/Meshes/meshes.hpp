@@ -32,3 +32,4 @@
 
 // An arbitrary dimension Cartesian mesh
 #include "MeshDataStructures/CartesianMesh/cartesianmesh.hpp"
+#include "MeshDataStructures/CartesianMesh/parallelcartesianmesh.hpp"

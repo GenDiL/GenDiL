@@ -13,6 +13,7 @@
 #include "gendil/NumericalIntegration/integrationrule.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/productcell.hpp"
+#include "gendil/Meshes/MeshDataStructures/emptyhalo.hpp"
 
 namespace gendil
 {
@@ -164,6 +165,7 @@ public:
    static constexpr Integer SubDim = std::tuple_element_t< index, MeshTuple >::Dim;
    static constexpr Integer Dim = product_dim_v< Meshes ... >;
    using cell_type = ProductCell< details::mesh_cell_t< Meshes > ... >;
+   using halo_type = EmptyHalo<Dim>;
 
    CartesianProductMesh( Meshes const & ... meshes ) : 
       SubMeshes{ meshes ... }

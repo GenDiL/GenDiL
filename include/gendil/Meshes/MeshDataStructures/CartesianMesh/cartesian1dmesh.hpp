@@ -13,6 +13,7 @@
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/cartesianconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/periodiccartesianconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/emptyhalo.hpp"
 
 namespace gendil {
 
@@ -27,6 +28,7 @@ struct Cartesian1DMeshBase
    static constexpr Integer Dim = 1;
    using cell_type = SegmentCell;
    using connectivity_type = Connectivity;
+   using halo_type = EmptyHalo<Dim>;
 
    const Real h; // size of the elements
    connectivity_type connectivity; // number of elements per dimension
