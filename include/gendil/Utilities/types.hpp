@@ -59,6 +59,14 @@ struct Empty { };
 #endif
 #endif
 
+// MPI
+#ifdef GENDIL_USE_MPI
+constexpr int mpi_boundary_flag = MPI_PROC_NULL;
+#else
+constexpr int mpi_boundary_flag = -1;
+#endif
+
+
 // CUDA
 #if defined( GENDIL_USE_CUDA )
 

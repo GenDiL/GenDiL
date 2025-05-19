@@ -119,7 +119,7 @@ struct ParallelCartesianMesh
 
       if ( sizes[Index] == 1 )
       {
-         if ( halo.neighbors[FaceIndex] == MPI_PROC_NULL ) // True boundary
+         if ( halo.neighbors[FaceIndex] == mpi_boundary_flag ) // True boundary
          {
             neighbor_index[Index] = std::numeric_limits< GlobalIndex >::max();
             face_type = Boundary;
@@ -143,7 +143,7 @@ struct ParallelCartesianMesh
       {
          if constexpr ( Sign == -1 )
          {
-            if ( halo.neighbors[FaceIndex] == MPI_PROC_NULL ) // True boundary
+            if ( halo.neighbors[FaceIndex] == mpi_boundary_flag ) // True boundary
             {
                neighbor_index[Index] = std::numeric_limits< GlobalIndex >::max();
                face_type = Boundary;
@@ -174,7 +174,7 @@ struct ParallelCartesianMesh
       {
          if constexpr ( Sign == 1 )
          {
-            if ( halo.neighbors[FaceIndex] == MPI_PROC_NULL ) // True boundary
+            if ( halo.neighbors[FaceIndex] == mpi_boundary_flag ) // True boundary
             {
                neighbor_index[Index] = std::numeric_limits< GlobalIndex >::max();
                face_type = Boundary;
@@ -234,7 +234,7 @@ void ForEachInteriorHaloCell(
    Loop< ParallelCartesianMesh< Dim >::halo_type::num_neighbors >( [&] ( auto neighbor_index )
    {
       const int neighbor_rank = mesh.halo.neighbors[ neighbor_index ];
-      if ( neighbor_rank != MPI_PROC_NULL )
+      if ( neighbor_rank != mpi_boundary_flag )
       {
          const Integer dim_index = HyperCubeCell< Dim >::GetNormalDimensionIndex( neighbor_index );
          const int sign = HyperCubeCell< Dim >::GetNormalSign( neighbor_index );

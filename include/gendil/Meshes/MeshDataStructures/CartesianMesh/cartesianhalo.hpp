@@ -57,7 +57,7 @@ struct CartesianHalo
       for (size_t neighbor = 0; neighbor < num_neighbors; neighbor++)
       {
          halo_offsets[neighbor] = halo_size;
-         if (neighbors[neighbor] != MPI_PROC_NULL)
+         if (neighbors[neighbor] != mpi_boundary_flag)
          {
             const GlobalIndex dim = neighbor % Dim; // !FIXME Abstract behind function? Same problem as FaceIndex
             std::array< GlobalIndex, Dim > local_halo_sizes = sizes;
@@ -87,7 +87,7 @@ struct CartesianHalo
          // std::array<size_t,Dim> dofs_sizes = GetDofsSizes( typename FiniteElement::shape_functions{} );
          for (size_t neighbor = 0; neighbor < num_neighbors; neighbor++)
          {
-            if (neighbors[neighbor] != MPI_PROC_NULL)
+            if (neighbors[neighbor] != mpi_boundary_flag)
             {
                // !FIXME recomputing halo_sizes
                const GlobalIndex dim = neighbor % Dim;
