@@ -566,8 +566,8 @@ class AdvectionOperator
    using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
    using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   using InteriorHaloDofs = typename FiniteElementSpace::halo_type::interior_halo_type< Real, DofShape >;
-   using ExteriorHaloDofs = typename FiniteElementSpace::halo_type::exterior_halo_type< Real, DofShape >;
+   using InteriorHaloDofs = typename FiniteElementSpace::halo_type::template interior_halo_type< Real, DofShape >;
+   using ExteriorHaloDofs = typename FiniteElementSpace::halo_type::template exterior_halo_type< Real, DofShape >;
 
    Adv adv;
    BCType boundary_field;
