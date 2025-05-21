@@ -10,6 +10,7 @@
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Connectivities/unstructuredconformingconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
+#include "gendil/Meshes/MeshDataStructures/emptyhalo.hpp"
 
 namespace gendil {
 
@@ -21,15 +22,17 @@ namespace gendil {
 template < Integer order >
 struct LineMesh
 {
+   static constexpr Integer Dim = 1;
+   static constexpr Integer D1D = order + 1;
+   using cell_type = LineCell< D1D >;
+   using cell_index_type = GlobalIndex;
+   using halo_type = EmptyHalo<Dim>;
+
    StridedView<1, const Real> nodes; // Should we just use an array?
    HostDeviceStridedView<2, const int> restriction;
    UnstructuredConformingConnectivity< HyperCube< 1 > > connectivity;
    GlobalIndex num_elems; // Total number of elements
 
-   static constexpr Integer Dim = 1;
-   static constexpr Integer D1D = order + 1;
-   using cell_type = LineCell< D1D >;
-   using cell_index_type = GlobalIndex;
 
    GENDIL_HOST_DEVICE
    Integer GetNumberOfCells() const

@@ -283,21 +283,16 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
-   Integer Dim,
-   typename T >
+   typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto SerialReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalDofs & global_dofs )
 {
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalDofs > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
@@ -354,21 +349,16 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
-   Integer Dim,
-   typename T >
+   typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ThreadedReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalDofs & global_dofs )
 {
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalDofs > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
@@ -434,14 +424,13 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
-   Integer Dim,
-   typename T >
+   typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalDofs & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
    {
@@ -450,6 +439,46 @@ auto ReadDofs(
    else
    {
       return ThreadedReadDofs( thread, fe_space, face_info, global_dofs );
+   }
+}
+/**
+ * @brief Read the degrees-of-freedom of a neighboring element according to @a face_info.
+ * This parallel version uses halo dofs to read the data from neiighboring ranks.
+ * 
+ * @tparam FaceInfo 
+ * @tparam FiniteElementSpace 
+ * @tparam Dim 
+ * @tparam T The type of the values.
+ * @param face_info 
+ * @param global_dofs 
+ * @param halo_dofs
+ */
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   Integer FaceIndex,
+   typename Geometry,
+   typename OrientationType,
+   typename BoundaryType,
+   typename NormalType,
+   typename GlobalDofs,
+   typename HaloDofs >
+GENDIL_HOST_DEVICE
+auto ReadDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const GlobalDofs & global_dofs,
+   const HaloDofs & halos )
+{
+   if ( IsDistributedFace( face_info ) )
+   {
+      auto halo_dofs = halos.GetView(); // TODO: Remove
+      return ReadDofs( thread, fe_space, face_info, halo_dofs );
+   }
+   else
+   {
+      return ReadDofs( thread, fe_space, face_info, global_dofs );
    }
 }
 

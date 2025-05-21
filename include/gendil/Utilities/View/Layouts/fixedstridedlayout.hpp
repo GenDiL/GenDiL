@@ -20,7 +20,7 @@ struct FixedStridedLayout
    GENDIL_HOST_DEVICE
    constexpr FixedStridedLayout()
    {
-      static_assert( ((Strides > 0) && ... && true), "All strides must be >= 1." );
+      // static_assert( ((Strides > 0) && ... && true), "All strides must be >= 1." );
    }
 
    template < typename... Indices >
@@ -85,6 +85,13 @@ GENDIL_HOST_DEVICE GENDIL_INLINE
 constexpr auto MakeFixedFIFOStridedLayout()
 {
    return details::MakeFixedFIFOStridedLayout< Sizes... >( std::make_index_sequence< sizeof...(Sizes) >{} );
+}
+
+template < Integer ... Sizes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto MakeFixedFIFOStridedLayout( std::index_sequence<Sizes...> )
+{
+   return MakeFixedFIFOStridedLayout<Sizes...>();
 }
 
 template < typename Container, typename Sizes, Integer ... Strides >

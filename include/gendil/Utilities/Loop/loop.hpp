@@ -83,4 +83,33 @@ void Loop( Lambda && lambda, Args && ... args )
    ForwardLoop( std::forward< Lambda >( lambda ), seq{}, std::forward< Args >( args )... );
 }
 
+
+template < size_t I, size_t Rank, typename Lambda, typename... Args >
+GENDIL_HOST_DEVICE
+void DynamicForwardLoop(
+   const std::array< GlobalIndex, Rank > & bounds,
+   Lambda && lambda,
+   Args && ... args)
+{
+   for (GlobalIndex ind = 0; ind < bounds[I]; ind++)
+   {
+      if constexpr (I > 0)
+      {
+         DynamicForwardLoop<I-1>( bounds, std::forward< Lambda >( lambda ), ind, std::forward< Args >( args )... );
+      }
+      else
+      {
+         lambda( ind, std::forward< Args >( args )... );
+      }
+   }
+}
+
+// Note: Calling this Loop creates compilation bugs.
+template < size_t Rank, typename Lambda, typename... Args >
+GENDIL_HOST_DEVICE
+void DynamicLoop( const std::array< GlobalIndex, Rank > & bounds, Lambda && lambda, Args && ... args )
+{
+   DynamicForwardLoop<Rank-1>( bounds, std::forward< Lambda >( lambda ), std::forward< Args >( args )... );
+}
+
 }

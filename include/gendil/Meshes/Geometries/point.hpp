@@ -40,6 +40,12 @@ struct Point
       // TODO: Add debug assertion?
       return coordinates[ index ];
    }
+
+   constexpr Real & operator[]( size_t index )
+   {
+      // TODO: Add debug assertion?
+      return coordinates[ index ];
+   }
 };
 
 // Specialize the scalar case
@@ -69,6 +75,12 @@ struct Point<1>
    {
       // TODO: Add debug assertion?
       return coordinates[ 0 ];
+   }
+
+   constexpr Real & operator[]( size_t index )
+   {
+      // TODO: Add debug assertion?
+      return coordinates[ index ];
    }
 };
 

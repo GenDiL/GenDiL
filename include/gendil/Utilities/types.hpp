@@ -5,10 +5,15 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdlib>
 #include <utility>
 #include <array>
 #include <iostream>
 #include <tuple>
+#include <functional>
+#ifdef GENDIL_USE_MPI
+#include <mpi.h>
+#endif
 #ifdef GENDIL_USE_CUDA
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
@@ -53,6 +58,14 @@ struct Empty { };
 #define _GENDIL_FUNC_NAME __FUNCSIG__
 #endif
 #endif
+
+// MPI
+#ifdef GENDIL_USE_MPI
+constexpr int mpi_boundary_flag = MPI_PROC_NULL;
+#else
+constexpr int mpi_boundary_flag = -1;
+#endif
+
 
 // CUDA
 #if defined( GENDIL_USE_CUDA )

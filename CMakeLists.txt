@@ -18,10 +18,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-lim
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-unused-local-typedefs") # supress some warnings
 
 # Options for third-party dependencies
-option(USE_MFEM "Enables MFEM interface." OFF)
+option(USE_MPI "Enable MPI parallelization" OFF)
 option(USE_OPENMP "Enables OpenMP parallelization features." ON)
 option(USE_CUDA "Enables CUDA support." OFF)
 option(USE_HIP "Enables HIP support." OFF)
+option(USE_MFEM "Enables MFEM interface." OFF)
 option(USE_RAJA "Enables RAJA features." OFF)
 option(USE_CALIPER "Enables Caliper interface for benchmarking." OFF)
 
@@ -30,6 +31,40 @@ add_library(GENDIL INTERFACE)
 # Add -pg to compile and link flags to enable gprof profiling
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
 # set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
+
+# MPI
+if(USE_MPI)
+  find_package(MPI REQUIRED COMPONENTS CXX)
+  message(STATUS "MPI enabled: ${MPI_CXX_COMPILER}")
+  target_link_libraries(GENDIL INTERFACE MPI::MPI_CXX)
+  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_MPI)
+  # Define MPI launcher
+  if(NOT DEFINED MPIEXEC)
+    if(DEFINED ENV{SLURM_JOB_ID})
+      set(MPIEXEC "srun")
+      set(MPIEXEC_NUMPROC_FLAG "--ntasks")
+    elseif(DEFINED ENV{LSB_JOBID})
+      set(MPIEXEC "lrun")
+      set(MPIEXEC_NUMPROC_FLAG "-np")
+    else()
+      set(MPIEXEC "mpirun")
+      set(MPIEXEC_NUMPROC_FLAG "-np")
+    endif()
+  endif()
+  message(STATUS "MPIEXEC is set to: ${MPIEXEC}")
+  # Optionally, specify additional MPI arguments
+  get_filename_component(MPIEXEC_BASENAME "${MPIEXEC}" NAME)
+  if(MPIEXEC_BASENAME STREQUAL "srun")
+    set(MPIEXEC_TEST_ARGS -p pdebug --time=00:10:00)
+  elseif(MPIEXEC_BASENAME STREQUAL "lrun")
+    set(MPIEXEC_TEST_ARGS -q pdebug -W 10)
+  else()
+    set(MPIEXEC_TEST_ARGS "")
+  endif()
+  message(STATUS "MPIEXEC_TEST_ARGS is set to: ${MPIEXEC_TEST_ARGS}")
+else()
+  message(STATUS "MPI disabled.")
+endif()
 
 # OpenMP
 if(USE_OPENMP)

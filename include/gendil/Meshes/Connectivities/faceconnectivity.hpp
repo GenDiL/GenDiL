@@ -35,6 +35,8 @@ struct FaceConnectivity
    normal_type normal;
 };
 
+enum FaceType { Interior, Distributed, Boundary };
+
 // TODO: Specialize for FaceConnectivity?
 template < typename FaceInfo >
 constexpr GlobalIndex GetNeighborIndex( const FaceInfo & face_info )
@@ -42,10 +44,48 @@ constexpr GlobalIndex GetNeighborIndex( const FaceInfo & face_info )
    return face_info.neighbor_index;
 }
 
+constexpr bool IsBoundaryFace( const bool & face_info )
+{
+   return face_info;
+}
+
+template < bool val >
+constexpr bool IsBoundaryFace( const std::integral_constant<bool, val> & face_info )
+{
+   return val;
+}
+
+constexpr bool IsBoundaryFace( const FaceType & face_info )
+{
+   return face_info == Boundary;
+}
+
+// TODO: Replace with explicit type FaceConnectivity?
 template < typename FaceInfo >
 constexpr bool IsBoundaryFace( const FaceInfo & face_info )
 {
-   return face_info.boundary;
+   return IsBoundaryFace( face_info.boundary );
+}
+
+constexpr bool IsDistributedFace( const bool & face_info )
+{
+   return false;
+}
+
+constexpr bool IsDistributedFace( const std::integral_constant<bool, false> & face_info )
+{
+   return false;
+}
+
+constexpr bool IsDistributedFace( const FaceType & face_info )
+{
+   return face_info == Distributed;
+}
+
+template < typename FaceInfo >
+constexpr bool IsDistributedFace( const FaceInfo & face_info )
+{
+   return IsDistributedFace( face_info.boundary );
 }
 
 template < typename FaceInfo >
