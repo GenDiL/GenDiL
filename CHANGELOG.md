@@ -11,12 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Core functionality for main feature(s).
 - Basic documentation, including README and this CHANGELOG file.
 
-### Changed
-- Updated project dependencies to latest versions (if applicable).
-
-### Fixed
-- Any initial known issues resolved during setup.
-
 ---
 
 ## [0.0.1] - 2025-03-18

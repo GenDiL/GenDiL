@@ -9,6 +9,8 @@
 #include "gendil/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/Utilities/KernelContext/isserial.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
+#include "gendil/MatrixFreeOperators/KernelOperators/vector.hpp"
+
 namespace gendil {
 
 template < int size >
@@ -101,6 +103,19 @@ Real Dot( const KernelContext & kernel_conf, const ThreadedView< Sizes, KernelCo
    {
       return Dot( u.data, v.data );
    }
+}
+
+Real Dot( const Vector & u, const Vector & v )
+{
+   // TODO: Make it device compatible
+   const Real* u_ptr( u.ReadHostData() );
+   const Real* v_ptr( v.ReadHostData() );
+   Real sum = 0.0;
+   #pragma omp parallel for reduction(+:sum)
+   for (size_t i = 0; i < u.Size(); ++i) {
+      sum += u_ptr[i] * v_ptr[i];
+   }
+   return sum;
 }
 
 }

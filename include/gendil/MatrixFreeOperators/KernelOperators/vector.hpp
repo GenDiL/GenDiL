@@ -187,4 +187,60 @@ private:
 };
    
 
+GENDIL_HOST_DEVICE
+Vector & operator+=( Vector & x, Vector const & y )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] += v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector & operator-=( Vector & x, Vector const & y )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] -= v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector& operator*=(
+   Vector & x,
+   const Real & a )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] *= a;
+   }
+   return x;
+}
+
+// y = ax + y
+GENDIL_HOST_DEVICE
+void Axpy(
+   const Real & a,
+   const Vector & x,
+   Vector & y )
+{
+   // TODO: Make it device compatible
+   const Real* u( x.ReadHostData() );
+   Real* v( y.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      v[ i ] = v[ i ] + a * u[ i ] ;
+   }
+}
+
 }
