@@ -157,7 +157,7 @@ ThreadedView< Sizes, KernelContext, Container > operator*(
 template < typename Sizes, typename KernelContext, typename Container >
 GENDIL_HOST_DEVICE
 ThreadedView< Sizes, KernelContext, Container >& operator+=(
-   const ThreadedView< Sizes, KernelContext, Container > & x,
+   ThreadedView< Sizes, KernelContext, Container > & x,
    const ThreadedView< Sizes, KernelContext, Container > & y )
 {
    x.data += y.data;
@@ -167,11 +167,32 @@ ThreadedView< Sizes, KernelContext, Container >& operator+=(
 template < typename Sizes, typename KernelContext, typename Container >
 GENDIL_HOST_DEVICE
 ThreadedView< Sizes, KernelContext, Container >& operator-=(
-   const ThreadedView< Sizes, KernelContext, Container > & x,
+   ThreadedView< Sizes, KernelContext, Container > & x,
    const ThreadedView< Sizes, KernelContext, Container > & y )
 {
    x.data -= y.data;
    return x;
+}
+
+template < typename T, typename Sizes, typename KernelContext, typename Container >
+GENDIL_HOST_DEVICE
+ThreadedView< Sizes, KernelContext, Container >& operator*=(
+   ThreadedView< Sizes, KernelContext, Container > & x,
+   const T & a )
+{
+   x.data *= a;
+   return x;
+}
+
+// y = ax + y
+template < typename T, typename Sizes, typename KernelContext, typename Container >
+GENDIL_HOST_DEVICE
+void Axpy(
+   const T & a,
+   const ThreadedView< Sizes, KernelContext, Container > & x,
+   ThreadedView< Sizes, KernelContext, Container > & y )
+{
+   Axpy( a, x.data, y.data );
 }
 
 }

@@ -31,16 +31,31 @@ public:
       return n;
    }
 
-   void operator=( Real val )
+   Vector& operator=( const Vector & x )
    {
-      host_valid = true;
-      device_valid = false;
+      // TODO: Make it device compatible
+      Real* ptr = WriteHostData();
+      const Real * x_ptr = x.ReadHostData();
 
       #pragma omp parallel for
-      for ( size_t i=0; i<n; ++i )
+      for ( size_t i=0; i<Size(); ++i )
       {
-         ptr.host_pointer[i] = val;
+         ptr[i] = x_ptr[i];
       }
+      return *this;
+   }
+
+   Vector& operator=( Real val )
+   {
+      // TODO: Make it device compatible
+      Real* ptr = WriteHostData();
+
+      #pragma omp parallel for
+      for ( size_t i=0; i<Size(); ++i )
+      {
+         ptr[i] = val;
+      }
+      return *this;
    }
 
    bool IsHostValid() const
@@ -59,7 +74,7 @@ public:
       {
          ToHost( n, ptr );
       }
-      host_valid   = true;
+      host_valid = true;
       return ptr.host_pointer;
    }
 
@@ -69,14 +84,14 @@ public:
       {
          ToHost( n, ptr );
       }
-      host_valid   = true;
+      host_valid = true;
       device_valid = false;
       return ptr.host_pointer;
    }
 
    Real* WriteHostData()
    {
-      host_valid   = true;
+      host_valid = true;
       device_valid = false;
       return ptr.host_pointer;
    }
@@ -102,7 +117,7 @@ public:
       {
          ToDevice( n, ptr );
       }
-      host_valid   = false;
+      host_valid = false;
       device_valid = true;
       return ptr.device_pointer;
 #else
@@ -113,7 +128,7 @@ public:
    Real* WriteDeviceData()
    {
 #ifdef GENDIL_USE_DEVICE
-      host_valid   = false;
+      host_valid = false;
       device_valid = true;
       return ptr.device_pointer;
 #else
@@ -121,7 +136,7 @@ public:
 #endif
    }
 
-   // Explicit sync calls if you prefer
+   // Explicit sync calls
    void Sync()
    {
       if (!host_valid && device_valid)
@@ -132,7 +147,7 @@ public:
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
-         device_valid = false;
+         device_valid = true;
       }
    }
 
@@ -186,5 +201,61 @@ private:
    mutable bool host_valid{false}, device_valid{false};
 };
    
+
+GENDIL_HOST_DEVICE
+Vector & operator+=( Vector & x, Vector const & y )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] += v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector & operator-=( Vector & x, Vector const & y )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] -= v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector& operator*=(
+   Vector & x,
+   const Real & a )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] *= a;
+   }
+   return x;
+}
+
+// y = ax + y
+GENDIL_HOST_DEVICE
+void Axpy(
+   const Real & a,
+   const Vector & x,
+   Vector & y )
+{
+   // TODO: Make it device compatible
+   const Real* u( x.ReadHostData() );
+   Real* v( y.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      v[ i ] = v[ i ] + a * u[ i ] ;
+   }
+}
 
 }
