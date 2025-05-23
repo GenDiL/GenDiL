@@ -64,10 +64,6 @@ void test_poisson_1D( const Integer n )
 #else
     using KernelPolicy = SerialKernelConfiguration;
 #endif
-    // auto boundary_lambda = [] GENDIL_HOST_DEVICE ( const array<Real,Dim>& X )
-    // {
-    //     return 0.0;
-    // };
 
     auto coeff = [] GENDIL_HOST_DEVICE ( const array<Real,Dim>& X )
     {
@@ -76,17 +72,13 @@ void test_poisson_1D( const Integer n )
 
     const double sigma = -1.0;
     const double kappa = (order+1)*(order+1);
-    // auto poisson_op = MakeDiffusionOperator<KernelPolicy>( fe_space, int_rules, boundary_lambda );
     auto poisson_op = MakeDiffusionOperator<KernelPolicy>( fe_space, int_rules, coeff, sigma, kappa );
 
     // 5) Build RHS vector b_i = ∫Ω φ_i f
     const Integer ndofs = fe_space.GetNumberOfFiniteElementDofs();
-    // Vector b(ndofs);
-    // b = 0.0;
     auto rhs_lambda = [] GENDIL_HOST_DEVICE ( auto const & X ){
         return Manufactured<Dim>::rhs(X);
     };
-    // diff_op.AssembleRHS(rhs_lambda, b);
     Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
 
     // 6) Solve A x = b via CG
@@ -116,7 +108,6 @@ void test_range()
     const Integer max_dofs = 1e7; 
     constexpr Integer dim = 1;
     Integer n = 1;
-    // Integer n[dim] = {1,1,1,1,1,1};
     cout << "       \\addplot coordinates {\n";
     while( true )
     {
@@ -125,7 +116,6 @@ void test_range()
         if(ndofs > max_dofs) break;
 
         test_poisson_1D<order,num_quad_1d>( n );
-        // refine one direction cyclically
         n *= 2;
     }
     cout << "       };\n";
@@ -134,7 +124,7 @@ void test_range()
 
 int main()
 {
-    constexpr Integer max_p = 2, q_offset=2;
+    constexpr Integer max_p = 4, q_offset=2;
 
     cout << "\n1D Poisson Convergence Study\n"
          << "  Manufactured: ∏ sin(π x_i)\n\n"

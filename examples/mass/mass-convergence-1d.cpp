@@ -24,13 +24,13 @@ struct Manufactured {
 template < Integer order, Integer num_quad_1d = order + 2 >
 void test_mass_1D( const Integer n )
 {
-    // 1) build a 1D mesh as cartesian product of two 3D cubes
+    // 1) build a 1D mesh
     const Real h = 1.0/n;
     Cartesian1DMesh mesh(h,n);
 
     // 2) finite element space
     FiniteElementOrders<order> orders;
-    auto fe = MakeLegendreFiniteElement(orders);
+    auto fe = MakeLobattoFiniteElement(orders);
     auto fe_space = MakeFiniteElementSpace(mesh, fe);
 
     // 3) integration rule
@@ -52,6 +52,7 @@ void test_mass_1D( const Integer n )
         return 1.0;
     };
     auto mass_op = MakeMassFiniteElementOperator<KernelPolicy>(fe_space, int_rules, sigma);
+    auto mass_inverse_operator = MakeMassInverseFiniteElementOperator< KernelPolicy >( fe_space, int_rules, sigma );
 
     // 5) Build RHS vector b_i = ∫ φ_i(x) u_exact(x) dx
     const Integer ndofs = fe_space.GetNumberOfFiniteElementDofs();
@@ -59,14 +60,6 @@ void test_mass_1D( const Integer n )
         return Manufactured<Dim>::u_exact(X);
     };
     Vector b = MakeLinearForm(fe_space, int_rules, rhs_lambda);
-    // // spot-check a few entries:
-    // const Real* rhs = b.ReadHostData();
-    // for(int i=0; i< b.Size(); ++i){
-    //     if (!std::isfinite(rhs[i])) {
-    //         cerr << "NaN or inf in b at index " << i << ": " << rhs[i] << "\n";
-    //         break;
-    //     }
-    // }
 
     // 1) Solve M u = b via CG
     Vector u_h(ndofs);
@@ -79,8 +72,11 @@ void test_mass_1D( const Integer n )
     ConjugateGradient(mass_op, b, dot, max_iters, tol, u_h, tmp, z, residual, p);
 
     // 7) Compute L2 error: ∥u_h − u_exact∥_{L2}
+    constexpr Integer num_quad_error = num_quad_1d+2;
+    IntegrationRuleNumPoints<num_quad_error> nq_error;
+    auto error_int_rules = MakeIntegrationRule(nq_error);
     auto err_L2 = L2Error<KernelPolicy>(
-        fe_space, int_rules,
+        fe_space, error_int_rules,
         Manufactured<Dim>::u_exact,
         u_h
     );

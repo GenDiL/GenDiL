@@ -71,8 +71,11 @@ void test_mass_2D( const Integer n )
     ConjugateGradient(mass_op, b, dot, max_iters, tol, u_h, tmp, z, residual, p);
 
     // 7) Compute L2 error: ∥u_h − u_exact∥_{L2}
+    constexpr Integer num_quad_error = num_quad_1d+2;
+    IntegrationRuleNumPoints<num_quad_error, num_quad_error> nq_error;
+    auto error_int_rules = MakeIntegrationRule(nq_error);
     auto err_L2 = L2Error<KernelPolicy>(
-        fe_space, int_rules,
+        fe_space, error_int_rules,
         Manufactured<Dim>::u_exact,
         u_h
     );
@@ -102,7 +105,7 @@ void test_range()
 
 int main()
 {
-    constexpr Integer max_p = 2, q_offset = 2;
+    constexpr Integer max_p = 4, q_offset = 2;
 
     cout << "\n2D Mass‐Matrix Convergence Study\n"
          << "  Manufactured: ∏ sin(π x_i)\n\n"
