@@ -15,6 +15,7 @@
 #include "gendil/FiniteElementMethod/finiteelementorders.hpp"
 #include "gendil/FiniteElementMethod/restriction.hpp"
 #include "gendil/MatrixFreeOperators/KernelOperators/vector.hpp"
+#include "gendil/Utilities/MathHelperFunctions/sum.hpp"
 
 namespace gendil {
 
@@ -63,6 +64,17 @@ auto MakeTensor(
    return MakeTensor( finite_element_space, data, orders{} );
 }
 
+template <
+   typename T,
+   size_t ... dof_shapes >
+auto MakeTensor(
+   T * data,
+   GlobalIndex num_elements,
+   std::index_sequence< dof_shapes... > )
+{
+   return MakeFIFOView( data, (GlobalIndex)dof_shapes..., num_elements );
+}
+
 /**
  * @brief Utility function to transform a vector into a structured tensor.
  * 
@@ -107,6 +119,54 @@ auto MakeIndirectedTensor(
    return MakeIndirectedTensor( finite_element_space, data, orders{} );
 }
 
+template < typename FiniteElementSpace, typename T >
+auto MakeScalarEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   T * data )
+{
+   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   {
+      return MakeTensor( finite_element_space, data );
+   }
+   else // H1Restriction
+   {
+      return MakeIndirectedTensor( finite_element_space, data );
+   }
+}
+
+template <
+   typename Tuple,
+   size_t ... I >
+size_t VectorOffset( Tuple dof_shapes, GlobalIndex num_elements, std::index_sequence< I ... > )
+{
+   return Sum( ( num_elements * Product( std::tuple_element_t< I, Tuple >{} ) )... );
+}
+
+template < typename FiniteElementSpace, typename T, size_t ... v_dims >
+auto MakeVectorEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   T * data,
+   std::index_sequence< v_dims... > )
+{
+   const GlobalIndex num_elements = finite_element_space.GetNumberOfFiniteElements();
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+   return std::make_tuple(
+      MakeTensor(
+         data + VectorOffset( dof_shape{}, num_elements, std::make_index_sequence< v_dims >{} ),
+         num_elements,
+         std::tuple_element_t< v_dims, dof_shape >{}
+      )...
+   );
+}
+
+template < typename FiniteElementSpace, typename T >
+auto MakeVectorEVectorView(
+   const FiniteElementSpace & finite_element_space,
+   T * data )
+{
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   return MakeVectorEVectorView( finite_element_space, data, std::make_index_sequence< v_dim >{} );
+}
 /**
  * @brief Utility function to transform a vector of deegrees of freedom into a tensor view of degrees of freedom.
  * 
@@ -123,13 +183,13 @@ auto MakeEVectorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      return MakeTensor( finite_element_space, data );
+      return MakeVectorEVectorView( finite_element_space, data );
    }
-   else // H1Restriction
+   else
    {
-      return MakeIndirectedTensor( finite_element_space, data );
+      return MakeScalarEVectorView( finite_element_space, data );
    }
 }
 

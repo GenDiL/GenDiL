@@ -44,3 +44,6 @@
 
 // An operator to project a high dimension field onto the first subspace using Linf norm.
 #include "Linfprojectionoperator.hpp"
+
+// A grad-grad operator.
+#include "gradgradoperator.hpp"
