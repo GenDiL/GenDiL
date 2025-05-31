@@ -11,6 +11,34 @@
 namespace gendil
 {
 
+template <
+   typename KernelContext,
+   typename DofToQuad,
+   typename ... ScalardDofTensors,
+   size_t ... I >
+GENDIL_HOST_DEVICE
+auto InterpolateValues(
+   const KernelContext & ctx,
+   const DofToQuad & quad_data,
+   const std::tuple< ScalardDofTensors ... > & u,
+   std::index_sequence< I... > )
+{
+   return std::make_tuple( InterpolateValues( ctx, std::get< I >( quad_data), std::get< I>( u ) )... );
+}
+
+template <
+   typename KernelContext,
+   typename DofToQuad,
+   typename ... ScalarDofTensors >
+GENDIL_HOST_DEVICE
+auto InterpolateValues(
+   const KernelContext & ctx,
+   const DofToQuad & quad_data,
+   const std::tuple< ScalarDofTensors ... > & u )
+{
+   return InterpolateValues( ctx, quad_data, u, std::make_index_sequence< sizeof...( ScalarDofTensors ) >{} );
+}
+
 /**
  * @brief generic implementation of an operator interpolating values at quadrature points
  * from the given degrees-of-freedom.

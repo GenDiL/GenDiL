@@ -44,6 +44,20 @@ Real ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex<
    return ReadQuadratureLocalValues( quad_index, field, RegisterDimensions{} );
 }
 
+template < typename KernelContext, Integer Dim, typename ... Tensors >
+GENDIL_HOST_DEVICE
+auto ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex< Dim > & quad_index, const std::tuple< Tensors... > & field )
+{
+   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
+   constexpr Integer vdim = sizeof...( Tensors );
+   SerialRecursiveArray<Real, vdim> result;
+   ConstexprLoop< vdim >( [&]( auto i )
+   {
+      result(i) = ReadQuadratureLocalValues( quad_index, std::get< i >( field ), RegisterDimensions{} );
+   });
+   return result;
+}
+
 template < typename KernelContext, Integer Dim, typename Tensor, Integer NumComp, size_t... Is >
 GENDIL_HOST_DEVICE
 void ReadQuadratureLocalValues(

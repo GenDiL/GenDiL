@@ -61,7 +61,7 @@ namespace detail {
         for (GlobalIndex i = 0; i < n; i++)
         {
             prod *= sizes[ i ];
-        }    
+        }
         return prod;
     }
 

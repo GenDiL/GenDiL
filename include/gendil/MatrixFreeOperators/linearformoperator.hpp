@@ -168,7 +168,7 @@ class LinearForm : public Vector
     */
    using ElementQuadData = decltype(
                               MakeDofToQuad<
-                                 finite_element_type,
+                                 typename finite_element_type::shape_functions,
                                  integration_rule
                               >()
                            );

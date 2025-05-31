@@ -52,7 +52,7 @@ protected:
     */
    using TrialElementQuadData = decltype(
                               MakeDofToQuad<
-                                 trial_finite_element_type,
+                                 typename trial_finite_element_type::shape_functions,
                                  integration_rule
                               >()
                            );
@@ -66,7 +66,7 @@ protected:
     */
    using TestElementQuadData = decltype(
                               MakeDofToQuad<
-                                 test_finite_element_type,
+                                 typename test_finite_element_type::shape_functions,
                                  integration_rule
                               >()
                            );

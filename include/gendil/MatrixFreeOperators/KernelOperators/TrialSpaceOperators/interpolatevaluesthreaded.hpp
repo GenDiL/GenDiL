@@ -291,7 +291,7 @@ auto InterpolateValuesThreaded(
    // TODO1 copy result in serial recursive array? reg_output_shape + Loop?
    // TODO2 copy result in threaded recursive array? DofShape + Thread Loop?
    auto tmp_out = MakeFixedFIFOView( register_buffer1, reg_output_shape{} );
-   auto result = MakeSerialRecursiveArray< Real >( reg_output_shape{} );
+   auto result = MakeStaticFIFOView< Real >( reg_output_shape{} );
    UnitLoop< reg_output_shape >( [&]( auto ... indices )
    {
       result( indices... ) = tmp_out( indices... );
