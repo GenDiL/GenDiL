@@ -7,7 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sqrt.hpp"
-#include "gendil/FiniteElementMethod/ShapeFunctions/lagrangeshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
 
 namespace gendil {
 
