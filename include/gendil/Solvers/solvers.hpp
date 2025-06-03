@@ -4,3 +4,6 @@
 
 // A simple GMRES implementation
 #include "gendil/Solvers/gmres.hpp"
+
+// A simple BiCGSTAB implementation
+#include "gendil/Solvers/bicgstab.hpp"
