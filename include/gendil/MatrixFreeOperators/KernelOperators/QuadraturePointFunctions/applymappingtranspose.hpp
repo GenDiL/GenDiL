@@ -89,6 +89,23 @@ void ApplyMappingTranspose( const std::array< std::array< Real, Dim >, Dim > & i
    ApplyMappingTranspose<0>( inv_J, Gu );
 }
 
+template < size_t offset, size_t DimJ, size_t Dim >
+GENDIL_HOST_DEVICE
+void ApplyMappingTranspose( const std::array< Real, DimJ > & inv_J, Real (& Gu)[Dim] )
+{
+   ConstexprLoop< Dim >( [&] ( auto i )
+   {
+      Gu[offset+i] = inv_J[i] * Gu[offset+i];
+   });
+}
+
+template < size_t Dim >
+GENDIL_HOST_DEVICE
+void ApplyMappingTranspose( const std::array< Real, Dim > & inv_J, Real (& Gu)[Dim] )
+{
+   ApplyMappingTranspose<0>( inv_J, Gu );
+}
+
 template < size_t offset = 0, typename... MatrixTypes, Integer Dim >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::tuple< MatrixTypes... > & inv_J,

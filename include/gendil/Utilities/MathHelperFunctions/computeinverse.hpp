@@ -85,6 +85,19 @@ void ComputeInverse( const Real & det, const std::array< std::array< Real, 3 >, 
    inv_A[2][2] = detAinv * ( (A[0][0] * A[1][1]) - (A[0][1] * A[1][0]) );
 }
 
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+void ComputeInverse(
+   const Real & det,
+   const std::array< Real, Dim > & A,
+   std::array< Real, Dim > & inv_A )
+{
+   ConstexprLoop< Dim >( [&] ( auto i )
+   {
+      inv_A[i] = 1.0 / A[i];
+   });
+}
+
 template < Integer N >
 GENDIL_HOST_DEVICE
 void ComputeInverse(
