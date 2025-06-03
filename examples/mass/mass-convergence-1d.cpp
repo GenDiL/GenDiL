@@ -59,7 +59,7 @@ void test_mass_1D( const Integer n )
     auto rhs_lambda = [] GENDIL_HOST_DEVICE ( auto const & X ) {
         return Manufactured<Dim>::u_exact(X);
     };
-    Vector b = MakeLinearForm(fe_space, int_rules, rhs_lambda);
+    const Vector b = MakeLinearForm(fe_space, int_rules, rhs_lambda);
 
     // 1) Solve M u = b via CG
     Vector u_h(ndofs);

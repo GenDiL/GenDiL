@@ -79,7 +79,7 @@ void test_poisson_1D( const Integer n )
     auto rhs_lambda = [] GENDIL_HOST_DEVICE ( auto const & X ){
         return Manufactured<Dim>::rhs(X);
     };
-    Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
+    const Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
 
     // 6) Solve A x = b via CG
     Vector x( ndofs );

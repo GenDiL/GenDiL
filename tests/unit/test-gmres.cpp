@@ -54,8 +54,8 @@ bool test_identity_operator()
 
     auto [converged, iters, relres] = GMRES_no_alloc(
         A_id, b, dot, max_iters, restart, tol,
-        x, V_array.data(), w,
-        H.data(), cs.data(), sn.data(), e1_rhs.data(), y.data()
+        x, V_array, w,
+        H, cs, sn, e1_rhs, y
     );
 
     bool pass = true;
@@ -100,8 +100,8 @@ bool test_small_2x2()
 
     auto [converged, iters, relres] = GMRES_no_alloc(
         A_mat, b, dot, max_iters, restart, tol,
-        x, V_array.data(), w,
-        H.data(), cs.data(), sn.data(), e1_rhs.data(), y.data()
+        x, V_array, w,
+        H, cs, sn, e1_rhs, y
     );
 
     bool pass = true;
@@ -198,8 +198,8 @@ bool test_random_spd_vs_cg()
 
     auto [gm_conv, gm_iters, gm_relres] = GMRES_no_alloc(
         A_op, b, dot, gm_max, restart, gm_tol,
-        x_gmres, V_array.data(), w2,
-        H.data(), cs2.data(), sn2.data(), e1_rhs2.data(), y2.data()
+        x_gmres, V_array, w2,
+        H, cs2, sn2, e1_rhs2, y2
     );
     if (!gm_conv) {
         cout << "FAIL (GMRES did not converge)\n";
@@ -280,8 +280,8 @@ bool test_poisson_vs_cg()
 
     auto [gm_conv, gm_iters, gm_relres] = GMRES_no_alloc(
         poisson_op, b, dot, gm_max, restart, gm_tol,
-        x1, V_array.data(), w,
-        H.data(), cs.data(), sn.data(), e1_rhs.data(), y.data()
+        x1, V_array, w,
+        H, cs, sn, e1_rhs, y
     );
     if (!gm_conv) {
         cout << "FAIL (GMRES did not converge on Poisson)\n";
@@ -329,8 +329,8 @@ bool test_happy_breakdown()
 
     auto [converged, iters, relres] = GMRES_no_alloc(
         Aop, b, dot, max_iters, restart, tol,
-        x, V_array.data(), w2,
-        H.data(), cs2.data(), sn2.data(), e1_rhs2.data(), y2.data()
+        x, V_array, w2,
+        H, cs2, sn2, e1_rhs2, y2
     );
 
     bool pass = true;

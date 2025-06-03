@@ -48,7 +48,9 @@ template<
     typename Operator,
     typename RHSType,
     typename DotType,
-    typename Vector
+    typename VectorArray,
+    typename Vector,
+    typename Array
 >
 GENDIL_HOST_DEVICE
 auto GMRES_no_alloc(
@@ -59,13 +61,13 @@ auto GMRES_no_alloc(
     const Integer            restart,
     const Real               tol,
     Vector &                 x,
-    Vector *                 V,           // array of (restart+1) Vectors
+    VectorArray &            V,           // array of (restart+1) Vectors
     Vector &                 w,           // single workspace Vector
-    Real *                   hessenberg,  // length = (restart+1)*restart
-    Real *                   cs,          // length = restart
-    Real *                   sn,          // length = restart
-    Real *                   e1_rhs,      // length = restart+1
-    Real *                   y            // length = restart
+    Array &                  hessenberg,  // length = (restart+1)*restart
+    Array &                  cs,          // length = restart
+    Array &                  sn,          // length = restart
+    Array &                  e1_rhs,      // length = restart+1
+    Array &                  y            // length = restart
 )
 {
     using Result = std::tuple<bool, Integer, Real>;
