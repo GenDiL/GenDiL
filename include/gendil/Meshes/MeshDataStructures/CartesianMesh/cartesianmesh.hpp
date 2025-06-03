@@ -100,9 +100,8 @@ struct CartesianMesh
          "FaceIndex out of bound."
       );
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % Dim; // HyperCube< Dim >::GetNormalDimensionIndex( face_index ) ?
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1; // HyperCube< Dim >::GetNormalSign( face_index ) ?
+      constexpr Integer Index = cell_type::GetNormalDimensionIndex( face_index );
+      constexpr int Sign = cell_type::GetNormalSign( face_index );
 
       std::array< GlobalIndex, Dim > neighbor_index = GetStructuredSubIndices( cell_index, sizes );
       // TODO: we can forgo computing all of the indices (computing only
