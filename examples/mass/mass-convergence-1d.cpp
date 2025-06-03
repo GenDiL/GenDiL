@@ -108,11 +108,11 @@ int main()
 {
     constexpr Integer max_p = 4, q_offset = 2;
 
-    cout << "\n1D Mass‐Matrix Convergence Study\n"
+    cout << "\n1D Mass-Matrix Convergence Study\n"
          << "  Manufactured: ∏ sin(π x_i)\n\n"
          << "  \\begin{tikzpicture}[scale=0.9]\n"
          << "    \\begin{axis}[\n"
-         << "       title={L2‐Error vs DoFs (1D Mass)},\n"
+         << "       title={L2-Error vs DoFs (1D Mass)},\n"
          << "       xlabel={Number of DoFs},\n"
          << "       ylabel={L2 Error},\n"
          << "       xmode=log, ymode=log,\n"

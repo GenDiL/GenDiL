@@ -8,6 +8,7 @@
 #include "gendil/Utilities/debug.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 #if defined( GENDIL_USE_MFEM )
+#include <mfem.hpp>
 #include "general/forall.hpp"
 #endif
 

@@ -130,7 +130,7 @@ int main()
          << "  Manufactured: ∏ sin(π x_i)\n\n"
          << "  \\begin{tikzpicture}[scale=0.9]\n"
          << "    \\begin{axis}[\n"
-         << "       title={L2‐Error vs DoFs (1D Poisson)},\n"
+         << "       title={L2-Error vs DoFs (1D Poisson)},\n"
          << "       xlabel={Number of DoFs},\n"
          << "       ylabel={L2 Error},\n"
          << "       xmode=log, ymode=log,\n"
