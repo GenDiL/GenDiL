@@ -79,7 +79,7 @@ void test_poisson_1D( const Integer n )
     auto rhs_lambda = [] GENDIL_HOST_DEVICE ( auto const & X ){
         return Manufactured<Dim>::rhs(X);
     };
-    Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
+    const Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
 
     // 6) Solve A x = b via CG
     Vector x( ndofs );
@@ -130,7 +130,7 @@ int main()
          << "  Manufactured: ∏ sin(π x_i)\n\n"
          << "  \\begin{tikzpicture}[scale=0.9]\n"
          << "    \\begin{axis}[\n"
-         << "       title={L2‐Error vs DoFs (1D Poisson)},\n"
+         << "       title={L2-Error vs DoFs (1D Poisson)},\n"
          << "       xlabel={Number of DoFs},\n"
          << "       ylabel={L2 Error},\n"
          << "       xmode=log, ymode=log,\n"

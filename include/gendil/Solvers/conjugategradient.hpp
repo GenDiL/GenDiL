@@ -263,6 +263,7 @@ auto ConjugateGradient(
  */
 template<
    typename Operator,
+   typename RHSType,
    typename DotType,
    typename Vector
 >
@@ -271,7 +272,7 @@ auto ConjugateGradient(
    // std::function< void(const Vector &, Vector &) > &  A,
    // std::function< void(const Vector &, Vector &) > &  P,
    const Operator & A,
-   const Vector & rhs,
+   const RHSType & rhs,
    // std::function< Real(const Vector &, const Vector &) > & dot,
    const DotType & dot,
    const Integer max_iters,
