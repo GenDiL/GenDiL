@@ -14,6 +14,36 @@ template <
    Integer DiffDim = std::numeric_limits< GlobalIndex >::max(),
    typename KernelContext,
    typename ProductOperator,
+   typename ... InputTensors,
+   size_t ... I >
+GENDIL_HOST_DEVICE
+auto ApplyTestFunctions(
+   const KernelContext & thread,
+   const ProductOperator & quad_data,
+   const std::tuple< InputTensors ... > & quad_point_values,
+   std::index_sequence< I... > )
+{
+   return std::make_tuple( ApplyTestFunctions< DiffDim >( thread, std::get< I >( quad_data ), std::get< I >( quad_point_values ) )... );
+}
+
+template <
+   Integer DiffDim = std::numeric_limits< GlobalIndex >::max(),
+   typename KernelContext,
+   typename ProductOperator,
+   typename ... InputTensors >
+GENDIL_HOST_DEVICE
+auto ApplyTestFunctions(
+   const KernelContext & thread,
+   const ProductOperator & quad_data,
+   const std::tuple< InputTensors ... > & quad_point_values )
+{
+   return ApplyTestFunctions< DiffDim >( thread, quad_data, quad_point_values, std::make_index_sequence< sizeof...( InputTensors ) >{} );
+}
+
+template <
+   Integer DiffDim = std::numeric_limits< GlobalIndex >::max(),
+   typename KernelContext,
+   typename ProductOperator,
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(

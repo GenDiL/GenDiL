@@ -10,6 +10,34 @@
 
 namespace gendil {
 
+template <
+   typename KernelContext,
+   typename DofToQuad,
+   typename ... ScalarDofTensors,
+   size_t ... I >
+GENDIL_HOST_DEVICE
+auto InterpolateGradient(
+   const KernelContext & ctx,
+   const DofToQuad & quad_data,
+   const std::tuple< ScalarDofTensors ... > & u,
+   std::index_sequence< I... > )
+{
+   return std::make_tuple( InterpolateGradient( ctx, std::get< I >( quad_data ), std::get< I>( u ) )... );
+}
+
+template <
+   typename KernelContext,
+   typename DofToQuad,
+   typename ... ScalarDofTensors >
+GENDIL_HOST_DEVICE
+auto InterpolateGradient(
+   const KernelContext & ctx,
+   const DofToQuad & quad_data,
+   const std::tuple< ScalarDofTensors ... > & u )
+{
+   return InterpolateGradient( ctx, quad_data, u, std::make_index_sequence< sizeof...( ScalarDofTensors ) >{} );
+}
+
 template < typename KernelContext, typename ProductOperator, typename InputTensor >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient( const KernelContext & thread, const ProductOperator & element_quad_data, const InputTensor & u )

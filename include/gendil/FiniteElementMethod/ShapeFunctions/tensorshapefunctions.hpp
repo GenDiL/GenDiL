@@ -73,6 +73,21 @@ struct TensorShapeFunctions
    }
 };
 
+template < typename ShapeFunctions >
+struct is_tensor_shape_functions
+{
+   static constexpr bool value = false;
+};
+
+template < typename... ShapeFunctions >
+struct is_tensor_shape_functions< TensorShapeFunctions< ShapeFunctions ... > >
+{
+   static constexpr bool value = true;
+};
+
+template < typename ShapeFunctions >
+static constexpr bool is_tensor_shape_functions_v = is_tensor_shape_functions< ShapeFunctions >::value;
+
 template < typename Orders, Integer index>
 struct get_num_dofs_of_dim_v;
 

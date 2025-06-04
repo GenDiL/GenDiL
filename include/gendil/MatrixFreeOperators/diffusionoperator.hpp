@@ -37,7 +37,9 @@ template <
    typename FiniteElementSpace,
    typename MeshQuadData,
    typename ElementQuadData,
-   typename Velocity >
+   typename Velocity,
+   typename DofsInView,
+   typename DofsOutView >
 GENDIL_HOST_DEVICE
 void DiffusionElementOperator(
    const KernelContext & kernel_conf,
@@ -46,8 +48,8 @@ void DiffusionElementOperator(
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
    Velocity & velocity,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -58,6 +60,7 @@ void DiffusionElementOperator(
    const auto cell = fe_space.GetCell( element_index );
 
    // Container to store values at all the quadrature points
+   // !FIXME: not the right container for vector stuff
    auto DGuq = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, IntegrationRule{} );
 
    // Application of the QFunction
@@ -98,8 +101,7 @@ void DiffusionElementOperator(
    } );
 
    // Application of the test functions
-   auto GDGu = MakeQuadraturePointValuesContainer( kernel_conf, IntegrationRule{} );
-   ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DGuq, GDGu );
+   auto GDGu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DGuq );
    auto BGDGu = ApplyTestFunctions( kernel_conf, element_quad_data, GDGu );
 
    WriteDofs( kernel_conf, fe_space, element_index, BGDGu, dofs_out );
@@ -136,7 +138,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Velocity >
+   typename Velocity,
+   typename DofsInView,
+   typename DofsOutView >
 GENDIL_HOST_DEVICE
 void DiffusionFaceOperator(
    const KernelContext & kernel_conf,
@@ -149,8 +153,8 @@ void DiffusionFaceOperator(
    Velocity & velocity,
    const Real sigma,
    const Real kappa,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
@@ -346,7 +350,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Velocity >
+   typename Velocity,
+   typename DofsInView,
+   typename DofsOutView >
 void DiffusionExplicitOperator(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
@@ -356,8 +362,8 @@ void DiffusionExplicitOperator(
    Velocity & velocity,
    const Real sigma,
    const Real kappa,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
@@ -414,9 +420,6 @@ class DiffusionOperator
    const Real sigma;
    const Real kappa;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
-
 public:
    /**
     * @brief Construct a new DiffusionOperator object.
@@ -442,6 +445,7 @@ public:
     * @param dofs_vector_in The input degrees of freedom.
     * @param dofs_vector_out The output degrees of freedom.
     */
+   template < typename input, typename output >
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {

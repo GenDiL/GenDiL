@@ -40,4 +40,9 @@ constexpr auto Sum( const T & t, const Args & ... args )
     return t + Sum( args... );
 }
 
+constexpr auto Sum()
+{
+    return 0;
+}
+
 }

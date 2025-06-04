@@ -108,8 +108,7 @@ void MassAdvectionElementOperator(
    } );
 
    // Application of the test functions
-   auto & GDBu = Bu; // use same memory;
-   ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DGuq, GDBu );
+   auto GDBu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DGuq );
    GDBu += Duq;
    auto BGDBu = ApplyTestFunctions( kernel_conf, element_quad_data, GDBu );
 
