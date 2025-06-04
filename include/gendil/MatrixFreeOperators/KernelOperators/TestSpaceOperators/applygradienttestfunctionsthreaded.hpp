@@ -129,13 +129,13 @@ namespace AdjGradHelperFunctions
 template <
    typename KernelContext,
    typename DofToQuad,
-   typename ... ScalardDofTensors,
+   typename ... ScalarDofTensors,
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
    const KernelContext & ctx,
    const DofToQuad & quad_data,
-   const std::tuple< ScalardDofTensors ... > & u,
+   const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
 {
    return std::make_tuple( ApplyGradientTestFunctionsAtQPoints( ctx, std::get< I >( quad_data), std::get< I>( u ) )... );
