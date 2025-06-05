@@ -54,23 +54,23 @@ void test_speed_of_light_3D( const Integer nx, const Integer ny, const Integer n
 }
 
 struct VolumeOperatorFactory {
-   template <typename KernelPolicy>
-   auto operator()( const auto& fe_space, const auto& int_rules ) const {
-      return MakeSpeedOfLightOperator<KernelPolicy>( fe_space, int_rules );
+   template <typename KernelPolicy, typename FESpace, typename IntRule>
+   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+      return MakeSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
    }
 };
 
 struct FaceReadOperatorFactory {
-   template <typename KernelPolicy>
-   auto operator()( const auto& fe_space, const auto& int_rules ) const {
-      return MakeFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rules );
+   template <typename KernelPolicy, typename FESpace, typename IntRule>
+   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+      return MakeFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
    }
 };
 
 struct FaceWriteOperatorFactory {
-   template <typename KernelPolicy>
-   auto operator()( const auto& fe_space, const auto& int_rules ) const {
-      return MakeWriteFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rules );
+   template <typename KernelPolicy, typename FESpace, typename IntRule>
+   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+      return MakeWriteFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
    }
 };
 
