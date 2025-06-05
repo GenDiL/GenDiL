@@ -340,11 +340,11 @@ void WriteDofs(
 {
    if constexpr ( is_serial_v< KernelContext > )
    {
-      SerialWriteDofs<false>( thread, fe_space, face_info, global_dofs, local_dofs );
+      SerialWriteDofs<false>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<false>( thread, fe_space, face_info, global_dofs, local_dofs );
+      ThreadedWriteDofs<false>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 
