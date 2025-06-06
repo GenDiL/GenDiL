@@ -43,6 +43,7 @@ add_custom_target(
 )
 
 add_my_benchmark(range-benchmark-sol-3d range-benchmark-sol-3d.cpp)
+add_my_benchmark(range-benchmark-sol-6d range-benchmark-sol-6d.cpp)
 add_my_benchmark(benchmark-mass-3d benchmark-mass-3d.cpp)
 add_my_benchmark(range-benchmark-mass-3d range-benchmark-mass-3d.cpp)
 add_my_benchmark(range-benchmark-mass-4d range-benchmark-mass-4d.cpp)

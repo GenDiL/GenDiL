@@ -33,20 +33,12 @@ namespace gendil {
 template <
    typename FaceIntegrationRulesTuple,
    typename KernelContext,
-   typename FiniteElementSpace,
-   typename MeshQuadData,
-   typename MeshFaceDofToQuad,
-   typename ElementQuadData,
-   typename ElementFaceDofToQuad >
+   typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceReadSpeedOfLightElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
-   const MeshQuadData & mesh_quad_data,
-   const MeshFaceDofToQuad & mesh_face_quad_data,
-   const ElementQuadData & element_quad_data,
-   const ElementFaceDofToQuad & element_face_quad_data,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -67,20 +59,12 @@ void FaceReadSpeedOfLightElementOperator(
 template <
    typename FaceIntegrationRulesTuple,
    typename KernelContext,
-   typename FiniteElementSpace,
-   typename MeshQuadData,
-   typename MeshFaceDofToQuad,
-   typename ElementQuadData,
-   typename ElementFaceDofToQuad >
+   typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceWriteSpeedOfLightElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
-   const MeshQuadData & mesh_quad_data,
-   const MeshFaceDofToQuad & mesh_face_quad_data,
-   const ElementQuadData & element_quad_data,
-   const ElementFaceDofToQuad & element_face_quad_data,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -152,10 +136,6 @@ void FaceSpeedOfLightExplicitOperator(
             kernel_conf,
             fe_space,
             element_index,
-            mesh_quad_data,
-            mesh_face_quad_data,
-            element_quad_data,
-            element_face_quad_data,
             dofs_in,
             dofs_out );
       });
@@ -173,10 +153,6 @@ void FaceSpeedOfLightExplicitOperator(
             kernel_conf,
             fe_space,
             element_index,
-            mesh_quad_data,
-            mesh_face_quad_data,
-            element_quad_data,
-            element_face_quad_data,
             dofs_in,
             dofs_out );
       });

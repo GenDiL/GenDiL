@@ -202,8 +202,15 @@ void WriteAddDofs(
    }
 }
 
+enum WriteOp
+{
+   Write,
+   WriteAdd,
+   WriteSub
+};
+
 template <
-   bool Add,
+   WriteOp Op,
    typename KernelContext,
    typename FiniteElementSpace,
    Integer FaceIndex,
@@ -249,8 +256,10 @@ void SerialWriteDofs(
    DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
       {
-         if constexpr ( Add )
+         if constexpr ( Op == WriteAdd )
             AtomicAdd( global_dofs( indices..., element_index ), oriented_view( indices... ) );
+         else if constexpr ( Op == WriteSub )
+            AtomicAdd( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
          else
             global_dofs( indices..., element_index ) = oriented_view( indices... );
       }
@@ -258,7 +267,7 @@ void SerialWriteDofs(
 }
 
 template <
-   bool Add,
+   WriteOp Op,
    typename KernelContext,
    typename FiniteElementSpace,
    Integer FaceIndex,
@@ -308,9 +317,10 @@ void ThreadedWriteDofs(
    {
       UnitLoop< rshape >( [&] ( auto... k )
       {
-         global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );
-         if constexpr ( Add )
+         if constexpr ( Op == WriteAdd )
             AtomicAdd( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
+         else if constexpr ( Op == WriteSub )
+            AtomicAdd( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
          else
             global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );;
       });
@@ -340,11 +350,11 @@ void WriteDofs(
 {
    if constexpr ( is_serial_v< KernelContext > )
    {
-      SerialWriteDofs<false>( thread, fe_space, face_info, local_dofs, global_dofs );
+      SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<false>( thread, fe_space, face_info, local_dofs, global_dofs );
+      ThreadedWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 
@@ -368,11 +378,39 @@ void WriteAddDofs(
 {
    if constexpr ( is_serial_v< KernelContext > )
    {
-      SerialWriteDofs<true>( thread, fe_space, face_info, local_dofs, global_dofs );
+      SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<true>( thread, fe_space, face_info, local_dofs, global_dofs );
+      ThreadedWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+}
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   Integer FaceIndex,
+   typename Geometry,
+   typename OrientationType,
+   typename BoundaryType,
+   typename NormalType,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void WriteSubDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   if constexpr ( is_serial_v< KernelContext > )
+   {
+      SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+   else
+   {
+      ThreadedWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 
