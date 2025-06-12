@@ -5,3 +5,6 @@
 
 // The different type aliases used by GENDIL
 #include "gendil/Utilities/types.hpp"
+
+// Debugging Utilities
+#include "gendil/Utilities/debug.hpp"

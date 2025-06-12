@@ -21,26 +21,105 @@ public:
       AllocateDevicePointer< Real >( n, ptr );
    }
 
+   explicit Vector(int n) : Vector(static_cast<size_t>(n)) {}
+
    template < typename FiniteElementSpace >
    explicit Vector( const FiniteElementSpace & finite_element_space )
    : Vector( finite_element_space.GetNumberOfFiniteElementDofs() )
    { }
+
+   ~Vector()
+   {
+      FreeHostPointer(ptr);
+      FreeDevicePointer(ptr);
+   }
 
    size_t Size() const
    {
       return n;
    }
 
-   void operator=( Real val )
+   Real & operator[]( const GlobalIndex & index )
    {
-      host_valid = true;
-      device_valid = false;
+      ReadWriteHostData();
+      return ptr[ index ];
+   }
+
+   const Real & operator[]( const GlobalIndex & index ) const
+   {
+      ReadHostData();
+      return ptr[ index ];
+   }
+
+   Vector(const Vector &in)
+   : n(in.n)
+   {
+      AllocateHostPointer<Real>(n, ptr);
+      AllocateDevicePointer<Real>(n, ptr);
+
+      // TODO: Make it device compatible
+      const Real * in_ptr = in.ReadHostData();
+      Real * my_ptr = this->WriteHostData();
 
       #pragma omp parallel for
-      for ( size_t i=0; i<n; ++i )
+      for (size_t i = 0; i < Size(); ++i)
       {
-         ptr.host_pointer[i] = val;
+        my_ptr[i] = in_ptr[i];
       }
+   }
+
+   Vector& operator=( const Vector & x )
+   {
+      GENDIL_VERIFY(n == x.n, "Vector sizes must match for assignment.");
+
+      // TODO: Make it device compatible
+      Real* ptr = WriteHostData();
+      const Real * x_ptr = x.ReadHostData();
+
+      #pragma omp parallel for
+      for ( size_t i=0; i<Size(); ++i )
+      {
+         ptr[i] = x_ptr[i];
+      }
+      return *this;
+   }
+
+   Vector& operator=( Real val )
+   {
+      // TODO: Make it device compatible
+      Real* ptr = WriteHostData();
+
+      #pragma omp parallel for
+      for ( size_t i=0; i<Size(); ++i )
+      {
+         ptr[i] = val;
+      }
+      return *this;
+   }
+
+   Vector(Vector &&other) noexcept
+   : ptr(std::move(other.ptr)), n(other.n),
+     host_valid(other.host_valid), device_valid(other.device_valid)
+   {
+      other.n = 0;
+      other.host_valid = false;
+      other.device_valid = false;
+   }
+
+   Vector &operator=(Vector &&other) noexcept
+   {
+      if (this != &other)
+      {
+         ptr = std::move(other.ptr);
+         n = other.n;
+         host_valid = other.host_valid;
+         device_valid = other.device_valid;
+
+         other.n = 0;
+         other.host_valid = false;
+         other.device_valid = false;
+      }
+      return *this;
    }
 
    bool IsHostValid() const
@@ -58,8 +137,8 @@ public:
       if (!host_valid && device_valid)
       {
          ToHost( n, ptr );
+         host_valid = true;
       }
-      host_valid   = true;
       return ptr.host_pointer;
    }
 
@@ -68,15 +147,15 @@ public:
       if (!host_valid && device_valid)
       {
          ToHost( n, ptr );
+         host_valid = true;
+         device_valid = false;
       }
-      host_valid   = true;
-      device_valid = false;
       return ptr.host_pointer;
    }
 
    Real* WriteHostData()
    {
-      host_valid   = true;
+      host_valid = true;
       device_valid = false;
       return ptr.host_pointer;
    }
@@ -87,8 +166,8 @@ public:
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
+         device_valid = true;
       }
-      device_valid = true;
       return ptr.device_pointer;
 #else
       return ReadHostData();
@@ -101,9 +180,9 @@ public:
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
+         host_valid = false;
+         device_valid = true;
       }
-      host_valid   = false;
-      device_valid = true;
       return ptr.device_pointer;
 #else
       return ReadWriteHostData();
@@ -113,7 +192,7 @@ public:
    Real* WriteDeviceData()
    {
 #ifdef GENDIL_USE_DEVICE
-      host_valid   = false;
+      host_valid = false;
       device_valid = true;
       return ptr.device_pointer;
 #else
@@ -121,7 +200,7 @@ public:
 #endif
    }
 
-   // Explicit sync calls if you prefer
+   // Explicit sync calls
    void Sync()
    {
       if (!host_valid && device_valid)
@@ -132,7 +211,7 @@ public:
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
-         device_valid = false;
+         device_valid = true;
       }
    }
 
@@ -186,5 +265,78 @@ private:
    mutable bool host_valid{false}, device_valid{false};
 };
    
+
+GENDIL_HOST_DEVICE
+Vector & operator+=( Vector & x, Vector const & y )
+{
+   GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] += v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector & operator-=( Vector & x, Vector const & y )
+{
+   GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   const Real* v( y.ReadHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] -= v[i];
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector& operator*=(
+   Vector & x,
+   const Real & a )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] *= a;
+   }
+   return x;
+}
+
+GENDIL_HOST_DEVICE
+Vector& operator/=(
+   Vector & x,
+   const Real & a )
+{
+   // TODO: Make it device compatible
+   Real* u( x.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      u[i] /= a;
+   }
+   return x;
+}
+
+// y = ax + y
+GENDIL_HOST_DEVICE
+void Axpy(
+   const Real & a,
+   const Vector & x,
+   Vector & y )
+{
+   GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
+   // TODO: Make it device compatible
+   const Real* u( x.ReadHostData() );
+   Real* v( y.ReadWriteHostData() );
+   #pragma omp parallel for
+   for (size_t i = 0; i < x.Size(); ++i) {
+      v[ i ] = v[ i ] + a * u[ i ] ;
+   }
+}
 
 }
