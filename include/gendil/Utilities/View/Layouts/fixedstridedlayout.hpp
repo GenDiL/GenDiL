@@ -87,6 +87,13 @@ constexpr auto MakeFixedFIFOStridedLayout()
    return details::MakeFixedFIFOStridedLayout< Sizes... >( std::make_index_sequence< sizeof...(Sizes) >{} );
 }
 
+template < Integer ... Sizes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto MakeFixedFIFOStridedLayout( std::index_sequence<Sizes...> )
+{
+   return MakeFixedFIFOStridedLayout<Sizes...>();
+}
+
 template < typename Container, typename Sizes, Integer ... Strides >
 using FixedStridedView = View< Container, FixedStridedLayout< Sizes, Strides... > >;
 
