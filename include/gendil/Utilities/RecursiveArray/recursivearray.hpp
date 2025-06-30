@@ -412,6 +412,33 @@ SerialRecursiveArray< T, Dims... > operator*( const T & a, const SerialRecursive
    return res;
 }
 
+template< typename T, size_t... Dims >
+GENDIL_HOST_DEVICE
+SerialRecursiveArray< T, Dims... >& operator*=(
+   SerialRecursiveArray< T, Dims... > & x,
+   const T & a )
+{
+   UnitLoop< Dims... >( [&]( auto... indices )
+   {
+      x( indices... ) *= a;
+   });
+   return x;
+}
+
+// y = ax + y
+template< typename T, size_t... Dims >
+GENDIL_HOST_DEVICE
+void Axpy(
+   const T & a,
+   const SerialRecursiveArray< T, Dims... > & x,
+   SerialRecursiveArray< T, Dims... > & y )
+{
+   UnitLoop< Dims... >( [&]( auto... indices )
+   {
+      y( indices... ) = y( indices... ) + a * x( indices... ) ;
+   });
+}
+
 template <typename T, size_t... Dims >
 GENDIL_HOST_DEVICE
 auto MakeSerialRecursiveArray( std::index_sequence< Dims... > )
