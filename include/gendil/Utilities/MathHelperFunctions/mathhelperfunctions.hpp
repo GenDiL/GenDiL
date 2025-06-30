@@ -38,3 +38,9 @@
 
 // Atomic add
 #include "atomicadd.hpp"
+
+// Functions to compute Curl
+#include "curl.hpp"
+
+// Functions to compute Cross product
+#include "crossproduct.hpp"

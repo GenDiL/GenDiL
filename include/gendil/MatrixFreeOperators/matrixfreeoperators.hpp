@@ -47,3 +47,6 @@
 
 // A grad-grad operator.
 #include "gradgradoperator.hpp"
+
+// A space-time Maxwell operator.
+#include "spacetimemaxwelloperator.hpp"
