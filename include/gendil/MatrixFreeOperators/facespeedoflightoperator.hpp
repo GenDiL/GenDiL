@@ -33,20 +33,12 @@ namespace gendil {
 template <
    typename FaceIntegrationRulesTuple,
    typename KernelContext,
-   typename FiniteElementSpace,
-   typename MeshQuadData,
-   typename MeshFaceDofToQuad,
-   typename ElementQuadData,
-   typename ElementFaceDofToQuad >
+   typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
-void FaceSpeedOfLightElementOperator(
+void FaceReadSpeedOfLightElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
-   const MeshQuadData & mesh_quad_data,
-   const MeshFaceDofToQuad & mesh_face_quad_data,
-   const ElementQuadData & element_quad_data,
-   const ElementFaceDofToQuad & element_face_quad_data,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
@@ -62,6 +54,33 @@ void FaceSpeedOfLightElementOperator(
    );
 
    WriteDofs( kernel_conf, fe_space, element_index, u, dofs_out );
+}
+
+template <
+   typename FaceIntegrationRulesTuple,
+   typename KernelContext,
+   typename FiniteElementSpace >
+GENDIL_HOST_DEVICE
+void FaceWriteSpeedOfLightElementOperator(
+   const KernelContext & kernel_conf,
+   const FiniteElementSpace & fe_space,
+   const GlobalIndex element_index,
+   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
+   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+{
+   // Read the current element DOFs
+   auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
+
+   FaceLoop( fe_space, element_index,
+      [&]( auto const & face_info )
+      {
+         // Write the result back to the neighbor
+         WriteAddDofs( kernel_conf, fe_space, face_info, u, dofs_out );
+      }
+   );
+
+   // Write own contribution to own dofs_out
+   WriteAddDofs( kernel_conf, fe_space, element_index, u, dofs_out );
 }
 
 /**
@@ -85,6 +104,7 @@ void FaceSpeedOfLightElementOperator(
  * @param dofs_out The output degrees of freedom.
  */
 template <
+   bool Read = true,
    typename KernelConfiguration,
    typename IntegrationRule,
    typename FaceIntegrationRulesTuple,
@@ -102,38 +122,53 @@ void FaceSpeedOfLightExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   mesh::CellIterator<KernelConfiguration>(
+   if constexpr ( Read )
+      mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+         constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         FaceSpeedOfLightElementOperator< FaceIntegrationRulesTuple >(
+         FaceReadSpeedOfLightElementOperator< FaceIntegrationRulesTuple >(
             kernel_conf,
             fe_space,
             element_index,
-            mesh_quad_data,
-            mesh_face_quad_data,
-            element_quad_data,
-            element_face_quad_data,
             dofs_in,
             dofs_out );
-      }
-   );
+      });
+   else
+      mesh::CellIterator<KernelConfiguration>(
+      fe_space,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      {
+         constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
+         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+
+         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+
+         FaceWriteSpeedOfLightElementOperator< FaceIntegrationRulesTuple >(
+            kernel_conf,
+            fe_space,
+            element_index,
+            dofs_in,
+            dofs_out );
+      });
 }
 
 /**
  * @brief Represent a speed-of-light face operator.
  * 
+ * @tparam Read Whether the operator reads or writes the neighbors degrees of freedom.
  * @tparam KernelPolicy The execution policy for the hardware.
  * @tparam FiniteElementSpace The finite element space associated to the operator.
  * @tparam IntegrationRule The integration rule used by the operator.
  * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
  */
 template <
+   bool Read,
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename IntegrationRule >
@@ -166,7 +201,7 @@ public:
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {
-      FaceSpeedOfLightExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
+      FaceSpeedOfLightExplicitOperator< Read, KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,
            this->mesh_face_quad_data,
@@ -218,10 +253,12 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename IntegrationRule >
-auto MakeFaceSpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
-                                   const IntegrationRule & int_rule )
+auto MakeFaceSpeedOfLightOperator(
+   const FiniteElementSpace & finite_element_space,
+   const IntegrationRule & int_rule )
 {
    return FaceSpeedOfLightOperator<
+             true,
              KernelPolicy,
              FiniteElementSpace,
              IntegrationRule
@@ -239,14 +276,73 @@ auto MakeFaceSpeedOfLightOperator( const FiniteElementSpace & finite_element_spa
  * @param int_rule The integration rule used by the operator.
  * @return auto The advection operator.
  */
-template < typename FiniteElementSpace,
-           typename IntegrationRule >
-auto MakeFaceSpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
-                                   const IntegrationRule & int_rule )
+template <
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+auto MakeFaceSpeedOfLightOperator(
+   const FiniteElementSpace & finite_element_space,
+   const IntegrationRule & int_rule )
 {
    using KernelPolicy = SerialKernelConfiguration;
 
    return FaceSpeedOfLightOperator<
+             true,
+             KernelPolicy,
+             FiniteElementSpace,
+             IntegrationRule
+          >( finite_element_space, int_rule );
+}
+
+/**
+ * @brief Factory to build speed-of-light face operators. Useful to hide
+ * the type of the operator.
+ * 
+ * @tparam KernelPolicy The execution policy for the hardware.
+ * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
+ * @tparam IntegrationRule The type of the integration rule used by the operator.
+ * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
+ * @param finite_element_space The finite element space associated to the operator.
+ * @param int_rule The integration rule used by the operator.
+ * @return auto The advection operator.
+ */
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+auto MakeWriteFaceSpeedOfLightOperator(
+   const FiniteElementSpace & finite_element_space,
+   const IntegrationRule & int_rule )
+{
+   return FaceSpeedOfLightOperator<
+             false,
+             KernelPolicy,
+             FiniteElementSpace,
+             IntegrationRule
+          >( finite_element_space, int_rule );
+}
+
+/**
+ * @brief Factory to build speed-of-light face operators. Useful to hide
+ * the type of the operator.
+ * 
+ * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
+ * @tparam IntegrationRule The type of the integration rule used by the operator.
+ * @tparam Adv The type of the function to evaluate the advection vector at physical coordinates.
+ * @param finite_element_space The finite element space associated to the operator.
+ * @param int_rule The integration rule used by the operator.
+ * @return auto The advection operator.
+ */
+template <
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+auto MakeWriteFaceSpeedOfLightOperator(
+   const FiniteElementSpace & finite_element_space,
+   const IntegrationRule & int_rule )
+{
+   using KernelPolicy = SerialKernelConfiguration;
+
+   return FaceSpeedOfLightOperator<
+             false,
              KernelPolicy,
              FiniteElementSpace,
              IntegrationRule

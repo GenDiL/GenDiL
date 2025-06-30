@@ -45,6 +45,6 @@ struct get_rank< ThreadedView< Sizes, KernelContext, Container > >
 };
 
 template < typename T >
-static constexpr Integer get_rank_v = get_rank< T >::value;
+static constexpr Integer get_rank_v = get_rank< std::decay_t< T > >::value;
 
 }
