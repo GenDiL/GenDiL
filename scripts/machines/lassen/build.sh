@@ -9,6 +9,7 @@ cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install_lassen \
       -D USE_MFEM=ON \
       -D MFEM_DIR=../mfem/build_lassen \
+      -D USE_CUDA=ON \
       -D CMAKE_CUDA_ARCHITECTURES=70 \
       ..
 
