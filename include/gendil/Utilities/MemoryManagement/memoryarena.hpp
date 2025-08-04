@@ -35,7 +35,11 @@ struct MemoryArena
       {
          // Out of memory, return nullptr
          ptr = nullptr;
-         printf("Memory arena is full! Requested size: %zu, available size: %zu\n", size, Size - offset);
+         printf(
+            "Memory arena is full! Requested size: %llu, available size: %llu\n",
+            static_cast<unsigned long long>(size),
+            static_cast<unsigned long long>(Size - offset)
+         );
       }
 
       return ptr;
