@@ -78,10 +78,16 @@ struct CartesianConnectivity
       }
       else
       {
-         neighbor_index[Index] += Sign;
+         if constexpr ( Sign == 1 )
+            neighbor_index[Index]++;
+         else
+            neighbor_index[Index]--;
       }
 
-      GlobalIndex neighbor_linear_index = boundary ? -1 : ComputeLinearIndex( neighbor_index, sizes );
+      GlobalIndex neighbor_linear_index =
+         boundary ?
+            std::numeric_limits< GlobalIndex >::quiet_NaN() :
+            ComputeLinearIndex( neighbor_index, sizes );
 
       using normal_type = CanonicalVector< Dim, Index, Sign >;
       using FaceInfo =
