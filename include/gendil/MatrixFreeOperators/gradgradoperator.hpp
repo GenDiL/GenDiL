@@ -119,7 +119,7 @@ void GradGradExplicitOperator(
 }
 
 /**
- * @brief Represent a diffusion finite element operrator.
+ * @brief Represent a grad-grad finite element operrator.
  * 
  * @tparam FiniteElementSpace The finite element space associated to the operator.
  * @tparam IntegrationRule The integration rule used by the operator.
