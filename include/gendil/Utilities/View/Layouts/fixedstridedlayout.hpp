@@ -133,4 +133,17 @@ constexpr auto MakeStaticFIFOView( std::index_sequence<Sizes...> )
    return MakeView( StaticContainer< T, Size >{}, MakeFixedFIFOStridedLayout< Sizes... >() );
 }
 
+template < typename Container, typename Sizes, Integer ... Strides >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+FixedStridedView< Container, Sizes, Strides ... > & operator+=(
+   FixedStridedView< Container, Sizes, Strides ... > & x,
+   const FixedStridedView< Container, Sizes, Strides ... > & y)
+{
+   UnitLoop< Sizes >( [&]( auto ... indices )
+   {
+      x( indices... ) += y( indices... );
+   });
+   return x;
+}
+
 } // namespace gendil

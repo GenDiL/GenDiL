@@ -4,10 +4,16 @@
 
 
 // Generic shape functions based on Lagrange polynoms
-#include "lagrangeshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/lagrangeshapefunctions.hpp"
 
 // Gauss-Legendre shape functions
-#include "GLshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/GLshapefunctions.hpp"
 
 // Gauss-Lobatto-Legendre shape functions
-#include "GLLshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
+
+// Tensor product shape functions
+#include "gendil/FiniteElementMethod/ShapeFunctions/tensorshapefunctions.hpp"
+
+// Vector shape functions
+#include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"

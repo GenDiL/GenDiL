@@ -29,7 +29,9 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    typename MeshQuadData,
-   typename ElementQuadData >
+   typename ElementQuadData,
+   typename DofsIn,
+   typename DofsOut >
 GENDIL_HOST_DEVICE inline
 void SoLElementOperator(
    const KernelContext & kernel_conf,
@@ -37,8 +39,8 @@ void SoLElementOperator(
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsIn & dofs_in,
+   DofsOut & dofs_out )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
@@ -64,13 +66,15 @@ template <
    typename IntegrationRule,
    typename FiniteElementSpace,
    typename MeshQuadData,
-   typename ElementQuadData >
+   typename ElementQuadData,
+   typename DofsIn,
+   typename DofsOut >
 void SoLExplicitOperator(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsIn & dofs_in,
+   DofsOut & dofs_out )
 {
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
@@ -106,9 +110,6 @@ class SpeedOfLightOperator
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
-
 public:
    /**
     * @brief Construct a new SpeedOfLightOperator object.
@@ -127,6 +128,7 @@ public:
     * @param dofs_in The input degrees of freedom.
     * @param dofs_out The output degrees of freedom.
     */
+   template < typename input, typename output >
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {
