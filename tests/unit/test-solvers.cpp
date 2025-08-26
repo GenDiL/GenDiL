@@ -49,7 +49,7 @@ void compare_solvers(const Integer n)
         return sin(M_PI * X[0]);
     };
 
-    auto sigma_mass = []( const array<Real,Dim> &X ){ return 1.0; };
+    auto sigma_mass = [] GENDIL_HOST_DEVICE (const array<Real,Dim> &X) { return 1.0; };
     auto mass_op = MakeMassFiniteElementOperator<KernelPolicy>(fe_space, int_rules, sigma_mass);
 
     const Real sigma_diff = -1.0;

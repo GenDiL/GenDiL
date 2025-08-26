@@ -241,10 +241,12 @@ bool test_poisson_vs_cg()
         fe_space, int_rules, coeff, sigma, kappa
     );
 
-    auto u_exact = [] GENDIL_HOST_DEVICE(auto const &X) {
+    auto u_exact = [] GENDIL_HOST_DEVICE (array<Real,Dim> const &X)
+    {
         return std::sin(M_PI * X[0]);
     };
-    auto rhs_lambda = [] GENDIL_HOST_DEVICE(auto const &X){
+    auto rhs_lambda = [] GENDIL_HOST_DEVICE(array<Real,Dim> const &X)
+    {
         return (Real)( M_PI*M_PI * std::sin(M_PI * X[0]) );
     };
     const auto b = MakeLinearForm(fe_space, int_rules, rhs_lambda);
