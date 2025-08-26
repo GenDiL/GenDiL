@@ -58,7 +58,7 @@ void GradGradElementOperator(
 }
 
 /**
- * @brief Explicit SIPDG diffusion operator containing the "volume" and "face" contributions.
+ * @brief Explicit grad-grad operator.
  * 
  * @tparam IntegrationRule The type of the integration rule used by the element operator.
  * @tparam FaceIntegrationRulesTuple List of the types of integration rules used on each face of the element.
