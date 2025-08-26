@@ -55,7 +55,7 @@ protected:
     */
    using ElementQuadData = decltype(
                               MakeDofToQuad<
-                                 finite_element_type,
+                                 typename finite_element_type::shape_functions,
                                  integration_rule
                               >()
                            );
@@ -80,7 +80,7 @@ protected:
     */
    using ElementFaceQuadData = decltype(
                            MakeFaceDofToQuad<
-                              finite_element_type,
+                              typename finite_element_type::shape_functions,
                               face_integration_rules
                            >()
                         );

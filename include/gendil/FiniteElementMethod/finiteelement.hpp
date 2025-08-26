@@ -10,6 +10,7 @@
 #include "ShapeFunctions/GLLshapefunctions.hpp"
 #include "ShapeFunctions/GLshapefunctions.hpp"
 #include "ShapeFunctions/tensorshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
 #include "gendil/Meshes/Geometries/geometries.hpp"
 
 namespace gendil {
@@ -107,6 +108,23 @@ template < typename... Orders >
 auto MakeLobattoFiniteElement( Orders... orders )
 {
    return MakeFiniteElement<GaussLobattoLegendreShapeFunctions>( orders... );
+}
+
+template < typename FirstFiniteElementType, typename... RestFiniteElementTypes >
+auto MakeVectorFiniteElement( FirstFiniteElementType, RestFiniteElementTypes... )
+{
+   static_assert(
+      ( ( RestFiniteElementTypes::space_dim == FirstFiniteElementType::space_dim  ) && ...),
+      "All finite‐element types must have the same space_dim" );
+   static_assert(
+      ( ( RestFiniteElementTypes::geometry_dim == FirstFiniteElementType::geometry_dim  ) && ...),
+      "All finite‐element types must have the same geometry_dim" );
+   using geometry = typename FirstFiniteElementType::geometry;
+   using shape_functions =
+      VectorShapeFunctions<
+         typename FirstFiniteElementType::shape_functions,
+         typename RestFiniteElementTypes::shape_functions... >;
+   return FiniteElement< geometry, shape_functions >{};
 }
 
 }

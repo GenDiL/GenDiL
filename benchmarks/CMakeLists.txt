@@ -42,14 +42,20 @@ add_custom_target(
   COMMENT "Building all benchmarks"
 )
 
+# Speed-of-light benchmarks
 add_my_benchmark(range-benchmark-sol-3d range-benchmark-sol-3d.cpp)
 add_my_benchmark(range-benchmark-sol-6d range-benchmark-sol-6d.cpp)
+# Mass benchmarks
 add_my_benchmark(benchmark-mass-3d benchmark-mass-3d.cpp)
 add_my_benchmark(range-benchmark-mass-3d range-benchmark-mass-3d.cpp)
 add_my_benchmark(range-benchmark-mass-4d range-benchmark-mass-4d.cpp)
 add_my_benchmark(range-benchmark-mass-5d range-benchmark-mass-5d.cpp)
 add_my_benchmark(benchmark-mass-6d benchmark-mass-6d.cpp)
 add_my_benchmark(range-benchmark-mass-6d range-benchmark-mass-6d.cpp)
+# Vector Mass benchmarks
+add_my_benchmark(benchmark-vector-mass-3d benchmark-vector-mass-3d.cpp)
+add_my_benchmark(benchmark-vector-grad-grad-3d benchmark-vector-grad-grad-3d.cpp)
+# Advection benchmarks
 add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
 add_my_benchmark(range-benchmark-advection-3d range-benchmark-advection-3d.cpp)
 add_my_benchmark(range-benchmark-advection-4d range-benchmark-advection-4d.cpp)

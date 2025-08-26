@@ -24,6 +24,7 @@ struct LagrangeShapeFunctions
    using gradient_type = Real;
    static constexpr Integer num_dofs = Points::GetNumPoints();
    static constexpr Integer dim = 1;
+   using dof_shape = std::index_sequence< num_dofs >;
 
    /**
     * @brief Compute the value of a shape function at the given coordinate.

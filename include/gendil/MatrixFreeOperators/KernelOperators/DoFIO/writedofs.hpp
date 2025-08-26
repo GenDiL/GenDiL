@@ -152,6 +152,133 @@ void ThreadedWriteDofs(
    }
 }
 
+template <
+   bool Add,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename LocalTensor,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE inline
+void WriteScalarDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   GlobalIndex element_index,
+   const LocalTensor & x,
+   GlobalTensor & global_dofs )
+{
+   if constexpr ( is_serial_v< KernelContext > )
+   {
+      return SerialWriteDofs<Add>( thread, fe_space, element_index, x, global_dofs );
+   }
+   else
+   {
+      return ThreadedWriteDofs<Add>( thread, fe_space, element_index, x, global_dofs );
+   }
+}
+
+template <
+   bool Add,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename LocalTensor,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE inline
+void WriteVectorDofsSerial(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   GlobalIndex element_index,
+   const LocalTensor & x,
+   GlobalTensor & global_dofs )
+{
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   {
+      ConstexprLoop< v_dim >( [&]( auto i )
+      {
+         UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
+         {
+            if constexpr ( Add )
+               AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+               // TODO: Should we assume no aliasing in the general case?
+               // global_dofs( indices..., element_index ) += x( indices... );
+            else
+               std::get< i >( global_dofs )( indices..., element_index ) = std::get< i >( x )( indices... );
+         });
+      });
+   }
+   else // Gathering of H1 dofs.
+   {
+      ConstexprLoop< v_dim >( [&]( auto i )
+      {
+         UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
+         {
+            AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+         });
+      });
+   }
+}
+
+template <
+   bool Add,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename LocalTensor,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE inline
+void WriteVectorDofsThreaded(
+   const KernelContext & ctx,
+   const FiniteElementSpace & fe_space,
+   GlobalIndex element_index,
+   const LocalTensor & local_dofs,
+   GlobalTensor & global_dofs )
+{
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+   using t_shapes = typename VectorDofShapes< KernelContext, dof_shape >::t_shapes;
+   using r_shapes = typename VectorDofShapes< KernelContext, dof_shape >::r_shapes;
+
+   ConstexprLoop< v_dim >( [&]( auto i_ )
+   {
+      constexpr Integer i = i_;
+      ThreadLoop< std::tuple_element_t< i, t_shapes > >( ctx, [&] ( auto... t )
+      {
+         UnitLoop< std::tuple_element_t< i, r_shapes > >( [&] ( auto... k )
+         {
+            if constexpr ( !Add && std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+               std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
+            else
+               AtomicAdd( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
+         });
+      });
+   });
+}
+
+template <
+   bool Add,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename LocalTensor,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE inline
+void WriteVectorDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   GlobalIndex element_index,
+   const LocalTensor & x,
+   GlobalTensor & global_dofs )
+{
+   if constexpr ( is_serial_v< KernelContext > )
+   {
+      return WriteVectorDofsSerial<Add>( thread, fe_space, element_index, x, global_dofs );
+   }
+   else
+   {
+      return WriteVectorDofsThreaded<Add>( thread, fe_space, element_index, x, global_dofs );
+   }
+}
+
 /**
  * @brief Writes element DOFs to global memory. Assumes that `x` are only the
  * DOFs belonging to the thread accroding to the threading strategy.
@@ -169,13 +296,13 @@ void WriteDofs(
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      return SerialWriteDofs<false>( thread, fe_space, element_index, x, global_dofs );
+      return WriteVectorDofs<false>( thread, fe_space, element_index, x, global_dofs );
    }
    else
    {
-      return ThreadedWriteDofs<false>( thread, fe_space, element_index, x, global_dofs );
+      return WriteScalarDofs<false>( thread, fe_space, element_index, x, global_dofs );
    }
 }
 
@@ -192,13 +319,13 @@ void WriteAddDofs(
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      return SerialWriteDofs<true>( thread, fe_space, element_index, x, global_dofs );
+      return WriteVectorDofs<true>( thread, fe_space, element_index, x, global_dofs );
    }
    else
    {
-      return ThreadedWriteDofs<true>( thread, fe_space, element_index, x, global_dofs );
+      return WriteScalarDofs<true>( thread, fe_space, element_index, x, global_dofs );
    }
 }
 
