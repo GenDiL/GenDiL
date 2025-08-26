@@ -108,4 +108,12 @@ constexpr auto GetDofsSizes( TensorShapeFunctions< ShapeFunctions... > )
    return std::array<size_t,dim>( { GetDofsSizes( ShapeFunctions{} )... } );
 }
 
+template < size_t... DofShapes >
+GENDIL_HOST_DEVICE
+constexpr auto GetDofsSizes( std::index_sequence< DofShapes... > )
+{
+   constexpr size_t dim = sizeof...(DofShapes);
+   return std::array<size_t,dim>{ DofShapes... };
+}
+
 }

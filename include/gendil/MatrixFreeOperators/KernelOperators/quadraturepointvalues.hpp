@@ -8,6 +8,7 @@
 #include "gendil/Utilities/RecursiveArray/instantiatearray.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Utilities/MathHelperFunctions/min.hpp"
+#include "gendil/Utilities/TupleHelperFunctions/tupleof.hpp"
 #include "elementdof.hpp"
 
 namespace gendil {
@@ -80,6 +81,22 @@ auto MakeQuadraturePointValuesContainer( const KernelContext & kernel_conf, Inte
    using rshape = subsequence_t< quad_shape, rdims >;
    using shape = cat_t< rshape, std::index_sequence< Dims... > >;
    return MakeStaticFIFOView< Real >( shape{} );
+}
+
+template <
+   size_t vector_dim,
+   size_t ... Dims,
+   typename KernelContext,
+   typename IntegrationRule >
+GENDIL_HOST_DEVICE
+auto MakeVectorQuadraturePointValuesContainer( const KernelContext & kernel_conf, IntegrationRule )
+{
+   using quad_shape = typename IntegrationRule::points::num_points_tensor;
+   using rdims = typename KernelContext::template register_dimensions< IntegrationRule::space_dim >;
+   using rshape = subsequence_t< quad_shape, rdims >;
+   using shape = cat_t< rshape, std::index_sequence< Dims... > >;
+   using tensor = decltype( MakeStaticFIFOView< Real >( shape{} ) );
+   return tuple_of< vector_dim, tensor >{};
 }
 
 template <

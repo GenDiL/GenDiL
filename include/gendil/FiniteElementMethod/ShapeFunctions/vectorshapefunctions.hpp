@@ -17,6 +17,7 @@ struct VectorShapeFunctions
    // TODO: Check that all scalar functions have the same dim?
    static constexpr Integer dim = std::tuple_element_t< 0, scalar_shape_functions_tuple >::dim;
    static constexpr Integer vector_dim = sizeof...( ScalarShapeFunctions ); // Sum( ShapeFunctions::dim... );
+
    // TODO: Check that all scalar shape functions have the same index type.
    using index_type = typename std::tuple_element_t< 0, scalar_shape_functions_tuple >::index_type;
    using ref_point_type = Point< dim >;
