@@ -106,11 +106,12 @@ Real L2Error(
    const Vector & dofs_vector_in )
 {
    using finite_element_type = typename FiniteElementSpace::finite_element_type;
+   using shape_functions = typename finite_element_type::shape_functions;
    using Mesh = typename FiniteElementSpace::mesh_type;
    using MeshQuadData = typename Mesh::cell_type::template QuadData< IntegrationRule >;
 
    const MeshQuadData mesh_quad_data{};
-   const auto element_quad_data = MakeDofToQuad<finite_element_type,IntegrationRule>();
+   const auto element_quad_data = MakeDofToQuad<shape_functions,IntegrationRule>();
    auto dofs_in = MakeReadOnlyEVectorView< KernelConfiguration >( fe_space, dofs_vector_in );
 
    Real sum = 0.0;
