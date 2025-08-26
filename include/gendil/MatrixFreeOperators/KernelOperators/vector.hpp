@@ -264,9 +264,7 @@ private:
    // sync flags
    mutable bool host_valid{false}, device_valid{false};
 };
-   
 
-GENDIL_HOST_DEVICE
 Vector & operator+=( Vector & x, Vector const & y )
 {
    GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
@@ -280,7 +278,6 @@ Vector & operator+=( Vector & x, Vector const & y )
    return x;
 }
 
-GENDIL_HOST_DEVICE
 Vector & operator-=( Vector & x, Vector const & y )
 {
    GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
@@ -294,7 +291,6 @@ Vector & operator-=( Vector & x, Vector const & y )
    return x;
 }
 
-GENDIL_HOST_DEVICE
 Vector& operator*=(
    Vector & x,
    const Real & a )
@@ -308,7 +304,6 @@ Vector& operator*=(
    return x;
 }
 
-GENDIL_HOST_DEVICE
 Vector& operator/=(
    Vector & x,
    const Real & a )
@@ -323,7 +318,6 @@ Vector& operator/=(
 }
 
 // y = ax + y
-GENDIL_HOST_DEVICE
 void Axpy(
    const Real & a,
    const Vector & x,
