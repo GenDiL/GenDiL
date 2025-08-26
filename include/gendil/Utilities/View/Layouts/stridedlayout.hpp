@@ -61,7 +61,7 @@ namespace detail {
         for (GlobalIndex i = 0; i < n; i++)
         {
             prod *= sizes[ i ];
-        }    
+        }
         return prod;
     }
 
@@ -139,7 +139,7 @@ namespace detail {
         std::array< GlobalIndex, Dim > const & sizes,
         Permutation< Dim > const & permutations )
     {
-        std::array< GlobalIndex, Dim > strides;
+        std::array< GlobalIndex, Dim > strides{};
         GlobalIndex current_stride = 1;
         for (GlobalIndex i = 0; i < Dim; i++)
         {

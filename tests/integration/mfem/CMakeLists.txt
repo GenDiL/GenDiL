@@ -8,6 +8,7 @@ add_my_test(test-mass-3d-mfem-mesh test-mass-3d-mfem-mesh.cpp)
 add_my_test(test-mass-4d-mfem-mesh test-mass-4d-mfem-mesh.cpp)
 add_my_test(test-mass-H1-3d test-mass-H1-3d.cpp)
 add_my_test(test-mass-inverse test-mass-inverse.cpp)
+add_my_test(test-vector-mass-3d test-vector-mass-3d.cpp)
 # Advection
 add_my_test(test-advection-3d-single-element test-advection-3d-single-element.cpp)
 add_my_test(test-advection-1d test-advection-1d.cpp)

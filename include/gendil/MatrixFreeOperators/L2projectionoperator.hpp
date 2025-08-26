@@ -327,7 +327,7 @@ protected:
     */
    using TrialElementQuadData = decltype(
                               MakeDofToQuad<
-                                 trial_finite_element_type,
+                                 typename trial_finite_element_type::shape_functions,
                                  trial_integration_rule
                               >()
                            );
@@ -341,7 +341,7 @@ protected:
     */
    using TestElementQuadData = decltype(
                               MakeDofToQuad<
-                                 test_finite_element_type,
+                                 typename test_finite_element_type::shape_functions,
                                  test_integration_rule
                               >()
                            );
@@ -407,8 +407,8 @@ public:
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
       dofs_vector_out = 0.0;
-      auto dofs_in = MakeReadOnlyEVectorView< TrialKernelConfiguration >( this->finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyEVectorView< TestKernelConfiguration >( this->finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyEVectorView< TrialKernelConfiguration >( this->trial_finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeReadWriteEVectorView< TestKernelConfiguration >( this->test_finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }

@@ -1,3 +1,6 @@
+[![DOI](https://zenodo.org/badge/DOI/10.11578/dc.20250507.2.svg)](https://doi.org/10.11578/dc.20250507.2)
+[![CI](https://github.com/GenDiL/GenDiL/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GenDiL/GenDiL/actions)
+
 # GenDiL
 
 <!-- toc -->
@@ -5,6 +8,7 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Citing GenDiL](#citing-gendil)
 - [Contributing](#contributing)
 - [License](#license)
 <!-- tocstop -->
@@ -23,12 +27,14 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - High-dimension mesh construction through Cartesian product
 
 ### Finite Element Method
-- Arbitrary dimension hypercube finite elements
-- Matrix-free operator evaluation
-- Anisotropic polynomial orders and quadrature rules
 - Continuous and Discontinuous Galerkin methods
-- Interfaces with MFEM and Caliper libraries
-- OpenMP, CUDA, HIP support
+- Arbitrary dimension hypercube finite elements
+- Anisotropic polynomial orders and quadrature rules
+- Matrix-free operator evaluation
+
+### Third-Party Integrations & Parallelization Support
+- Interfaces with the [MFEM](https://github.com/mfem/mfem), [RAJA](https://github.com/LLNL/RAJA), and [Caliper](https://github.com/LLNL/Caliper) libraries.
+- Support for OpenMP, CUDA, HIP parallelization models
 
 ## Getting Started
 ### Requirements
@@ -44,6 +50,7 @@ cd build
 
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install \
+      -D USE_MFEM=ON \
       -D MFEM_DIR=../mfem/build \
       ..
 
@@ -68,6 +75,23 @@ Executables are organized in three categories: benchmarks, tests, and examples.
 - Examples show standard use cases of the library.
 - Tests verify the correctness of the library.
 - Benchmarks measure the performance of the library.
+
+## Citing GenDiL
+
+If you use GenDiL in your publications or presentations, please cite it as follows:
+
+```bibtex
+@misc{doecode_154944,
+  title        = {GenDiL},
+  author       = {Dudouit, Yohann and Holec, Milan and Rotem, Amit Y.},
+  abstractNote = {The GenDiL library is a collection of C++ software abstractions designed to discretize and solve partial differential equations (PDEs) for high‐performance computing (HPC) applications. Its primary focus is on modern C++ generic programming, which helps ensure portability across various hardware architectures.},
+  doi          = {10.11578/dc.20250507.2},
+  url          = {https://doi.org/10.11578/dc.20250507.2},
+  howpublished = {[Computer Software] \url{https://doi.org/10.11578/dc.20250507.2}},
+  year         = {2025},
+  month        = {march}
+}
+```
 
 ## Contributing
 

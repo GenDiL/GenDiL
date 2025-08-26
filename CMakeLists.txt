@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.12)
 
 project(
     "GENDIL"
-    VERSION 0.0.1
-    DESCRIPTION "A header-only c++ library."
-    HOMEPAGE_URL "https://github.com/????")
+    VERSION 0.0.2
+    DESCRIPTION "A C++ Generic Discretization Library."
+    HOMEPAGE_URL "https://github.com/GenDiL/GenDiL")
 
 include(GNUInstallDirs)
 
