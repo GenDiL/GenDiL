@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <limits>
+#include <tuple>
 #include "gendil/prelude.hpp"
 
 namespace gendil {
@@ -51,27 +53,28 @@ auto BiCGSTAB_no_alloc(
     Vector& s, Vector& t)
 {
     using Result = std::tuple<bool, Integer, Real>;
+    const Real tiny = Real(1e-30); // breakdown/stagnation guard
 
     // Initial residual: r = rhs - A*x
     A(x, t);     // t = A*x
     r = rhs;
     r -= t;
 
-    r_hat = r;
+    r_hat = r;   // fixed shadow residual
 
     Real norm_rhs = Sqrt(dot(rhs, rhs));
-    if (norm_rhs == 0.0)
+    if (norm_rhs == Real(0))
     {
-        x = 0.0;
-        return Result{true, 0, 0.0};
+        x = Real(0);
+        return Result{true, 0, Real(0)};
     }
 
-    Real rho_prev = 1.0;
-    Real alpha = 1.0;
-    Real omega = 1.0;
+    Real rho_prev = Real(1);
+    Real alpha    = Real(1);
+    Real omega    = Real(1);
 
-    p = 0.0;
-    v = 0.0;
+    p = Real(0);
+    v = Real(0);
 
     Real rnorm = Sqrt(dot(r, r));
     Real rel_res = rnorm / norm_rhs;
@@ -84,7 +87,7 @@ auto BiCGSTAB_no_alloc(
     for (; iter < max_iter; ++iter)
     {
         Real rho = dot(r_hat, r);
-        if (Abs(rho) < 1e-20) break;
+        if (Abs(rho) < tiny) break; // breakdown
 
         if (iter == 0)
         {
@@ -93,27 +96,46 @@ auto BiCGSTAB_no_alloc(
         else
         {
             Real beta = (rho / rho_prev) * (alpha / omega);
-            Axpy(-omega, v, p);   // p = p - omega * v
-            p *= beta;            // p = beta * (p - omega * v)
-            Axpy(1.0, r, p);      // p = r + ...
+            Axpy(-omega, v, p);     // p = p - omega * v
+            p *= beta;              // p = beta * (p - omega * v)
+            Axpy(Real(1), r, p);    // p = r + ...
         }
 
         A(p, v);
         Real rhat_dot_v = dot(r_hat, v);
-        if (Abs(rhat_dot_v) < 1e-20) break;
+        if (Abs(rhat_dot_v) < tiny) break; // breakdown
 
         alpha = rho / rhat_dot_v;
 
         s = r;
         Axpy(-alpha, v, s);  // s = r - alpha * v
 
-        A(s, t);             // t = A * s
+        // Early exit if s already small: finalize with alpha-step only
+        Real snorm = Sqrt(dot(s, s));
+        Real rel_s = snorm / norm_rhs;
+        if (rel_s < tol)
+        {
+            Axpy(alpha, p, x);  // x += alpha * p
+            r = s;              // (nearly zero)
+            return Result{true, iter + 1, rel_s};
+        }
+
+        A(s, t);               // t = A * s
         Real t_dot_s = dot(t, s);
         Real t_dot_t = dot(t, t);
 
-        if (Abs(t_dot_t) < 1e-20) break;
+        if (Abs(t_dot_t) < tiny)
+        {
+            // Can't form omega reliably; fall back to alpha-step only
+            Axpy(alpha, p, x);
+            r = s;
+            Real rnorm_fb = Sqrt(dot(r, r));
+            Real rel_res_fb = rnorm_fb / norm_rhs;
+            return Result{rel_res_fb < tol, iter + 1, rel_res_fb};
+        }
 
         omega = t_dot_s / t_dot_t;
+        if (Abs(omega) < tiny) break; // stagnation / breakdown
 
         Axpy(alpha, p, x);  // x += alpha * p
         Axpy(omega, s, x);  // x += omega * s
