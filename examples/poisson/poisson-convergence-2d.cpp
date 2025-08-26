@@ -74,7 +74,7 @@ void test_poisson_2D( const Integer n )
 
     // 5) Build RHS vector b_i = ∫Ω φ_i f
     const Integer ndofs = fe_space.GetNumberOfFiniteElementDofs();
-    auto rhs_lambda = [] GENDIL_HOST_DEVICE ( auto const & X ){
+    auto rhs_lambda = [] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X ){
         return Manufactured<Dim>::rhs(X);
     };
     Vector b = MakeLinearForm( fe_space, int_rules, rhs_lambda );
@@ -122,7 +122,7 @@ void test_range()
 
 int main()
 {
-    constexpr Integer max_p = 4, q_offset=2;
+    constexpr Integer max_p = 4;
 
     cout << "\n2D Poisson Convergence Study\n"
          << "  Manufactured: ∏ sin(π x_i)\n\n"
@@ -138,8 +138,8 @@ int main()
 
     ConstexprLoop<max_p>( []( auto p )
     {
-        // use num_quad = p + q_offset
-        test_range<p,p+q_offset>();
+        constexpr Integer num_quad = p + 2;
+        test_range<p,num_quad>();
     } );
 
     cout << "    \\end{axis}\n"
