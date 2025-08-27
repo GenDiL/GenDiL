@@ -68,7 +68,7 @@ void compare_solvers(const Integer n)
         // Conjugate Gradient
         {
             Vector x(ndofs), tmp(ndofs), z(ndofs), r(ndofs), pvec(ndofs);
-            x = 0.0;
+            x = 0.0; tmp = 0.0; z = 0.0; r = 0.0; pvec = 0.0;
             auto [ok, iters, relres] = ConjugateGradient(
                 op, b_rhs, dot, max_iters, tol,
                 x, tmp, z, r, pvec
@@ -80,8 +80,13 @@ void compare_solvers(const Integer n)
         // GMRES
         {
             Vector x(ndofs); x = 0.0;
-            std::vector<Vector> V_array(restart + 1, Vector(ndofs));
-            Vector w(ndofs);
+            std::vector<Vector> V_array(restart + 1);
+            for (size_t i = 0; i < restart + 1; i++)
+            {
+                V_array[i] = Vector(ndofs);
+                V_array[i] = 0.0;
+            }
+            Vector w(ndofs); w = 0.0;
             std::vector<Real> H((restart+1)*restart, 0.0);
             std::vector<Real> cs(restart, 0.0), sn(restart, 0.0);
             std::vector<Real> e1_rhs(restart+1, 0.0), y(restart, 0.0);

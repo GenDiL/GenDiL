@@ -31,6 +31,7 @@ bool test_identity_operator()
     cout << "Test 1: Identity operator... ";
     const size_t n = 10;
     Vector b(n), x(n);
+    b = 0.0;
     x = 0.0;
     for(size_t i=0; i<n; i++){ b[i] = Real(i+1); }
 
@@ -46,8 +47,13 @@ bool test_identity_operator()
 
     auto dot = [](const Vector &u, const Vector &v){ return Dot(u,v); };
 
-    vector<Vector> V_array(restart+1, Vector(n));
-    Vector         w(n);
+    vector<Vector> V_array(restart + 1);
+    for (size_t i = 0; i < restart + 1; i++)
+    {
+        V_array[i] = Vector(n);
+        V_array[i] = 0.0;
+    }
+    Vector         w(n); w = 0.0;
     vector<Real>   H((restart+1)*restart),
                    cs(restart), sn(restart),
                    e1_rhs(restart+1), y(restart);
@@ -81,8 +87,10 @@ bool test_small_2x2()
 
     Vector b(2), x(2);
     x = 0.0;
+    b = 0.0;
     b[0] = 1.0; b[1] = 2.0;
     Vector x_expected(2);
+    x_expected = 0.0;
     x_expected[0] = 0.2;  // 1/5
     x_expected[1] = 0.6;  // 3/5
 
@@ -92,8 +100,13 @@ bool test_small_2x2()
 
     auto dot = [](const Vector &u, const Vector &v){ return Dot(u,v); };
 
-    vector<Vector> V_array(restart+1, Vector(2));
-    Vector         w(2);
+    vector<Vector> V_array(restart + 1);
+    for (size_t i = 0; i < restart + 1; i++)
+    {
+        V_array[i] = Vector(2);
+        V_array[i] = 0.0;
+    }
+    Vector         w(2); w = 0.0;
     vector<Real>   H((restart+1)*restart),
                    cs(restart), sn(restart),
                    e1_rhs(restart+1), y(restart);
@@ -154,14 +167,14 @@ bool test_random_spd_vs_cg()
             A(i,j) = sum + (i==j ? alpha : 0.0);
         }
     }
-    Vector b(n);
+    Vector b(n); b = 0.0;
     for(int i=0;i<(int)n;i++){
         b[i] = dist(rng);
     }
 
     // Solve with CG
     Vector x_cg(n), tmp(n), z(n), residual(n), p(n);
-    x_cg = 0.0;
+    x_cg = 0.0; tmp = 0.0; z = 0.0; residual = 0.0; p = 0.0;
     const Integer cg_max = 1000;
     const Real cg_tol = 1e-12;
     auto dot = [&](const Vector &u, const Vector &v){ return Dot(u,v); };
@@ -190,8 +203,13 @@ bool test_random_spd_vs_cg()
     const Integer restart = n;    // no‐restart
     const Real    gm_tol = cg_tol;
 
-    vector<Vector> V_array(restart+1, Vector(n));
-    Vector         w2(n);
+    vector<Vector> V_array(restart + 1);
+    for (size_t i = 0; i < restart + 1; i++)
+    {
+        V_array[i] = Vector(n);
+        V_array[i] = 0.0;
+    }
+    Vector         w2(n); w2 = 0.0;
     vector<Real>   H((restart+1)*restart),
                    cs2(restart), sn2(restart),
                    e1_rhs2(restart+1), y2(restart);
@@ -253,7 +271,7 @@ bool test_poisson_vs_cg()
 
     const Integer ndofs = fe_space.GetNumberOfFiniteElementDofs();
     Vector x0(ndofs), tmp(ndofs), z(ndofs), residual(ndofs), p(ndofs);
-    x0 = 0.0;
+    x0 = 0.0; tmp = 0.0; z = 0.0; residual = 0.0; p = 0.0;
     const Integer cg_max = 2000;
     const Real cg_tol = 1e-10;
     auto dot = [&](const Vector &u, const Vector &v){ return Dot(u,v); };
@@ -268,14 +286,19 @@ bool test_poisson_vs_cg()
     Real err_cg = L2Error<KernelPolicy>(fe_space, int_rules, u_exact, x0);
 
     // GMRES: restart=ndofs, gm_tol=1e-10
-    Vector x1(ndofs);
+    Vector x1(ndofs); x1 = 0.0;
     x1 = 0.0;
     const Integer gm_max = 2000;
     const Integer restart = ndofs;
     const Real    gm_tol = 1e-10;
 
-    vector<Vector> V_array(restart+1, Vector(ndofs));
-    Vector         w(ndofs);
+    vector<Vector> V_array(restart + 1);
+    for (size_t i = 0; i < restart + 1; i++)
+    {
+        V_array[i] = Vector(ndofs);
+        V_array[i] = 0.0;
+    }
+    Vector         w(ndofs); w = 0.0;
     vector<Real>   H((restart+1)*restart),
                    cs(restart), sn(restart),
                    e1_rhs(restart+1), y(restart);
@@ -314,6 +337,7 @@ bool test_happy_breakdown()
 
     Vector v0(3), b(3);
     v0 = 0.0; v0[0] = 1.0;  // e0
+    b = 0.0;
     Aop(v0, b);            // b = [5, 0, 0]
 
     Vector x(3);
@@ -323,8 +347,13 @@ bool test_happy_breakdown()
     const Real    tol       = 1e-12;
     auto dot = [](const Vector &u, const Vector &v){ return Dot(u,v); };
 
-    vector<Vector> V_array(restart+1, Vector(3));
-    Vector         w2(3);
+    vector<Vector> V_array(restart + 1);
+    for (size_t i = 0; i < restart + 1; i++)
+    {
+        V_array[i] = Vector(3);
+        V_array[i] = 0.0;
+    }
+    Vector         w2(3); w2 = 0.0;
     vector<Real>   H((restart+1)*restart),
                    cs2(restart), sn2(restart),
                    e1_rhs2(restart+1), y2(restart);
