@@ -107,6 +107,8 @@ Real Dot( const KernelContext & kernel_conf, const ThreadedView< Sizes, KernelCo
 
 Real Dot( const Vector & u, const Vector & v )
 {
+   GENDIL_VERIFY(u.IsHostValid() || u.IsDeviceValid(), "Vector data is not valid on either host or device.");
+   GENDIL_VERIFY(v.IsHostValid() || v.IsDeviceValid(), "Vector data is not valid on either host or device.");
    // TODO: Make it device compatible
    const Real* u_ptr( u.ReadHostData() );
    const Real* v_ptr( v.ReadHostData() );

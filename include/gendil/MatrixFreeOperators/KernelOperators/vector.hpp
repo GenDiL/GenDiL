@@ -14,6 +14,8 @@ namespace gendil
 class Vector
 {
 public:
+   Vector() : n(0) {}
+
    explicit Vector(size_t N)
    : n(N)
    {
@@ -134,6 +136,7 @@ public:
 
    const Real* ReadHostData() const
    {
+      GENDIL_VERIFY(host_valid || device_valid, "Vector data is not valid on either host or device.");
       if (!host_valid && device_valid)
       {
          ToHost( n, ptr );
@@ -144,12 +147,13 @@ public:
 
    Real* ReadWriteHostData()
    {
+      GENDIL_VERIFY(host_valid || device_valid, "Vector data is not valid on either host or device.");
       if (!host_valid && device_valid)
       {
          ToHost( n, ptr );
          host_valid = true;
-         device_valid = false;
       }
+      device_valid = false;
       return ptr.host_pointer;
    }
 
@@ -163,6 +167,7 @@ public:
    const Real* ReadDeviceData() const
    {
 #ifdef GENDIL_USE_DEVICE
+      GENDIL_VERIFY(host_valid || device_valid, "Vector data is not valid on either host or device.");
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
@@ -177,12 +182,13 @@ public:
    Real* ReadWriteDeviceData()
    {
 #ifdef GENDIL_USE_DEVICE
+      GENDIL_VERIFY(host_valid || device_valid, "Vector data is not valid on either host or device.");
       if (host_valid && !device_valid)
       {
          ToDevice( n, ptr );
-         host_valid = false;
          device_valid = true;
       }
+      host_valid = false;
       return ptr.device_pointer;
 #else
       return ReadWriteHostData();
@@ -203,6 +209,7 @@ public:
    // Explicit sync calls
    void Sync()
    {
+      GENDIL_VERIFY(host_valid || device_valid, "Vector data is not valid on either host or device.");
       if (!host_valid && device_valid)
       {
          ToHost( n, ptr );
