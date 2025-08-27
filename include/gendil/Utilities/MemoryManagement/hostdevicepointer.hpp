@@ -19,6 +19,38 @@ struct HostDevicePointer
    T * device_pointer = nullptr;
 #endif
 
+   HostDevicePointer() = default;
+   HostDevicePointer( const HostDevicePointer& ) = default;
+
+   // Move constructor
+   HostDevicePointer(HostDevicePointer&& other) noexcept
+      : host_pointer(other.host_pointer)
+#ifdef GENDIL_USE_DEVICE
+      , device_pointer(other.device_pointer)
+#endif
+   {
+      other.host_pointer = nullptr;
+#ifdef GENDIL_USE_DEVICE
+      other.device_pointer = nullptr;
+#endif
+   }
+
+   // Move assignment operator
+   HostDevicePointer& operator=(HostDevicePointer&& other) noexcept
+   {
+      if (this != &other)
+      {
+         host_pointer = other.host_pointer;
+         other.host_pointer = nullptr;
+
+#ifdef GENDIL_USE_DEVICE
+         device_pointer = other.device_pointer;
+         other.device_pointer = nullptr;
+#endif
+      }
+      return *this;
+   }
+
    GENDIL_HOST_DEVICE
    operator T * () const
    {

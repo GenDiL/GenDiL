@@ -38,3 +38,6 @@
 
 // Atomic add
 #include "atomicadd.hpp"
+
+// Absolute value
+#include "abs.hpp"
