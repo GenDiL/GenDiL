@@ -45,7 +45,7 @@ void L2ErrorElementOperator(
    const ElementQuadData & element_quad_data,
    Sigma & sigma,
    const DofsInView & dofs_in,
-   Real & sum )
+   Real * sum_ptr )
 {
    using Mesh = typename FiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -57,7 +57,13 @@ void L2ErrorElementOperator(
 
    const auto cell = fe_space.GetCell( element_index );
 
-   GENDIL_SHARED Real error = 0.0;
+   GENDIL_SHARED Real error;
+#ifdef GENDIL_USE_DEVICE
+   if( kernel_conf.GetLinearThreadIndex() == 0 ) error = 0.0;
+   GENDIL_SYNC_THREADS();
+#else
+   error = 0.0;
+#endif
 
    QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
    {
@@ -78,7 +84,7 @@ void L2ErrorElementOperator(
       AtomicAdd( error, Du_q );
    } );
 
-   AtomicAdd( sum, error );
+   AtomicAdd( *sum_ptr, error );
 }
 
 /**
@@ -114,10 +120,15 @@ Real L2Error(
    const auto element_quad_data = MakeDofToQuad<shape_functions,IntegrationRule>();
    auto dofs_in = MakeReadOnlyEVectorView< KernelConfiguration >( fe_space, dofs_vector_in );
 
-   Real sum = 0.0;
+   HostDevicePointer< Real > sum_ptr;
+   AllocateHostPointer< Real >( 1, sum_ptr );
+   AllocateDevicePointer< Real >( 1, sum_ptr );
+   *sum_ptr = 0.0;
+   ToDevice( 1, sum_ptr );
+
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
-      [&] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
@@ -133,10 +144,14 @@ Real L2Error(
             element_quad_data,
             sigma,
             dofs_in,
-            sum );
+            sum_ptr );
       }
    );
-   return Sqrt( sum );
+   ToHost( 1, sum_ptr );
+   Real sum = Sqrt( *sum_ptr );
+   FreeHostPointer( sum_ptr );
+   FreeDevicePointer( sum_ptr );
+   return sum;
 }
 
 }
