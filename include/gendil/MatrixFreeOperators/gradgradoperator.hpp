@@ -4,13 +4,17 @@
 
 #pragma once
 
+#include "gendil/Utilities/types.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Interfaces/interfaces.hpp"
+#include "gendil/NumericalIntegration/faceintegrationrules.hpp"
+#include "gendil/Meshes/makefacequaddata.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
 
 /**
- * @brief Implementation of the "volume" contributions of the "speed of light" operator at the element level.
+ * @brief Implementation of the "volume" contributions of the grad-grad operator at the element level.
  * 
  * @tparam IntegrationRule The type of the integration rule used by the element operator.
  * @tparam KernelContext Contextual information for the kernel.
@@ -24,59 +28,76 @@ namespace gendil {
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
  */
-template < 
+template <
    typename IntegrationRule,
    typename KernelContext,
    typename FiniteElementSpace,
    typename MeshQuadData,
    typename ElementQuadData,
-   typename DofsIn,
-   typename DofsOut >
-GENDIL_HOST_DEVICE inline
-void SoLElementOperator(
+   typename DofsInView,
+   typename DofsOutView >
+GENDIL_HOST_DEVICE
+void GradGradElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
-   const DofsIn & dofs_in,
-   DofsOut & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
-   WriteDofs( kernel_conf, fe_space, element_index, u, dofs_out );
+   auto Gu = InterpolateGradient( kernel_conf, element_quad_data, u );
+
+   // Application of the test functions
+   auto GDGu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, Gu );
+   auto BGDGu = ApplyTestFunctions( kernel_conf, element_quad_data, GDGu );
+
+   WriteDofs( kernel_conf, fe_space, element_index, BGDGu, dofs_out );
 }
 
 /**
- * @brief Explicit "speed of light" operator containing only the "volume" contributions.
+ * @brief Explicit grad-grad operator.
  * 
- * @tparam KernelConfiguration The execution policy for the hardware.
  * @tparam IntegrationRule The type of the integration rule used by the element operator.
+ * @tparam FaceIntegrationRulesTuple List of the types of integration rules used on each face of the element.
  * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
  * @tparam MeshQuadData The type of the mesh data structure needed to perform computation at quadrature points.
+ * @tparam MeshFaceDofToQuad The type of the mesh data structure needed to perform computation at quadrature points on each face.
  * @tparam ElementQuadData The type of the finite element data structure needed to perform computation at quadrature points.
+ * @tparam ElementFaceDofToQuad The type of the finite element data structure needed to perform computation at quadrature points on each face.
+ * @tparam Sigma The type of the function to evaluate the mass density at physical coordinates.
  * @param fe_space The finite element space.
  * @param mesh_quad_data The mesh data at quadrature points needed to perform the computation.
+ * @param mesh_face_quad_data The mesh data at quadrature points needed to perform the computation on each face.
  * @param element_quad_data The finite element data at quadrature points need to perform the computation.
+ * @param face_quad_data The finite element data at quadrature points need to perform the computation on each face.
+ * @param sigma The function to evaluate the mass density at physical coordinates.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
  */
 template <
    typename KernelConfiguration,
    typename IntegrationRule,
+   typename FaceIntegrationRulesTuple,
    typename FiniteElementSpace,
    typename MeshQuadData,
+   typename MeshFaceDofToQuad,
    typename ElementQuadData,
-   typename DofsIn,
-   typename DofsOut >
-void SoLExplicitOperator(
+   typename ElementFaceDofToQuad,
+   typename DofsInView,
+   typename DofsOutView >
+void GradGradExplicitOperator(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
+   const MeshFaceDofToQuad & mesh_face_quad_data,
    const ElementQuadData & element_quad_data,
-   const DofsIn & dofs_in,
-   DofsOut & dofs_out )
+   const ElementFaceDofToQuad & face_quad_data,
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
-   mesh::CellIterator<KernelConfiguration>(
+   mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
@@ -85,7 +106,7 @@ void SoLExplicitOperator(
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         SoLElementOperator< IntegrationRule >( 
+         GradGradElementOperator< IntegrationRule >(
             kernel_conf,
             fe_space,
             element_index,
@@ -98,49 +119,52 @@ void SoLExplicitOperator(
 }
 
 /**
- * @brief Represent a "speed of light" finite element operrator.
+ * @brief Represent a grad-grad finite element operrator.
  * 
- * @tparam KernelPolicy The execution policy for the hardware.
  * @tparam FiniteElementSpace The finite element space associated to the operator.
  * @tparam IntegrationRule The integration rule used by the operator.
+ * @tparam Sigma The type of the function to evaluate the mass density at physical coordinates.
  */
-template < typename KernelPolicy, typename FiniteElementSpace, typename IntegrationRule >
-class SpeedOfLightOperator
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+class GradGradOperator
    : public MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
 
 public:
    /**
-    * @brief Construct a new SpeedOfLightOperator object.
+    * @brief Construct a new GradGradOperator object.
     * 
     * @param finite_element_space The finite element space associated to the operator.
     * @param int_rules The integration rule used by the operator.
+    * @param sigma The function to evaluate the mass density at physical coordinates.
     */
-   SpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
-                         const IntegrationRule & int_rules ) :
+   GradGradOperator( const FiniteElementSpace & finite_element_space,
+                      const IntegrationRule & int_rules ) :
       base( finite_element_space, int_rules )
    { }
 
    /**
-    * @brief Apply the speed-of-light operator.
+    * @brief Apply the diffusion operator.
     * 
-    * @param dofs_in The input degrees of freedom.
-    * @param dofs_out The output degrees of freedom.
+    * @param dofs_vector_in The input degrees of freedom.
+    * @param dofs_vector_out The output degrees of freedom.
     */
    template < typename input, typename output >
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {
-      SoLExplicitOperator< KernelPolicy, typename base::integration_rule >
+      GradGradExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,
+           this->mesh_face_quad_data,
            this->element_quad_data,
+           this->element_face_quad_data,
            dofs_in,
            dofs_out );
-      // SoLExplicitOperator< KernelPolicy, typename base::integration_rule >
-      //    ( this->finite_element_space,dofs_in,
-      //      dofs_out );
    }
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
@@ -153,7 +177,7 @@ public:
 
    #ifdef GENDIL_USE_MFEM
    /**
-    * @brief Apply the speed-of-light operator.
+    * @brief Apply the diffusion operator.
     * 
     * @param dofs_vector_in The input degrees of freedom.
     * @param dofs_vector_out The output degrees of freedom.
@@ -170,20 +194,23 @@ public:
 };
 
 /**
- * @brief Factory to build speed-of-light operators. Useful to hide the type of the operator.
+ * @brief Factory to build grad-grad operators. Useful to hide
+ * the type of the operator.
  * 
- * @tparam KernelPolicy The execution policy for the hardware.
  * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
  * @tparam IntegrationRule The type of the integration rule used by the operator.
  * @param finite_element_space The finite element space associated to the operator.
  * @param int_rule The integration rule used by the operator.
- * @return auto The speed-of-light operator.
+ * @return auto The grad-grad operator.
  */
-template < typename KernelPolicy, typename FiniteElementSpace, typename IntegrationRule >
-auto MakeSpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
-                               const IntegrationRule & int_rule )
+template < typename FiniteElementSpace,
+           typename IntegrationRule >
+auto MakeGradGradOperator( const FiniteElementSpace & finite_element_space,
+                                const IntegrationRule & int_rule )
 {
-   return SpeedOfLightOperator<
+   using KernelPolicy = SerialKernelConfiguration;
+
+   return GradGradOperator<
              KernelPolicy,
              FiniteElementSpace,
              IntegrationRule
@@ -191,21 +218,24 @@ auto MakeSpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
 }
 
 /**
- * @brief Factory to build speed-of-light operators. Useful to hide the type of the operator.
+ * @brief Factory to build grad-grad operators. Useful to hide
+ * the type of the operator.
  * 
+ * @tparam KernelPolicy The execution policy for the hardware.
  * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
  * @tparam IntegrationRule The type of the integration rule used by the operator.
  * @param finite_element_space The finite element space associated to the operator.
  * @param int_rule The integration rule used by the operator.
- * @return auto The speed-of-light operator.
+ * @return auto The grad-grad operator.
  */
-template < typename FiniteElementSpace, typename IntegrationRule >
-auto MakeSpeedOfLightOperator( const FiniteElementSpace & finite_element_space,
-                               const IntegrationRule & int_rule )
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+auto MakeGradGradOperator( const FiniteElementSpace & finite_element_space,
+                                const IntegrationRule & int_rule )
 {
-   using KernelPolicy = SerialKernelConfiguration;
-
-   return SpeedOfLightOperator<
+   return GradGradOperator<
              KernelPolicy,
              FiniteElementSpace,
              IntegrationRule

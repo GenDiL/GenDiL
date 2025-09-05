@@ -5,11 +5,13 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdlib>
 #include <utility>
 #include <array>
 #include <iostream>
 #include <tuple>
 #include <concepts>
+#include <functional>
 #ifdef GENDIL_USE_CUDA
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>

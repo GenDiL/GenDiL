@@ -87,6 +87,13 @@ constexpr auto MakeFixedFIFOStridedLayout()
    return details::MakeFixedFIFOStridedLayout< Sizes... >( std::make_index_sequence< sizeof...(Sizes) >{} );
 }
 
+template < Integer ... Sizes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto MakeFixedFIFOStridedLayout( std::index_sequence<Sizes...> )
+{
+   return MakeFixedFIFOStridedLayout<Sizes...>();
+}
+
 template < typename Container, typename Sizes, Integer ... Strides >
 using FixedStridedView = View< Container, FixedStridedLayout< Sizes, Strides... > >;
 
@@ -118,6 +125,19 @@ constexpr auto MakeStaticFIFOView( std::index_sequence<Sizes...> )
 {
    constexpr size_t Size = Product( Sizes... );
    return MakeView( StaticContainer< T, Size >{}, MakeFixedFIFOStridedLayout< Sizes... >() );
+}
+
+template < typename Container, typename Sizes, Integer ... Strides >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+FixedStridedView< Container, Sizes, Strides ... > & operator+=(
+   FixedStridedView< Container, Sizes, Strides ... > & x,
+   const FixedStridedView< Container, Sizes, Strides ... > & y)
+{
+   UnitLoop< Sizes >( [&]( auto ... indices )
+   {
+      x( indices... ) += y( indices... );
+   });
+   return x;
 }
 
 } // namespace gendil

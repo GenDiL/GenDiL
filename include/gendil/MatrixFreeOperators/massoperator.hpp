@@ -59,7 +59,7 @@ void MassElementOperator(
 
    // TODO Pass the integration rule as a variable?
    // Container to store values at all the quadrature points
-   auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, IntegrationRule{} );
+   auto & DBu = Bu;
 
    // Application of the QFunction
    QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
@@ -67,7 +67,7 @@ void MassElementOperator(
       PhysicalCoordinates X;
       Jacobian J_mesh;
 
-      const Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
+      const auto Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
 
       // TODO Vector Finite Element to compute X and J_Mesh
       cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
@@ -77,7 +77,7 @@ void MassElementOperator(
       const Real weight = GetWeight( quad_index, element_quad_data );
       const Real D_Mass = sigma( X );
 
-      const Real Du_q = weight * detJ * D_Mass * Bu_q;
+      const auto Du_q = weight * detJ * D_Mass * Bu_q;
 
       WriteQuadratureLocalValues( kernel_conf, quad_index, Du_q, DBu );
    } );

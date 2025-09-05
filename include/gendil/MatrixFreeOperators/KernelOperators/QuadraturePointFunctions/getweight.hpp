@@ -26,6 +26,17 @@ GENDIL_HOST_DEVICE
 Real GetWeight( const TensorIndex< Dim > & index,
                 const std::tuple< DofToQuads... > & quad_data );
 
+template <
+   Integer Dim,
+   typename ... ScalarDofToQuads,
+   typename ... RestVectorDofToQuads >
+GENDIL_HOST_DEVICE
+Real GetWeight( const TensorIndex< Dim > & index,
+                const std::tuple< std::tuple< ScalarDofToQuads... >, RestVectorDofToQuads... > & quad_data )
+{
+   return GetWeight( index, std::get< 0 >( quad_data ) );
+}
+
 template < Integer Dim,
            typename... DofToQuads,
            size_t... Is >

@@ -42,7 +42,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Adv >
+   typename Adv,
+   typename DofsInView,
+   typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithoutBC(
    const KernelContext & kernel_conf,
@@ -53,8 +55,8 @@ void AdvectionFusedOperatorWithoutBC(
    const ElementQuadData & element_quad_data,
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv & adv,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    using Mesh = typename FiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -106,8 +108,7 @@ void AdvectionFusedOperatorWithoutBC(
    } );
 
    // Application of the test functions
-   auto & GDBu = Bu; // use same memory;
-   ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DBu, GDBu );
+   auto GDBu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DBu );
 
    auto BGDBu = ApplyTestFunctions( kernel_conf, element_quad_data, GDBu );
 
@@ -207,7 +208,9 @@ template <
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename DofsInView,
+   typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithBC(
    const KernelContext & kernel_conf,
@@ -219,8 +222,8 @@ void AdvectionFusedOperatorWithBC(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv & adv,
    BCType & boundary_field,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    using Mesh = typename FiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -272,8 +275,7 @@ void AdvectionFusedOperatorWithBC(
    } );
 
    // Application of the test functions
-   auto & GDBu = Bu; // use same memory;
-   ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DBu, GDBu );
+   auto GDBu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, DBu );
 
    auto BGDBu = ApplyTestFunctions( kernel_conf, element_quad_data, GDBu );
 
@@ -655,7 +657,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
-   typename Adv >
+   typename Adv,
+   typename DofsInView,
+   typename DofsOutView >
 void AdvectionExplicitOperatorWithoutBC(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
@@ -663,8 +667,8 @@ void AdvectionExplicitOperatorWithoutBC(
    const ElementQuadData & element_quad_data,
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out )
 {
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
@@ -723,7 +727,9 @@ template <
    typename ElementQuadData,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename DofsInView,
+   typename DofsOutView >
 void AdvectionExplicitOperatorWithBC(
    const FiniteElementSpace & fe_space,
    const MeshQuadData & mesh_quad_data,
@@ -732,8 +738,8 @@ void AdvectionExplicitOperatorWithBC(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
    BCType & boundary_field,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const DofsInView dofs_in,
+   DofsOutView & dofs_out )
 {
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
@@ -934,9 +940,6 @@ class AdvectionOperator
    Adv adv;
    BCType boundary_field;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
-
 public:
    /**
     * @brief Construct a new AdvectionOperator object.
@@ -961,6 +964,7 @@ public:
     * @param dofs_in The input degrees of freedom.
     * @param dofs_out The output degrees of freedom.
     */
+   template < typename input, typename output >
    void Apply( const input & dofs_in,
                output & dofs_out ) const
    {
