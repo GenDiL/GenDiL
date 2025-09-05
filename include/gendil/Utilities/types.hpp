@@ -9,6 +9,7 @@
 #include <array>
 #include <iostream>
 #include <tuple>
+#include <concepts>
 #ifdef GENDIL_USE_CUDA
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
@@ -24,7 +25,7 @@ using LocalIndex = int;
 
 // Type used for global indices
 #if GENDIL_USE_DEVICE
-using GlobalIndex = int;
+using GlobalIndex = size_t;
 #else
 using GlobalIndex = size_t;
 #endif

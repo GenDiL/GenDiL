@@ -4,14 +4,56 @@
 
 #pragma once
 
+/**
+ * @file
+ * @brief Local (intra-mesh) face connectivity on a Cartesian grid of HyperCubes.
+ *
+ * This header provides `CartesianLocalFaceConnectivity<Dim>` which, given a
+ * cell's linear index and a compile-time local face id, returns a lightweight
+ * face descriptor carrying:
+ *  - the neighbor cell's linear index (or an invalid sentinel on boundaries),
+ *  - the reference orientation (permutation) and the reference normal,
+ *  - a boolean boundary flag.
+ *
+ * The implementation is specialized for `Dim==1` to keep hot paths minimal.
+ *
+ * @note All functions are header-only and marked @c GENDIL_HOST_DEVICE.
+ */
+
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 
 namespace gendil {
 
+/**
+ * @brief Local face connectivity for a `Dim`-dimensional Cartesian mesh.
+ *
+ * For a cell identified by its linear index and a compile-time local face id
+ * `FaceIndex ∈ [0, 2*Dim)`, this type computes the neighboring cell along that
+ * face (if any), together with orientation and a unit reference normal.
+ *
+ * The face indexing convention follows axis-aligned HyperCubes:
+ *  - Faces `0..Dim-1` have reference normal `-e_axis`,
+ *  - Faces `Dim..2*Dim-1` have reference normal `+e_axis`,
+ *  with `axis = FaceIndex % Dim`.
+ *
+ * @tparam Dim  Topological dimension (e.g., 2 or 3).
+ *
+ * @par Associated types
+ *  - `using geometry         = HyperCube<Dim>;`
+ *  - `using orientation_type = Permutation<Dim>;`
+ *  - `using boundary_type    = bool;`
+ *
+ * @par Data members
+ *  - `sizes[d]` : number of cells along dimension @p d (Cartesian layout).
+ *
+ * @warning The neighbor “invalid” sentinel uses NaN for `GlobalIndex`.
+ *          If `GlobalIndex` is integral, provide an alternative sentinel.
+ */
 template < Integer Dim >
-struct CartesianConnectivity
+struct CartesianLocalFaceConnectivity
 {
    using geometry = HyperCube< Dim >;
    using orientation_type = Permutation< Dim >;
@@ -21,14 +63,51 @@ struct CartesianConnectivity
 
    std::array< GlobalIndex, Dim > sizes;
 
+   /**
+    * @brief Construct the connectivity with per-dimension grid sizes.
+    *
+    * @tparam Sizes  Any integer-like types convertible to `GlobalIndex`.
+    * @param sizes   One size per dimension; length must be exactly @p Dim.
+    *
+    * @note Sizes are copied into `sizes` after cast to `GlobalIndex`.
+    * @par Complexity
+    * O(Dim).
+    */
    template < typename ... Sizes >
-   CartesianConnectivity( const Sizes & ... sizes ):
+   CartesianLocalFaceConnectivity( const Sizes & ... sizes ):
       sizes( { (GlobalIndex)sizes... } )
    {}
 
+   /**
+    * @brief Return local face info for a cell and compile-time face id.
+    *
+    * Decodes @p cell_index into multi-indices, determines the neighbor along the
+    * face `FaceIndex` and encodes the neighbor back to a linear index. Boundary
+    * conditions are detected on the first/last slices along the face axis.
+    *
+    * Face semantics (Hypercube convention):
+    *  - `Index  = FaceIndex % Dim` selects the axis,
+    *  - `Sign   = (FaceIndex < Dim ? -1 : +1)` selects the side (minus/plus).
+    *
+    * @tparam FaceIndex  Compile-time local face id in `[0, 2*Dim)`.
+    * @param cell_index  Linear index of the current cell.
+    * @return A `FaceConnectivity<...>` with:
+    *   - neighbor linear index (or invalid sentinel if boundary),
+    *   - empty user payload (`Empty{}`),
+    *   - reference orientation (identity permutation),
+    *   - boundary flag,
+    *   - canonical unit normal `CanonicalVector<Dim, Index, Sign>`.
+    *
+    * @par Complexity
+    * O(Dim) due to index decode/encode.
+    *
+    * @warning Uses `std::numeric_limits<GlobalIndex>::quiet_NaN()` as invalid sentinel.
+    * @todo Consider stride-based neighbor computation to avoid full decode
+    *       (fewer registers on GPU).
+    */
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < 2*Dim,
@@ -94,21 +173,35 @@ struct CartesianConnectivity
          FaceConnectivity<
             FaceIndex,
             geometry,
+            Empty,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_linear_index, MakeReferencePermutation< Dim >(), boundary };
+      return FaceInfo{ neighbor_linear_index, {}, MakeReferencePermutation< Dim >(), boundary };
       // Requires C++20
       // return FaceInfo{ { neighbor_index, neighbor_linear_index } };
    }
 
+   /**
+    * @brief Return the number of cells along a given dimension.
+    * @param index Dimension id in `[0, Dim)`.
+    * @return `sizes[index]`.
+    * @par Complexity
+    * O(1).
+    */
    GENDIL_HOST_DEVICE
    GlobalIndex Size( GlobalIndex index ) const
    {
       return sizes[ index ];
    }
 
+   /**
+    * @brief Total number of cells in the Cartesian mesh.
+    * @return `Product(sizes)` = ∏_{d=0}^{Dim-1} sizes[d].
+    * @par Complexity
+    * O(Dim).
+    */
    GENDIL_HOST_DEVICE
    Integer GetNumberOfCells() const
    {
@@ -117,7 +210,7 @@ struct CartesianConnectivity
 };
 
 template < >
-struct CartesianConnectivity< 1 >
+struct CartesianLocalFaceConnectivity< 1 >
 {
    static constexpr Integer Dim = 1;
    using geometry = HyperCube< Dim >;
@@ -128,13 +221,13 @@ struct CartesianConnectivity< 1 >
 
    GlobalIndex size;
 
-   CartesianConnectivity( const Integer & size ):
+   CartesianLocalFaceConnectivity( const Integer & size ):
       size( size )
    {}
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex neighbor_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex neighbor_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < 2,
@@ -178,7 +271,10 @@ struct CartesianConnectivity< 1 >
       }
       else
       {
-         neighbor_index += Sign;
+         if constexpr ( Sign == 1 )
+            neighbor_index++;
+         else
+            neighbor_index--;
       }
 
       using normal_type = CanonicalVector< Dim, Index, Sign >;
@@ -186,11 +282,12 @@ struct CartesianConnectivity< 1 >
          FaceConnectivity<
             FaceIndex,
             geometry,
+            Empty,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_index, MakeReferencePermutation< Dim >(), boundary };
+      return FaceInfo{ neighbor_index, {}, MakeReferencePermutation< Dim >(), boundary };
       // Requires C++20
       // return FaceInfo{ neighbor_index };
    }

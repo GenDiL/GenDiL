@@ -35,6 +35,32 @@ auto ApplyTestFunctions(
    }
 }
 
+
+template <
+   typename KernelContext,
+   CellFaceView Face,
+   typename FaceQuadData,
+   typename InputTensor >
+GENDIL_HOST_DEVICE
+auto ApplyTestFunctions(
+   const KernelContext & ctx,
+   const Face & face,
+   const FaceQuadData & face_quad_data,
+   const InputTensor & quad_point_values )
+{
+   constexpr Integer local_face_index = Face::local_face_index;
+   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
+   if constexpr ( Face::is_conforming )
+   {
+      return ApplyTestFunctions( ctx, local_face_quad_data, quad_point_values );
+   }
+   else
+   {
+      auto non_conforming_face_quad_data = MakeNonconformingDofToQuadData( face, local_face_quad_data );
+      return ApplyTestFunctions( ctx, non_conforming_face_quad_data, quad_point_values );
+   }
+}
+
 template <
    Integer DiffDim = std::numeric_limits< GlobalIndex >::max(),
    typename KernelContext,

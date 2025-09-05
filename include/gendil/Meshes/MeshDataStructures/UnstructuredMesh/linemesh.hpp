@@ -8,7 +8,7 @@
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/linecell.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
-#include "gendil/Meshes/Connectivities/unstructuredconformingconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
@@ -45,10 +45,10 @@ struct LineMesh
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
    {
-      return connectivity( cell_index, face_index );
-   }                                                                                                                             
+      return connectivity.GetLocalFaceInfo( cell_index, face_index );
+   }
 };
 
 }

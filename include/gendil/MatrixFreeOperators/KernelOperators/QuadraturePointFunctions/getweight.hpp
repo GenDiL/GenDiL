@@ -47,4 +47,20 @@ Real GetWeight( const TensorIndex< Dim > & index,
                      std::make_index_sequence< Dim >{} );
 }
 
+template < CellFaceView FaceInfo, Integer Dim, typename... DofToQuads >
+GENDIL_HOST_DEVICE
+Real GetWeight(
+   const FaceInfo & face_info,
+   const TensorIndex< Dim > & index,
+   const std::tuple< DofToQuads... > & face_quad_data )
+{
+   static_assert(
+      2*Dim == sizeof...( DofToQuads ),
+      "Dimension mismatch between FaceInfo and face_quad_data"
+   );
+   constexpr Integer local_face_index = FaceInfo::local_face_index;
+   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
+   return face_info.measure() * GetWeight( index, local_face_quad_data );
+}
+
 }

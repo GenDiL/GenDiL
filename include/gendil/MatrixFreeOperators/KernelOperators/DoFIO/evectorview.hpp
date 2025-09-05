@@ -125,7 +125,8 @@ auto MakeEVectorView(
 {
    if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
    {
-      return MakeTensor( finite_element_space, data );
+      const GlobalIndex dof_shift = finite_element_space.restriction.shift;
+      return MakeTensor( finite_element_space, data + dof_shift );
    }
    else // H1Restriction
    {

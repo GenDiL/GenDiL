@@ -14,6 +14,17 @@ namespace gendil {
 
 namespace mesh {
 
+template <typename T>
+concept Mesh =
+   requires (const T& m, GlobalIndex ci)
+   {
+      // Number of cells:
+      { m.GetNumberOfCells() } -> std::convertible_to<GlobalIndex>;
+
+      // Cell accessor:
+      { m.GetCell(ci) };
+   };
+
 /**
  * @brief Get the cell object corresponding to the cell index.
  * 
@@ -24,7 +35,7 @@ namespace mesh {
  * 
  * @note See cell.hpp to see requirements on the Cell interface.
  */
-template < typename Mesh >
+template < Mesh Mesh >
 GENDIL_HOST_DEVICE
 auto GetCell( const Mesh & mesh, GlobalIndex cell_index )
 {
@@ -43,9 +54,9 @@ auto GetCell( const Mesh & mesh, GlobalIndex cell_index )
  */
 template < typename Mesh, typename FaceID >
 GENDIL_HOST_DEVICE
-auto GetFaceNeighborInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID & face_id )
+auto GetLocalFaceInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID & face_id )
 {
-   return mesh.GetFaceNeighborInfo( cell_index, face_id );
+   return mesh.GetLocalFaceInfo( cell_index, face_id );
 }
 
 /**
@@ -56,7 +67,7 @@ auto GetFaceNeighborInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceI
  * @param mesh The mesh.
  * @param body The function to invoke for each cell in mesh.
 */
-template < typename Mesh, typename Lambda >
+template < Mesh Mesh, typename Lambda >
 void CellIterator( Mesh const & mesh, Lambda && body )
 {
    const GlobalIndex num_cells = mesh.GetNumberOfCells();
@@ -74,12 +85,12 @@ void CellIterator( Mesh const & mesh, Lambda && body )
 #endif
 }
 
-template < typename KernelContext, typename Mesh, typename Lambda >
+template < typename KernelConfiguration, Mesh Mesh, typename Lambda >
 void CellIterator( const Mesh & mesh, Lambda && body )
 {
    const GlobalIndex num_cells = mesh.GetNumberOfCells();
 
-   KernelContext::BlockLoop( num_cells, std::forward< Lambda >( body ) );
+   KernelConfiguration::BlockLoop( num_cells, std::forward< Lambda >( body ) );
 }
 
 } // namespace mesh

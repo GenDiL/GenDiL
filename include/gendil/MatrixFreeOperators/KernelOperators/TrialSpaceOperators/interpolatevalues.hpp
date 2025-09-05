@@ -45,4 +45,28 @@ auto InterpolateValues( const KernelContext & ctx,
    }
 }
 
+template <
+   typename KernelContext,
+   CellFaceView Face,
+   typename FaceQuadData,
+   typename DofTensor >
+GENDIL_HOST_DEVICE
+auto InterpolateValues( const KernelContext & ctx,
+                        const Face & face,
+                        const FaceQuadData & face_quad_data,
+                        const DofTensor & u )
+{
+   constexpr Integer local_face_index = Face::local_face_index;
+   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
+   if constexpr ( Face::is_conforming )
+   {
+      return InterpolateValues( ctx, local_face_quad_data, u );
+   }
+   else
+   {
+      auto non_conforming_face_quad_data = MakeNonconformingDofToQuadData( face, local_face_quad_data );
+      return InterpolateValues( ctx, non_conforming_face_quad_data, u );
+   }
+}
+
 } // namespace gendil

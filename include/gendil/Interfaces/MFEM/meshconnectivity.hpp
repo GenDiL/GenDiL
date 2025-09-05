@@ -9,7 +9,7 @@
 #include <vector>
 #include <mfem.hpp>
 #include "gendil/Utilities/types.hpp"
-#include "gendil/Meshes/Connectivities/unstructuredconformingconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "orientation.hpp"

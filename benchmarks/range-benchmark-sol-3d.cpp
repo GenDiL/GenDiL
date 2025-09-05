@@ -24,13 +24,15 @@ void test_speed_of_light_3D( const Integer nx, const Integer ny, const Integer n
 
 #if defined(GENDIL_USE_DEVICE)
    constexpr Integer NumSharedDimensions = 3;
+   // using ThreadLayout = ThreadBlockLayout<num_quad_1d>;
+   // using ThreadLayout = ThreadBlockLayout<num_quad_1d, num_quad_1d>;
    using ThreadLayout = ThreadBlockLayout<num_quad_1d, num_quad_1d, num_quad_1d>;
    using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
    using KernelPolicy = SerialKernelConfiguration;
 #endif
 
-   auto op = make_operator.template operator()<KernelPolicy>( fe_space, int_rules );
+   auto op = make_operator.template operator()<KernelPolicy>( fe_space, face_meshes, int_rules );
 
    const Integer num_dofs = fe_space.GetNumberOfFiniteElementDofs();
    Vector dofs_in( num_dofs );
@@ -54,23 +56,30 @@ void test_speed_of_light_3D( const Integer nx, const Integer ny, const Integer n
 }
 
 struct VolumeOperatorFactory {
-   template <typename KernelPolicy, typename FESpace, typename IntRule>
-   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+   template <typename KernelPolicy, typename FESpace, typename FaceMeshes, typename IntRule>
+   auto operator()( const FESpace& fe_space, const FaceMeshes& face_meshes, const IntRule& int_rule ) const {
       return MakeSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
    }
 };
 
 struct FaceReadOperatorFactory {
-   template <typename KernelPolicy, typename FESpace, typename IntRule>
-   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+   template <typename KernelPolicy, typename FESpace, typename FaceMeshes, typename IntRule>
+   auto operator()( const FESpace& fe_space, const FaceMeshes& face_meshes, const IntRule& int_rule ) const {
       return MakeFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
    }
 };
 
 struct FaceWriteOperatorFactory {
-   template <typename KernelPolicy, typename FESpace, typename IntRule>
-   auto operator()( const FESpace& fe_space, const IntRule& int_rule ) const {
+   template <typename KernelPolicy, typename FESpace, typename FaceMeshes, typename IntRule>
+   auto operator()( const FESpace& fe_space, const FaceMeshes& face_meshes, const IntRule& int_rule ) const {
       return MakeWriteFaceSpeedOfLightOperator<KernelPolicy>( fe_space, int_rule );
+   }
+};
+
+struct GlobalFaceOperatorFactory {
+   template <typename KernelPolicy, typename FESpace, typename FaceMeshes, typename IntRule>
+   auto operator()( const FESpace& fe_space, const FaceMeshes& face_meshes, const IntRule& int_rule ) const {
+      return MakeGlobalFaceSpeedOfLightOperator<KernelPolicy>( fe_space, face_meshes, int_rule );
    }
 };
 
@@ -136,6 +145,19 @@ int main(int argc, char *argv[])
    std::cout << "  ]\n";
    ConstexprLoop<max_order+1>( [=]( auto p ) {
       test_sol_range<FaceWriteOperatorFactory, p, p+num_quad_1d>("write p=" + std::to_string(p), FaceWriteOperatorFactory{});
+   });
+   std::cout << "  \\end{axis}\n\\end{tikzpicture}\n";
+
+   std::cout << "\n\\begin{tikzpicture}[scale=0.9]\n";
+   std::cout << "  \\begin{axis}[\n";
+   std::cout << "    title={Global Face Speed-of-Light Operator},\n";
+   std::cout << "    xlabel={Number of DoFs},\n";
+   std::cout << "    ylabel={Throughput [DoF/s]},\n";
+   std::cout << "    legend pos=south east,\n";
+   std::cout << "    grid=major, xmode=log, ymode=log, cycle list name=color list\n";
+   std::cout << "  ]\n";
+   ConstexprLoop<max_order+1>( [=]( auto p ) {
+      test_sol_range<GlobalFaceOperatorFactory, p, p+num_quad_1d>("write p=" + std::to_string(p), GlobalFaceOperatorFactory{});
    });
    std::cout << "  \\end{axis}\n\\end{tikzpicture}\n";
 

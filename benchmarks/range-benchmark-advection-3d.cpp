@@ -53,7 +53,7 @@ void test_advection_3D( const Integer nx, const Integer ny, const Integer nz )
    };
 
 #if defined(GENDIL_USE_DEVICE)
-   constexpr Integer NumSharedDimensions = 3;
+   constexpr Integer NumSharedDimensions = Dim;
    // using ThreadLayout = ThreadBlockLayout<num_quad_1d>;
    // using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d>;
    using ThreadLayout = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>;

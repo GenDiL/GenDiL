@@ -66,7 +66,7 @@ namespace details
       if constexpr ( std::tuple_size_v< MeshTuple > == 1 )
       {
          using face_index = std::integral_constant< Integer, sub_face_index >;
-         return std::get< 0 >( tail_meshes ).GetFaceNeighborInfo( tail_index , face_index{} );
+         return std::get< 0 >( tail_meshes ).GetLocalFaceInfo( tail_index , face_index{} );
       }
       else
       {
@@ -109,8 +109,8 @@ namespace details
          constexpr Integer sub_face_index = (Sign == -1) ? sub_index : (HeadDim + sub_index); // TODO: This feels magic
          
          using face_index = std::integral_constant< Integer, sub_face_index >;
-         auto neighbor = head_mesh.GetFaceNeighborInfo( head_index, face_index{} );
-         
+         auto neighbor = head_mesh.GetLocalFaceInfo( head_index, face_index{} );
+
          auto head_neighbor_index = neighbor.neighbor_index;
          
          neighbor_index = head_neighbor_index + HeadNumCells * tail_index;
@@ -142,13 +142,14 @@ namespace details
          FaceConnectivity<
             face_id,
             geometry,
+            Empty,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_index, orientation, boundary };
+      return FaceInfo{ neighbor_index, {}, orientation, boundary };
    }
-};
+}
 
 template < typename... Meshes >
 class CartesianProductMesh
@@ -203,7 +204,7 @@ public:
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       return details::ComputeNeighborIndex< FaceIndex >( SubMeshes, cell_index );
    }

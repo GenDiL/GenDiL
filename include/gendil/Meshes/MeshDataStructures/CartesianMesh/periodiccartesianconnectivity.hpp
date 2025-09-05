@@ -29,7 +29,7 @@ struct PeriodicCartesianConnectivity
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < 2*Dim,
@@ -73,7 +73,14 @@ struct PeriodicCartesianConnectivity
       }
       else
       {
-         neighbor_index[Index] += Sign;
+         if constexpr ( Sign == 1 )
+         {
+            neighbor_index[Index] ++;
+         }
+         else
+         {
+            neighbor_index[Index] --;
+         }
       }
 
       GlobalIndex neighbor_linear_index = ComputeLinearIndex( neighbor_index, sizes );
@@ -83,11 +90,12 @@ struct PeriodicCartesianConnectivity
          FaceConnectivity<
             FaceIndex,
             geometry,
+            Empty,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_linear_index, MakeReferencePermutation< Dim >() };
+      return FaceInfo{ neighbor_linear_index, {}, MakeReferencePermutation< Dim >() };
       // Requires C++20
       // return FaceInfo{ { neighbor_index, neighbor_linear_index } };
    }
@@ -123,7 +131,7 @@ struct PeriodicCartesianConnectivity< 1 >
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex neighbor_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex neighbor_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < 2,
@@ -162,7 +170,14 @@ struct PeriodicCartesianConnectivity< 1 >
       }
       else
       {
-         neighbor_index += Sign;
+         if constexpr ( Sign == 1 )
+         {
+            neighbor_index++;
+         }
+         else
+         {
+            neighbor_index--;
+         }
       }
 
       using normal_type = CanonicalVector< Dim, Index, Sign >;
@@ -170,11 +185,12 @@ struct PeriodicCartesianConnectivity< 1 >
          FaceConnectivity<
             FaceIndex,
             geometry,
+            Empty,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_index, MakeReferencePermutation< Dim >() };
+      return FaceInfo{ neighbor_index, {}, MakeReferencePermutation< Dim >() };
       // Requires C++20
       // return FaceInfo{ neighbor_index };
    }
