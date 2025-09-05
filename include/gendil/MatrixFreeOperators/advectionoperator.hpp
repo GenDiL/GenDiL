@@ -1177,28 +1177,28 @@ class AdvectionNonconformingFaceOperator
    using element_quad_data_type_lhs =
       decltype(
          MakeDofToQuad<
-            typename fe_space_type_lhs::finite_element_type,
+            typename fe_space_type_lhs::finite_element_type::shape_functions,
             integration_rule_type
          >()
       );
    using element_quad_data_type_rhs =
       decltype(
          MakeDofToQuad<
-            typename fe_space_type_rhs::finite_element_type,
+            typename fe_space_type_rhs::finite_element_type::shape_functions,
             integration_rule_type
          >()
       );
    using element_face_quad_data_type_lhs =
       decltype(
          MakeFaceDofToQuad<
-            typename fe_space_type_lhs::finite_element_type,
+            typename fe_space_type_lhs::finite_element_type::shape_functions,
             face_integration_rules
          >()
       );
    using element_face_quad_data_type_rhs =
       decltype(
          MakeFaceDofToQuad<
-            typename fe_space_type_rhs::finite_element_type,
+            typename fe_space_type_rhs::finite_element_type::shape_functions,
             face_integration_rules
          >()
       );

@@ -14,6 +14,7 @@ void test_speed_of_light_3D( const Integer nx, const Integer ny, const Integer n
 {
    const Real h_space = 1.0;
    Cartesian3DMesh mesh( h_space, nx, ny, nz );
+   auto face_meshes = make_cartesian_interior_face_connectivity<3>( {nx, ny, nz} );
 
    FiniteElementOrders<order, order, order> orders;
    auto finite_element = MakeLegendreFiniteElement( orders );

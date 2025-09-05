@@ -271,6 +271,7 @@ template <
    typename ShapeFunctions,
    typename IntegrationRule,
    Integer DimIndex>
+GENDIL_HOST_DEVICE
 auto MakeNonconformingDofToQuadData(
    const Face & face,
    const DofToQuad< ShapeFunctions, IntegrationRule > & dtq,
@@ -283,6 +284,7 @@ template <
    CellFaceView Face,
    typename ... DofToQuads,
    Integer ... Is >
+GENDIL_HOST_DEVICE
 auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq, std::index_sequence< Is... > )
 {
    return std::make_tuple( MakeNonconformingDofToQuadData( face, std::get< Is >( dtq ), std::integral_constant<Integer, Is>{} )... );
@@ -291,6 +293,7 @@ auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQ
 template <
    CellFaceView Face,
    typename ... DofToQuads >
+GENDIL_HOST_DEVICE
 auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq )
 {
    return MakeNonconformingDofToQuadData( face, dtq, std::make_index_sequence< sizeof...(DofToQuads) >{} );

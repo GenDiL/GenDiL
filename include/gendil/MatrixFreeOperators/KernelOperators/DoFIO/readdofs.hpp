@@ -588,7 +588,7 @@ GENDIL_HOST_DEVICE
 auto ReadVectorDofsSerial(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -650,6 +650,7 @@ template <
    typename FiniteElementSpace,
    Integer FaceIndex,
    typename Geometry,
+   typename ConformityType,
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
@@ -659,7 +660,7 @@ GENDIL_HOST_DEVICE
 auto ReadVectorDofsThreaded(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -716,6 +717,7 @@ template <
    typename FiniteElementSpace,
    Integer FaceIndex,
    typename Geometry,
+   typename ConformityType,
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
@@ -725,7 +727,7 @@ GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -755,6 +757,7 @@ template <
    typename FiniteElementSpace,
    Integer FaceIndex,
    typename Geometry,
+   typename ConformityType,
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
@@ -959,6 +962,7 @@ template <
    typename FiniteElementSpace,
    Integer FaceIndex,
    typename Geometry,
+   typename ConformityType,
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
@@ -967,7 +971,7 @@ GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
    const GlobalDofs & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -985,6 +989,7 @@ template <
    typename FiniteElementSpace,
    Integer FaceIndex,
    typename Geometry,
+   typename ConformityType,
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
@@ -993,7 +998,7 @@ GENDIL_HOST_DEVICE
 auto ReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
+   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
    const GlobalDofs & global_dofs )
 {
    if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
