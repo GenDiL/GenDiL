@@ -5,7 +5,7 @@
 #pragma once
 
 #include <vector>
-#include "conformingcellconnectivity.hpp"
+#include "gendil/Meshes/Connectivities/conformingcellconnectivity.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Utilities/MemoryManagement/garbagecollector.hpp"
 
@@ -18,6 +18,7 @@ struct UnstructuredConformingConnectivity
    using geometry = Geometry;
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
+   using conformity_type = ConformingFaceMap<dim>;
 
    HostDevicePointer< ConformingCellConnectivity< Geometry > > element_connectivities;
 
@@ -42,7 +43,7 @@ struct UnstructuredConformingConnectivity
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < geometry::num_faces,
@@ -59,11 +60,15 @@ struct UnstructuredConformingConnectivity
          FaceConnectivity<
             FaceIndex,
             geometry,
+            conformity_type,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ face_info.neighbor_index, face_info.orientation, face_info.boundary };
+      return FaceInfo{
+         { cell_index, {}, {}, {}, {}, face_info.boundary },
+         { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary }
+      };
    }
 };
 

@@ -97,12 +97,6 @@ constexpr auto MakeFixedFIFOStridedLayout( std::index_sequence<Sizes...> )
 template < typename Container, typename Sizes, Integer ... Strides >
 using FixedStridedView = View< Container, FixedStridedLayout< Sizes, Strides... > >;
 
-template < Integer Index, typename Container, typename Sizes, size_t ... Strides >
-struct GetTensorSize< Index, FixedStridedView< Container, Sizes, Strides ... > >
-{
-   static constexpr size_t value = seq_get_v< Index, Sizes >;
-};
-
 template < Integer... Sizes, typename T >
 GENDIL_HOST_DEVICE GENDIL_INLINE
 constexpr auto MakeFixedFIFOView( T *data )

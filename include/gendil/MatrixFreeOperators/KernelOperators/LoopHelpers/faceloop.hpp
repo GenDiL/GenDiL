@@ -37,7 +37,7 @@ void FaceLoop(
    ConstexprLoop< num_faces >(
       [&](auto face_index)
       {
-         auto face = mesh::GetFaceNeighborInfo( fe_space, element_index, face_index );
+         auto face = mesh::GetLocalFaceInfo( fe_space, element_index, face_index );
 
          if ( IsBoundaryFace( face ) )
          {
