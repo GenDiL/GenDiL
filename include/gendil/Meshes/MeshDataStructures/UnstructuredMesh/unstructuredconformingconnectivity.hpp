@@ -18,6 +18,7 @@ struct UnstructuredConformingConnectivity
    using geometry = Geometry;
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
+   using conformity_type = ConformingFaceMap<dim>;
 
    HostDevicePointer< ConformingCellConnectivity< Geometry > > element_connectivities;
 
@@ -59,12 +60,15 @@ struct UnstructuredConformingConnectivity
          FaceConnectivity<
             FaceIndex,
             geometry,
-            Empty,
+            conformity_type,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ face_info.neighbor_index, {}, face_info.orientation, face_info.boundary };
+      return FaceInfo{
+         { cell_index, {}, {}, {}, {}, face_info.boundary },
+         { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary }
+      };
    }
 };
 

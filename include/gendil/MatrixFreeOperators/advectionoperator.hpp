@@ -34,10 +34,10 @@ namespace gendil {
  * @param dofs_out The output degrees of freedom.
  */
 template <
-   typename IntegrationRule,
-   typename FaceIntegrationRulesTuple,
    typename KernelContext,
    typename FiniteElementSpace,
+   typename IntegrationRule,
+   typename FaceIntegrationRulesTuple,
    typename MeshQuadData,
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
@@ -49,6 +49,8 @@ GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithoutBC(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
+   const IntegrationRule & integration_rule,
+   const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const MeshFaceDofToQuad & mesh_face_quad_data,
@@ -72,10 +74,10 @@ void AdvectionFusedOperatorWithoutBC(
    const auto cell = fe_space.GetCell( element_index );
 
    // Container to store values at all the quadrature points
-   auto DBu = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, IntegrationRule{} );
+   auto DBu = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, integration_rule );
 
    // Application of the QFunction
-   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   QuadraturePointLoop( kernel_conf, integration_rule, [&] ( auto const & quad_index )
    {
       constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -116,21 +118,16 @@ void AdvectionFusedOperatorWithoutBC(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         using FaceType = std::remove_reference_t< decltype( face_info ) >;
-
          auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
 
-         constexpr Integer face_index = FaceType::local_face_index;
-         constexpr Integer neighbor_face_index = FaceType::neighbor_local_face_index;
-         using FaceIntegrationRule = std::tuple_element_t< face_index, FaceIntegrationRulesTuple >;
+         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
 
-         auto Bu = InterpolateValues( kernel_conf, std::get< face_index >( element_face_quad_data ), u );
-
-         auto neighbor_Bu = InterpolateValues( kernel_conf, std::get< neighbor_face_index >( element_face_quad_data ), neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );
 
          auto & DBu = Bu;
+         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
 
-         QuadraturePointLoop< FaceIntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+         QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
                constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -141,12 +138,12 @@ void AdvectionFusedOperatorWithoutBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               cell.GetValuesAndJacobian( quad_index, std::get< face_index >( mesh_face_quad_data ), X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( quad_index, std::get< face_index >( element_face_quad_data ) );
+               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -168,7 +165,7 @@ void AdvectionFusedOperatorWithoutBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, std::get< face_index >( element_face_quad_data ), DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
       }
    );
    WriteDofs( kernel_conf, fe_space, element_index, BGDBu, dofs_out );
@@ -199,10 +196,10 @@ void AdvectionFusedOperatorWithoutBC(
  * @param dofs_out The output degrees of freedom.
  */
 template <
-   typename IntegrationRule,
-   typename FaceIntegrationRulesTuple,
    typename KernelContext,
    typename FiniteElementSpace,
+   typename IntegrationRule,
+   typename FaceIntegrationRulesTuple,
    typename MeshQuadData,
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
@@ -215,6 +212,8 @@ GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithBC(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
+   const IntegrationRule & integration_rule,
+   const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const MeshFaceDofToQuad & mesh_face_quad_data,
@@ -239,10 +238,10 @@ void AdvectionFusedOperatorWithBC(
    const auto cell = fe_space.GetCell( element_index );
 
    // Container to store values at all the quadrature points
-   auto DBu = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, IntegrationRule{} );
+   auto DBu = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, integration_rule );
 
    // Application of the QFunction
-   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   QuadraturePointLoop( kernel_conf, integration_rule, [&] ( auto const & quad_index )
    {
       constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -283,21 +282,16 @@ void AdvectionFusedOperatorWithBC(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         using FaceType = std::remove_reference_t< decltype( face_info ) >;
-
          auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
 
-         constexpr Integer face_index = FaceType::local_face_index;
-         constexpr Integer neighbor_face_index = FaceType::neighbor_local_face_index;
-         using FaceIntegrationRule = std::tuple_element_t< face_index, FaceIntegrationRulesTuple >;
+         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
 
-         auto Bu = InterpolateValues( kernel_conf, std::get< face_index >( element_face_quad_data ), u );
-
-         auto neighbor_Bu = InterpolateValues( kernel_conf, std::get< neighbor_face_index >( element_face_quad_data ), neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );
 
          auto & DBu = Bu;
-      
-         QuadraturePointLoop< FaceIntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+
+         QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
                constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -308,12 +302,12 @@ void AdvectionFusedOperatorWithBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               cell.GetValuesAndJacobian( quad_index, std::get< face_index >( mesh_face_quad_data ), X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( quad_index, std::get< face_index >( element_face_quad_data ) );
+               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -335,20 +329,17 @@ void AdvectionFusedOperatorWithBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, std::get< face_index >( element_face_quad_data ), DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
       },
       [&]( auto const & face_info )
       {
-         using FaceType = std::remove_reference_t< decltype( face_info ) >;
 
-         constexpr Integer face_index = FaceType::local_face_index;
-         using FaceIntegrationRule = std::tuple_element_t< face_index, FaceIntegrationRulesTuple >;
-
-         auto Bu = InterpolateValues( kernel_conf, std::get< face_index >( element_face_quad_data ), u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
 
          auto & DBu = Bu;
+         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
 
-         QuadraturePointLoop< FaceIntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+         QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
                constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -359,12 +350,12 @@ void AdvectionFusedOperatorWithBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               cell.GetValuesAndJacobian( quad_index, std::get< face_index >( mesh_face_quad_data ), X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( quad_index, std::get< face_index >( element_face_quad_data ) );
+               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -386,7 +377,7 @@ void AdvectionFusedOperatorWithBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, std::get< face_index >( element_face_quad_data ), DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
       }
    );
    WriteDofs( kernel_conf, fe_space, element_index, BGDBu, dofs_out );
@@ -679,9 +670,11 @@ void AdvectionExplicitOperatorWithoutBC(
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         AdvectionFusedOperatorWithoutBC< IntegrationRule, FaceIntegrationRulesTuple >(
+         AdvectionFusedOperatorWithoutBC(
             kernel_conf,
             fe_space,
+            IntegrationRule{},
+            FaceIntegrationRulesTuple{},
             element_index,
             mesh_quad_data,
             mesh_face_quad_data,
@@ -750,9 +743,11 @@ void AdvectionExplicitOperatorWithBC(
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         AdvectionFusedOperatorWithBC< IntegrationRule, FaceIntegrationRulesTuple >(
+         AdvectionFusedOperatorWithBC(
             kernel_conf,
             fe_space,
+            IntegrationRule{},
+            FaceIntegrationRulesTuple{},
             element_index,
             mesh_quad_data,
             mesh_face_quad_data,

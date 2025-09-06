@@ -84,7 +84,7 @@ auto InterpolateValues( const KernelContext & ctx,
                         const FaceQuadData & face_quad_data,
                         const DofTensor & u )
 {
-   constexpr Integer local_face_index = Face::local_face_index;
+   constexpr Integer local_face_index = Face::local_face_index_type::value;
    const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
    if constexpr ( Face::is_conforming )
    {

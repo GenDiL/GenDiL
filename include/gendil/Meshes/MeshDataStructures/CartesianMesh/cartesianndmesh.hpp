@@ -21,6 +21,7 @@ struct CartesianMesh
    using orientation_type = Permutation< Dim >;
    // Requires C++20
    // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
 
    std::array< GlobalIndex, Dim > sizes;
@@ -180,14 +181,12 @@ struct CartesianMesh
          FaceConnectivity<
             FaceIndex,
             geometry,
-            Empty,
+            conformity_type,
             orientation_type,
             boundary_type,
             normal_type
          >;
       return FaceInfo{ neighbor_linear_index, {}, MakeReferencePermutation< Dim >(), boundary };
-      // Requires C++20
-      // return FaceInfo{ { neighbor_index, neighbor_linear_index } };
    }
 };
 

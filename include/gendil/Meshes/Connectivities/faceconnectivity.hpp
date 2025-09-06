@@ -14,9 +14,9 @@ struct GlobalFaceInfo {
    using plus_side_type  = PlusView;
 
    GENDIL_HOST_DEVICE
-   const minus_side_type& minus_side() const { return minus_; }
+   const minus_side_type& minus_side() const { return minus; }
    GENDIL_HOST_DEVICE
-   const plus_side_type&  plus_side()  const { return plus_;  }
+   const plus_side_type&  plus_side()  const { return plus;  }
 
    GENDIL_HOST_DEVICE
    constexpr auto is_boundary() const
@@ -34,26 +34,19 @@ struct GlobalFaceInfo {
       return minus_side().get_reference_normal();
    }
 
-   MinusView minus_;
-   PlusView  plus_;
+   MinusView minus;
+   PlusView  plus;
 };
 
 template<class CFV>
 concept CellFaceView =
    requires(const CFV& v, const Point<CFV::dim>& xf) {
-      requires std::is_same_v<decltype(CFV::dim), const Integer>;
-      requires std::is_same_v<decltype(CFV::local_face_index), const Integer>;
-      requires std::is_same_v<decltype(CFV::is_boundary),   const bool>;
-      requires std::is_same_v<decltype(CFV::is_conforming), const bool>;
       std::integral_constant<Integer, CFV::dim>{};
-      std::integral_constant<Integer, CFV::local_face_index>{};
-      std::bool_constant<CFV::is_boundary>{};
       std::bool_constant<CFV::is_conforming>{};
 
       { v.get_cell_index() } -> std::convertible_to<GlobalIndex>;
       { v.get_orientation() } -> std::convertible_to<typename CFV::orientation_type>;
       { v.get_reference_normal() };
-      { v.map_reference_to_face_coordinates(xf) } -> std::convertible_to<Point<CFV::dim>>;
    };
 
 template <int Dim>
@@ -103,23 +96,26 @@ template <
    typename Geometry,
    typename OrientationType,
    typename NormalType,
-   typename ConformityType >
+   typename ConformityType,
+   typename BoundaryType = std::bool_constant< false >>
 struct FaceView
 {
+   using local_face_index_type = LocalFaceIndex;
    using geometry = Geometry;
    using orientation_type = OrientationType;
    using normal_type = NormalType;
+   using boundary_type = BoundaryType;
    using conformity_type = ConformityType;
 
    static constexpr Integer dim = geometry::geometry_dim;
-   static constexpr Integer local_face_index = LocalFaceIndex::value;
-   static constexpr bool is_boundary = false;
    static constexpr bool is_conforming = conformity_type::is_conforming;
 
    GlobalIndex cell_index;
+   local_face_index_type local_face_index;
    orientation_type orientation;
    normal_type normal;
    conformity_type conformity;
+   boundary_type boundary;
 
    GENDIL_HOST_DEVICE
    GlobalIndex get_cell_index() const { return cell_index; }
@@ -185,26 +181,27 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType >
-struct FaceConnectivity
-{
-   using geometry = Geometry;
-   using conformity_type = ConformityType;
-   using orientation_type = OrientationType;
-   using boundary_type = BoundaryType;
-   using normal_type = NormalType;
+using FaceConnectivity =
+   GlobalFaceInfo<
+      FaceView<
+         std::integral_constant<Integer, LocalFaceIndex>,
+         Geometry,
+         OrientationType,
+         NormalType,
+         ConformityType,
+         BoundaryType
+      >,
+      FaceView<
+         std::integral_constant<Integer, ( LocalFaceIndex < Geometry::geometry_dim ? LocalFaceIndex + Geometry::geometry_dim : LocalFaceIndex - Geometry::geometry_dim )>,
+         Geometry,
+         OrientationType,
+         NormalType,
+         ConformityType,
+         BoundaryType
+      >
+   >;
 
-   static constexpr Integer dim = geometry::geometry_dim;
-   static constexpr Integer local_face_index = LocalFaceIndex;
-   static constexpr Integer neighbor_local_face_index = LocalFaceIndex < dim ? LocalFaceIndex + dim : LocalFaceIndex - dim; // TODO: This feels like magic / Only true for hypercubes => Should be Geometry function
 
-   GlobalIndex neighbor_index;
-   conformity_type conformity;
-   orientation_type orientation;
-   boundary_type boundary;
-   normal_type normal;
-};
-
-// TODO: Specialize for FaceConnectivity?
 template < typename FaceInfo >
 GENDIL_HOST_DEVICE
 constexpr GlobalIndex GetNeighborIndex( const FaceInfo & face_info )
@@ -216,14 +213,14 @@ template < typename FaceInfo >
 GENDIL_HOST_DEVICE
 constexpr bool IsBoundaryFace( const FaceInfo & face_info )
 {
-   return face_info.boundary;
+   return face_info.minus.boundary || face_info.plus.boundary;
 }
 
 template < typename FaceInfo >
 GENDIL_HOST_DEVICE
 constexpr auto GetReferenceNormal( const FaceInfo & face_info )
 {
-   return face_info.normal;
+   return face_info.get_reference_normal();
 }
 
 }

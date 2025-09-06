@@ -108,7 +108,7 @@ template <
 >
 constexpr auto GetFaceIntegrationRule( const FaceInfo & face_info, FaceIntegrationRule const & face_int_rules )
 {
-   constexpr Integer local_face_index = FaceInfo::local_face_index;
+   constexpr Integer local_face_index = FaceInfo::local_face_index_type::value;
    return std::get< local_face_index >( face_int_rules );
 }
 

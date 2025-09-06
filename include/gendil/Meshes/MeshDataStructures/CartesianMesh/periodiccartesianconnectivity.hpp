@@ -18,6 +18,7 @@ struct PeriodicCartesianConnectivity
    using orientation_type = Permutation< Dim >;
    // Requires C++20
    // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
 
    std::array< GlobalIndex, Dim > sizes;
@@ -90,14 +91,15 @@ struct PeriodicCartesianConnectivity
          FaceConnectivity<
             FaceIndex,
             geometry,
-            Empty,
+            conformity_type,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_linear_index, {}, MakeReferencePermutation< Dim >() };
-      // Requires C++20
-      // return FaceInfo{ { neighbor_index, neighbor_linear_index } };
+      return FaceInfo{
+         { cell_index, {}, MakeReferencePermutation< Dim >() },
+         { neighbor_linear_index, {}, MakeReferencePermutation< Dim >() }
+      };
    }
 
    GENDIL_HOST_DEVICE
@@ -121,6 +123,7 @@ struct PeriodicCartesianConnectivity< 1 >
    using orientation_type = Permutation< Dim >;
    // Requires C++20
    // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
 
    GlobalIndex size;
@@ -131,13 +134,14 @@ struct PeriodicCartesianConnectivity< 1 >
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetLocalFaceInfo( GlobalIndex neighbor_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < 2,
          "FaceIndex out of bound."
       );
 
+      GlobalIndex neighbor_index = cell_index;
       // !FIXME: This is magic and specific to HyperCube
       constexpr Integer Index = FaceIndex % Dim;
       constexpr int Sign = FaceIndex < Dim ? -1 : 1;
@@ -185,14 +189,15 @@ struct PeriodicCartesianConnectivity< 1 >
          FaceConnectivity<
             FaceIndex,
             geometry,
-            Empty,
+            conformity_type,
             orientation_type,
             boundary_type,
             normal_type
          >;
-      return FaceInfo{ neighbor_index, {}, MakeReferencePermutation< Dim >() };
-      // Requires C++20
-      // return FaceInfo{ neighbor_index };
+      return FaceInfo{
+         { cell_index, {}, MakeReferencePermutation< Dim >() },
+         { neighbor_index, {}, MakeReferencePermutation< Dim >() }
+      };
    }
 
    GENDIL_HOST_DEVICE

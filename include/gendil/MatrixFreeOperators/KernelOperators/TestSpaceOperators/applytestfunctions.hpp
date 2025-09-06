@@ -78,7 +78,7 @@ auto ApplyTestFunctions(
    const FaceQuadData & face_quad_data,
    const InputTensor & quad_point_values )
 {
-   constexpr Integer local_face_index = Face::local_face_index;
+   constexpr Integer local_face_index = Face::local_face_index_type::value;
    const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
    if constexpr ( Face::is_conforming )
    {
@@ -112,6 +112,23 @@ void ApplyAddTestFunctions(
    {
       dofs_out += ApplyTestFunctionsThreaded< DiffDim >( thread, element_quad_data, quad_point_values );
    }
+}
+
+template <
+   typename KernelContext,
+   CellFaceView Face,
+   typename FaceQuadData,
+   typename InputTensor,
+   typename OutputTensor >
+GENDIL_HOST_DEVICE
+auto ApplyAddTestFunctions(
+   const KernelContext & ctx,
+   const Face & face,
+   const FaceQuadData & face_quad_data,
+   const InputTensor & quad_point_values,
+   OutputTensor & dofs_out )
+{
+   dofs_out += ApplyTestFunctions( ctx, face, face_quad_data, quad_point_values );
 }
 
 }

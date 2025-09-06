@@ -69,7 +69,7 @@ Real GetWeight(
       2*Dim == sizeof...( DofToQuads ),
       "Dimension mismatch between FaceInfo and face_quad_data"
    );
-   constexpr Integer local_face_index = FaceInfo::local_face_index;
+   constexpr Integer local_face_index = FaceInfo::local_face_index_type::value;
    const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
    return face_info.measure() * GetWeight( index, local_face_quad_data );
 }

@@ -377,10 +377,10 @@ void SerialWriteDofs(
    );
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.orientation;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.plus_side().get_orientation();
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 
-   const GlobalIndex element_index = face_info.neighbor_index;
+   const GlobalIndex element_index = face_info.plus_side().get_cell_index();
    DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
       {
@@ -437,11 +437,11 @@ void ThreadedWriteDofs(
    });
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.orientation;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.plus_side().get_orientation();
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 
-   const GlobalIndex element_index = face_info.neighbor_index;
+   const GlobalIndex element_index = face_info.plus_side().get_cell_index();
    ThreadLoop< tshape >( thread, [&] ( auto... t )
    {
       UnitLoop< rshape >( [&] ( auto... k )

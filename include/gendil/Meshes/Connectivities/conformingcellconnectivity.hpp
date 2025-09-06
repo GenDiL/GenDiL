@@ -13,9 +13,11 @@ template < typename Geometry >
 struct ConformingCellConnectivity
 {
    static constexpr Integer dim = Geometry::space_dim;
+   using local_face_index_type = Empty;
    using OrientationType = Permutation< dim >; // !FIXME: Only true for hypercube geometries?
+   using normal_type = Empty;
    using BoundaryType = bool;
-   using FaceInfo = FaceConnectivity< 0, Geometry, Empty, OrientationType, BoundaryType, Empty >;
+   using FaceInfo = FaceView< local_face_index_type, Geometry, OrientationType, normal_type, ConformingFaceMap<dim>, BoundaryType >;
    FaceInfo faces[ Geometry::num_faces ];
 };
 

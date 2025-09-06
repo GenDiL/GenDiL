@@ -32,9 +32,9 @@ namespace gendil {
  * @param dofs_out The output degrees of freedom.
  */
 template <
-   typename IntegrationRule,
    typename KernelContext,
    typename FiniteElementSpace,
+   typename IntegrationRule,
    typename MeshQuadData,
    typename ElementQuadData,
    typename Velocity,
@@ -44,6 +44,7 @@ GENDIL_HOST_DEVICE
 void DiffusionElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
+   const IntegrationRule & integration_rule,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
@@ -61,10 +62,10 @@ void DiffusionElementOperator(
 
    // Container to store values at all the quadrature points
    // !FIXME: not the right container for vector stuff
-   auto DGuq = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, IntegrationRule{} );
+   auto DGuq = MakeQuadraturePointValuesContainer< Dim >( kernel_conf, integration_rule );
 
    // Application of the QFunction
-   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   QuadraturePointLoop( kernel_conf, integration_rule, [&] ( auto const & quad_index )
    {
       constexpr Integer Dim = FiniteElementSpace::Dim;
 
@@ -131,9 +132,9 @@ void DiffusionElementOperator(
  * @param dofs_out The output degrees of freedom.
  */
 template <
-   typename FaceIntegrationRulesTuple,
    typename KernelContext,
    typename FiniteElementSpace,
+   typename FaceIntegrationRulesTuple,
    typename MeshQuadData,
    typename MeshFaceDofToQuad,
    typename ElementQuadData,
@@ -145,6 +146,7 @@ GENDIL_HOST_DEVICE
 void DiffusionFaceOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
+   const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const MeshFaceDofToQuad & mesh_face_quad_data,
@@ -166,26 +168,21 @@ void DiffusionFaceOperator(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         using FaceType = std::remove_reference_t< decltype( face_info ) >;
-
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
          auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
 
-         constexpr Integer face_index = FaceType::local_face_index;
-         constexpr Integer neighbor_face_index = FaceType::neighbor_local_face_index;
-         using FaceIntegrationRule = std::tuple_element_t< face_index, FaceIntegrationRulesTuple >;
+         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u );
+         auto Gu = InterpolateGradient( kernel_conf, face_info.minus_side(), face_quad_data, u );
 
-         auto Bu = InterpolateValues( kernel_conf, std::get< face_index >( face_quad_data ), u );
-         auto Gu = InterpolateGradient( kernel_conf, std::get< face_index >( face_quad_data ), u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), face_quad_data, neighbor_u );
+         auto neighbor_Gu = InterpolateGradient( kernel_conf, face_info.plus_side(), face_quad_data, neighbor_u );
 
-         auto neighbor_Bu = InterpolateValues( kernel_conf, std::get< neighbor_face_index >( face_quad_data ), neighbor_u );
-         auto neighbor_Gu = InterpolateGradient( kernel_conf, std::get< neighbor_face_index >( face_quad_data ), neighbor_u );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, face_int_rule );
+         auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, face_int_rule );
 
-         auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, FaceIntegrationRule{} );
-         auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, FaceIntegrationRule{} );
-
-         QuadraturePointLoop< FaceIntegrationRule >( kernel_conf,
+         QuadraturePointLoop( kernel_conf, face_int_rule,
             [&] ( auto const & quad_index )
             {
                using Mesh = typename FiniteElementSpace::mesh_type;
@@ -195,12 +192,12 @@ void DiffusionFaceOperator(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               cell.GetValuesAndJacobian( quad_index, std::get< face_index >( mesh_face_quad_data ), X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( quad_index, std::get< face_index >( face_quad_data ) );
+               const Real weight = GetWeight( face_info.minus_side(), quad_index, face_quad_data );
 
                Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
                Real Gu_q[ Dim ];
@@ -243,24 +240,20 @@ void DiffusionFaceOperator(
          );
 
          // Application of the test functions
-         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, std::get< face_index >( face_quad_data ), Duq, DGuq, BfDBfu );
+         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.minus_side(), face_quad_data, Duq, DGuq, BfDBfu );
       },
       [&]( auto const & face_info )
       {
-         using FaceType = std::remove_reference_t< decltype( face_info ) >;
-
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
-         constexpr Integer face_index = FaceType::local_face_index;
-         using FaceIntegrationRule = std::tuple_element_t< face_index, FaceIntegrationRulesTuple >;
+         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u );
+         auto Gu = InterpolateGradient( kernel_conf, face_info.minus_side(), face_quad_data, u );
 
-         auto Bu = InterpolateValues( kernel_conf, std::get< face_index >( face_quad_data ), u );
-         auto Gu = InterpolateGradient( kernel_conf, std::get< face_index >( face_quad_data ), u );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, face_int_rule );
+         auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, face_int_rule );
 
-         auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, FaceIntegrationRule{} );
-         auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, FaceIntegrationRule{} );
-
-         QuadraturePointLoop< FaceIntegrationRule >( kernel_conf,
+         QuadraturePointLoop( kernel_conf, face_int_rule,
             [&] ( auto const & quad_index )
             {
                constexpr Integer Dim = FiniteElementSpace::Dim;
@@ -272,12 +265,12 @@ void DiffusionFaceOperator(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               cell.GetValuesAndJacobian( quad_index, std::get< face_index >( mesh_face_quad_data ), X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( quad_index, std::get< face_index >( face_quad_data ) );
+               const Real weight = GetWeight( face_info.minus_side(), quad_index, face_quad_data );
 
                Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
                Real Gu_q[ Dim ];
@@ -315,7 +308,7 @@ void DiffusionFaceOperator(
          );
 
          // Application of the test functions
-         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, std::get< face_index >( face_quad_data ), Duq, DGuq, BfDBfu );
+         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.minus_side(), face_quad_data, Duq, DGuq, BfDBfu );
       }
    );
    WriteAddDofs( kernel_conf, fe_space, element_index, BfDBfu, dofs_out );
@@ -374,18 +367,20 @@ void DiffusionExplicitOperator(
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         DiffusionElementOperator< IntegrationRule >(
+         DiffusionElementOperator(
             kernel_conf,
             fe_space,
+            IntegrationRule{},
             element_index,
             mesh_quad_data,
             element_quad_data,
             velocity,
             dofs_in,
             dofs_out );
-         DiffusionFaceOperator< FaceIntegrationRulesTuple >(
+         DiffusionFaceOperator(
             kernel_conf,
             fe_space,
+            FaceIntegrationRulesTuple{},
             element_index,
             mesh_quad_data,
             mesh_face_quad_data,

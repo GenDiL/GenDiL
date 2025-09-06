@@ -232,8 +232,8 @@ struct NonconformingCartesianIntermeshFaceConnectivity {
     plus_conformity_type  conf_plus{};
 
     // Assemble views
-    minus_view_type minus{ minus_linear, {}, {}, conf_minus };
-    plus_view_type  plus { plus_linear,  {}, {}, conf_plus  };
+    minus_view_type minus{ minus_linear, {}, {}, {}, conf_minus };
+    plus_view_type  plus { plus_linear,  {}, {}, {}, conf_plus  };
 
     return face_info_type{ minus, plus };
   }
