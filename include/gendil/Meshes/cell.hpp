@@ -38,7 +38,7 @@ void ComputePhysicalCoordinatesAndJacobian(
    typename Cell::physical_coordinates & X,
    typename Cell::jacobian & J_mesh )
 {
-   constexpr Integer local_face_index = Face::local_face_index;
+   constexpr Integer local_face_index = Face::local_face_index_type::value;
    const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
    cell.GetValuesAndJacobian( quad_index, local_face_quad_data, X, J_mesh );
 }
