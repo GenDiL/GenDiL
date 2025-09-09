@@ -147,57 +147,31 @@ template < Integer Dim >
 using IdentityOrientation = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
 
 template <
-   typename GEOMETRY,
-   typename LHS_FACE_INDEX,
-   typename RHS_FACE_INDEX,
-   typename RHS_ORIENTATION_TYPE,
-   typename LHS_NORMAL_TYPE,
-   typename RHS_NORMAL_TYPE
+   typename geometry,
+   typename minus_face_index,
+   typename plus_face_index,
+   typename plus_orientation_type,
+   typename minus_normal_type,
+   typename plus_normal_type,
+   typename boundary_type = std::bool_constant< false >
 >
 using ConformingCellFaceView =
    GlobalFaceInfo<
       FaceView<
-         LHS_FACE_INDEX,
-         GEOMETRY,
-         IdentityOrientation<GEOMETRY::geometry_dim>,
-         LHS_NORMAL_TYPE,
-         ConformingFaceMap<GEOMETRY::geometry_dim>
+         minus_face_index,
+         geometry,
+         IdentityOrientation<geometry::geometry_dim>,
+         minus_normal_type,
+         ConformingFaceMap<geometry::geometry_dim>,
+         boundary_type
       >,
       FaceView<
-         RHS_FACE_INDEX,
-         GEOMETRY,
-         RHS_ORIENTATION_TYPE,
-         RHS_NORMAL_TYPE,
-         ConformingFaceMap<GEOMETRY::geometry_dim>
-      >
-   >;
-
-// TODO Remove
-// !FIXME: This assumes conforming and same topologies on each side
-template <
-   Integer LocalFaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType >
-using FaceConnectivity =
-   GlobalFaceInfo<
-      FaceView<
-         std::integral_constant<Integer, LocalFaceIndex>,
-         Geometry,
-         OrientationType,
-         NormalType,
-         ConformityType,
-         BoundaryType
-      >,
-      FaceView<
-         std::integral_constant<Integer, ( LocalFaceIndex < Geometry::geometry_dim ? LocalFaceIndex + Geometry::geometry_dim : LocalFaceIndex - Geometry::geometry_dim )>,
-         Geometry,
-         OrientationType,
-         NormalType,
-         ConformityType,
-         BoundaryType
+         plus_face_index,
+         geometry,
+         plus_orientation_type,
+         plus_normal_type,
+         ConformingFaceMap<geometry::geometry_dim>,
+         boundary_type
       >
    >;
 

@@ -56,11 +56,20 @@ template < Integer Dim >
 struct CartesianLocalFaceConnectivity
 {
    using geometry = HyperCube< Dim >;
-   using orientation_type = Permutation< Dim >;
-   // Requires C++20
-   // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         orientation_type,
+         CanonicalVector< Dim, NormalAxis, NormalSign >,
+         CanonicalVector< Dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    std::array< GlobalIndex, Dim > sizes;
 
@@ -169,19 +178,9 @@ struct CartesianLocalFaceConnectivity
             std::numeric_limits< GlobalIndex >::quiet_NaN() :
             ComputeLinearIndex( neighbor_index, sizes );
 
-      using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{
-         { cell_index, {}, MakeReferencePermutation< Dim >(), {}, {}, boundary },
-         { neighbor_linear_index, {}, MakeReferencePermutation< Dim >(), {}, {}, boundary }
+      return face_info_type<FaceIndex>{
+         { cell_index, {}, {}, {}, {}, boundary },
+         { neighbor_linear_index, {}, {}, {}, {}, boundary }
       };
    }
 
@@ -216,11 +215,20 @@ struct CartesianLocalFaceConnectivity< 1 >
 {
    static constexpr Integer Dim = 1;
    using geometry = HyperCube< Dim >;
-   using orientation_type = Permutation< Dim >;
-   // Requires C++20
-   // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         orientation_type,
+         CanonicalVector< Dim, NormalAxis, NormalSign >,
+         CanonicalVector< Dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    GlobalIndex size;
 
@@ -238,7 +246,6 @@ struct CartesianLocalFaceConnectivity< 1 >
       );
 
       // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % Dim;
       constexpr int Sign = FaceIndex < Dim ? -1 : 1;
 
       GlobalIndex neighbor_index = cell_index;
@@ -281,17 +288,10 @@ struct CartesianLocalFaceConnectivity< 1 >
             neighbor_index--;
       }
 
-      using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{ { cell_index, {}, MakeReferencePermutation< Dim >(), {}, {}, boundary },  { neighbor_index, {}, MakeReferencePermutation< Dim >(), {}, {}, boundary } };
+      return face_info_type<FaceIndex>{
+         { cell_index, {}, {}, {}, {}, boundary },
+         { neighbor_index, {}, {}, {}, {}, boundary }
+      };
    }
 
    GENDIL_HOST_DEVICE

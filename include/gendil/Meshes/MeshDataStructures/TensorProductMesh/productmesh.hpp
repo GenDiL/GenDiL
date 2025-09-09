@@ -111,10 +111,10 @@ namespace details
          using face_index = std::integral_constant< Integer, sub_face_index >;
          auto neighbor = head_mesh.GetLocalFaceInfo( head_index, face_index{} );
 
-         auto head_neighbor_index = neighbor.plus_side().cell_index;
-         
+         auto head_neighbor_index = neighbor.plus_side().get_cell_index();
+
          neighbor_index = head_neighbor_index + HeadNumCells * tail_index;
-         Set< 0 >( orientation, neighbor.plus_side().orientation );
+         Set< 0 >( orientation, static_cast< Permutation< HeadDim > >( neighbor.plus_side().get_orientation() ) );
          boundary = neighbor.plus_side().boundary;
       }
       else
@@ -126,10 +126,10 @@ namespace details
          // recursion step
          auto neighbor = GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
 
-         GlobalIndex tail_neighbor_index = neighbor.plus_side().cell_index;
+         GlobalIndex tail_neighbor_index = neighbor.plus_side().get_cell_index();
 
          neighbor_index = head_index + HeadNumCells * tail_neighbor_index;
-         Set< HeadDim - 1 >( orientation, neighbor.plus_side().orientation );
+         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.plus_side().get_orientation() ) );
          boundary = neighbor.plus_side().boundary;
       }
 
@@ -139,16 +139,17 @@ namespace details
       using orientation_type = Permutation< Dim >;
       using boundary_type = bool;
       using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            face_id,
+      using face_info_type =
+         ConformingCellFaceView <
             geometry,
-            conformity_type,
+            std::integral_constant< Integer, face_id >,
+            std::integral_constant< Integer, face_id < Dim ? face_id + Dim : face_id - Dim >,
             orientation_type,
-            boundary_type,
-            normal_type
+            CanonicalVector< Dim, Index, Sign >,
+            CanonicalVector< Dim, Index, -Sign >,
+            boundary_type
          >;
-      return FaceInfo{
+      return face_info_type{
          { cell_index, {}, {}, {}, {}, boundary },
          { neighbor_index, {}, orientation, {}, {}, boundary }
       };

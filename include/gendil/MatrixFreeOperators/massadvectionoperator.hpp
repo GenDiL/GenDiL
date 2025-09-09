@@ -175,7 +175,7 @@ void MassAdvectionFaceOperator(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
          auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
 
          auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );

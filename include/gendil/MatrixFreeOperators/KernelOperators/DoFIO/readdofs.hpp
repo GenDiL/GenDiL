@@ -130,18 +130,13 @@ auto ReadDofsToShared( const KernelContext & ctx,
  * @param local_dofs  
  */
 template < 
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T,
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void ReadDofs(
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs,
    ElementDoF< FiniteElementSpace > & local_dofs )
 {
@@ -149,7 +144,7 @@ void ReadDofs(
       Dim == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
-   const GlobalIndex element_index = face_info.neighbor_index;
+   const GlobalIndex element_index = face_info.cell_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
@@ -423,19 +418,14 @@ auto ReadDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto SerialReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -449,10 +439,10 @@ auto SerialReadDofs(
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
-   const GlobalIndex element_index = face_info.plus_side().get_cell_index();// neighbor_index;
+   const GlobalIndex element_index = face_info.get_cell_index();
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.plus_side().get_orientation();
+   Permutation< space_dim > orientation = face_info.get_orientation();
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
@@ -495,19 +485,14 @@ auto SerialReadDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ThreadedReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -522,10 +507,10 @@ auto ThreadedReadDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   const GlobalIndex element_index = face_info.plus_side().get_cell_index();
+   const GlobalIndex element_index = face_info.get_cell_index();
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.plus_side().get_orientation();
+   Permutation< space_dim > orientation = face_info.get_orientation();
 
    // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -576,19 +561,14 @@ auto ThreadedReadDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsSerial(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -602,7 +582,7 @@ auto ReadVectorDofsSerial(
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
-   const GlobalIndex element_index = face_info.neighbor_index;
+   const GlobalIndex element_index = face_info.cell_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
@@ -648,19 +628,14 @@ auto ReadVectorDofsSerial(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsThreaded(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    // static_assert(
@@ -675,7 +650,7 @@ auto ReadVectorDofsThreaded(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   const GlobalIndex element_index = face_info.neighbor_index;
+   const GlobalIndex element_index = face_info.cell_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
@@ -715,19 +690,14 @@ auto ReadVectorDofsThreaded(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -755,19 +725,14 @@ auto ReadVectorDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadScalarDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -780,70 +745,6 @@ auto ReadScalarDofs(
    }
 }
 
-/**
- * @brief Read the degrees-of-freedom of a neighboring element according to @a face_info.
- * The degrees-of-freedom are reordered to be in a reference configuration.
- * 
- * @tparam FaceInfo 
- * @tparam FiniteElementSpace 
- * @tparam Dim 
- * @tparam T The type of the values.
- * @param face_info 
- * @param global_dofs 
- * @param local_dofs  
- */
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   CellFaceView FaceView,
-   Integer Dim,
-   typename T >
-GENDIL_HOST_DEVICE
-auto SerialReadDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
-   const StridedView< Dim, T > & global_dofs )
-{
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
-   static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in ReadDofs."
-   );
-   using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
-
-   const GlobalIndex element_index = face_info.get_cell_index();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-
-   Permutation< space_dim > orientation = face_info.get_orientation();
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real data[ data_size ];
-
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
-   
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-   auto reference_view = MakeFIFOView( data, dofs_sizes );
-   
-   // TODO: Study if oriented_view first or second is better ( invert orientation )
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         oriented_view( indices... ) = global_dofs( indices..., element_index );
-      }
-   );
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         local_dofs( indices... ) = reference_view( indices... );
-      }
-   );
-
-   return local_dofs;
-}
 
 
 /**
@@ -861,90 +762,14 @@ auto SerialReadDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   CellFaceView FaceView,
-   Integer Dim,
-   typename T >
-GENDIL_HOST_DEVICE
-auto ThreadedReadDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
-   const StridedView< Dim, T > & global_dofs )
-{
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
-   static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in ReadDofs."
-   );
-   using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
-   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
-
-   const GlobalIndex element_index = face_info.get_cell_index();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-
-   Permutation< space_dim > orientation = face_info.get_orientation();
-
-   // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real * data = thread.SharedAllocator.allocate( data_size );
-
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
-   
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-   auto reference_view = MakeFixedFIFOView( data, DofShape{} );
-   
-   auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
-
-   // TODO: Use a shared memory slice.
-   // TODO: Study if oriented_view first or second is better ( invert orientation )
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
-   {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         oriented_view( t..., k... ) = global_dofs( t..., k..., element_index ); // Assumes threads < registers
-      });
-   });
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
-   {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         local_dofs( k... ) = reference_view( t..., k... );
-      });
-   });
-   thread.Synchronize();
-
-   thread.SharedAllocator.reset();
-
-   return local_dofs;
-}
-
-/**
- * @brief Read the degrees-of-freedom of a neighboring element according to @a face_info.
- * The degrees-of-freedom are reordered to be in a reference configuration.
- * 
- * @tparam FaceInfo 
- * @tparam FiniteElementSpace 
- * @tparam Dim 
- * @tparam T The type of the values.
- * @param face_info 
- * @param global_dofs 
- * @param local_dofs  
- */
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   CellFaceView FaceView,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -960,18 +785,13 @@ auto ReadDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const GlobalDofs & global_dofs )
 {
    if constexpr ( is_serial_v< KernelContext > )
@@ -987,18 +807,13 @@ auto ReadVectorDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
+   const Face & face_info,
    const GlobalDofs & global_dofs )
 {
    if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )

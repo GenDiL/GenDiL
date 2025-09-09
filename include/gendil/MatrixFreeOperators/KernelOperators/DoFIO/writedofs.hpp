@@ -340,224 +340,14 @@ template <
    WriteOp Op,
    typename KernelContext,
    typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
+   CellFaceView Face,
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void SerialWriteDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
-   const LocalDofsType & local_dofs,
-   GlobalDofsType & global_dofs )
-{
-   static_assert(
-      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in WriteDofs."
-   );
-
-   using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real data[ data_size ];
-
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
-
-   // Copy from local_dofs to reference_view
-   auto reference_view = MakeFIFOView( data, dofs_sizes );
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         reference_view( indices... ) = local_dofs( indices... );
-      }
-   );
-
-   // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.plus_side().get_orientation();
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-
-   const GlobalIndex element_index = face_info.plus_side().get_cell_index();
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( indices..., element_index ), oriented_view( indices... ) );
-         else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
-         else
-            global_dofs( indices..., element_index ) = oriented_view( indices... );
-      }
-   );
-}
-
-template <
-   WriteOp Op,
-   typename KernelContext,
-   typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
-   typename LocalDofsType,
-   typename GlobalDofsType >
-GENDIL_HOST_DEVICE
-void ThreadedWriteDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
-   const LocalDofsType & local_dofs,
-   GlobalDofsType & global_dofs )
-{
-   static_assert(
-      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in WriteDofs."
-   );
-
-   using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
-   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
-
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real * data = thread.SharedAllocator.allocate( data_size );
-
-   // Copy local dofs into reference view
-   auto reference_view = MakeFixedFIFOView( data, DofShape{} );
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
-   {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         reference_view( t..., k... ) = local_dofs( k... );
-      });
-   });
-
-   // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.plus_side().get_orientation();
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-
-   const GlobalIndex element_index = face_info.plus_side().get_cell_index();
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
-   {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
-         else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
-         else
-            global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );;
-      });
-   });
-
-   thread.Synchronize();
-   thread.SharedAllocator.reset();
-}
-
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
-   typename LocalDofsType,
-   typename GlobalDofsType >
-GENDIL_HOST_DEVICE
-void WriteDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
-   const LocalDofsType & local_dofs,
-   GlobalDofsType & global_dofs )
-{
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-   else
-   {
-      ThreadedWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-}
-
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
-   typename LocalDofsType,
-   typename GlobalDofsType >
-GENDIL_HOST_DEVICE
-void WriteAddDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
-   const LocalDofsType & local_dofs,
-   GlobalDofsType & global_dofs )
-{
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-   else
-   {
-      ThreadedWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-}
-
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   Integer FaceIndex,
-   typename Geometry,
-   typename ConformityType,
-   typename OrientationType,
-   typename BoundaryType,
-   typename NormalType,
-   typename LocalDofsType,
-   typename GlobalDofsType >
-GENDIL_HOST_DEVICE
-void WriteSubDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceConnectivity< FaceIndex, Geometry, ConformityType, OrientationType, BoundaryType, NormalType > & face_info,
-   const LocalDofsType & local_dofs,
-   GlobalDofsType & global_dofs )
-{
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-   else
-   {
-      ThreadedWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
-   }
-}
-
-template <
-   WriteOp Op,
-   typename KernelContext,
-   typename FiniteElementSpace,
-   CellFaceView FaceView,
-   typename LocalDofsType,
-   typename GlobalDofsType >
-GENDIL_HOST_DEVICE
-void SerialWriteDofs(
-   const KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
@@ -603,14 +393,14 @@ template <
    WriteOp Op,
    typename KernelContext,
    typename FiniteElementSpace,
-   CellFaceView FaceView,
+   CellFaceView Face,
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void ThreadedWriteDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
@@ -662,14 +452,14 @@ void ThreadedWriteDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   CellFaceView FaceView,
+   CellFaceView Face,
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
@@ -686,14 +476,14 @@ void WriteDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   CellFaceView FaceView,
+   CellFaceView Face,
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteAddDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
@@ -710,14 +500,14 @@ void WriteAddDofs(
 template <
    typename KernelContext,
    typename FiniteElementSpace,
-   CellFaceView FaceView,
+   CellFaceView Face,
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteSubDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
-   const FaceView & face_info,
+   const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {

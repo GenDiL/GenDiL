@@ -15,11 +15,20 @@ template < Integer Dim >
 struct PeriodicCartesianConnectivity
 {
    using geometry = HyperCube< Dim >;
-   using orientation_type = Permutation< Dim >;
-   // Requires C++20
-   // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         orientation_type,
+         CanonicalVector< Dim, NormalAxis, NormalSign >,
+         CanonicalVector< Dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    std::array< GlobalIndex, Dim > sizes;
 
@@ -86,20 +95,7 @@ struct PeriodicCartesianConnectivity
 
       GlobalIndex neighbor_linear_index = ComputeLinearIndex( neighbor_index, sizes );
 
-      using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{
-         { cell_index, {}, MakeReferencePermutation< Dim >() },
-         { neighbor_linear_index, {}, MakeReferencePermutation< Dim >() }
-      };
+      return face_info_type<FaceIndex>{ { cell_index }, { neighbor_linear_index } };
    }
 
    GENDIL_HOST_DEVICE
@@ -120,11 +116,20 @@ struct PeriodicCartesianConnectivity< 1 >
 {
    static constexpr Integer Dim = 1;
    using geometry = HyperCube< Dim >;
-   using orientation_type = Permutation< Dim >;
-   // Requires C++20
-   // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         orientation_type,
+         CanonicalVector< Dim, NormalAxis, NormalSign >,
+         CanonicalVector< Dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    GlobalIndex size;
 
@@ -143,7 +148,6 @@ struct PeriodicCartesianConnectivity< 1 >
 
       GlobalIndex neighbor_index = cell_index;
       // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % Dim;
       constexpr int Sign = FaceIndex < Dim ? -1 : 1;
 
       if ( size == 1 )
@@ -184,20 +188,7 @@ struct PeriodicCartesianConnectivity< 1 >
          }
       }
 
-      using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{
-         { cell_index, {}, MakeReferencePermutation< Dim >() },
-         { neighbor_index, {}, MakeReferencePermutation< Dim >() }
-      };
+      return face_info_type<FaceIndex>{ { cell_index }, { neighbor_index } };
    }
 
    GENDIL_HOST_DEVICE

@@ -19,6 +19,17 @@ struct UnstructuredConformingConnectivity
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
    using conformity_type = ConformingFaceMap<dim>;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % dim, int NormalSign = FaceIndex < Geometry::geometry_dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Geometry::geometry_dim ? FaceIndex + Geometry::geometry_dim : FaceIndex - Geometry::geometry_dim >,
+         orientation_type,
+         CanonicalVector< dim, NormalAxis, NormalSign >,
+         CanonicalVector< dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    HostDevicePointer< ConformingCellConnectivity< Geometry > > element_connectivities;
 
@@ -52,20 +63,7 @@ struct UnstructuredConformingConnectivity
 
       auto face_info = element_connectivities[ cell_index ].faces[ FaceIndex ];
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % dim;
-      constexpr int Sign = FaceIndex < dim ? -1 : 1;
-      using normal_type = CanonicalVector< dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{
+      return face_info_type< FaceIndex >{
          { cell_index, {}, {}, {}, {}, face_info.boundary },
          { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary }
       };

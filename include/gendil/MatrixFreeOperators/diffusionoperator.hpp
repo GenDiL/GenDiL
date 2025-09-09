@@ -170,7 +170,7 @@ void DiffusionFaceOperator(
       {
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info, dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
 
          auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u );
          auto Gu = InterpolateGradient( kernel_conf, face_info.minus_side(), face_quad_data, u );
