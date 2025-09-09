@@ -11,6 +11,16 @@ using namespace gendil;
 
 int main(int, char**)
 {
+#if defined(GENDIL_USE_CUDA)
+   const char device_config[] = "cuda";
+#elif defined(GENDIL_USE_HIP)
+   const char device_config[] = "hip";
+#else
+   const char device_config[] = "cpu";
+#endif
+   mfem::Device device(device_config);
+   device.Print();
+
    // ---- 2D mesh: 1 x Ny so all interior faces are y-normal ----
    const Integer nx = 1;
    const Integer ny = 4;
@@ -41,7 +51,7 @@ int main(int, char**)
    };
 
 #if defined(GENDIL_USE_DEVICE)
-   using ThreadLayout = ThreadBlockLayout<nq1d, nq1d>;
+   using ThreadLayout = ThreadBlockLayout<nq1d>;
    constexpr size_t NumSharedDimensions = Dim;
    using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
@@ -58,6 +68,7 @@ int main(int, char**)
    face_op.Mult(x, y);
 
    // ---- Check: should be (near) zero ----
+   y.HostRead();
    const double nrm = y.Norml2();
    std::cout << "||face_op*x||_2 = " << nrm << std::endl;
    const double tol = 1e-12;
