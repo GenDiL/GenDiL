@@ -58,7 +58,7 @@ void L2ErrorElementOperator(
    const auto cell = fe_space.GetCell( element_index );
 
    GENDIL_SHARED Real error;
-#ifdef GENDIL_USE_DEVICE
+#ifdef GENDIL_DEVICE_CODE
    if( kernel_conf.GetLinearThreadIndex() == 0 ) error = 0.0;
    GENDIL_SYNC_THREADS();
 #else

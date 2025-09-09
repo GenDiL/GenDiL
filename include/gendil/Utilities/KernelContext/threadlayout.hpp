@@ -135,6 +135,12 @@ public:
       return GetThreadIndex();
    }
 
+   GENDIL_DEVICE
+   GlobalIndex GetLinearThreadIndex() const
+   {
+      return 0;
+   }
+
    /**
     * @brief forall loop. In CUDA/HIP this may be implemented using blocks with block
     * size greater than 1, however, GetBlockDim() always returns 1 and

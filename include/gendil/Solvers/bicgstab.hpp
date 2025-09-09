@@ -41,7 +41,6 @@ template <
     typename Vector,
     typename Real = gendil::Real
 >
-GENDIL_HOST_DEVICE
 auto BiCGSTAB_no_alloc(
     const Operator& A,
     const RHSType& rhs,

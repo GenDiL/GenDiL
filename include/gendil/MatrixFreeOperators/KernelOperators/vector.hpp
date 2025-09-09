@@ -5,7 +5,7 @@
 #pragma once
 
 /**
- * @file
+ * @file vector.hpp
  * @brief Host/device-aware dynamically-sized vector with explicit sync control.
  *
  * `gendil::Vector` manages a pair of host/device pointers (via

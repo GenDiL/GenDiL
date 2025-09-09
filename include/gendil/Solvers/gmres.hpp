@@ -55,7 +55,6 @@ template<
     typename Vector,
     typename Array
 >
-GENDIL_HOST_DEVICE
 auto GMRES_no_alloc(
     const Operator &         A,
     const RHSType &          rhs,

@@ -5,7 +5,7 @@
 #pragma once
 
 /**
- * @file
+ * @file iterativesolverresult.hpp
  * @brief Minimal, uniform return type for iterative linear solvers.
  *
  * This header defines @ref gendil::IterativeSolverResult, a light POD used by
