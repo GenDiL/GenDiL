@@ -7,6 +7,8 @@
 #include <functional>
 #include "gendil/Utilities/types.hpp"
 #include <iostream>
+#include "gendil/Solvers/iterativesolverresult.hpp"
+
 namespace gendil {
 
 // Unpreconditionned conjugate gradient algorithm
@@ -22,7 +24,6 @@ auto ConjugateGradient(
    const Real & tol,
    Vector & x )
 {
-   using Result = std::tuple< bool, Integer, Real >; // Success, iteration, tolerance error
    using TmpVector = Vector; // TODO: Make some trait
    // TODO: Allocate all vectors here? Provide allocator? Some kind of memory space?
    
@@ -41,14 +42,14 @@ auto ConjugateGradient(
       x = 0.0;
       iters = 0;
       tol_error = 0.0;
-      return Result{ true, iters, tol_error };
+      return IterativeSolverResult{ true, iters, tol_error };
    }
    Real residual_norm = Norml2( residual );
    if ( residual_norm < tol * rhs_norm )
    {
       iters = 0;
       tol_error = Sqrt( residual_norm / rhs_norm );
-      return Result{ true, iters, tol_error };
+      return IterativeSolverResult{ true, iters, tol_error };
    }
 
    TmpVector p = residual; // initial search direction
@@ -68,7 +69,7 @@ auto ConjugateGradient(
       {
          tol_error = Sqrt( residual_norm / rhs_norm );
          iters = i;
-         return Result{ true, iters, tol_error };
+         return IterativeSolverResult{ true, iters, tol_error };
       }
 
       z = residual; // approximately solve for "A z = residual"
@@ -81,7 +82,7 @@ auto ConjugateGradient(
    }
    tol_error = Sqrt( residual_norm / rhs_norm );
    iters = i;
-   return Result{ false, iters, tol_error };
+   return IterativeSolverResult{ false, iters, tol_error };
 }
 
 /**
@@ -129,8 +130,6 @@ auto ConjugateGradient(
    Vector & residual,
    Vector & p )
 {
-   using Result = std::tuple<bool, Integer, Real>; // TODO use a struct!
-
    // Helper: 2‑norm via injected dot
    auto norm2 = [&](Vector const & v){
       return Sqrt( dot(v, v) );
@@ -146,13 +145,13 @@ auto ConjugateGradient(
    if ( rhs_n == 0.0 ) {
       // trivial solution if rhs is zero
       x = 0.0;
-      return Result{ true, 0, 0.0 };
+      return IterativeSolverResult{ true, 0, 0.0 };
    }
 
    // 3) Check initial convergence
    Real r_n = norm2( residual );
    if (r_n < tol * rhs_n) {
-      return Result{ true, 0, Sqrt(r_n/rhs_n) };
+      return IterativeSolverResult{ true, 0, Sqrt(r_n/rhs_n) };
    }
 
    // 4) p = r
@@ -176,7 +175,7 @@ auto ConjugateGradient(
       // 8) Convergence check: ‖r‖ < tol * ‖rhs‖
       r_n = norm2( residual );
       if ( r_n < tol * rhs_n ) {
-         return Result{ true, iter+1, Sqrt(r_n/rhs_n) };
+         return IterativeSolverResult{ true, iter+1, Sqrt(r_n/rhs_n) };
       }
 
       // 9) z = r  (for future preconditioning)
@@ -196,7 +195,7 @@ auto ConjugateGradient(
    }
 
    // 12) No convergence within max_iters
-   return Result{ false, iter, Sqrt(r_n/rhs_n) };
+   return IterativeSolverResult{ false, iter, Sqrt(r_n/rhs_n) };
 }
 
 template<

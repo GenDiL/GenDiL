@@ -117,9 +117,9 @@ void test_advection_1D(const Integer n)
         x, V_array, w,
         H, cs2, sn2, e1_rhs2, y2
     );
-    bool ok = std::get<0>(ret);
-    Integer iters = std::get<1>(ret);
-    Real relres = std::get<2>(ret);
+    bool ok = ret.success;
+    Integer iters = ret.iterations;
+    Real relres = ret.relative_error;
 
     // Residual check
     Vector Ax(ndofs), res(ndofs);

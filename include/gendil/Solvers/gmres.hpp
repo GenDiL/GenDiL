@@ -7,6 +7,7 @@
 #include <limits>
 #include <tuple>
 #include "gendil/prelude.hpp"
+#include "gendil/Solvers/iterativesolverresult.hpp"
 
 namespace gendil {
 
@@ -72,7 +73,6 @@ auto GMRES_no_alloc(
     Array &                  y            // length = restart
 )
 {
-    using Result = std::tuple<bool, Integer, Real>;
     const Real tol_rel = tol;
     const Real tiny    = std::numeric_limits<Real>::epsilon();
 
@@ -84,7 +84,7 @@ auto GMRES_no_alloc(
     if (beta == Real(0))
     {
         // Exact solution already
-        return Result{ true, 0, Real(0) };
+        return IterativeSolverResult{ true, 0, Real(0) };
     }
 
     // 2) Compute ‖rhs‖ for relative tol
@@ -92,7 +92,7 @@ auto GMRES_no_alloc(
     if (norm_rhs == Real(0))
     {
         x = Real(0);
-        return Result{ true, 0, Real(0) };
+        return IterativeSolverResult{ true, 0, Real(0) };
     }
 
     Integer total_iters = 0;
@@ -209,14 +209,14 @@ auto GMRES_no_alloc(
         if (final_rel_res <= tol_rel)
         {
             // Converged within this cycle
-            return Result{ true, total_iters, final_rel_res };
+            return IterativeSolverResult{ true, total_iters, final_rel_res };
         }
 
         // 11) If we still have iterations left, form new residual r0 = rhs - A*x
         if (total_iters >= max_iters)
         {
             // Out of total iterations
-            return Result{ false, total_iters, final_rel_res };
+            return IterativeSolverResult{ false, total_iters, final_rel_res };
         }
 
         // Compute new r0 → store in V[0], and continue with next restart cycle
@@ -227,7 +227,7 @@ auto GMRES_no_alloc(
         if (beta == Real(0))
         {
             // Exact solution reached after an outer cycle
-            return Result{ true, total_iters, Real(0) };
+            return IterativeSolverResult{ true, total_iters, Real(0) };
         }
         // Next cycle will renormalize: V[0] *= 1/beta and reset e1_rhs, cs, sn ...
     }
@@ -237,7 +237,7 @@ auto GMRES_no_alloc(
     V[0] = rhs;
     V[0] -= w;
     Real rnorm = Sqrt(dot(V[0], V[0]));
-    return Result{ false, total_iters, rnorm / Sqrt(dot(rhs, rhs)) };
+    return IterativeSolverResult{ false, total_iters, rnorm / Sqrt(dot(rhs, rhs)) };
 }
 
 } // namespace gendil

@@ -7,6 +7,7 @@
 #include <limits>
 #include <tuple>
 #include "gendil/prelude.hpp"
+#include "gendil/Solvers/iterativesolverresult.hpp"
 
 namespace gendil {
 
@@ -52,7 +53,6 @@ auto BiCGSTAB_no_alloc(
     Vector& p, Vector& v,
     Vector& s, Vector& t)
 {
-    using Result = std::tuple<bool, Integer, Real>;
     const Real tiny = Real(1e-30); // breakdown/stagnation guard
 
     // Initial residual: r = rhs - A*x
@@ -66,7 +66,7 @@ auto BiCGSTAB_no_alloc(
     if (norm_rhs == Real(0))
     {
         x = Real(0);
-        return Result{true, 0, Real(0)};
+        return IterativeSolverResult{true, 0, Real(0)};
     }
 
     Real rho_prev = Real(1);
@@ -80,7 +80,7 @@ auto BiCGSTAB_no_alloc(
     Real rel_res = rnorm / norm_rhs;
     if (rel_res < tol)
     {
-        return Result{true, 0, rel_res};
+        return IterativeSolverResult{true, 0, rel_res};
     }
 
     Integer iter = 0;
@@ -117,7 +117,7 @@ auto BiCGSTAB_no_alloc(
         {
             Axpy(alpha, p, x);  // x += alpha * p
             r = s;              // (nearly zero)
-            return Result{true, iter + 1, rel_s};
+            return IterativeSolverResult{true, iter + 1, rel_s};
         }
 
         A(s, t);               // t = A * s
@@ -131,7 +131,7 @@ auto BiCGSTAB_no_alloc(
             r = s;
             Real rnorm_fb = Sqrt(dot(r, r));
             Real rel_res_fb = rnorm_fb / norm_rhs;
-            return Result{rel_res_fb < tol, iter + 1, rel_res_fb};
+            return IterativeSolverResult{rel_res_fb < tol, iter + 1, rel_res_fb};
         }
 
         omega = t_dot_s / t_dot_t;
@@ -148,13 +148,13 @@ auto BiCGSTAB_no_alloc(
 
         if (rel_res < tol)
         {
-            return Result{true, iter + 1, rel_res};
+            return IterativeSolverResult{true, iter + 1, rel_res};
         }
 
         rho_prev = rho;
     }
 
-    return Result{false, iter, rel_res};
+    return IterativeSolverResult{false, iter, rel_res};
 }
 
 } // namespace gendil
