@@ -496,6 +496,7 @@ Vector& operator/=(
    Vector & x,
    const Real & a )
 {
+   GENDIL_VERIFY(a != 0, "Division by zero");
    // TODO: Make it device compatible
    Real* u( x.ReadWriteHostData() );
    #pragma omp parallel for
