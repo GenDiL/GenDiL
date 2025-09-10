@@ -30,10 +30,6 @@ macro(add_my_benchmark target_name source_file)
     $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
   )
 
-  if(caliper_FOUND)
-    set_tests_properties(${target_name} PROPERTIES ENVIRONMENT "CALI_CONFIG=runtime-report")
-  endif()
-
 endmacro()
 
 add_custom_target(

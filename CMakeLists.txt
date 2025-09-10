@@ -86,7 +86,7 @@ if(USE_CALIPER)
   find_package(caliper REQUIRED HINTS "${caliper_DIR}"
               "${caliper_DIR}/share/cmake/caliper" NO_DEFAULT_PATH)
   message(STATUS "Caliper found!")
-  target_link_libraries(GENDIL INTERFACE caliper caliper-tools-util)
+  target_link_libraries(GENDIL INTERFACE caliper)
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CALIPER)
   # Print Caliper include directories and libraries
   get_target_property(CALIPER_INCLUDE_DIRS caliper INTERFACE_INCLUDE_DIRECTORIES)

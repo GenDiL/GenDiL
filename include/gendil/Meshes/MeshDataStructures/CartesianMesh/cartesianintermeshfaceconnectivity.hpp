@@ -91,13 +91,13 @@ struct CartesianIntermeshFaceConnectivity
    {
       // Tangential sizes must match (geometry-conforming interface)
       for (int d = 0; d < Dim; ++d) {
-      if (d == axis) continue;
-      // TODO GENDIL_VERIFY(sizes_minus[d] == sizes_plus[d]);
-      assert(sizes_minus[d] == sizes_plus[d]);
+         if (d == axis) continue;
+         // GENDIL_VERIFY(sizes_minus[d] == sizes_plus[d]);
+         assert(sizes_minus[d] == sizes_plus[d]);
       }
       num_faces = 1;
       for (int d = 0; d < Dim; ++d)
-      if (d != axis) num_faces *= sizes_minus[d];
+         if (d != axis) num_faces *= sizes_minus[d];
    }
 
    /**
@@ -151,13 +151,13 @@ struct CartesianIntermeshFaceConnectivity
       auto idx_plus  = tangential;
 
       if (sign > 0) {
-      // minus face is +axis → minus at last slice, plus at first slice
-      idx_minus[axis] = sizes_minus[axis] - 1;
-      idx_plus [axis] = 0;
+         // minus face is +axis → minus at last slice, plus at first slice
+         idx_minus[axis] = sizes_minus[axis] - 1;
+         idx_plus [axis] = 0;
       } else {
-      // minus face is −axis → minus at first slice, plus at last slice
-      idx_minus[axis] = 0;
-      idx_plus [axis] = sizes_plus[axis] - 1;
+         // minus face is −axis → minus at first slice, plus at last slice
+         idx_minus[axis] = 0;
+         idx_plus [axis] = sizes_plus[axis] - 1;
       }
 
       const GlobalIndex minus_linear = ComputeLinearIndex(idx_minus, sizes_minus);
