@@ -8,6 +8,7 @@
 #include "gendil/Utilities/debug.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 #if defined( GENDIL_USE_MFEM )
+#include <mfem.hpp>
 #include "general/forall.hpp"
 #endif
 
@@ -132,6 +133,12 @@ public:
    {
       Assert(false, "This thread block is zero-dimensional (one thread), GetThreadIndex<Index> is not logical for any Index!");
       return GetThreadIndex();
+   }
+
+   GENDIL_DEVICE
+   GlobalIndex GetLinearThreadIndex() const
+   {
+      return 0;
    }
 
    /**
