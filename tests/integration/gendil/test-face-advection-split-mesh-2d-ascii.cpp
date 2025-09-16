@@ -230,6 +230,7 @@ int main(int, char**)
 
   auto run_case = [&](const std::string& label, const Vector& u_full, bool do_print){
     Vector u_split(ndofs_full);
+    u_split = 0.0;
     apply_perm(u_full, u_split, P_full_to_split);
 
     Vector r_full(ndofs_full), r_split(ndofs_full), r_split_as_full(ndofs_full);
@@ -256,7 +257,7 @@ int main(int, char**)
 
       // difference (signed)
       Vector diff(ndofs_full);
-      Real* d = diff.ReadWriteHostData();
+      Real* d = diff.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) d[g] = rf[g] - rs[g];
       print_dofs_grid("Δr = r_full - r_split_as_full", diff, nx_full, ny, p);
     }
@@ -266,7 +267,7 @@ int main(int, char**)
   if (PRINT_RANDOM) {
     Vector u_full(ndofs_full);
     { // deterministic PRNG
-      Real* uh = u_full.ReadWriteHostData();
+      Real* uh = u_full.WriteHostData();
       uint32_t s = 0xC0FFEEu;
       auto rnd = [&](){ s ^= s<<13; s ^= s>>17; s ^= s<<5; return Real((s & 0xFFFF))/Real(0xFFFF); };
       for (Integer i=0;i<ndofs_full;++i) uh[i] = rnd();
@@ -277,7 +278,7 @@ int main(int, char**)
   // ---------- TEST 2: Half-domain jump (L=1, R=0) ----------
   if (PRINT_HALFJUMP) {
     Vector u_full(ndofs_full); {
-      Real* uf = u_full.ReadWriteHostData();
+      Real* uf = u_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
         Integer I;
         const Integer cell = g / nldofs;
@@ -291,7 +292,7 @@ int main(int, char**)
   // ---------- TEST 3: Interface pulse (left column only) ----------
   if (PRINT_PULSE) {
     Vector u_full(ndofs_full); {
-      Real* uf = u_full.ReadWriteHostData();
+      Real* uf = u_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
         Integer I;
         const Integer cell = g / nldofs;
@@ -305,7 +306,7 @@ int main(int, char**)
   // ---------- Conservation (u=1) ----------
   {
     Vector u1_full(ndofs_full); u1_full = 1.0;
-    Vector u_split(ndofs_full);
+    Vector u_split(ndofs_full); u_split = 0.0;
     apply_perm(u1_full, u_split, P_full_to_split);
 
     Vector r1_full(ndofs_full), r1_split(ndofs_full), r1_split_as_full(ndofs_full);

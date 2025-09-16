@@ -273,7 +273,7 @@ int main(int, char**)
 
    // deterministic pseudo-random fill
    {
-      Real* uh = u_full.ReadWriteHostData();
+      Real* uh = u_full.WriteHostData();
       uint32_t s = 0xC0FFEEu;
       auto rnd = [&](){
          s ^= s << 13; s ^= s >> 17; s ^= s << 5;
@@ -292,7 +292,7 @@ int main(int, char**)
    // ========== TEST 2: Half-domain jump (u=1 on left half, 0 on right) ==========
    Vector u2_full(ndofs_full), u2_split(ndofs_full);
    {
-      Real* uf = u2_full.ReadWriteHostData();
+      Real* uf = u2_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
          Integer I,J,K,A,B,C; decode_full(g, I,J,K,A,B,C);
          uf[g] = (I < nxL) ? Real(1.0) : Real(0.0);
@@ -311,7 +311,7 @@ int main(int, char**)
    // Left column at i=nxL-1: set u=1 on those cells only; right column i=nxL: u=0
    Vector u3_full(ndofs_full), u3_split(ndofs_full);
    {
-      Real* uf = u3_full.ReadWriteHostData();
+      Real* uf = u3_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
          Integer I,J,K,A,B,C; decode_full(g, I,J,K,A,B,C);
          uf[g] = (I == nxL-1) ? Real(1.0) : Real(0.0);

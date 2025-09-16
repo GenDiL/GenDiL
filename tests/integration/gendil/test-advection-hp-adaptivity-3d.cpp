@@ -194,7 +194,7 @@ int main(int, char**)
     const Integer ndofsR1 = fe_space_R1.GetNumberOfFiniteElementDofs();
     Vector u(ndofsL + ndofsR1), r_nc(u.Size()), r_cf(u.Size());
     {
-      Real* pu = u.ReadWriteHostData();
+      Real* pu = u.WriteHostData();
       // deterministic-ish fill
       for (Integer g=0; g<u.Size(); ++g) pu[g] = Real((g%11)-5) / Real(7);
     }
@@ -217,7 +217,7 @@ int main(int, char**)
     Vector u(ndofs_split), r_pos(ndofs_split), r_neg(ndofs_split);
     // Random-but-deterministic fill
     {
-      Real* pu = u.ReadWriteHostData();
+      Real* pu = u.WriteHostData();
       uint32_t s = 0xC0FFEEu;
       auto rnd = [&](){ s^= s<<13; s^= s>>17; s^= s<<5; return Real((s & 0xFFFF)) / Real(0xFFFF); };
       for (Integer g=0; g<ndofs_split; ++g) pu[g] = rnd();

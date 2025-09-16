@@ -156,6 +156,7 @@ int main(int, char**)
   // --------------------------
   auto slice_left = [&](const Vector& r_split) {
     Vector rL(ndofsL);
+    rL = 0.0;
     const Real* src = r_split.ReadHostData();
     Real*       dst = rL.ReadWriteHostData();
     for (Integer j=0; j<nyL; ++j)
@@ -169,6 +170,7 @@ int main(int, char**)
 
   auto slice_right = [&](const Vector& r_split) {
     Vector rR(ndofsR);
+    rR = 0.0;
     const Real* src = r_split.ReadHostData();
     Real*       dst = rR.ReadWriteHostData();
     for (Integer j=0; j<nyR; ++j)
@@ -201,6 +203,7 @@ int main(int, char**)
   {
     Vector u(ndofs_split), r(ndofs_split);
     u = 1.0;
+    r = 0.0;
     apply_all(u, r);
     Real sum = 0.0;
     const Real* pr = r.ReadHostData();
@@ -213,6 +216,7 @@ int main(int, char**)
   {
     Vector u(ndofs_split), r(ndofs_split);
     u = 0.0;
+    r = 0.0;
     // Set u=1 on coarse L cells with i==nxL-1
     {
       Real* pu = u.ReadWriteHostData();
@@ -256,7 +260,7 @@ int main(int, char**)
     // Random-but-deterministic u on split layout [L | R1]
     Vector u(ndofsL + ndofsR1), rA(u.Size()), rB(u.Size());
     {
-      Real* pu = u.ReadWriteHostData();
+      Real* pu = u.WriteHostData();
       uint32_t s = 0xC0FFEEu;
       auto rnd = [&](){ s^=s<<13; s^=s>>17; s^=s<<5; return Real((s&0xFFFF))/Real(0xFFFF); };
       for (Integer g=0; g<u.Size(); ++g) pu[g] = rnd();
