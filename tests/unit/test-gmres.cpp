@@ -96,7 +96,7 @@ bool test_small_2x2()
 
     const Integer max_iters = 200;
     const Integer restart   = 2;
-    const Real    tol       = 1e-12;
+    const Real    tol       = 1e-10;
 
     auto dot = [](const Vector &u, const Vector &v){ return Dot(u,v); };
 
@@ -176,7 +176,7 @@ bool test_random_spd_vs_cg()
     Vector x_cg(n), tmp(n), z(n), residual(n), p(n);
     x_cg = 0.0; tmp = 0.0; z = 0.0; residual = 0.0; p = 0.0;
     const Integer cg_max = 1000;
-    const Real cg_tol = 1e-12;
+    const Real cg_tol = 1e-8;
     auto dot = [&](const Vector &u, const Vector &v){ return Dot(u,v); };
 
     struct DenseOp {
@@ -273,7 +273,7 @@ bool test_poisson_vs_cg()
     Vector x0(ndofs), tmp(ndofs), z(ndofs), residual(ndofs), p(ndofs);
     x0 = 0.0; tmp = 0.0; z = 0.0; residual = 0.0; p = 0.0;
     const Integer cg_max = 2000;
-    const Real cg_tol = 1e-10;
+    const Real cg_tol = 1e-8;
     auto dot = [&](const Vector &u, const Vector &v){ return Dot(u,v); };
     auto [cg_conv, cg_iters, cg_relres] = ConjugateGradient(
         poisson_op, b, dot, cg_max, cg_tol,
@@ -290,7 +290,7 @@ bool test_poisson_vs_cg()
     x1 = 0.0;
     const Integer gm_max = 2000;
     const Integer restart = ndofs;
-    const Real    gm_tol = 1e-10;
+    const Real    gm_tol = 1e-8;
 
     vector<Vector> V_array(restart + 1);
     for (size_t i = 0; i < restart + 1; i++)

@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.25.2)
 
 project(
     "GENDIL"
-    VERSION 0.0.2
+    VERSION 0.0.3
     DESCRIPTION "A C++ Generic Discretization Library."
     HOMEPAGE_URL "https://github.com/GenDiL/GenDiL")
 
@@ -11,7 +11,7 @@ include(GNUInstallDirs)
 # Set optimization flags for different build types
 set(CMAKE_CXX_FLAGS_DEBUG "-g -DNDEBUG -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -DNDEBUG" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g" CACHE STRING "")
 
 # Print warnings
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-limit=0")
@@ -86,7 +86,7 @@ if(USE_CALIPER)
   find_package(caliper REQUIRED HINTS "${caliper_DIR}"
               "${caliper_DIR}/share/cmake/caliper" NO_DEFAULT_PATH)
   message(STATUS "Caliper found!")
-  target_link_libraries(GENDIL INTERFACE caliper caliper-tools-util)
+  target_link_libraries(GENDIL INTERFACE caliper)
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CALIPER)
   # Print Caliper include directories and libraries
   get_target_property(CALIPER_INCLUDE_DIRS caliper INTERFACE_INCLUDE_DIRECTORIES)
@@ -102,13 +102,13 @@ target_include_directories(
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-target_compile_features(GENDIL INTERFACE cxx_std_17)
+target_compile_features(GENDIL INTERFACE cxx_std_20)
 
 # CUDA
 if(USE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  target_compile_features(GENDIL INTERFACE cuda_std_17)
+  target_compile_features(GENDIL INTERFACE cuda_std_20)
   target_include_directories(GENDIL
     INTERFACE
       ${CUDAToolkit_INCLUDE_DIRS}

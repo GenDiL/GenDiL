@@ -65,9 +65,6 @@ struct QuadraturePointValues
    }
 };
 
-template < Integer Index, typename IntegrationRule, size_t ... extra_dims >
-struct GetTensorSize< Index, QuadraturePointValues< IntegrationRule, extra_dims ... > > : GetTensorSize< Index, typename QuadraturePointValues< IntegrationRule, extra_dims ... >::Data > {};
-
 template <
    size_t ... Dims,
    typename KernelContext,

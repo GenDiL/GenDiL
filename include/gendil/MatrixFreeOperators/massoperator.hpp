@@ -125,7 +125,11 @@ void MassExplicitOperator(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+         constexpr size_t required_shared_mem =
+            Max(
+               required_shared_memory_v< KernelConfiguration, IntegrationRule >,
+               FiniteElementSpace::finite_element_type::GetNumDofs()
+            );
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );

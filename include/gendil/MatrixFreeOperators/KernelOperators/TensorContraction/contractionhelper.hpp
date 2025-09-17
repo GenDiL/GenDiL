@@ -25,6 +25,13 @@ namespace details
       static constexpr Integer DomainDim = DofToQuad< ShapeFunctions, IntegrationRule >::num_dofs;
    };
 
+   template < typename ShapeFunctions, typename IntegrationRule, typename Face, Integer DimIndex >
+   struct DomainRangeDimensions< NonconformingDofToQuad< ShapeFunctions, IntegrationRule, Face, DimIndex > >
+   {
+      static constexpr Integer RangeDim = NonconformingDofToQuad< ShapeFunctions, IntegrationRule, Face, DimIndex >::num_quads;
+      static constexpr Integer DomainDim = NonconformingDofToQuad< ShapeFunctions, IntegrationRule, Face, DimIndex >::num_dofs;
+   };
+
    template < typename Op1D >
    inline constexpr size_t range_dim_v = DomainRangeDimensions< Op1D >::RangeDim;
 

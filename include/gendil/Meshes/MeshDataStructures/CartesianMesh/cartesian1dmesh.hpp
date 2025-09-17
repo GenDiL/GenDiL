@@ -11,8 +11,8 @@
 #include "gendil/Meshes/Cells/ReferenceCells/segmentcell.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
-#include "gendil/Meshes/Connectivities/cartesianconnectivity.hpp"
-#include "gendil/Meshes/Connectivities/periodiccartesianconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianlocalfaceconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/periodiccartesianconnectivity.hpp"
 
 namespace gendil {
 
@@ -53,13 +53,13 @@ struct Cartesian1DMeshBase
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
    {
-      return connectivity( cell_index, face_index );
+      return connectivity.GetLocalFaceInfo( cell_index, face_index );
    }
 };
 
-using Cartesian1DMesh = Cartesian1DMeshBase< CartesianConnectivity< 1 > >;
+using Cartesian1DMesh = Cartesian1DMeshBase< CartesianLocalFaceConnectivity< 1 > >;
 using PeriodicCartesian1DMesh = Cartesian1DMeshBase< PeriodicCartesianConnectivity< 1 > >;
 
 }
