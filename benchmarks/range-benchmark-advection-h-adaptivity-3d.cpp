@@ -116,7 +116,7 @@ void bench_face_components_once_3D(int nx_half, int nyL, int nzL,
   Vector u(dofsL + dofsR), r(dofsL + dofsR);
   // deterministic fill
   {
-    Real* pu = u.ReadWriteHostData();
+    Real* pu = u.WriteHostData();
     for (Integer g=0; g<u.Size(); ++g) pu[g] = Real((g % 7) - 3) / 3.0;
   }
   r = 0.0;
