@@ -44,3 +44,6 @@
 
 // Functions to compute Cross product
 #include "crossproduct.hpp"
+
+// Absolute value
+#include "abs.hpp"

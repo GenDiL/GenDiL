@@ -30,6 +30,17 @@ Real ComputeInverseAndDeterminant(
    return detA;
 }
 
+template < Integer N >
+GENDIL_HOST_DEVICE
+Real ComputeInverseAndDeterminant(
+   const std::array< Real, N > & A,
+   std::array< Real, N > & inv_A )
+{
+   const Real detA = Determinant( A );
+   ComputeInverse( detA, A, inv_A );
+   return detA;
+}
+
 template < typename... MatrixTypes >
 GENDIL_HOST_DEVICE
 Real ComputeInverseAndDeterminant( const std::tuple<MatrixTypes...> & A, std::tuple<MatrixTypes...> &inv_A )
