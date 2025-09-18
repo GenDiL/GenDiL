@@ -54,6 +54,14 @@ Real Determinant( const std::array< std::array< Real, 3 >, 3 > & A )
            + A[2][0] * (A[0][1] * A[1][2] - A[1][1] * A[0][2]);
 }
 
+// Assumes that a vector represents a diagonal matrix
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+Real Determinant( const std::array< Real, Dim > & A )
+{
+    return Product( A );
+}
+
 template < typename ... MatrixTypes >
 GENDIL_HOST_DEVICE
 Real Determinant( const std::tuple< MatrixTypes... > & A);

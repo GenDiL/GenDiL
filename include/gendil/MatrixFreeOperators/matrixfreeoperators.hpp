@@ -39,6 +39,9 @@
 // An operator to measure experimental "speed of light" for a matrix-free operator with face terms.
 #include "facespeedoflightoperator.hpp"
 
+// An operator to compute the L2 error.
+#include "L2error.hpp"
+
 // An operator to project a high dimension field onto the first subspace using L2 norm.
 #include "L2projectionoperator.hpp"
 
@@ -47,3 +50,6 @@
 
 // A grad-grad operator.
 #include "gradgradoperator.hpp"
+
+// A space-time Maxwell operator.
+#include "spacetimemaxwelloperator.hpp"

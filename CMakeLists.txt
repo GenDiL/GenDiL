@@ -9,7 +9,7 @@ project(
 include(GNUInstallDirs)
 
 # Set optimization flags for different build types
-set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -DNDEBUG -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -DNDEBUG" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG" CACHE STRING "")
 
@@ -197,3 +197,4 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/gendil DESTINATION include)
 enable_testing()
 add_subdirectory(tests)
 add_subdirectory(benchmarks)
+add_subdirectory(examples)

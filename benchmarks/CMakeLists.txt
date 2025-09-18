@@ -59,3 +59,5 @@ add_my_benchmark(range-benchmark-advection-4d range-benchmark-advection-4d.cpp)
 add_my_benchmark(range-benchmark-advection-5d range-benchmark-advection-5d.cpp)
 add_my_benchmark(benchmark-advection-6d benchmark-advection-6d.cpp)
 add_my_benchmark(range-benchmark-advection-6d range-benchmark-advection-6d.cpp)
+# Maxwell benchmarks
+add_my_benchmark(range-benchmark-space-time-maxwell-3d range-benchmark-space-time-maxwell-3d.cpp)

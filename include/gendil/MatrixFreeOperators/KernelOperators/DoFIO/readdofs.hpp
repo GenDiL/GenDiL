@@ -578,52 +578,52 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsSerial(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
    // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
+   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1 + 1,
+   //    "Mismatching dimensions in ReadVectorDofsSerial."
    // );
-   static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in ReadDofs."
-   );
-   using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+   auto local_dofs = MakeVectorDofs( dof_shape{}, std::make_index_sequence< v_dim >{} );
 
    const GlobalIndex element_index = face_info.neighbor_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
 
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real data[ data_size ];
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using shape = std::tuple_element_t< i, dof_shape >;
+      // constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
+      Real data[ Product( shape{} ) ];
 
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
-   
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-   auto reference_view = MakeFIFOView( data, dofs_sizes );
-   
-   // TODO: Study if oriented_view first or second is better ( invert orientation )
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         oriented_view( indices... ) = global_dofs( indices..., element_index );
-      }
-   );
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         local_dofs( indices... ) = reference_view( indices... );
-      }
-   );
+      auto dofs_sizes = GetDofsSizes( shape{} );
+      
+      auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+      auto reference_view = MakeFixedFIFOView( data, shape{} );
+      
+      // TODO: Study if oriented_view first or second is better ( invert orientation )
+      Loop< shape >(
+         [&]( auto... indices )
+         {
+            oriented_view( indices... ) = std::get< i >( global_dofs )( indices..., element_index );
+         }
+      );
+      Loop< shape >(
+         [&]( auto... indices )
+         {
+            std::get< i >( local_dofs )( indices... ) = reference_view( indices... );
+         }
+      );
+   });
 
    return local_dofs;
 }
@@ -649,60 +649,60 @@ template <
    typename OrientationType,
    typename BoundaryType,
    typename NormalType,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsThreaded(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const FaceConnectivity< FaceIndex, Geometry, OrientationType, BoundaryType, NormalType > & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
    // static_assert(
    //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
    //    "Mismatching dimensions in ReadDofs."
    // );
-   static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
-      "Mismatching dimensions in ReadDofs."
-   );
-   using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
-   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
-   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+   auto local_dofs = MakeVectorDofs( thread, dof_shape{}, std::make_index_sequence< v_dim >{} );
 
    const GlobalIndex element_index = face_info.neighbor_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
-
-   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
-   Real * data = thread.SharedAllocator.allocate( data_size );
-
-   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
    
-   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
-   auto reference_view = MakeFixedFIFOView( data, DofShape{} );
-   
-   auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
-
-   // TODO: Study if oriented_view first or second is better ( invert orientation )
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   ConstexprLoop< v_dim >( [&]( auto i_ )
    {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         oriented_view( t..., k... ) = global_dofs( t..., k..., element_index ); // Assumes threads < registers
-      });
-   });
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
-   {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         local_dofs( k... ) = reference_view( t..., k... );
-      });
-   });
-   thread.Synchronize();
+      constexpr Integer i = i_;
+      using shape = std::tuple_element_t< i, dof_shape >;
+      using tshape = subsequence_t< shape, typename KernelContext::template threaded_dimensions< shape::size() > >;
+      using rshape = subsequence_t< shape, typename KernelContext::template register_dimensions< shape::size() > >;
+      constexpr size_t data_size = Product( shape{} );
+      Real * data = thread.SharedAllocator.allocate( data_size );
 
-   thread.SharedAllocator.reset();
+      auto dofs_sizes = GetDofsSizes( shape{} );
+      
+      auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+      auto reference_view = MakeFixedFIFOView( data, shape{} );
+
+      // TODO: Study if oriented_view first or second is better ( invert orientation )
+      ThreadLoop< tshape >( thread, [&] ( auto... t )
+      {
+         UnitLoop< rshape >( [&] ( auto... k )
+         {
+            oriented_view( t..., k... ) = std::get< i >( global_dofs )( t..., k..., element_index ); // Assumes threads < registers
+         });
+      });
+      ThreadLoop< tshape >( thread, [&] ( auto... t )
+      {
+         UnitLoop< rshape >( [&] ( auto... k )
+         {
+            std::get< i >( local_dofs )( k... ) = reference_view( t..., k... );
+         });
+      });
+      thread.Synchronize();
+
+      thread.SharedAllocator.reset();
+   });
 
    return local_dofs;
 }
