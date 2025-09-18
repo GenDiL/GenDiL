@@ -126,53 +126,73 @@ void MaxwellFusedOperator(
             auto U_pI= InterpolateValues(kernel_conf, std::get<nidx>(element_face_quad_data), U_p);
 
             QuadraturePointLoop<FR>(kernel_conf, [&](auto const &qf) {
-                // face geometry
-                typename FiniteElementSpace::mesh_type::cell_type::physical_coordinates Xf;
-                typename FiniteElementSpace::mesh_type::cell_type::jacobian Jf;
+                // ---- geometry & weights
+                PhysicalCoordinates Xf;
+                Jacobian Jf, invJf;
                 cell.GetValuesAndJacobian(qf, std::get<fidx>(mesh_face_quad_data), Xf, Jf);
-                Jacobian invJf;
-                Real detJf = ComputeInverseAndDeterminant(Jf, invJf);
-                Real wf = GetWeight(qf, std::get<fidx>(element_face_quad_data));
-                Real wfJ = detJf * wf;
+                ComputeInverseAndDeterminant(Jf, invJf);
+                Real wf    = GetWeight(qf, std::get<fidx>(element_face_quad_data));
 
-                // normal
-                auto ref_n = GetReferenceNormal(fi);
-                auto phys_n= ComputePhysicalNormal(invJf, ref_n);
-                Real nt = phys_n[SpaceDim];
-                std::array<Real, SpaceDim> n_s{};
-                for(int d=0; d<SpaceDim; ++d) n_s[d] = phys_n[d];
+                // reference->physical space–time normal (not unit)
+                auto n_ref  = GetReferenceNormal(fi);
+                auto n_phys = ComputePhysicalNormal(invJf, n_ref); // length ≈ detJf
+
+                // normalize the space–time normal used in the flux
+                Real n_norm = 0;
+                for (int d = 0; d < Dim; ++d) n_norm += n_phys[d]*n_phys[d];
+                n_norm = std::sqrt(n_norm) + Real(1e-30); // guard
+                Real nt_hat = n_phys[SpaceDim] / n_norm;
+                std::array<Real,SpaceDim> ns_hat{};
+                for (int d = 0; d < SpaceDim; ++d) ns_hat[d] = n_phys[d] / n_norm;
+
+                // area-weighted quadrature factor
+                Real wfJ = wf * n_norm; // (equivalent to wf * detJf)
 
                 // traces
                 Real Um[NCOMP], Up[NCOMP];
-                ReadQuadratureLocalValues(kernel_conf, qf, U_m, Um);
+                ReadQuadratureLocalValues(kernel_conf, qf, U_m,  Um);
                 ReadQuadratureLocalValues(kernel_conf, qf, U_pI, Up);
 
-                // Compute upwind in space–time via split of A_n using cross
-                auto SpaceTimeFlux = [&](Real nt_val,
-                                         const std::array<Real,SpaceDim> &ns,
-                                         const Real (& U_src)[NCOMP],
-                                         Real (& F_out)[NCOMP]) {
-                    // split E/H
-                    std::array<Real,SpaceDim> E_src{}, H_src{};
-                    for(int i=0;i<SpaceDim;++i) {
-                        E_src[i] = U_src[i];
-                        H_src[i] = U_src[SpaceDim + i];
-                    }
-                    auto crossH = Cross(ns, H_src);
-                    auto crossE = Cross(ns, E_src);
-                    for(int i=0;i<SpaceDim;++i) {
-                        F_out[i] = nt_val * E_src[i] + crossH[i];
-                        F_out[SpaceDim + i] = nt_val * H_src[i] - crossE[i];
+                // local wavespeed for dissipation (max on the two sides if coefficients differ)
+                Real eps_m = eps(Xf), mu_m = mu(Xf);
+                Real c_m = Real(1) / std::sqrt(eps_m * mu_m);
+                // If eps/mu are discontinuous across the face and you can evaluate side-specific
+                // values, do that and take c_hat = max(c_m, c_p). Otherwise:
+                Real c_hat = c_m;
+
+                // physical flux on each side, using the SAME normalized normal
+                auto SpaceTimeFlux = [&](Real ntv,
+                                        const std::array<Real,SpaceDim>& ns,
+                                        const Real (&U)[NCOMP],
+                                        Real (&F)[NCOMP]) {
+                    // split
+                    std::array<Real,SpaceDim> E{}, H{};
+                    for (int i = 0; i < SpaceDim; ++i) { E[i] = U[i]; H[i] = U[SpaceDim+i]; }
+                    auto nsxH = Cross(ns, H);
+                    auto nsxE = Cross(ns, E);
+                    for (int i = 0; i < SpaceDim; ++i) {
+                        F[i]              = ntv * E[i] + nsxH[i];
+                        F[SpaceDim + i]   = ntv * H[i] - nsxE[i];
                     }
                 };
+
                 Real Fm[NCOMP], Fp[NCOMP], Fq[NCOMP];
-                SpaceTimeFlux(nt,    n_s, Um, Fm);
-                SpaceTimeFlux(-nt,   n_s, Up, Fp);
-                for(int i=0;i<NCOMP;++i) {
-                    Fq[i] = 0.5*(Fm[i] + Fp[i]) * wfJ;
+                SpaceTimeFlux(nt_hat, ns_hat, Um, Fm);
+                SpaceTimeFlux(nt_hat, ns_hat, Up, Fp);
+
+                // Rusanov/LF dissipation: s = |nt| + c*|ns|
+                Real ns_mag = 0; for (int d=0; d<SpaceDim; ++d) ns_mag += ns_hat[d]*ns_hat[d];
+                ns_mag = Sqrt(ns_mag);
+                Real s = Abs(nt_hat) + c_hat * ns_mag;
+
+                for (int i = 0; i < NCOMP; ++i) {
+                    Real jump = Up[i] - Um[i];
+                    Fq[i] = ( Real(0.5)*(Fm[i] + Fp[i]) - Real(0.5)*s*jump ) * wfJ;
                 }
+
                 WriteQuadratureLocalValues(kernel_conf, qf, Fq, U_m);
             });
+
             ApplyAddTestFunctions(kernel_conf, std::get<fidx>(element_face_quad_data), U_m, B_RU);
         },
         // boundary
