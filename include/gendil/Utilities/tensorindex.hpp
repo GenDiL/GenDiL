@@ -93,6 +93,14 @@ auto GetSubIndex( const TensorIndex< Dim > & input )
    return TensorIndex< new_dim >( input[ Dims ]... );
 }
 
+template < size_t Dim, size_t... Dims >
+GENDIL_HOST_DEVICE
+auto GetSubIndex( const TensorIndex< Dim > & input, std::index_sequence<Dims...> )
+{
+   constexpr size_t new_dim = sizeof...(Dims);
+   return TensorIndex< new_dim >( input[ Dims ]... );
+}
+
 template < typename Input, size_t Dim, size_t... Is >
 GENDIL_HOST_DEVICE
 auto Apply( const Input & input, const TensorIndex< Dim > & index, std::index_sequence< Is... > )

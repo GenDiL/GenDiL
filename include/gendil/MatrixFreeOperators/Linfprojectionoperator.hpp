@@ -12,7 +12,7 @@ namespace gendil {
 // TODO: Generalize
 // !FIXME This is really a subspace projection using integration and Linf projection
 /**
- * @brief Implementation of Linf projection at the element level.
+ * @brief Implementation of a nodal projection at the element level.
  * 
  * @tparam TrialIntegrationRule The type of the integration rule used by the element operator.
  * @tparam TestIntegrationRule The type of the integration rule used by the element operator.

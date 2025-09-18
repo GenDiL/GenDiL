@@ -55,7 +55,11 @@ auto ThreadedAggregateDimensions(
 {
    // TODO Use a shared memory slice.
    auto v_shared = MakeSharedQuadraturePointValuesContainer( kernel_conf, TestIntegrationRule{} );
-   // TODO set v_shared to 0?
+   QuadraturePointLoop< TestIntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   {
+      WriteQuadratureLocalValues( kernel_conf, quad_index, 0.0, v_shared );
+   });
+   kernel_conf.Synchronize();
    QuadraturePointLoop< TrialIntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
    {
       auto u_q = ReadQuadratureLocalValues( kernel_conf, quad_index, u );

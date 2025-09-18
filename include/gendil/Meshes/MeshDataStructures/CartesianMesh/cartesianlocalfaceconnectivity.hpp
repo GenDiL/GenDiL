@@ -24,6 +24,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 
 namespace gendil {
 
