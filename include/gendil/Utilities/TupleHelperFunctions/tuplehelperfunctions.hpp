@@ -11,3 +11,6 @@
 
 // Get the first N or last N elements of a given tuple.
 #include "headtail.hpp"
+
+// Create a tuple containing n times a value.
+#include "tupleof.hpp"

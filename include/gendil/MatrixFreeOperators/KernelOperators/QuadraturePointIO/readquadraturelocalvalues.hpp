@@ -29,6 +29,19 @@ void ReadQuadratureLocalValues( TensorIndex< Dim > quad_index,
    ReadQuadratureLocalValues( quad_index, field, field_q, std::make_index_sequence< Dim >{} );
 }
 
+template < typename KernelContext, Integer Dim, typename ... Tensors >
+GENDIL_HOST_DEVICE
+auto ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex< Dim > & quad_index, const std::tuple< Tensors... > & field )
+{
+   constexpr Integer vdim = sizeof...( Tensors );
+   SerialRecursiveArray<Real, vdim> result;
+   ConstexprLoop< vdim >( [&]( auto i )
+   {
+      result(i) = ReadQuadratureLocalValues( thread, quad_index, std::get< i >( field ) );
+   });
+   return result;
+}
+
 template < Integer Dim, typename Tensor, size_t... I >
 GENDIL_HOST_DEVICE
 Real ReadQuadratureLocalValues( const TensorIndex< Dim > & quad_index, const Tensor & field, std::index_sequence< I... > )
@@ -40,22 +53,16 @@ template < typename KernelContext, Integer Dim, typename Tensor >
 GENDIL_HOST_DEVICE
 Real ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex< Dim > & quad_index, const Tensor & field )
 {
-   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
-   return ReadQuadratureLocalValues( quad_index, field, RegisterDimensions{} );
-}
-
-template < typename KernelContext, Integer Dim, typename ... Tensors >
-GENDIL_HOST_DEVICE
-auto ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex< Dim > & quad_index, const std::tuple< Tensors... > & field )
-{
-   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
-   constexpr Integer vdim = sizeof...( Tensors );
-   SerialRecursiveArray<Real, vdim> result;
-   ConstexprLoop< vdim >( [&]( auto i )
+   if constexpr ( get_rank_v< Tensor > == Dim )
    {
-      result(i) = ReadQuadratureLocalValues( quad_index, std::get< i >( field ), RegisterDimensions{} );
-   });
-   return result;
+      return ReadQuadratureLocalValues( quad_index, field, std::make_index_sequence< Dim >{} );
+   }
+   else // rank < Dim
+   {
+      // TODO Check that rank == register-dimensions
+      using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
+      return ReadQuadratureLocalValues( quad_index, field, RegisterDimensions{} );
+   }
 }
 
 template < typename KernelContext, Integer Dim, typename Tensor, Integer NumComp, size_t... Is >

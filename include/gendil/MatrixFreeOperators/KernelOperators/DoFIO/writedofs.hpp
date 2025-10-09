@@ -382,7 +382,10 @@ void SerialWriteDofs(
          if constexpr ( Op == WriteAdd )
             AtomicAdd( global_dofs( indices..., element_index ), oriented_view( indices... ) );
          else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
+         {
+            const Real value = -oriented_view( indices... );
+            AtomicAdd( global_dofs( indices..., element_index ), value );
+         }
          else
             global_dofs( indices..., element_index ) = oriented_view( indices... );
       }
@@ -450,6 +453,172 @@ void ThreadedWriteDofs(
 }
 
 template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void WriteScalarDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   if constexpr ( is_serial_v< KernelContext > )
+   {
+      SerialWriteDofs<Op>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+   else
+   {
+      ThreadedWriteDofs<Op>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void SerialWriteVectorDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   // TODO: branch on identity orientation to skip copy
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using dof_scalar_shape = std::tuple_element_t< i, dof_shape >;
+      constexpr size_t data_size = Product( dof_scalar_shape{} );
+      Real data[ data_size ];
+
+      // Copy from local_dofs to reference_view
+      auto reference_view = MakeFixedFIFOView( data, dof_scalar_shape{} );
+      UnitLoop< dof_scalar_shape >(
+         [&]( auto... indices )
+         {
+            reference_view( indices... ) = std::get< i >( local_dofs )( indices... );
+         }
+      );
+
+      // Apply orientation
+      Permutation< FiniteElementSpace::Dim > orientation = face_info.get_orientation();
+      auto oriented_view = MakeOrientedView( data, dof_scalar_shape{}, orientation );
+
+      const GlobalIndex element_index = face_info.get_cell_index();
+      UnitLoop< dof_scalar_shape >(
+         [&]( auto... indices )
+         {
+            if constexpr ( Op == WriteAdd )
+               AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), oriented_view( indices... ) );
+            else if constexpr ( Op == WriteSub )
+            {
+               const Real value = -oriented_view( indices... );
+               AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), value );
+            }
+            else
+               std::get< i >( global_dofs )( indices..., element_index ) = oriented_view( indices... );
+         }
+      );
+   } );
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void ThreadedWriteVectorDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   static_assert(
+      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in WriteDofs."
+   );
+
+   using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
+   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+
+   constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
+   Real * data = thread.SharedAllocator.allocate( data_size );
+
+   // Copy local dofs into reference view
+   auto reference_view = MakeFixedFIFOView( data, DofShape{} );
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   {
+      UnitLoop< rshape >( [&] ( auto... k )
+      {
+         reference_view( t..., k... ) = local_dofs( k... );
+      });
+   });
+
+   // Apply orientation
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.get_orientation();
+   auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
+   auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+
+   const GlobalIndex element_index = face_info.get_cell_index();
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   {
+      UnitLoop< rshape >( [&] ( auto... k )
+      {
+         if constexpr ( Op == WriteAdd )
+            AtomicAdd( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
+         else if constexpr ( Op == WriteSub )
+            AtomicAdd( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
+         else
+            global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );;
+      });
+   });
+
+   thread.Synchronize();
+   thread.SharedAllocator.reset();
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void WriteVectorDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   if constexpr ( is_serial_v< KernelContext > )
+   {
+      SerialWriteVectorDofs<Op>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+   else
+   {
+      ThreadedWriteVectorDofs<Op>( thread, fe_space, face_info, local_dofs, global_dofs );
+   }
+}
+
+template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
@@ -463,13 +632,13 @@ void WriteDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteVectorDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteScalarDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 
@@ -487,13 +656,13 @@ void WriteAddDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteVectorDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteScalarDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 
@@ -511,13 +680,13 @@ void WriteSubDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteVectorDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
    else
    {
-      ThreadedWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      WriteScalarDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
 }
 

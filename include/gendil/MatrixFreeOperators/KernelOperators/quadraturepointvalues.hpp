@@ -80,6 +80,22 @@ auto MakeQuadraturePointValuesContainer( const KernelContext & kernel_conf, Inte
 }
 
 template <
+   size_t vector_dim,
+   size_t ... Dims,
+   typename KernelContext,
+   typename IntegrationRule >
+GENDIL_HOST_DEVICE
+auto MakeVectorQuadraturePointValuesContainer( const KernelContext & kernel_conf, IntegrationRule )
+{
+   using quad_shape = typename IntegrationRule::points::num_points_tensor;
+   using rdims = typename KernelContext::template register_dimensions< IntegrationRule::space_dim >;
+   using rshape = subsequence_t< quad_shape, rdims >;
+   using shape = cat_t< rshape, std::index_sequence< Dims... > >;
+   using tensor = decltype( MakeStaticFIFOView< Real >( shape{} ) );
+   return tuple_of< vector_dim, tensor >{};
+}
+
+template <
    size_t ... Dims,
    typename KernelContext,
    typename IntegrationRule >
@@ -91,6 +107,33 @@ auto MakeSharedQuadraturePointValuesContainer( const KernelContext & kernel_conf
    constexpr size_t shared_size = Product( shape{} );
    Real * buffer = kernel_conf.SharedAllocator.allocate( shared_size );
    return MakeFixedFIFOView( buffer, shape{} );
+}
+
+template <
+   size_t vector_dim,
+   size_t ... Dims,
+   typename KernelContext,
+   typename IntegrationRule,
+   size_t ... I >
+GENDIL_HOST_DEVICE
+auto MakeVectorSharedQuadraturePointValuesContainer( const KernelContext & kernel_conf, IntegrationRule & int_rule, std::index_sequence<I...> )
+{
+   using quad_shape = typename IntegrationRule::points::num_points_tensor;
+   using shape = cat_t< quad_shape, std::index_sequence< Dims... > >;
+   constexpr size_t shared_size = Product( shape{} );
+   Real * buffer = kernel_conf.SharedAllocator.allocate( vector_dim * shared_size );
+   return std::make_tuple( MakeFixedFIFOView( buffer + I*shared_size, shape{} )... );
+}
+
+template <
+   size_t vector_dim,
+   size_t ... Dims,
+   typename KernelContext,
+   typename IntegrationRule >
+GENDIL_HOST_DEVICE
+auto MakeVectorSharedQuadraturePointValuesContainer( const KernelContext & kernel_conf, IntegrationRule & int_rule )
+{
+   return MakeVectorSharedQuadraturePointValuesContainer<vector_dim,Dims...>( kernel_conf, int_rule, std::make_index_sequence< vector_dim >{} );
 }
 
 }

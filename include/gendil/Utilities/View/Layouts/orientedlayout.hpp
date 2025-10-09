@@ -131,6 +131,16 @@ auto MakeOrientedView(
     return MakeView( data, MakeOrientedLayout( sizes, orientation ) );
 }
 
+template < typename T, size_t dim, size_t ... Sizes >
+GENDIL_HOST_DEVICE
+auto MakeOrientedView(
+    T* const data,
+    std::index_sequence<Sizes...> const & sizes,
+    Permutation< dim > const & orientation )
+{
+    return MakeOrientedView( data, std::array<size_t, dim>{ Sizes... }, orientation );
+}
+
 template < typename T, size_t dim >
 GENDIL_HOST_DEVICE
 auto MakeOrientedView( HostDevicePointer< T > const & data, std::array< size_t, dim > const & sizes, Permutation< dim > const & orientation )

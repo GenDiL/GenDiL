@@ -29,6 +29,20 @@ void WriteQuadratureLocalValues( TensorIndex< Dim > quad_index,
    WriteQuadratureLocalValues( quad_index, field_q, field, std::make_index_sequence< Dim >{} );
 }
 
+template < Integer Dim, typename KernelContext, typename ... Tensors >
+GENDIL_HOST_DEVICE
+void WriteQuadratureLocalValues(
+   const KernelContext & thread,
+   const TensorIndex< Dim > & quad_index,
+   const Real & field_q,
+   std::tuple< Tensors ... > & field )
+{
+   ConstexprLoop< sizeof...( Tensors ) >( [&]( auto i )
+   {
+      WriteQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ) );
+   });
+}
+
 template < Integer Dim, typename Tensor, size_t... I >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
@@ -42,10 +56,22 @@ void WriteQuadratureLocalValues(
 
 template < Integer Dim, typename KernelContext, typename Tensor >
 GENDIL_HOST_DEVICE
-void WriteQuadratureLocalValues( const KernelContext & thread, const TensorIndex< Dim > & quad_index, const Real & field_q, Tensor & field )
+void WriteQuadratureLocalValues(
+   const KernelContext & thread,
+   const TensorIndex< Dim > & quad_index,
+   const Real & field_q,
+   Tensor & field )
 {
-   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
-   WriteQuadratureLocalValues( quad_index, field_q, field, RegisterDimensions{} );
+   if constexpr ( get_rank_v< Tensor > == Dim )
+   {
+      WriteQuadratureLocalValues( quad_index, field_q, field, std::make_index_sequence< Dim >{} );
+   }
+   else // rank < Dim
+   {
+      // TODO Check that rank == register-dimensions
+      using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
+      WriteQuadratureLocalValues( quad_index, field_q, field, RegisterDimensions{} );
+   }
 }
 
 template < Integer Dim, typename IntegrationRule, Integer NumComp, size_t... Is >
@@ -101,11 +127,10 @@ void WriteQuadratureLocalValues(
    const Real (& field_q)[ NumComp ],
    std::tuple< Tensors ... > & field )
 {
-   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
    constexpr Integer vdim = sizeof...( Tensors );
    ConstexprLoop< vdim >( [&]( auto i )
    {
-      WriteQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ), RegisterDimensions{} );
+      WriteQuadratureLocalValues( thread, quad_index, field_q[i], std::get< i >( field ) );
    });
 }
 
@@ -122,6 +147,22 @@ void WriteQuadratureLocalValues(
    ConstexprLoop< vdim >( [&]( auto i )
    {
       WriteQuadratureLocalValues( quad_index, field_q(i), std::get< i >( field ), RegisterDimensions{} );
+   });
+}
+
+template < typename KernelContext, Integer Dim, Integer NumComp, typename ... Tensors >
+GENDIL_HOST_DEVICE
+void WriteQuadratureLocalValues(
+   const KernelContext & thread,
+   const TensorIndex< Dim > & quad_index,
+   const std::array<Real,NumComp> & field_q,
+   std::tuple< Tensors ... > & field )
+{
+   using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
+   constexpr Integer vdim = sizeof...( Tensors );
+   ConstexprLoop< vdim >( [&]( auto i )
+   {
+      WriteQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ), RegisterDimensions{} );
    });
 }
 

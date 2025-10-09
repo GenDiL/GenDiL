@@ -23,6 +23,17 @@ struct CartesianMesh
    // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         orientation_type,
+         CanonicalVector< Dim, NormalAxis, NormalSign >,
+         CanonicalVector< Dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    std::array< GlobalIndex, Dim > sizes;
    const std::array< Real, Dim > h;
@@ -174,19 +185,15 @@ struct CartesianMesh
          }
       }
 
-      GlobalIndex neighbor_linear_index = boundary ? -1 : ComputeLinearIndex( neighbor_index, sizes );
+      GlobalIndex neighbor_linear_index =
+         boundary ?
+            std::numeric_limits< GlobalIndex >::quiet_NaN() :
+            ComputeLinearIndex( neighbor_index, sizes );
 
-      using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            conformity_type,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{ neighbor_linear_index, {}, MakeReferencePermutation< Dim >(), boundary };
+      return face_info_type<FaceIndex>{
+         { cell_index, {}, {}, {}, {}, boundary },
+         { neighbor_linear_index, {}, {}, {}, {}, boundary }
+      };
    }
 };
 

@@ -151,7 +151,7 @@ auto ConjugateGradient(
    // 3) Check initial convergence
    Real r_n = norm2( residual );
    if (r_n < tol * rhs_n) {
-      return IterativeSolverResult{ true, 0, Sqrt(r_n/rhs_n) };
+      return IterativeSolverResult{ true, 0, r_n/rhs_n };
    }
 
    // 4) p = r
@@ -175,7 +175,7 @@ auto ConjugateGradient(
       // 8) Convergence check: ‖r‖ < tol * ‖rhs‖
       r_n = norm2( residual );
       if ( r_n < tol * rhs_n ) {
-         return IterativeSolverResult{ true, iter+1, Sqrt(r_n/rhs_n) };
+         return IterativeSolverResult{ true, iter+1, r_n/rhs_n };
       }
 
       // 9) z = r  (for future preconditioning)
@@ -195,7 +195,7 @@ auto ConjugateGradient(
    }
 
    // 12) No convergence within max_iters
-   return IterativeSolverResult{ false, iter, Sqrt(r_n/rhs_n) };
+   return IterativeSolverResult{ false, iter, r_n/rhs_n };
 }
 
 template<

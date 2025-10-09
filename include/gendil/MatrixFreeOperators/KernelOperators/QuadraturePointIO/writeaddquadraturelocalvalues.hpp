@@ -69,4 +69,19 @@ void WriteAddQuadratureLocalValues(
    WriteAddQuadratureLocalValues( quad_index, field_q, field );
 }
 
+template < typename KernelContext, Integer Dim, Integer NumComp, typename ... Tensors >
+GENDIL_HOST_DEVICE
+void WriteAddQuadratureLocalValues(
+   const KernelContext & thread,
+   const TensorIndex< Dim > & quad_index,
+   const Real (& field_q)[ NumComp ],
+   std::tuple< Tensors ... > & field )
+{
+   constexpr Integer vdim = sizeof...( Tensors );
+   ConstexprLoop< vdim >( [&]( auto i )
+   {
+      WriteAddQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ) );
+   });
+}
+
 }

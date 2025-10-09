@@ -50,3 +50,6 @@
 
 // A grad-grad operator.
 #include "gradgradoperator.hpp"
+
+// A continuum-kinetic weak coupling using upwind fluxes.
+#include "eulervlasovoperator.hpp"

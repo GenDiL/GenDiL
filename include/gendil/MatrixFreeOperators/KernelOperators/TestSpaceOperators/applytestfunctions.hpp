@@ -65,6 +65,39 @@ auto ApplyTestFunctions(
    }
 }
 
+template <
+   typename KernelContext,
+   CellFaceView Face,
+   typename FaceQuadData,
+   typename ... InputTensors,
+   size_t ... I >
+GENDIL_HOST_DEVICE
+auto ApplyTestFunctions(
+   const KernelContext & ctx,
+   const Face & face,
+   const FaceQuadData & face_quad_data,
+   const std::tuple<InputTensors ...> & quad_point_values,
+   std::index_sequence< I... > )
+{
+   return std::make_tuple( ApplyTestFunctions( ctx, face, face_quad_data, std::get< I >( quad_point_values ) )... );
+}
+
+template <
+   typename KernelContext,
+   CellFaceView Face,
+   typename FaceQuadData,
+   typename ... InputTensors >
+GENDIL_HOST_DEVICE
+auto ApplyTestFunctions(
+   const KernelContext & ctx,
+   const Face & face,
+   const FaceQuadData & face_quad_data,
+   const std::tuple<InputTensors ...> & quad_point_values )
+{
+   constexpr Integer local_face_index = Face::local_face_index_type::value;
+   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
+   return ApplyTestFunctions( ctx, face, local_face_quad_data, quad_point_values, std::make_index_sequence< sizeof...( InputTensors ) >{} );
+}
 
 template <
    typename KernelContext,

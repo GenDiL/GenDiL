@@ -242,7 +242,7 @@ int main(int, char**)
       }
       std::cout << "  [Per-plane L2 of Δr along x]:\n    ";
       for (Integer I=0; I<nx_full; ++I) {
-         const Real v = std::sqrt(plane_l2[I] / std::max(plane_cnt[I], 1.0));
+         const Real v = std::sqrt(plane_l2[I] / std::max(plane_cnt[I], Real(1.0)));
          std::cout << v << (I+1<nx_full ? "  " : "\n");
       }
 

@@ -43,15 +43,11 @@ template <
    typename ElementFaceDofToQuadEuler,
    typename ElementFaceDofToQuadVlasov,
    // Euler inputs (minus): rho, momentum, rhoE (passed separately)
-   typename InputRhoMinus,
-   typename InputMomMinus,
-   typename InputEnergyMinus,
+   typename InputUMinus,
    // Vlasov inputs (plus): f
    typename InputFPlus,
    // Euler outputs (minus): rho, momentum, rhoE
-   typename OutputRhoMinus,
-   typename OutputMomMinus,
-   typename OutputEnergyMinus,
+   typename OutputUMinus,
    // Vlasov outputs (plus): f
    typename OutputFPlus
 >
@@ -69,14 +65,10 @@ void EulerVlasovCrossDimLocalFaceOperator(
    const ElementFaceDofToQuadEuler  & face_qdata_euler,
    const ElementFaceDofToQuadVlasov & face_qdata_vlasov,
    // Inputs
-   const InputRhoMinus    & dofs_rho_minus_in,
-   const InputMomMinus    & dofs_mom_minus_in,
-   const InputEnergyMinus & dofs_rhoE_minus_in,
+   const InputUMinus    & dofs_u_minus_in,
    const InputFPlus       & dofs_f_plus_in,
    // Outputs (accumulate)
-   OutputRhoMinus    & dofs_rho_minus_out,
-   OutputMomMinus    & dofs_mom_minus_out,
-   OutputEnergyMinus & dofs_rhoE_minus_out,
+   OutputUMinus    & dofs_u_minus_out,
    OutputFPlus       & dofs_f_plus_out,
    // Thermo params
    const Real gamma = 1.4,   // ratio of specific heats
@@ -93,17 +85,13 @@ void EulerVlasovCrossDimLocalFaceOperator(
    const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
 
    // Read Euler component DOFs on the minus side (per-cell views)
-   auto u_rho  = ReadDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), dofs_rho_minus_in);
-   auto u_mom  = ReadDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), dofs_mom_minus_in);
-   auto u_rhoE = ReadDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), dofs_rhoE_minus_in);
+   auto u_minus = ReadDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), dofs_u_minus_in);
 
    // Read Vlasov DOFs on the plus side
    auto u_f = ReadDofs(kernel_conf, vlasov_fe_space_plus, face_info.plus_side(), dofs_f_plus_in);
 
    // Interpolate traces to face quadrature points
-   auto Brho_minus  = InterpolateValues(kernel_conf, face_info.minus_side(), face_qdata_euler,  u_rho );
-   auto Bmom_minus  = InterpolateValues(kernel_conf, face_info.minus_side(), face_qdata_euler,  u_mom );
-   auto BrhoE_minus = InterpolateValues(kernel_conf, face_info.minus_side(), face_qdata_euler,  u_rhoE);
+   auto Bu_minus  = InterpolateValues(kernel_conf, face_info.minus_side(), face_qdata_euler,  u_minus );
 
    auto Bf_plus     = InterpolateValues(kernel_conf, face_info.plus_side(),  face_qdata_vlasov, u_f   );
 
@@ -120,15 +108,11 @@ void EulerVlasovCrossDimLocalFaceOperator(
 
    // Euler side: we accumulate moments at the LOW face quadrature points by
    // writing into low-dim face containers from the high-dim loop via sub-index.
-   auto Dmass_shared = MakeSharedQuadraturePointValuesContainer(kernel_conf, int_rule_low);
-   auto Dmom_shared  = MakeSharedQuadraturePointValuesContainer<LowDim>(kernel_conf, int_rule_low);
-   auto DE_shared    = MakeSharedQuadraturePointValuesContainer(kernel_conf, int_rule_low);
+   auto Du_shared = MakeVectorSharedQuadraturePointValuesContainer<LowDim+2>(kernel_conf, int_rule_low);
    QuadraturePointLoop( kernel_conf, int_rule_low, [&] ( auto const & quad_index )
    {
-      WriteQuadratureLocalValues( kernel_conf, quad_index, 0.0, Dmass_shared );
-      Real z[LowDim]; for(int i=0;i<LowDim;++i) z[i]=0.0;
-      WriteQuadratureLocalValues( kernel_conf, quad_index, z, Dmom_shared );
-      WriteQuadratureLocalValues( kernel_conf, quad_index, 0.0, DE_shared );
+      Real z[LowDim+2]; for(int i=0;i<LowDim+2;++i) z[i]=0.0;
+      WriteQuadratureLocalValues( kernel_conf, quad_index, z, Du_shared );
    } );
    kernel_conf.Synchronize();
 
@@ -170,9 +154,11 @@ void EulerVlasovCrossDimLocalFaceOperator(
       for (int i = 0; i < LowDim; ++i) { vn += v[i] * n_phys[i]; }
 
       // ---------- Euler trace (minus) at the low face point ql ----------
-      const Real rho   = ReadQuadratureLocalValues(kernel_conf, ql, Brho_minus );
-      const auto mom   = ReadQuadratureLocalValues(kernel_conf, ql, Bmom_minus );
-      const Real rhoE  = ReadQuadratureLocalValues(kernel_conf, ql, BrhoE_minus);
+      const auto U_q   = ReadQuadratureLocalValues( kernel_conf, ql, Bu_minus );
+      const Real rho   = U_q(0);
+      Real mom[LowDim];
+      for (int i = 0; i < LowDim; ++i) { mom[i] = U_q(i + 1); }
+      const Real rhoE  = U_q(LowDim + 1);
 
       // Primitive vars
       const Real inv_rho = 1.0 / Max(rho, 1e-14); // safeguard
@@ -202,8 +188,8 @@ void EulerVlasovCrossDimLocalFaceOperator(
                dv_minus_u_sq += dvux * dvux;
          }
       }
-      const Real norm_pref = Pow(2.0 * M_PI * RT, -0.5 * Real(dvel));
-      const Real Mq = rho * norm_pref * Exp( - dv_minus_u_sq / (2.0 * RT) );
+      const Real norm_pref = std::pow(2.0 * M_PI * RT, -0.5 * Real(dvel));
+      const Real Mq = rho * norm_pref * std::exp( - dv_minus_u_sq / (2.0 * RT) );
 
       // Vlasov trace (plus)
       const Real f_plus_q = ReadQuadratureLocalValues(kernel_conf, qh, Bf_plus);
@@ -216,15 +202,17 @@ void EulerVlasovCrossDimLocalFaceOperator(
       WriteQuadratureLocalValues(kernel_conf, qh, Df_q, Df_high);
 
       // ---------- Write fluid-side contributions ----------------
-      cont Real mass = Df_q;
-      Real mom[LowDim];
-      for (int i = 0; i < LowDim; ++i) { mom[i] = Df_q * v[i]; }
+      const Real mass = Df_q;
+      Real mom_q[LowDim];
+      for (int i = 0; i < LowDim; ++i) { mom_q[i] = Df_q * v[i]; }
       Real v2 = 0.0;
       for (int k = 0; k < dvel; ++k) v2 += v[k]*v[k];
       Real energy = Df_q * 0.5 * v2;
-      WriteAddQuadratureLocalValues( kernel_conf, ql, mass, Dmass_shared );
-      WriteAddQuadratureLocalValues( kernel_conf, ql, mom, Dmom_shared );
-      WriteAddQuadratureLocalValues( kernel_conf, ql, energy, DE_shared );
+      Real Du_q[LowDim + 2];
+      Du_q[0] = mass;
+      for (int i = 0; i < LowDim; ++i) { Du_q[i + 1] = mom_q[i]; }
+      Du_q[LowDim + 1] = energy;
+      WriteAddQuadratureLocalValues( kernel_conf, ql, Du_q, Du_shared );
    });
 
    // -------- Apply test functions and scatter to DoFs --------
@@ -238,27 +226,18 @@ void EulerVlasovCrossDimLocalFaceOperator(
    // Euler (minus) side: add contributions to each conserved component
    kernel_conf.Synchronize();
    {
-      auto Dmass = MakeQuadraturePointValuesContainer(kernel_conf, int_rule_low);
-      auto Dmom = MakeQuadraturePointValuesContainer<LowDim>(kernel_conf, int_rule_low);
-      auto DE = MakeQuadraturePointValuesContainer(kernel_conf, int_rule_low);
+      auto Du = MakeVectorQuadraturePointValuesContainer<LowDim+2>(kernel_conf, int_rule_low);
       QuadraturePointLoop( kernel_conf, int_rule_low, [&] ( auto const & quad_index )
       {
-         const auto Dmass_q = Apply( Dmass_shared, quad_index );
-         const auto Dmom_q  = Apply( Dmom_shared,  quad_index );
-         const auto DE_q    = Apply( DE_shared,    quad_index );
-         WriteQuadratureLocalValues( kernel_conf, quad_index, Dmass_q, Dmass );
-         WriteQuadratureLocalValues( kernel_conf, quad_index, Dmom_q,  Dmom );
-         WriteQuadratureLocalValues( kernel_conf, quad_index, DE_q,    DE );
+         const auto Du_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Du_shared );
+         WriteQuadratureLocalValues( kernel_conf, quad_index, Du_q, Du );
       });
       kernel_conf.Synchronize();
       kernel_conf.SharedAllocator.reset();
 
-      auto Bmass = ApplyTestFunctions(kernel_conf, face_info.minus_side(), face_qdata_euler, Dmass);
-      auto Bmom  = ApplyTestFunctions(kernel_conf, face_info.minus_side(), face_qdata_euler, Dmom);
-      auto BE    = ApplyTestFunctions(kernel_conf, face_info.minus_side(), face_qdata_euler, DE);
-      WriteAddDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), Bmass, dofs_rho_minus_out );
-      WriteAddDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), Bmom,  dofs_mom_minus_out );
-      WriteAddDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), BE,    dofs_rhoE_minus_out );
+      auto BDu = ApplyTestFunctions(kernel_conf, face_info.minus_side(), face_qdata_euler, Du);
+      // auto BDu = ApplyTestFunctions(kernel_conf, face_info.minus_side(), face_qdata_euler, Du_shared); // !FIXME
+      WriteAddDofs(kernel_conf, euler_fe_space_minus, face_info.minus_side(), BDu, dofs_u_minus_out );
    }
 
 }
@@ -270,7 +249,8 @@ void EulerVlasovCrossDimLocalFaceOperator(
  */
 template <
    typename KernelConfiguration,
-   typename IntegrationRule,
+   typename IntegrationRuleEuler,
+   typename IntegrationRuleVlasov,
    typename FaceIntegrationRulesEuler,   // decltype(GetFaceIntegrationRules(IntegrationRule{}))
    typename FaceIntegrationRulesVlasov,  // decltype(GetFaceIntegrationRules(IntegrationRule{}))
    typename FiniteElementSpaceEuler,
@@ -281,14 +261,10 @@ template <
    typename ElementFaceDofToQuadEuler,
    typename ElementFaceDofToQuadVlasov,
    // Inputs
-   typename InputRhoMinus,
-   typename InputMomMinus,
-   typename InputEnergyMinus,
+   typename InputUMinus,
    typename InputFPlus,
    // Outputs
-   typename OutputRhoMinus,
-   typename OutputMomMinus,
-   typename OutputEnergyMinus,
+   typename OutputUMinus,
    typename OutputFPlus>
 void EulerVlasovExplicitCrossDimFaceOperator(
    const FiniteElementSpaceEuler  & fe_space_euler,
@@ -298,13 +274,9 @@ void EulerVlasovExplicitCrossDimFaceOperator(
    const MeshFaceDofToQuadVlasov & mesh_face_quad_data_vlasov,
    const ElementFaceDofToQuadEuler  & element_face_quad_data_euler,
    const ElementFaceDofToQuadVlasov & element_face_quad_data_vlasov,
-   const InputRhoMinus    & dofs_rho_minus_in,
-   const InputMomMinus    & dofs_mom_minus_in,
-   const InputEnergyMinus & dofs_rhoE_minus_in,
+   const InputUMinus    & dofs_u_minus_in,
    const InputFPlus       & dofs_f_plus_in,
-   OutputRhoMinus    & dofs_rho_minus_out,
-   OutputMomMinus    & dofs_mom_minus_out,
-   OutputEnergyMinus & dofs_rhoE_minus_out,
+   OutputUMinus    & dofs_u_minus_out,
    OutputFPlus       & dofs_f_plus_out,
    const Real gamma = 1.4,
    const Real Rgas  = 1.0 )
@@ -314,7 +286,10 @@ void EulerVlasovExplicitCrossDimFaceOperator(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
       {
          constexpr size_t required_shared_mem =
-            required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+            Max(
+               required_shared_memory_v< KernelConfiguration, IntegrationRuleVlasov >,
+               FiniteElementSpaceVlasov::finite_element_type::GetNumDofs()
+            );
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
@@ -331,13 +306,9 @@ void EulerVlasovExplicitCrossDimFaceOperator(
             mesh_face_quad_data_vlasov,
             element_face_quad_data_euler,
             element_face_quad_data_vlasov,
-            dofs_rho_minus_in,
-            dofs_mom_minus_in,
-            dofs_rhoE_minus_in,
+            dofs_u_minus_in,
             dofs_f_plus_in,
-            dofs_rho_minus_out,
-            dofs_mom_minus_out,
-            dofs_rhoE_minus_out,
+            dofs_u_minus_out,
             dofs_f_plus_out,
             gamma,
             Rgas );
@@ -386,8 +357,8 @@ class EulerVlasovCrossDimFaceOperator
    using fe_euler_shape  = typename fe_euler_t ::finite_element_type::shape_functions;
    using fe_vlasov_shape = typename fe_vlasov_t::finite_element_type::shape_functions;
 
-   using element_face_q_euler_t  = decltype( MakeFaceDofToQuad<fe_euler_shape >( face_rules_euler_t{}  ) );
-   using element_face_q_vlasov_t = decltype( MakeFaceDofToQuad<fe_vlasov_shape>( face_rules_vlasov_t{} ) );
+   using element_face_q_euler_t  = decltype( MakeFaceDofToQuad< fe_euler_shape,face_rules_euler_t >() );
+   using element_face_q_vlasov_t = decltype( MakeFaceDofToQuad< fe_vlasov_shape,face_rules_vlasov_t >() );
 
    // References to spaces and face set(s)
    const fe_euler_t  & fe_euler;
@@ -421,33 +392,21 @@ public:
    , element_face_q_vlasov{}
    , gamma(gamma_)
    , Rgas(Rgas_)
-   {
-      // Nothing else to do: mesh_face_q_* and element_face_q_* default-construct from types
-      // that capture face rules statically (like your advection operator does).
-      (void)int_rule; // kept for API parity with your Advection* class
-   }
+   { }
 
    /**
     * @brief Apply the cross-dim face coupling on all interface faces.
     * The input/output types are the usual GenDiL element-vector StridedView’s.
     */
    template <
-      typename InputRhoMinus,
-      typename InputMomMinus,
-      typename InputEnergyMinus,
+      typename InputUMinus,
       typename InputFPlus,
-      typename OutputRhoMinus,
-      typename OutputMomMinus,
-      typename OutputEnergyMinus,
+      typename OutputUMinus,
       typename OutputFPlus >
-   void Apply( const InputRhoMinus    & dofs_rho_minus_in,
-               const InputMomMinus    & dofs_mom_minus_in,
-               const InputEnergyMinus & dofs_rhoE_minus_in,
+   void Apply( const InputUMinus    & dofs_u_minus_in,
                const InputFPlus       & dofs_f_plus_in,
-               OutputRhoMinus    & dofs_rho_minus_out,
-               OutputMomMinus    & dofs_mom_minus_out,
-               OutputEnergyMinus & dofs_rhoE_minus_out,
-               OutputFPlus       & dofs_f_plus_out ) const
+               OutputUMinus     & dofs_u_minus_out,
+               OutputFPlus      & dofs_f_plus_out ) const
    {
       // Restriction check parity with your style (optional):
       static_assert(
@@ -463,7 +422,8 @@ public:
          {
             EulerVlasovExplicitCrossDimFaceOperator<
                KernelPolicy,
-               IntegrationRule,
+               IntegrationRuleEuler,
+               IntegrationRuleVlasov,
                face_rules_euler_t,
                face_rules_vlasov_t >(
                   fe_euler,
@@ -473,13 +433,9 @@ public:
                   mesh_face_q_vlasov,
                   element_face_q_euler,
                   element_face_q_vlasov,
-                  dofs_rho_minus_in,
-                  dofs_mom_minus_in,
-                  dofs_rhoE_minus_in,
+                  dofs_u_minus_in,
                   dofs_f_plus_in,
-                  dofs_rho_minus_out,
-                  dofs_mom_minus_out,
-                  dofs_rhoE_minus_out,
+                  dofs_u_minus_out,
                   dofs_f_plus_out,
                   gamma,
                   Rgas );
