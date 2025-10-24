@@ -14,6 +14,9 @@ struct H1Restriction
    const Integer num_dofs;
 };
 
-struct L2Restriction{};
+struct L2Restriction
+{
+   const GlobalIndex shift{0};
+};
 
 }

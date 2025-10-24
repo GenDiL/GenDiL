@@ -38,7 +38,7 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 
 ## Getting Started
 ### Requirements
-- C++17 or higher
+- C++20 or higher
 
 ### Installation
 Simply add the `include` folder to your project's include path. The GenDiL project also ships with `CMakeLists.txt` files for building with CMake. The `scripts` directory contains examples scripts for building and using GenDiL.

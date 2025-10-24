@@ -9,8 +9,8 @@
 #include "gendil/Utilities/debug.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/cubecell.hpp"
-#include "gendil/Meshes/Connectivities/cartesianconnectivity.hpp"
-#include "gendil/Meshes/Connectivities/periodiccartesianconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianlocalfaceconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/periodiccartesianconnectivity.hpp"
 
 namespace gendil {
 
@@ -68,13 +68,13 @@ struct Cartesian3DMeshBase
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
    {
-      return connectivity( cell_index, face_index );
+      return connectivity.GetLocalFaceInfo( cell_index, face_index );
    }
 };
 
-using Cartesian3DMesh = Cartesian3DMeshBase< CartesianConnectivity< 3 > >;
+using Cartesian3DMesh = Cartesian3DMeshBase< CartesianLocalFaceConnectivity< 3 > >;
 using PeriodicCartesian3DMesh = Cartesian3DMeshBase< PeriodicCartesianConnectivity< 3 > >;
 
 }

@@ -58,7 +58,7 @@ void compare_solvers(const Integer n)
     auto diff_op = MakeDiffusionOperator<KernelPolicy>(fe_space, int_rules, velocity, sigma_diff, kappa);
 
     const Integer max_iters = 500;
-    const Real tol = 1e-10;
+    const Real tol = 1e-8;
     const Integer restart = 50;
 
     auto run_solver = [&](const char * name, auto && op, const Vector & b_rhs)

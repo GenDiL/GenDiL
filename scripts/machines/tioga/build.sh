@@ -4,7 +4,7 @@ mkdir -p build_tioga
 cd build_tioga
 
 export ROCM_VER="6.3.1"
-module purge && module load rocmcc/${ROCM_VER}-magic cmake/3.23.1
+module purge && module load rocmcc/${ROCM_VER}-magic cmake/3.29.2
 
 export ROCM_PATH=/opt/rocm-${ROCM_VER}
 export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$ROCM_PATH/lib/cmake/hip:$ROCM_PATH/lib/cmake/hipblas:$ROCM_PATH/lib/cmake/hipblas-common:$ROCM_PATH/lib/cmake/hipsparse:$ROCM_PATH/lib/cmake/rocsparse:$ROCM_PATH/lib/cmake/rocrand

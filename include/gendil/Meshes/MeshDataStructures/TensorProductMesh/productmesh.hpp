@@ -66,7 +66,7 @@ namespace details
       if constexpr ( std::tuple_size_v< MeshTuple > == 1 )
       {
          using face_index = std::integral_constant< Integer, sub_face_index >;
-         return std::get< 0 >( tail_meshes ).GetFaceNeighborInfo( tail_index , face_index{} );
+         return std::get< 0 >( tail_meshes ).GetLocalFaceInfo( tail_index , face_index{} );
       }
       else
       {
@@ -109,13 +109,13 @@ namespace details
          constexpr Integer sub_face_index = (Sign == -1) ? sub_index : (HeadDim + sub_index); // TODO: This feels magic
          
          using face_index = std::integral_constant< Integer, sub_face_index >;
-         auto neighbor = head_mesh.GetFaceNeighborInfo( head_index, face_index{} );
-         
-         auto head_neighbor_index = neighbor.neighbor_index;
-         
+         auto neighbor = head_mesh.GetLocalFaceInfo( head_index, face_index{} );
+
+         auto head_neighbor_index = neighbor.plus_side().get_cell_index();
+
          neighbor_index = head_neighbor_index + HeadNumCells * tail_index;
-         Set< 0 >( orientation, neighbor.orientation );
-         boundary = neighbor.boundary;
+         Set< 0 >( orientation, static_cast< Permutation< HeadDim > >( neighbor.plus_side().get_orientation() ) );
+         boundary = neighbor.plus_side().boundary;
       }
       else
       {
@@ -126,29 +126,35 @@ namespace details
          // recursion step
          auto neighbor = GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
 
-         GlobalIndex tail_neighbor_index = neighbor.neighbor_index;
-         
+         GlobalIndex tail_neighbor_index = neighbor.plus_side().get_cell_index();
+
          neighbor_index = head_index + HeadNumCells * tail_neighbor_index;
-         Set< HeadDim - 1 >( orientation, neighbor.orientation );
-         boundary = neighbor.boundary;
+         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.plus_side().get_orientation() ) );
+         boundary = neighbor.plus_side().boundary;
       }
 
       constexpr Integer face_id = FaceIndex;
       using geometry = HyperCube< Dim >;
+      using conformity_type = ConformingFaceMap< Dim >;
       using orientation_type = Permutation< Dim >;
       using boundary_type = bool;
       using normal_type = CanonicalVector< Dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            face_id,
+      using face_info_type =
+         ConformingCellFaceView <
             geometry,
+            std::integral_constant< Integer, face_id >,
+            std::integral_constant< Integer, face_id < Dim ? face_id + Dim : face_id - Dim >,
             orientation_type,
-            boundary_type,
-            normal_type
+            CanonicalVector< Dim, Index, Sign >,
+            CanonicalVector< Dim, Index, -Sign >,
+            boundary_type
          >;
-      return FaceInfo{ neighbor_index, orientation, boundary };
+      return face_info_type{
+         { cell_index, {}, {}, {}, {}, boundary },
+         { neighbor_index, {}, orientation, {}, {}, boundary }
+      };
    }
-};
+}
 
 template < typename... Meshes >
 class CartesianProductMesh
@@ -203,7 +209,7 @@ public:
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       return details::ComputeNeighborIndex< FaceIndex >( SubMeshes, cell_index );
    }
