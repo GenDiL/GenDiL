@@ -14,6 +14,7 @@
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesian3dmesh.hpp"
 
 // An arbitrary dimension Cartesian mesh
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianndmesh.hpp"
 
 // A face connectivity describing local face connectivity on a Cartesian mesh
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianlocalfaceconnectivity.hpp"
