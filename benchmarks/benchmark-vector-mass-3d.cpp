@@ -19,19 +19,19 @@ int main(int argc, char *argv[])
 
    /////////
    // Mesh 1
-   const Real h_1 = 1.0;
+   const Real h_1 = Real(1.0);
    const Integer n1 = num_elem_1d;
    Cartesian1DMesh mesh_1( h_1, n1 );
 
    /////////
    // Mesh 2
-   const Real h_2 = 2.0;
+   const Real h_2 = Real(2.0);
    const Integer n2 = num_elem_1d;
    Cartesian1DMesh mesh_2( h_2, n2 );
 
    /////////
    // Mesh 3
-   const Real h_3 = 1.0;
+   const Real h_3 = Real(1.0);
    const Integer n3 = num_elem_1d;
    Cartesian1DMesh mesh_3( h_3, n3 );
 
@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
 
    auto sigma = [=] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X ) -> Real
    {
-      return 1.0;
+      return Real(1.0);
    };
 
    auto struct_mass_operator = MakeMassFiniteElementOperator< KernelPolicy >( struct_fe_space, int_rules, sigma );
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = struct_fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       sol_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = struct_fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       struct_mass_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = cart3d_fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       cart3d_mass_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -244,7 +244,7 @@ int main(int argc, char *argv[])
       const Integer num_elem_dofs = finite_element.GetNumDofs();
       const Integer num_elem = unstruct_fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       unstruct_mass_operator.Mult( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
       const Integer num_elem = unstruct_fe_space.GetNumberOfFiniteElements();
       const Integer num_dofs = vdim * num_elem * num_elem_dofs;
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       mfem_operator.Mult( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;

@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 
    //----------------------------------------------------------------------------
    // Meshes
-   const Real h = 1.0;
+   const Real h = Real(1.0);
    Cartesian1DMesh mesh_x(h, num_elem_1d),
                   mesh_y(h, num_elem_1d),
                   mesh_z(h, num_elem_1d);
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
       const Integer N = tensor_fes.GetNumberOfFiniteElementDofs();
       Vector in(N), out(N);
 
-      in = 1.0;
+      in = Real(1.0);
       tensor_diff_op(in, out);
       GENDIL_DEVICE_SYNC;
 
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
       const Integer N = unstruct_fes.GetNumberOfFiniteElementDofs();
       mfem::Vector in(N), out(N);
 
-      in = 1.0;
+      in = Real(1.0);
       unstruct_diff_op.Mult(in, out);
       GENDIL_DEVICE_SYNC;
 

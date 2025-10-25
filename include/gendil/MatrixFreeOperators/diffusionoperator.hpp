@@ -220,7 +220,7 @@ void DiffusionFaceOperator(
                Real average_Gu_q[ Dim ];
                for (size_t i = 0; i < Dim; i++)
                {
-                  average_Gu_q[i] = 0.5 * velocity_q * (Gu_q[i] + neighbor_Gu_q[i]);
+                  average_Gu_q[i] = Real(0.5) * velocity_q * (Gu_q[i] + neighbor_Gu_q[i]);
                }
 
                Real jump = Bu_q - neighbor_Bu_q;
@@ -230,7 +230,7 @@ void DiffusionFaceOperator(
                const Real Du_q = - weight * detJ * dot + weight * detJ * norm * kappa * h_inv * velocity_q * jump;
 
                Real DGu_q[Dim];
-               const Real w = sigma * weight * detJ * jump * velocity_q * 0.5;
+               const Real w = sigma * weight * detJ * jump * velocity_q * Real(0.5);
                for (size_t i = 0; i < Dim; i++)
                {
                   DGu_q[i] = w * physical_normal[i];

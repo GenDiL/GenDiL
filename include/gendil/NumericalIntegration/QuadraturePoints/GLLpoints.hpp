@@ -27,19 +27,19 @@ struct GaussLobattoLegendrePoints< 1 >
    GENDIL_HOST_DEVICE
    static constexpr Point<1> GetPoint( index_type index )
    {
-      return Point<1>{ 0.5 };
+      return Point<1>{ Real(0.5) };
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      return 0.5;
+      return Real(0.5);
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      return 1.0;
+      return Real(1.0);
    }
 
 };
@@ -64,14 +64,14 @@ struct GaussLobattoLegendrePoints< 2 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0., 1.0 };
+      constexpr Real coord[] = { Real(0.), Real(1.0) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 0.5, 0.5 };
+      constexpr Real weights[] = { Real(0.5), Real(0.5) };
       return weights[ index ];
    }
 };
@@ -96,14 +96,14 @@ struct GaussLobattoLegendrePoints< 3 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0., 0.5, 1. };
+      constexpr Real coord[] = { Real(0.), Real(0.5), Real(1.) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 1./6., 2./3., 1./6. };
+      constexpr Real weights[] = { Real(1./6.), Real(2./3.), Real(1./6.) };
       return weights[ index ];
    }
 };
@@ -128,15 +128,15 @@ struct GaussLobattoLegendrePoints< 4 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real val = 1./5.*2.23606797749979;//sqrt(5.);
-      constexpr Real coord[] = { 0., 0.5 * (1. - val) , 0.5 * (1. + val), 1. };
+      constexpr Real val = Real(1./5.*2.23606797749979);//sqrt(5.);
+      constexpr Real coord[] = { Real(0.), Real(0.5 * (1. - val)), Real(0.5 * (1. + val)), Real(1.) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 1./12., 5./12., 5./12., 1./12. };
+      constexpr Real weights[] = { Real(1./12.), Real(5./12.), Real(5./12.), Real(1./12.) };
       return weights[ index ];
    }
 };
@@ -161,14 +161,14 @@ struct GaussLobattoLegendrePoints< 5 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0.0, 0.1726731646460115, 0.5, 0.8273268353539884, 1.0 };
+      constexpr Real coord[] = { Real(0.0), Real(0.1726731646460115), Real(0.5), Real(0.8273268353539884), Real(1.0) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 0.05, 49.0/180.0, 16.0/45.0, 49.0/180.0, 0.05 };
+      constexpr Real weights[] = { Real(0.05), Real(49.0/180.0), Real(16.0/45.0), Real(49.0/180.0), Real(0.05) };
       return weights[ index ];
    }
 };
@@ -193,14 +193,14 @@ struct GaussLobattoLegendrePoints< 6 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0.0, 0.11747233803526752, 0.35738424175967753, 0.6426157582403225, 0.8825276619647324, 1.0 };
+      constexpr Real coord[] = { Real(0.0), Real(0.11747233803526752), Real(0.35738424175967753), Real(0.6426157582403225), Real(0.8825276619647324), Real(1.0) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 0.03333333333333333, 0.1892374781489234, 0.27742918851774323, 0.27742918851774323, 0.1892374781489234, 0.03333333333333333 };
+      constexpr Real weights[] = { Real(0.03333333333333333), Real(0.1892374781489234), Real(0.27742918851774323), Real(0.27742918851774323), Real(0.1892374781489234), Real(0.03333333333333333) };
       return weights[ index ];
    }
 };
@@ -225,14 +225,14 @@ struct GaussLobattoLegendrePoints< 7 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0.0, 0.08488805186071652, 0.265575603264643, 0.5, 0.734424396735357, 0.9151119481392835, 1.0 };
+      constexpr Real coord[] = { Real(0.0), Real(0.08488805186071652), Real(0.265575603264643), Real(0.5), Real(0.734424396735357), Real(0.9151119481392835), Real(1.0) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 0.023809523809523808, 0.13841302368078304, 0.21587269060493122, 0.2438095238095237, 0.21587269060493122, 0.13841302368078304, 0.023809523809523808 };
+      constexpr Real weights[] = { Real(0.023809523809523808), Real(0.13841302368078304), Real(0.21587269060493122), Real(0.2438095238095237), Real(0.21587269060493122), Real(0.13841302368078304), Real(0.023809523809523808) };
       return weights[ index ];
    }
 };
@@ -257,14 +257,14 @@ struct GaussLobattoLegendrePoints< 8 >
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      constexpr Real coord[] = { 0.0, 0.06412992574519649, 0.20414990928342902, 0.3953503910487605, 0.6046496089512394, 0.795850090716571, 0.9358700742548035, 1.0 };
+      constexpr Real coord[] = { Real(0.0), Real(0.06412992574519649), Real(0.20414990928342902), Real(0.3953503910487605), Real(0.6046496089512394), Real(0.795850090716571), Real(0.9358700742548035), Real(1.0) };
       return coord[ index ];
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      constexpr Real weights[] = { 0.017857142857142856, 0.10535211357175303, 0.17056134624175218, 0.20622939732935197, 0.20622939732935197, 0.17056134624175218, 0.10535211357175303, 0.017857142857142856 };
+      constexpr Real weights[] = { Real(0.017857142857142856), Real(0.10535211357175303), Real(0.17056134624175218), Real(0.20622939732935197), Real(0.20622939732935197), Real(0.17056134624175218), Real(0.10535211357175303), Real(0.017857142857142856) };
       return weights[ index ];
    }
 };

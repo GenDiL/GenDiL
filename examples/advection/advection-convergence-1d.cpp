@@ -18,14 +18,14 @@ using namespace gendil;
 template<int Dim>
 struct Manufactured {
     static Real u_exact(const array<Real,Dim>& X) {
-        Real prod = 1.0;
-        for (int i=0;i<Dim;++i) prod *= sin(M_PI * X[i]);
+        Real prod = Real(1.0);
+        for (int i=0;i<Dim;++i) prod *= Real(sin(M_PI * X[i]));
         return prod;
     }
     static void grad_exact(const array<Real,Dim>& X, array<Real,Dim>& grad) {
         for (int i=0;i<Dim;++i) {
-            Real g = M_PI * cos(M_PI * X[i]);
-            for (int j=0;j<Dim;++j) if (j!=i) g *= sin(M_PI * X[j]);
+            Real g = Real(M_PI * cos(M_PI * X[i]));
+            for (int j=0;j<Dim;++j) if (j!=i) g *= Real(sin(M_PI * X[j]));
             grad[i] = g;
         }
     }
@@ -42,7 +42,7 @@ void test_advection_1D(const Integer n)
     constexpr int Dim = 1;
 
     // 1) Mesh [0,1] with n elements
-    const Real h = 1.0 / n;
+    const Real h = Real(1.0 / n);
     Cartesian1DMesh mesh(h, n);
 
     // 2) FE space (Legendre p)
@@ -56,10 +56,10 @@ void test_advection_1D(const Integer n)
     IntegrationRuleNumPoints<num_quad_err> nq_err;  auto int_rules_err = MakeIntegrationRule(nq_err);
 
     // 4) Advection operator (your pattern)
-    const Real a = 1.2345; // constant to the right
+    const Real a = Real(1.2345); // constant to the right
     auto adv  = [=] GENDIL_HOST_DEVICE (const std::array<Real,Dim>& /*X*/, Real (&v)[Dim]) { v[0] = a; };
-    auto zero = []  GENDIL_HOST_DEVICE (const std::array<Real,Dim>& /*X*/) { return 0.0; };
-    auto one = []  GENDIL_HOST_DEVICE (const std::array<Real,Dim>& /*X*/) { return 1.0; };
+    auto zero = []  GENDIL_HOST_DEVICE (const std::array<Real,Dim>& /*X*/) { return Real(0.0); };
+    auto one = []  GENDIL_HOST_DEVICE (const std::array<Real,Dim>& /*X*/) { return Real(1.0); };
 
 #if defined(GENDIL_USE_DEVICE)
     using ThreadLayout = ThreadBlockLayout<num_quad_rhs>;
@@ -82,28 +82,28 @@ void test_advection_1D(const Integer n)
     };
 
     // 5) Continuous MMS RHS: f = SIGN * beta · grad(u_exact)
-    const Real SIGN = ADVECTIVE_FORM ? +1.0 : -1.0;
+    const Real SIGN = ADVECTIVE_FORM ? Real(+1.0) : Real(-1.0);
     auto rhs_lambda = [=] GENDIL_HOST_DEVICE (const array<Real,Dim>& X) {
         array<Real,Dim> g{}; Manufactured<Dim>::grad_exact(X, g);
-        return SIGN * a * g[0];
+        return Real(SIGN * a * g[0]);
     };
     Vector b = MakeLinearForm(fe_space, int_rules_rhs, rhs_lambda);
     Vector Mb(ndofs);
     Minv(b, Mb);
 
     // 6) Solve A x = b with GMRES (robust for transport)
-    Vector x(ndofs); x = 0.0;
+    Vector x(ndofs); x = Real(0.0);
     const Integer max_iters = std::max<Integer>(20000, 3*n);
     const Integer restart   = 200;
-    const Real    tol       = 1e-10;
+    const Real    tol       = Real(1e-10);
 
     vector<Vector> V_array(restart + 1);
     for (size_t i = 0; i < restart + 1; i++)
     {
         V_array[i] = Vector(ndofs);
-        V_array[i] = 0.0;
+        V_array[i] = Real(0.0);
     }
-    Vector         w(ndofs); w = 0.0;
+    Vector         w(ndofs); w = Real(0.0);
     vector<Real>   H((restart+1)*restart),
                    cs2(restart), sn2(restart),
                    e1_rhs2(restart+1), y2(restart);
@@ -124,7 +124,7 @@ void test_advection_1D(const Integer n)
     // Residual check
     Vector Ax(ndofs), res(ndofs);
     A(x, Ax);
-    res = b; Axpy(-1.0, Ax, res);
+    res = b; Axpy(Real(-1.0), Ax, res);
     const Real nres = std::sqrt(dot(res,res));
     const Real nb   = std::sqrt(dot(b,b));
     if (!ok || !std::isfinite(relres) || !std::isfinite(nres) || nres > 1e-6*(nb+1e-32)) {

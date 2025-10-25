@@ -10,11 +10,11 @@ using namespace gendil;
 int main(int argc, char ** argv)
 {
     constexpr Integer dim = 3;
-    std::array< Real, dim > u = { 1.0, 2.0, 3.0 };
-    std::array< Real, dim > v = { 4.0, 5.0, 6.0 };
+    std::array< Real, dim > u = { Real(1.0), Real(2.0), Real(3.0) };
+    std::array< Real, dim > v = { Real(4.0), Real(5.0), Real(6.0) };
     const Real dot_product = Dot( u, v );
     std::cout << "Dot product: " << dot_product << std::endl;
-    if (dot_product == 32.0)
+    if (dot_product == Real(32.0))
     {
         return 0;
     }

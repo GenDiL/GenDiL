@@ -13,9 +13,9 @@ using namespace gendil;
 template<int Dim>
 struct Manufactured {
     static Real u_exact(const array<Real,Dim>& X) {
-        Real prod = 1.0;
+        Real prod = Real(1.0);
         for(int i=0;i<Dim;i++)
-            prod *= sin(M_PI * X[i]);
+            prod *= Real(sin(M_PI * X[i]));
         return prod;
     }
     // not needed for mass problem
@@ -25,7 +25,7 @@ template < Integer order, Integer num_quad_1d = order + 2 >
 void test_mass_2D( const Integer n )
 {
     // 1) build a 2D mesh
-    const Real h = 1.0/n;
+    const Real h = Real(1.0/n);
     Cartesian2DMesh mesh(h,n,n);
 
     // 2) finite element space
@@ -49,7 +49,7 @@ void test_mass_2D( const Integer n )
     // 4) Create mass operator
     auto sigma = [=] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X ) -> Real
     {
-        return 1.0;
+        return Real(1.0);
     };
     auto mass_op = MakeMassFiniteElementOperator<KernelPolicy>(fe_space, int_rules, sigma);
 
@@ -62,9 +62,9 @@ void test_mass_2D( const Integer n )
 
     // 2) Solve M u = b via CG
     Vector u_h(ndofs);
-    u_h = 0.0;
+    u_h = Real(0.0);
     const Integer max_iters = 2000;
-    const Real tol = 1e-12;
+    const Real tol = Real(1e-12);
     auto dot = []( const Vector & U, const Vector & V ) { return Dot(U,V); };
     // scratch vectors
     Vector tmp(ndofs), z(ndofs), residual(ndofs), p(ndofs);

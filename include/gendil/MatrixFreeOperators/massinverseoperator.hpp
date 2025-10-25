@@ -143,7 +143,7 @@ void MassInverseExplicitOperator(
          decltype(rhs) x{};
 
          Integer max_iters = 10000;
-         Real tolerance = 1e-14;
+         Real tolerance = Real(1e-14);
          ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
          // std:: cout << "norm x=" << Norml2( x ) << std::endl;
          // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );

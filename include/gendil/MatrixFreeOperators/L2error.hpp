@@ -62,7 +62,7 @@ void L2ErrorElementOperator(
    if( kernel_conf.GetLinearThreadIndex() == 0 ) error = 0.0;
    GENDIL_SYNC_THREADS();
 #else
-   error = 0.0;
+   error = Real(0.0);
 #endif
 
    QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
@@ -123,7 +123,7 @@ Real L2Error(
    HostDevicePointer< Real > sum_ptr;
    AllocateHostPointer< Real >( 1, sum_ptr );
    AllocateDevicePointer< Real >( 1, sum_ptr );
-   *sum_ptr = 0.0;
+   *sum_ptr = Real(0.0);
    ToDevice( 1, sum_ptr );
 
    mesh::CellIterator< KernelConfiguration >(

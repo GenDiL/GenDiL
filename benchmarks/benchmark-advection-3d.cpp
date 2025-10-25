@@ -19,19 +19,19 @@ int main(int argc, char *argv[])
    const Integer num_elem_1d = 50;
    /////////
    // mesh 1
-   const Real h_1 = 1.0;
+   const Real h_1 = Real(1.0);
    const Integer n1 = num_elem_1d;
    Cartesian1DMesh mesh_1( h_1, n1 );
 
    /////////
    // mesh 2
-   const Real h_2 = 2.0;
+   const Real h_2 = Real(2.0);
    const Integer n2 = num_elem_1d;
    Cartesian1DMesh mesh_2( h_2, n2 );
 
    /////////
    // mesh 3
-   const Real h_3 = 1.0;
+   const Real h_3 = Real(1.0);
    const Integer n3 = num_elem_1d;
    Cartesian1DMesh mesh_3( h_3, n3 );
 
@@ -75,9 +75,9 @@ int main(int argc, char *argv[])
 
    auto advection_field = [] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X, Real (&v)[Dim] ) -> void
    {
-      v[0] = 1.0;
-      v[1] = 1.0;
-      v[2] = 1.0;
+      v[0] = Real(1.0);
+      v[1] = Real(1.0);
+      v[2] = Real(1.0);
    };
 
 #if defined(GENDIL_USE_DEVICE)
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
       const Integer num_elem = fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       sol_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
       const Integer num_elem = cart3d_fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       cart3d_adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
@@ -187,7 +187,7 @@ int main(int argc, char *argv[])
       const Integer num_elem = fe_space.GetNumberOfFiniteElements();
       std::cout << "Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
 
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;
