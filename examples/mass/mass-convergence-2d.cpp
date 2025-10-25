@@ -81,7 +81,7 @@ void test_mass_2D( const Integer n )
     );
 
     // 8) Print for TikZ
-    cout << "       (" << ndofs << ", " << err_L2 << ")\n";
+    cout << "       (" << ndofs << ", " << double(err_L2) << ")\n";
 }
 
 template < Integer order, Integer num_quad_1d = order + 2 >

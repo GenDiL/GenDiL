@@ -128,10 +128,10 @@ void test_advection_1D(const Integer n)
     const Real nres = std::sqrt(dot(res,res));
     const Real nb   = std::sqrt(dot(b,b));
     if (!ok || !std::isfinite(relres) || !std::isfinite(nres) || nres > 1e-6*(nb+1e-32)) {
-        std::cerr << "WARNING: GMRES ok="<<ok
-                  << " iters="<<iters
-                  << " relres="<<relres
-                  << " ||b-Ax||="<<nres
+        std::cerr << "WARNING: GMRES ok="<< ok
+                  << " iters="<< iters
+                  << " relres="<< double(relres)
+                  << " ||b-Ax||="<< double(nres)
                   << "  ["
                   << (ADVECTIVE_FORM ? "advective f=+beta·grad u" : "conservative f=-beta·grad u")
                   << "]\n";
@@ -141,7 +141,7 @@ void test_advection_1D(const Integer n)
     auto err_L2 = L2Error<KernelPolicy>(fe_space, int_rules_err, Manufactured<Dim>::u_exact, x);
 
     // 8) TikZ-friendly point
-    cout << "       (" << ndofs << ", " << err_L2 << ")\n";
+    cout << "       (" << ndofs << ", " << double(err_L2) << ")\n";
 }
 
 // ===== Sweep resolution for a given p =====

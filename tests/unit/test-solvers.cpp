@@ -74,7 +74,7 @@ void compare_solvers(const Integer n)
                 x, tmp, z, r, pvec
             );
             auto err = L2Error<KernelPolicy>(fe_space, int_rules, u_exact, x);
-            std::cout << "  CG       : err = " << err << ", iter = " << iters << ", res = " << relres << "\n";
+            std::cout << "  CG       : err = " << double(err) << ", iter = " << iters << ", res = " << double(relres) << "\n";
         }
 
         // GMRES
@@ -96,7 +96,7 @@ void compare_solvers(const Integer n)
                 x, V_array, w, H, cs, sn, e1_rhs, y
             );
             auto err = L2Error<KernelPolicy>(fe_space, int_rules, u_exact, x);
-            std::cout << "  GMRES    : err = " << err << ", iter = " << iters << ", res = " << relres << "\n";
+            std::cout << "  GMRES    : err = " << double(err) << ", iter = " << iters << ", res = " << double(relres) << "\n";
         }
 
         // BiCGSTAB
@@ -108,7 +108,7 @@ void compare_solvers(const Integer n)
                 x, r, r_hat, p, v, s, t
             );
             auto err = L2Error<KernelPolicy>(fe_space, int_rules, u_exact, x);
-            std::cout << "  BiCGSTAB : err = " << err << ", iter = " << iters << ", res = " << relres << "\n";
+            std::cout << "  BiCGSTAB : err = " << double(err) << ", iter = " << iters << ", res = " << double(relres) << "\n";
         }
     };
 

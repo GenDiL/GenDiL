@@ -99,7 +99,7 @@ void test_poisson_1D( const Integer n )
     auto err_L2 = L2Error<KernelPolicy>( fe_space, int_rules, Manufactured<1>::u_exact, x );
 
     // 8) Print for TikZ
-    cout << "       (" << ndofs << ", " << err_L2 << ")\n";
+    cout << "       (" << ndofs << ", " << double(err_L2) << ")\n";
 }
 
 template < Integer order, Integer num_quad_1d = order + 2 >

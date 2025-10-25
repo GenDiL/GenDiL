@@ -121,7 +121,7 @@ bool test_small_2x2()
     if (!converged) pass = false;
     if (difference_norm(x, x_expected) > 1e-8)
     {
-        cout << "x=(" << x[0] << ", " << x[1] << ")" << endl;
+        cout << "x=(" << double(x[0]) << ", " << double(x[1]) << ")" << endl;
         pass = false;
     }
 
