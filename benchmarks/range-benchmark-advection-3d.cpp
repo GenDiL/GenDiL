@@ -16,7 +16,7 @@ void test_advection_3D( const Integer nx, const Integer ny, const Integer nz )
 
    //////////////
    // Mesh
-   const Real h_space = 1.0;
+   const Real h_space = Real(1.0);
    Cartesian3DMesh mesh( h_space, nx, ny, nz );
 
    ///////////////////////
@@ -47,9 +47,9 @@ void test_advection_3D( const Integer nx, const Integer ny, const Integer nz )
    constexpr Integer Dim = GetDim( fe_space );
    auto advection_field = [] GENDIL_HOST_DEVICE ( const std::array< Real, Dim> & X, Real (&v)[Dim] )
    {
-      v[0] = 1.0;
-      v[1] = 1.0;
-      v[2] = 1.0;
+      v[0] = Real(1.0);
+      v[1] = Real(1.0);
+      v[2] = Real(1.0);
    };
 
 #if defined(GENDIL_USE_DEVICE)
@@ -71,7 +71,7 @@ void test_advection_3D( const Integer nx, const Integer ny, const Integer nz )
       Vector dofs_in( num_dofs );
       Vector dofs_out( num_dofs );
 
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       adv_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;

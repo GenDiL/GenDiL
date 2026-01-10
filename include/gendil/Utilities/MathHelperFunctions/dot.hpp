@@ -17,7 +17,7 @@ template < int size >
 GENDIL_HOST_DEVICE
 Real Dot( const Real (& u)[ size ], const Real (& v)[ size ] )
 {
-   Real res = 0.0;
+   Real res = Real(0.0);
    for (size_t i = 0; i < size; i++)
    {
       res += u[ i ] * v[ i ];
@@ -29,7 +29,7 @@ template < size_t size >
 GENDIL_HOST_DEVICE
 Real Dot( const Real (& u)[ size ], const std::array< Real, size > & v )
 {
-   Real res = 0.0;
+   Real res = Real(0.0);
    for (size_t i = 0; i < size; i++)
    {
       res += u[ i ] * v[ i ];
@@ -41,7 +41,7 @@ template < size_t size >
 GENDIL_HOST_DEVICE
 Real Dot( const std::array< Real, size > & u, const std::array< Real, size > & v )
 {
-   Real res = 0.0;
+   Real res = Real(0.0);
    for (size_t i = 0; i < size; i++)
    {
       res += u[ i ] * v[ i ];
@@ -53,7 +53,7 @@ template < typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 Real Dot( const ElementDoF< FiniteElementSpace > & u, const ElementDoF< FiniteElementSpace > & v )
 {
-   Real res = 0.0;
+   Real res = Real(0.0);
    DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
       {
@@ -68,7 +68,7 @@ template < typename T, Integer ... Dims >
 GENDIL_HOST_DEVICE
 Real Dot( const SerialRecursiveArray< T, Dims... > & u, const SerialRecursiveArray< T, Dims... > & v )
 {
-   Real local_res = 0.0;
+   Real local_res = Real(0.0);
    UnitLoop< Dims... >(
       [&]( auto... indices )
       {
@@ -87,7 +87,7 @@ Real Dot( const KernelContext & kernel_conf, const ThreadedView< Sizes, KernelCo
    {
       // !FIXME Assumes batch_size = 1
       GENDIL_SHARED Real res; // TODO Use context shared memory
-      if( kernel_conf.GetLinearThreadIndex() == 0 ) res = 0.0;
+      if( kernel_conf.GetLinearThreadIndex() == 0 ) res = Real(0.0);
       GENDIL_SYNC_THREADS();
       using tshape = subsequence_t< Sizes, typename KernelContext::template threaded_dimensions< Sizes::size() > >;
       ThreadLoop< tshape >( kernel_conf, [&] ( auto... t )
@@ -113,7 +113,7 @@ Real Dot( const Vector & u, const Vector & v )
    // TODO: Make it device compatible
    const Real* u_ptr( u.ReadHostData() );
    const Real* v_ptr( v.ReadHostData() );
-   Real sum = 0.0;
+   Real sum = Real(0.0);
    #pragma omp parallel for reduction(+:sum)
    for (size_t i = 0; i < u.Size(); ++i) {
       sum += u_ptr[i] * v_ptr[i];

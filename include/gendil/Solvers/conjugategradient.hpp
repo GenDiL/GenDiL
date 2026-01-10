@@ -48,7 +48,7 @@ auto ConjugateGradient(
    if ( residual_norm < tol * rhs_norm )
    {
       iters = 0;
-      tol_error = Sqrt( residual_norm / rhs_norm );
+      tol_error = residual_norm / rhs_norm;
       return IterativeSolverResult{ true, iters, tol_error };
    }
 
@@ -67,7 +67,7 @@ auto ConjugateGradient(
       residual_norm = Norml2( residual );
       if( residual_norm < tol * rhs_norm )
       {
-         tol_error = Sqrt( residual_norm / rhs_norm );
+         tol_error = residual_norm / rhs_norm;
          iters = i;
          return IterativeSolverResult{ true, iters, tol_error };
       }
@@ -80,7 +80,7 @@ auto ConjugateGradient(
       p = z + beta * p;                 // update search direction
       i++;
    }
-   tol_error = Sqrt( residual_norm / rhs_norm );
+   tol_error = residual_norm / rhs_norm;
    iters = i;
    return IterativeSolverResult{ false, iters, tol_error };
 }
@@ -144,14 +144,14 @@ auto ConjugateGradient(
    const Real rhs_n = norm2( residual );
    if ( rhs_n == 0.0 ) {
       // trivial solution if rhs is zero
-      x = 0.0;
-      return IterativeSolverResult{ true, 0, 0.0 };
+      x = Real(0.0);
+      return IterativeSolverResult{ true, 0, Real(0.0) };
    }
 
    // 3) Check initial convergence
    Real r_n = norm2( residual );
    if (r_n < tol * rhs_n) {
-      return IterativeSolverResult{ true, 0, Sqrt(r_n/rhs_n) };
+      return IterativeSolverResult{ true, 0, r_n/rhs_n };
    }
 
    // 4) p = r
@@ -175,7 +175,7 @@ auto ConjugateGradient(
       // 8) Convergence check: ‖r‖ < tol * ‖rhs‖
       r_n = norm2( residual );
       if ( r_n < tol * rhs_n ) {
-         return IterativeSolverResult{ true, iter+1, Sqrt(r_n/rhs_n) };
+         return IterativeSolverResult{ true, iter+1, r_n/rhs_n };
       }
 
       // 9) z = r  (for future preconditioning)
@@ -195,7 +195,7 @@ auto ConjugateGradient(
    }
 
    // 12) No convergence within max_iters
-   return IterativeSolverResult{ false, iter, Sqrt(r_n/rhs_n) };
+   return IterativeSolverResult{ false, iter, r_n/rhs_n };
 }
 
 template<

@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
    const Integer num_elem_1d = 5;
    /////////
    // mesh 1
-   const Real h_1 = 1.0;
+   const Real h_1 = Real(1.0);
    const Integer n1 = num_elem_1d;
    const Integer n2 = num_elem_1d;
    const Integer n3 = num_elem_1d;
@@ -22,14 +22,14 @@ int main(int argc, char *argv[])
 
    /////////
    // mesh 2
-   const Real h_2 = 2.0;
+   const Real h_2 = Real(2.0);
    const Integer n4 = num_elem_1d;
    const Integer n5 = num_elem_1d;
    Cartesian2DMesh mesh_2( h_2, n4, n5 );
 
    /////////
    // mesh 3
-   const Real h_3 = 1.0;
+   const Real h_3 = Real(1.0);
    const Integer n6 = num_elem_1d;
    Cartesian1DMesh mesh_3( h_3, n6 );
 
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 
    auto sigma = [] GENDIL_HOST_DEVICE ( std::array< Real, Dim > const & X ) -> Real
    {
-      return 1.0;
+      return Real(1.0);
    };
 
 #if defined(GENDIL_USE_DEVICE)
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
    std::cout << "\n Dofs per element: " << num_elem_dofs << "\n Number of elements: " << num_elem << "\n";
    std::cout << "Number of dofs:" << num_dofs << "\n";
 
-   dofs_in = 1.0;
+   dofs_in = Real(1.0);
    sol_operator( dofs_in, dofs_out );
 
    GENDIL_DEVICE_SYNC;

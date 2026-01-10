@@ -22,19 +22,19 @@ struct ZeroPoint
    GENDIL_HOST_DEVICE
    static constexpr Point<1> GetPoint( index_type index )
    {
-      return Point<1>{ 0.0 };
+      return Point<1>{ Real(0.0) };
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetCoord( index_type index )
    {
-      return 0.0;
+      return Real(0.0);
    }
 
    GENDIL_HOST_DEVICE
    static constexpr Real GetWeight( index_type index )
    {
-      return 1.0;
+      return Real(1.0);
    }
 };
 

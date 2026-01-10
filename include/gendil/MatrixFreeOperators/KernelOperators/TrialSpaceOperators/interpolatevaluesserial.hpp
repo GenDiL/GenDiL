@@ -38,7 +38,7 @@ auto InterpContraction( InputTensor const & u, Op1D const & B, std::index_sequen
          auto indices = std::make_tuple( indices_ ... );
          const Integer q = std::get< ActiveDim >( indices );
 
-         Real value = 0.0;
+         Real value = Real(0.0);
          auto& d = std::get< ActiveDim >( indices );
          for ( d = 0; d < ND; ++d )
          {

@@ -64,8 +64,8 @@ struct SquareCell
       X[0] = origin[0] + h_x * quad_x::GetCoord( qx );
       X[1] = origin[1] + h_y * quad_y::GetCoord( qy );
       J_mesh[0][0] = h_x;
-      J_mesh[0][1] = 0.0;
-      J_mesh[1][0] = 0.0;
+      J_mesh[0][1] = Real(0.0);
+      J_mesh[1][0] = Real(0.0);
       J_mesh[1][1] = h_y;
    }
 };

@@ -20,7 +20,7 @@ void test_mass_4D(
 
    //////////////
    // Mesh
-   const Real h_space = 1.0;
+   const Real h_space = Real(1.0);
    Cartesian2DMesh mesh1( h_space, n1, n2 );
    Cartesian2DMesh mesh2( h_space, n3, n4 );
    auto mesh = MakeCartesianProductMesh( mesh1, mesh2 );
@@ -46,7 +46,7 @@ void test_mass_4D(
    constexpr Integer Dim = GetDim( fe_space );
    auto sigma = [=] GENDIL_HOST_DEVICE ( std::array< Real, Dim> const & X ) -> Real
    {
-      return 1.0;
+      return Real(1.0);
    };
 
 #if defined(GENDIL_USE_DEVICE)
@@ -68,7 +68,7 @@ void test_mass_4D(
       Vector dofs_in( num_dofs );
       Vector dofs_out( num_dofs );
 
-      dofs_in = 1.0;
+      dofs_in = Real(1.0);
       mass_operator( dofs_in, dofs_out );
 
       GENDIL_DEVICE_SYNC;

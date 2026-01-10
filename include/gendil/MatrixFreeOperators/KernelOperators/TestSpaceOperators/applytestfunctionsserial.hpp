@@ -34,7 +34,7 @@ auto AdjointInterpContraction( InputTensor const & u, Op1D const & B, std::index
          auto indices = std::make_tuple( indices_ ... );
          const Integer d = std::get< ActiveDim >( indices );
 
-         Real value = 0.0;
+         Real value = Real(0.0);
 
          auto& q = std::get< ActiveDim >( indices );
          for ( q = 0; q < NQ; ++q )

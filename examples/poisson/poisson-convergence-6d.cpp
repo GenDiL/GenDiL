@@ -14,26 +14,26 @@ using namespace gendil;
 template<int Dim>
 struct Manufactured {
     static Real u_exact(const array<Real,Dim>& X) {
-        Real prod = 1.0;
+        Real prod = Real(1.0);
         for(int i=0;i<Dim;i++)
-            prod *= sin(M_PI * X[i]);
+            prod *= Real(sin(M_PI * X[i]));
         return prod;
     }
     static void grad_exact(const array<Real,Dim>& X, array<Real,Dim>& grad) {
         // ∂_i u = π cos(π x_i) ∏_{j≠i} sin(π x_j)
         for(int i=0;i<Dim;i++){
-            Real term = M_PI * cos(M_PI * X[i]);
+            Real term = Real(M_PI * cos(M_PI * X[i]));
             for(int j=0;j<Dim;j++) if(j!=i)
-                term *= sin(M_PI * X[j]);
+                term *= Real(sin(M_PI * X[j]));
             grad[i] = term;
         }
     }
     static Real rhs(const array<Real,Dim>& X) {
         // f = d π^2 ∏ sin(π x_i)
-        Real prod = 1.0;
+        Real prod = Real(1.0);
         for(int i=0;i<Dim;i++)
-            prod *= sin(M_PI * X[i]);
-        return Dim * M_PI * M_PI * prod;
+            prod *= Real(sin(M_PI * X[i]));
+        return Real(Dim * M_PI * M_PI * prod);
     }
 };
 
@@ -41,7 +41,7 @@ template < Integer order, Integer num_quad_1d = order + 2 >
 void test_poisson_6D( const Integer n )
 {
     // 1) build a 6D mesh as cartesian product of two 3D cubes
-    const Real h = 1.0/n;
+    const Real h = Real(1.0/n);
     Cartesian3DMesh mesh1(h,n,n,n), mesh2(h,n,n,n);
     auto mesh = MakeCartesianProductMesh( mesh1, mesh2 );
 
@@ -72,11 +72,11 @@ void test_poisson_6D( const Integer n )
 
     auto coeff = [] GENDIL_HOST_DEVICE ( const array<Real,Dim>& X )
     {
-        return 1.0;
+        return Real(1.0);
     };
 
-    const double sigma = -1.0;
-    const double kappa = (order+1)*(order+1);
+    const Real sigma = Real(-1.0);
+    const Real kappa = Real((order+1)*(order+1));
     auto poisson_op = MakeDiffusionOperator<KernelPolicy>( fe_space, int_rules, coeff, sigma, kappa );
 
     // 5) Build RHS vector b_i = ∫Ω φ_i f
@@ -88,9 +88,9 @@ void test_poisson_6D( const Integer n )
 
     // 6) Solve A x = b via CG
     Vector x( ndofs );
-    x = 0.0;
+    x = Real(0.0);
     const Integer max_iters = 2000;
-    const Real tol = 1e-10;
+    const Real tol = Real(1e-10);
     auto dot = []( const Vector & u, const Vector & v )
     {
         return Dot( u,v );
@@ -104,7 +104,7 @@ void test_poisson_6D( const Integer n )
     auto err_L2 = L2Error<KernelPolicy>( fe_space, int_rules, Manufactured<6>::u_exact, x );
 
     // 8) Print for TikZ
-    cout << "       (" << ndofs << ", " << err_L2 << ")\n";
+    cout << "       (" << ndofs << ", " << double(err_L2) << ")\n";
 }
 
 template < Integer order, Integer num_quad_1d = order + 2 >

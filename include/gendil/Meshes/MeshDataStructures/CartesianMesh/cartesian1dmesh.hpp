@@ -32,7 +32,7 @@ struct Cartesian1DMeshBase
    connectivity_type connectivity; // number of elements per dimension
    const Real mesh_origin; // Origin of the mesh.
 
-   Cartesian1DMeshBase( Real h, Integer n, Real origin = 0.0) :
+   Cartesian1DMeshBase( Real h, Integer n, Real origin = Real(0.0)) :
       h( h ),
       connectivity( n ),
       mesh_origin( origin )

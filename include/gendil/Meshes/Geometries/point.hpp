@@ -73,11 +73,11 @@ struct Point<1>
 };
 
 template < size_t Dim >
-std::ostream& operator<<(std::ostream& os, Point<Dim> const & index) {
+std::ostream& operator<<(std::ostream& os, Point<Dim> const & pt) {
    os << "( ";
    for (size_t i = 0; i < Dim; i++)
    {
-      os << index[ i ] << " ";
+      os << double(pt[ i ]) << " ";
    }
    os << ")";
    return os;

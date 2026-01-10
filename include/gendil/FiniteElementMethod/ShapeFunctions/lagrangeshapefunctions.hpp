@@ -35,8 +35,8 @@ struct LagrangeShapeFunctions
     */
    static constexpr value_type ComputeValue( const index_type dof_index, const ref_point_type & ref_point )
    {
-      Real prod_numerator_res = 1.0;
-      Real prod_denominator_res = 1.0;
+      Real prod_numerator_res = Real(1.0);
+      Real prod_denominator_res = Real(1.0);
       for ( Integer i = 0; i < num_dofs; i++ )
       {
          if ( i != dof_index )
@@ -58,12 +58,12 @@ struct LagrangeShapeFunctions
     */
    static constexpr gradient_type ComputeGradientValue( const index_type dof_index, const ref_point_type & ref_point )
    {
-      Real sum_res = 0.0;
+      Real sum_res = Real(0.0);
       for ( Integer i = 0; i < num_dofs; i++ )
       {
          if ( i != dof_index )
          {
-            Real prod_numerator_res = 1.0;
+            Real prod_numerator_res = Real(1.0);
             Real prod_denominator_res = ( Points::GetCoord( dof_index ) - Points::GetCoord( i ) );
             for ( Integer k = 0; k < num_dofs; k++ )
             {
@@ -90,8 +90,8 @@ struct LagrangeShapeFunctions
    {
       for ( Integer j = 0; j < num_dofs; j++ )
       {
-         Real prod_numerator_res = 1.0;
-         Real prod_denominator_res = 1.0;
+         Real prod_numerator_res = Real(1.0);
+         Real prod_denominator_res = Real(1.0);
          for ( Integer i = 0; i < num_dofs; i++ )
          {
             if ( i != j )
@@ -114,12 +114,12 @@ struct LagrangeShapeFunctions
    {
       for ( Integer j = 0; j < num_dofs; j++ )
       {
-         Real sum_res = 0.0;
+         Real sum_res = Real(0.0);
          for ( Integer i = 0; i < num_dofs; i++ )
          {
             if ( i != j )
             {
-               Real prod_numerator_res = 1.0;
+               Real prod_numerator_res = Real(1.0);
                Real prod_denominator_res = ( Points::GetCoord( j ) - Points::GetCoord( i ) );
                for ( Integer k = 0; k < num_dofs; k++ )
                {
