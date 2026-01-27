@@ -37,7 +37,12 @@ auto ConjugateGradient(
    residual -= tmp; // initial residual
 
    Real rhs_norm = Norml2( rhs );
-   if( rhs_norm == 0 )
+   // Treat RHS as zero if its norm is exactly zero OR below meaningful precision.
+   // Without an absolute tolerance floor, tiny RHS values (e.g., 1e-30) cause the
+   // relative tolerance check to require unachievable precision, leading to
+   // numerical instability and eventual NaN propagation in time-stepping schemes.
+   constexpr Real absolute_tolerance_floor = 1e-30;
+   if( rhs_norm == 0 || rhs_norm < absolute_tolerance_floor )
    {
       x = 0.0;
       iters = 0;
@@ -142,8 +147,13 @@ auto ConjugateGradient(
 
    // 2) Compute ‖rhs‖ for relative tolerance
    const Real rhs_n = norm2( residual );
-   if ( rhs_n == 0.0 ) {
-      // trivial solution if rhs is zero
+   // Treat RHS as zero if its norm is exactly zero OR below meaningful precision.
+   // Without an absolute tolerance floor, tiny RHS values (e.g., 1e-30) cause the
+   // relative tolerance check to require unachievable precision, leading to
+   // numerical instability and eventual NaN propagation in time-stepping schemes.
+   constexpr Real absolute_tolerance_floor = 1e-30;
+   if ( rhs_n == 0.0 || rhs_n < absolute_tolerance_floor ) {
+      // trivial solution if rhs is zero or negligibly small
       x = 0.0;
       return IterativeSolverResult{ true, 0, 0.0 };
    }
