@@ -1,7 +1,7 @@
 mkdir -p build_dane
 cd build_dane
 
-module load gcc/12.1.1-magic
+module load gcc/12.1.1-magic cmake/3.30.5
 
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install_dane \

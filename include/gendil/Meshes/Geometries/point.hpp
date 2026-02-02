@@ -40,6 +40,12 @@ struct Point
       // TODO: Add debug assertion?
       return coordinates[ index ];
    }
+
+   constexpr Real& operator[]( size_t index )
+   {
+      // TODO: Add debug assertion?
+      return coordinates[ index ];
+   }
 };
 
 // Specialize the scalar case
@@ -84,5 +90,26 @@ std::ostream& operator<<(std::ostream& os, Point<Dim> const & index) {
 }
 
 // TODO: defines simple operations on Point, e.g. +,-?
+template < size_t Dim >
+auto operator+( Point<Dim> const & a, Point<Dim> const & b )
+{
+   Point<Dim> result;
+   for ( size_t i = 0; i < Dim; ++i )
+   {
+      result.coordinates[i] = a.coordinates[i] + b.coordinates[i];
+   }
+   return result;
+}
+
+template < size_t Dim >
+auto operator*( std::array<Real,Dim> const & a, Point<Dim> const & b )
+{
+   Point<Dim> result;
+   for ( size_t i = 0; i < Dim; ++i )
+   {
+      result.coordinates[i] = a[i] * b.coordinates[i];
+   }
+   return result;
+}
 
 }

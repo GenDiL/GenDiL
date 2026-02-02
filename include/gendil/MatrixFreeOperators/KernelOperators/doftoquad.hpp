@@ -12,9 +12,53 @@
 namespace gendil {
 
 /**
+ * @brief Concept for "DoF → quadrature" mapping containers.
+ *
+ * A type `DTQ` models DofToQuadMapping if it provides:
+ *  - Associated types:
+ *      - `using shape_functions;`
+ *      - `using integration_rule;`
+ *  - Static constexpr integers:
+ *      - `DTQ::num_dofs`
+ *      - `DTQ::num_quads`
+ *    (must be usable in constant-expression contexts)
+ *  - Accessors (all const-qualified):
+ *      - `Real values(LocalIndex q, LocalIndex d) const;`
+ *      - `Real gradients(LocalIndex q, LocalIndex d) const;`
+ *      - `Real quad_gradients(LocalIndex i, LocalIndex j) const;`   // G*B'
+ *      - `Real weights(LocalIndex q) const;`
+ *
+ * This is satisfied by both @c DofToQuad and @c NonconformingDofToQuad.
+ */
+template <typename DTQ>
+concept DofToQuadMapping =
+   requires // associated types
+   {
+      typename DTQ::shape_functions;
+      typename DTQ::integration_rule;
+   }
+   &&
+   requires // static constexpr counts (and prove constant-expression-ness)
+   {
+      { DTQ::num_dofs }  -> std::convertible_to<Integer>;
+      { DTQ::num_quads } -> std::convertible_to<Integer>;
+      // Must be usable where non-type template params are required:
+      std::integral_constant<Integer, DTQ::num_dofs>{};
+      std::integral_constant<Integer, DTQ::num_quads>{};
+   }
+   &&
+   requires (const DTQ& a, LocalIndex q, LocalIndex d, LocalIndex i, LocalIndex j)
+   {
+      { a.values(q, d) }         -> std::convertible_to<Real>;
+      { a.gradients(q, d) }      -> std::convertible_to<Real>;
+      { a.quad_gradients(i, j) } -> std::convertible_to<Real>;
+      { a.weights(q) }           -> std::convertible_to<Real>;
+   };
+
+/**
  * @brief Structure storing the quadrature weights, the values of the shape functions
  * at quadrature points, and the values.
- * 
+ *
  * @tparam ShapeFunctions The shape functions.
  * @tparam Points The points and weights of the integration rule.
  */
@@ -169,6 +213,90 @@ template < typename CellType, typename FaceIntRulesTuple >
 auto MakeMeshFaceQuadData()
 {
    return MakeFaceDofToQuad< CellType, FaceIntRulesTuple >( std::make_index_sequence< std::tuple_size_v< FaceIntRulesTuple > >{} );
+}
+
+
+/**
+ * @brief Structure storing the quadrature weights, the values of the shape functions
+ * at quadrature points, and the values.
+ * 
+ * @tparam ShapeFunctions The shape functions.
+ * @tparam IntegrationRule The integration rule.
+ */
+template < typename ShapeFunctions, typename IntegrationRule, typename Face, Integer DimIndex >
+struct NonconformingDofToQuad
+{
+   using shape_functions = ShapeFunctions;
+   using integration_rule = IntegrationRule;
+   using face_type = Face;
+   static constexpr Integer num_dofs = ShapeFunctions::num_dofs;
+   static constexpr Integer num_quads = IntegrationRule::GetNumPoints();
+   Real weights_data[ num_quads ];
+   const Face & face;
+
+   GENDIL_HOST_DEVICE
+   constexpr NonconformingDofToQuad( const Face & face ) : face( face )
+   {
+      for ( Integer quad = 0; quad < num_quads; quad++ )
+      {
+         weights_data[ quad ] = IntegrationRule::GetWeight( quad );
+      }
+   }
+
+   constexpr Real values( LocalIndex q, LocalIndex d ) const
+   {
+      return ShapeFunctions::ComputeValue( d, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
+   }
+
+   constexpr Real gradients( LocalIndex q, LocalIndex d ) const
+   {
+      return ShapeFunctions::ComputeGradientValue( d, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
+   }
+
+   /// @brief G*B' gradient operation from quadrature points to quadrature points
+   constexpr Real quad_gradients( LocalIndex i, LocalIndex j ) const
+   {
+      using gl = LagrangeShapeFunctions< IntegrationRule >;
+      return gl::ComputeGradientValue( j, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( i ) ) );
+   }
+
+   constexpr Real weights( LocalIndex q ) const
+   {
+      return weights_data[ q ];
+   }
+};
+
+template <
+   CellFaceView Face,
+   typename ShapeFunctions,
+   typename IntegrationRule,
+   Integer DimIndex>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingDofToQuadData(
+   const Face & face,
+   const DofToQuad< ShapeFunctions, IntegrationRule > & dtq,
+   std::integral_constant<Integer, DimIndex>)
+{
+   return NonconformingDofToQuad< ShapeFunctions, IntegrationRule, Face, DimIndex >( face );
+}
+
+template <
+   CellFaceView Face,
+   typename ... DofToQuads,
+   Integer ... Is >
+GENDIL_HOST_DEVICE
+auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq, std::index_sequence< Is... > )
+{
+   return std::make_tuple( MakeNonconformingDofToQuadData( face, std::get< Is >( dtq ), std::integral_constant<Integer, Is>{} )... );
+}
+
+template <
+   CellFaceView Face,
+   typename ... DofToQuads >
+GENDIL_HOST_DEVICE
+auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq )
+{
+   return MakeNonconformingDofToQuadData( face, dtq, std::make_index_sequence< sizeof...(DofToQuads) >{} );
 }
 
 // Assumes 1D QuadData

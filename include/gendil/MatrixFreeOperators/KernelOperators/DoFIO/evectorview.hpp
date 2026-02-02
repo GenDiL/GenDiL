@@ -126,7 +126,8 @@ auto MakeScalarEVectorView(
 {
    if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
    {
-      return MakeTensor( finite_element_space, data );
+      const GlobalIndex dof_shift = finite_element_space.restriction.shift;
+      return MakeTensor( finite_element_space, data + dof_shift );
    }
    else // H1Restriction
    {
@@ -148,11 +149,16 @@ auto MakeVectorEVectorView(
    T * data,
    std::index_sequence< v_dims... > )
 {
+   static_assert(
+      std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
+      "MakeVectorEVectorView only supports L2Restriction."
+   );
    const GlobalIndex num_elements = finite_element_space.GetNumberOfFiniteElements();
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+   const GlobalIndex dof_shift = finite_element_space.restriction.shift;
    return std::make_tuple(
       MakeTensor(
-         data + VectorOffset( dof_shape{}, num_elements, std::make_index_sequence< v_dims >{} ),
+         data + dof_shift + VectorOffset( dof_shape{}, num_elements, std::make_index_sequence< v_dims >{} ),
          num_elements,
          std::tuple_element_t< v_dims, dof_shape >{}
       )...

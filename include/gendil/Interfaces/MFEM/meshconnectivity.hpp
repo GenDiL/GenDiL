@@ -9,7 +9,7 @@
 #include <vector>
 #include <mfem.hpp>
 #include "gendil/Utilities/types.hpp"
-#include "gendil/Meshes/Connectivities/unstructuredconformingconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "orientation.hpp"
@@ -111,7 +111,7 @@ UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshConnectivity( con
          const int mfem_local_face_id = face_info.element[0].local_face_id;
          const size_t local_face_id = GetLocalFaceIndex< Dim >( mfem_local_face_id );
          const int orientation = face_info.element[0].orientation;
-         element_connectivities[ elem_index ].faces[ local_face_id ].neighbor_index = std::numeric_limits< GlobalIndex >::quiet_NaN();
+         element_connectivities[ elem_index ].faces[ local_face_id ].cell_index = std::numeric_limits< GlobalIndex >::quiet_NaN();
          element_connectivities[ elem_index ].faces[ local_face_id ].orientation =
             TranslateMFEMOrientation( mfem_orientation< Dim >{ mfem_local_face_id, -1, orientation } );
          element_connectivities[ elem_index ].faces[ local_face_id ].boundary = true;
@@ -125,11 +125,11 @@ UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshConnectivity( con
          const int mfem_local_face_id_1 = face_info.element[1].local_face_id;
          const size_t local_face_id_1 = GetLocalFaceIndex< Dim >( mfem_local_face_id_1 );
          const int orientation_1 = face_info.element[1].orientation;
-         element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].neighbor_index = elem_index_1;
+         element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].cell_index = elem_index_1;
          element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].orientation =
             TranslateMFEMOrientation( mfem_orientation< Dim >{ mfem_local_face_id_0, mfem_local_face_id_1, orientation_1 } );
          element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].boundary = false;
-         element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].neighbor_index = elem_index_0;
+         element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].cell_index = elem_index_0;
          element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].orientation =
             TranslateMFEMOrientation( mfem_orientation< Dim >{ mfem_local_face_id_1, mfem_local_face_id_0, inv_orientation[ orientation_1 ] } );
          element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].boundary = false;

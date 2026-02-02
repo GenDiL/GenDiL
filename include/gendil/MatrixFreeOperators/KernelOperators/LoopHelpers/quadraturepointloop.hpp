@@ -88,4 +88,11 @@ inline void QuadraturePointLoop( const KernelContext & thread, Lambda && lambda 
    }
 }
 
+template < typename KernelContext, typename IntegrationRule, typename Lambda >
+GENDIL_HOST_DEVICE
+inline void QuadraturePointLoop( const KernelContext & thread, const IntegrationRule & integration_rule, Lambda && lambda )
+{
+   return QuadraturePointLoop<IntegrationRule>( thread, lambda );
+}
+
 }

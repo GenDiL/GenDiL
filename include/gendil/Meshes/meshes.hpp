@@ -6,29 +6,17 @@
 // The common functions to all meshes
 #include "mesh.hpp"
 
+// The common functions to all face meshes
+#include "facemesh.hpp"
+
 // The common functions to all cells
 #include "cell.hpp"
 
-// An unstructured 1d mesh using mfem::Mesh nodes
-#include "MeshDataStructures/UnstructuredMesh/linemesh.hpp"
+// A set of Cartesian meshes data structures
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianmesh.hpp"
 
-// A Cartesian 1d mesh
-#include "MeshDataStructures/CartesianMesh/cartesian1dmesh.hpp"
+// A set of unstructured meshes data structures
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredmesh.hpp"
 
-// A unstructured 2d quad mesh using mfem::Mesh nodes
-#include "MeshDataStructures/UnstructuredMesh/quadmesh.hpp"
-
-// A 2d Cartesian mesh
-#include "MeshDataStructures/CartesianMesh/cartesian2dmesh.hpp"
-
-// An unstructured 3d hex mesh using mfem::Mesh nodes
-#include "MeshDataStructures/UnstructuredMesh/hexmesh.hpp"
-
-// A 3d Cartesian mesh
-#include "MeshDataStructures/CartesianMesh/cartesian3dmesh.hpp"
-
-// A Cartesian product mesh
-#include "MeshDataStructures/TensorProductMesh/productmesh.hpp"
-
-// An arbitrary dimension Cartesian mesh
-#include "MeshDataStructures/CartesianMesh/cartesianmesh.hpp"
+// A cartesian product mesh
+#include "gendil/Meshes/MeshDataStructures/TensorProductMesh/productmesh.hpp"

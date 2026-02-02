@@ -8,6 +8,7 @@
 #include "gendil/Utilities/MathHelperFunctions/sum.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplereplace.hpp"
 #include "gendil/Meshes/Geometries/geometries.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "QuadraturePoints/zeropoint.hpp"
 #include "QuadraturePoints/onepoint.hpp"
 
@@ -99,6 +100,16 @@ constexpr auto GetLowDimFaceIntegrationRules( FaceIntegrationRule const & face_i
 {
    constexpr Integer size = std::tuple_size_v< FaceIntegrationRule >;
    return GetLowDimFaceIntegrationRules< LowDim >( face_int_rules, std::make_index_sequence< size >{} );
+}
+
+template <
+   CellFaceView FaceInfo,
+   typename FaceIntegrationRule
+>
+constexpr auto GetFaceIntegrationRule( const FaceInfo & face_info, FaceIntegrationRule const & face_int_rules )
+{
+   constexpr Integer local_face_index = FaceInfo::local_face_index_type::value;
+   return std::get< local_face_index >( face_int_rules );
 }
 
 }
