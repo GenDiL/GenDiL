@@ -439,10 +439,10 @@ auto SerialReadDofs(
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
-   const GlobalIndex element_index = face_info.get_cell_index();
+   const GlobalIndex element_index = face_info.GetCellIndex();
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.get_orientation();
+   Permutation< space_dim > orientation = face_info.GetOrientation();
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
@@ -507,10 +507,10 @@ auto ThreadedReadDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   const GlobalIndex element_index = face_info.get_cell_index();
+   const GlobalIndex element_index = face_info.GetCellIndex();
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.get_orientation();
+   Permutation< space_dim > orientation = face_info.GetOrientation();
 
    // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();

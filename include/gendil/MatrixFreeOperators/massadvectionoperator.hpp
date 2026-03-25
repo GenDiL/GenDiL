@@ -175,13 +175,13 @@ void MassAdvectionFaceOperator(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), element_face_quad_data, u );
 
-         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.PlusSide(), element_face_quad_data, neighbor_u );
 
          auto & Duq = Bu;
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
 
          QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
          {
@@ -194,12 +194,12 @@ void MassAdvectionFaceOperator(
             PhysicalCoordinates X;
             Jacobian J_mesh;
 
-            mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+            mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
             Jacobian inv_J;
             const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-            const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
+            const Real weight = GetWeight( face_info.MinusSide(), quad_index, element_face_quad_data );
 
             // Compute: weight * detJ * D_A * J^-T * Gu_q
             Real D_Advection[ Dim ];
@@ -221,7 +221,7 @@ void MassAdvectionFaceOperator(
          });
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, Duq, BfDBfu );
+         ApplyAddTestFunctions( kernel_conf, face_info.MinusSide(), element_face_quad_data, Duq, BfDBfu );
       }
    );
    WriteAddDofs( kernel_conf, fe_space, element_index, BfDBfu, dofs_out );

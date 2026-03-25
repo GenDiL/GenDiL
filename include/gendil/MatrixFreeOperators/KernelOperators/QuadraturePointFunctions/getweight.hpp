@@ -71,7 +71,7 @@ Real GetWeight(
    );
    constexpr Integer local_face_index = FaceInfo::local_face_index_type::value;
    const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
-   return face_info.measure() * GetWeight( index, local_face_quad_data );
+   return face_info.Measure() * GetWeight( index, local_face_quad_data );
 }
 
 }

@@ -118,14 +118,14 @@ void AdvectionFusedOperatorWithoutBC(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), element_face_quad_data, u );
 
-         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.PlusSide(), element_face_quad_data, neighbor_u );
 
          auto & DBu = Bu;
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
 
          QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
@@ -138,12 +138,12 @@ void AdvectionFusedOperatorWithoutBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
+               const Real weight = GetWeight( face_info.MinusSide(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -165,7 +165,7 @@ void AdvectionFusedOperatorWithoutBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.MinusSide(), element_face_quad_data, DBu, BGDBu );
       }
    );
    WriteDofs( kernel_conf, fe_space, element_index, BGDBu, dofs_out );
@@ -282,14 +282,14 @@ void AdvectionFusedOperatorWithBC(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), element_face_quad_data, u );
 
-         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), element_face_quad_data, neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.PlusSide(), element_face_quad_data, neighbor_u );
 
          auto & DBu = Bu;
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
 
          QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
@@ -302,12 +302,12 @@ void AdvectionFusedOperatorWithBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
+               const Real weight = GetWeight( face_info.MinusSide(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -329,15 +329,15 @@ void AdvectionFusedOperatorWithBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.MinusSide(), element_face_quad_data, DBu, BGDBu );
       },
       [&]( auto const & face_info )
       {
 
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), element_face_quad_data, u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), element_face_quad_data, u );
 
          auto & DBu = Bu;
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
 
          QuadraturePointLoop( kernel_conf, face_int_rule, [&] ( auto const & quad_index )
             {
@@ -350,12 +350,12 @@ void AdvectionFusedOperatorWithBC(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( face_info.minus_side(), quad_index, element_face_quad_data );
+               const Real weight = GetWeight( face_info.MinusSide(), quad_index, element_face_quad_data );
 
                Real D_Advection[ Dim ];
                adv( X, D_Advection );
@@ -377,7 +377,7 @@ void AdvectionFusedOperatorWithBC(
          );
 
          // Application of the test functions
-         ApplyAddTestFunctions( kernel_conf, face_info.minus_side(), element_face_quad_data, DBu, BGDBu );
+         ApplyAddTestFunctions( kernel_conf, face_info.MinusSide(), element_face_quad_data, DBu, BGDBu );
       }
    );
    WriteDofs( kernel_conf, fe_space, element_index, BGDBu, dofs_out );
@@ -434,17 +434,17 @@ void AdvectionLocalFaceOperator(
    const auto face_info = face_mesh.GetGlobalFaceInfo( face_index );
    
    // Read the current element DOFs
-   auto u_minus = ReadDofs( kernel_conf, fe_space, face_info.minus_side(), dofs_in );
-   auto u_plus = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+   auto u_minus = ReadDofs( kernel_conf, fe_space, face_info.MinusSide(), dofs_in );
+   auto u_plus = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
    // Element contributions
-   auto Bu_minus = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u_minus );
-   auto Bu_plus = InterpolateValues( kernel_conf, face_info.plus_side(), face_quad_data, u_plus );
+   auto Bu_minus = InterpolateValues( kernel_conf, face_info.MinusSide(), face_quad_data, u_minus );
+   auto Bu_plus = InterpolateValues( kernel_conf, face_info.PlusSide(), face_quad_data, u_plus );
 
-   const auto cell = fe_space.GetCell( face_info.minus_side().get_cell_index() );
+   const auto cell = fe_space.GetCell( face_info.MinusSide().GetCellIndex() );
 
    // Container to store values at all the quadrature points
-   auto int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+   auto int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
    auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, int_rule );
 
    QuadraturePointLoop( kernel_conf, int_rule, [&] ( auto const & quad_index )
@@ -458,12 +458,12 @@ void AdvectionLocalFaceOperator(
       PhysicalCoordinates X;
       Jacobian J_mesh;
 
-      mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+      mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
       Jacobian inv_J;
       const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-      const Real weight = GetWeight( face_info.minus_side(), quad_index, face_quad_data );
+      const Real weight = GetWeight( face_info.MinusSide(), quad_index, face_quad_data );
 
       Real D_Advection[ Dim ];
       adv( X, D_Advection );
@@ -472,7 +472,7 @@ void AdvectionLocalFaceOperator(
 
       const Real neighbor_Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu_plus );
 
-      const auto reference_normal = face_info.get_reference_normal();
+      const auto reference_normal = face_info.GetReferenceNormal();
       const auto physical_normal = ComputePhysicalNormal( inv_J, reference_normal );
 
       const Real dot = Dot( D_Advection, physical_normal );
@@ -484,10 +484,10 @@ void AdvectionLocalFaceOperator(
    });
 
    // Application of the test functions
-   auto BDBu_minus = ApplyTestFunctions( kernel_conf, face_info.minus_side(), face_quad_data, DBu );
-   WriteAddDofs( kernel_conf, fe_space, face_info.minus_side(), BDBu_minus, dofs_out );
-   auto BDBu_plus = ApplyTestFunctions( kernel_conf, face_info.plus_side(), face_quad_data, DBu );
-   WriteSubDofs( kernel_conf, fe_space, face_info.plus_side(), BDBu_plus, dofs_out );
+   auto BDBu_minus = ApplyTestFunctions( kernel_conf, face_info.MinusSide(), face_quad_data, DBu );
+   WriteAddDofs( kernel_conf, fe_space, face_info.MinusSide(), BDBu_minus, dofs_out );
+   auto BDBu_plus = ApplyTestFunctions( kernel_conf, face_info.PlusSide(), face_quad_data, DBu );
+   WriteSubDofs( kernel_conf, fe_space, face_info.PlusSide(), BDBu_plus, dofs_out );
 }
 
 
@@ -558,17 +558,17 @@ void AdvectionNonconformingLocalFaceOperator(
    const auto face_info = face_mesh.GetGlobalFaceInfo( face_index );
    
    // Read the current element DOFs
-   auto u_minus = ReadDofs( kernel_conf, minus_fe_space, face_info.minus_side(), dofs_in_minus );
-   auto u_plus = ReadDofs( kernel_conf, plus_fe_space, face_info.plus_side(), dofs_in_plus );
+   auto u_minus = ReadDofs( kernel_conf, minus_fe_space, face_info.MinusSide(), dofs_in_minus );
+   auto u_plus = ReadDofs( kernel_conf, plus_fe_space, face_info.PlusSide(), dofs_in_plus );
 
    // Element contributions
-   auto Bu_minus = InterpolateValues( kernel_conf, face_info.minus_side(), minus_face_quad_data, u_minus );
-   auto Bu_plus = InterpolateValues( kernel_conf, face_info.plus_side(), plus_face_quad_data, u_plus );
+   auto Bu_minus = InterpolateValues( kernel_conf, face_info.MinusSide(), minus_face_quad_data, u_minus );
+   auto Bu_plus = InterpolateValues( kernel_conf, face_info.PlusSide(), plus_face_quad_data, u_plus );
 
-   const auto cell = minus_fe_space.GetCell( face_info.minus_side().get_cell_index() );
+   const auto cell = minus_fe_space.GetCell( face_info.MinusSide().GetCellIndex() );
 
    // Container to store values at all the quadrature points
-   auto int_rule = GetFaceIntegrationRule( face_info.minus_side(), minus_face_integration_rule );
+   auto int_rule = GetFaceIntegrationRule( face_info.MinusSide(), minus_face_integration_rule );
    auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, int_rule );
 
    QuadraturePointLoop( kernel_conf, int_rule, [&] ( auto const & quad_index )
@@ -586,12 +586,12 @@ void AdvectionNonconformingLocalFaceOperator(
       PhysicalCoordinates X;
       Jacobian J_mesh;
 
-      mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, minus_mesh_face_quad_data, X, J_mesh );
+      mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, minus_mesh_face_quad_data, X, J_mesh );
 
       Jacobian inv_J;
       const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-      const Real weight = GetWeight( face_info.minus_side(), quad_index, minus_face_quad_data );
+      const Real weight = GetWeight( face_info.MinusSide(), quad_index, minus_face_quad_data );
 
       Real D_Advection[ Dim ];
       adv( X, D_Advection );
@@ -600,7 +600,7 @@ void AdvectionNonconformingLocalFaceOperator(
 
       const Real neighbor_Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu_plus );
 
-      const auto reference_normal = face_info.get_reference_normal();
+      const auto reference_normal = face_info.GetReferenceNormal();
       const auto physical_normal = ComputePhysicalNormal( inv_J, reference_normal );
 
       const Real dot = Dot( D_Advection, physical_normal );
@@ -612,10 +612,10 @@ void AdvectionNonconformingLocalFaceOperator(
    });
 
    // Application of the test functions
-   auto minus_BDBu = ApplyTestFunctions( kernel_conf, face_info.minus_side(), minus_face_quad_data, DBu );
-   auto plus_BDBu = ApplyTestFunctions( kernel_conf, face_info.plus_side(), plus_face_quad_data, DBu );
-   WriteAddDofs( kernel_conf, minus_fe_space, face_info.minus_side(), minus_BDBu, dofs_out_minus );
-   WriteSubDofs( kernel_conf, plus_fe_space, face_info.plus_side(), plus_BDBu, dofs_out_plus );
+   auto minus_BDBu = ApplyTestFunctions( kernel_conf, face_info.MinusSide(), minus_face_quad_data, DBu );
+   auto plus_BDBu = ApplyTestFunctions( kernel_conf, face_info.PlusSide(), plus_face_quad_data, DBu );
+   WriteAddDofs( kernel_conf, minus_fe_space, face_info.MinusSide(), minus_BDBu, dofs_out_minus );
+   WriteSubDofs( kernel_conf, plus_fe_space, face_info.PlusSide(), plus_BDBu, dofs_out_plus );
 }
 
 /**

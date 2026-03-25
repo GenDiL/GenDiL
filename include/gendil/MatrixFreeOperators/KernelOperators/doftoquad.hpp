@@ -245,19 +245,19 @@ struct NonconformingDofToQuad
 
    constexpr Real values( LocalIndex q, LocalIndex d ) const
    {
-      return ShapeFunctions::ComputeValue( d, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
+      return ShapeFunctions::ComputeValue( d, face.template MapReferenceToFaceCoordinates1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
    }
 
    constexpr Real gradients( LocalIndex q, LocalIndex d ) const
    {
-      return ShapeFunctions::ComputeGradientValue( d, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
+      return ShapeFunctions::ComputeGradientValue( d, face.template MapReferenceToFaceCoordinates1d<DimIndex>( IntegrationRule::GetCoord( q ) ) );
    }
 
    /// @brief G*B' gradient operation from quadrature points to quadrature points
    constexpr Real quad_gradients( LocalIndex i, LocalIndex j ) const
    {
       using gl = LagrangeShapeFunctions< IntegrationRule >;
-      return gl::ComputeGradientValue( j, face.template map_reference_to_face_coordinates_1d<DimIndex>( IntegrationRule::GetCoord( i ) ) );
+      return gl::ComputeGradientValue( j, face.template MapReferenceToFaceCoordinates1d<DimIndex>( IntegrationRule::GetCoord( i ) ) );
    }
 
    constexpr Real weights( LocalIndex q ) const

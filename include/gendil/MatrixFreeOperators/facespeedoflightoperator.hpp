@@ -42,7 +42,7 @@ void FaceReadSpeedOfLightElementOperator(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
          u += neighbor_u;
       }
@@ -69,7 +69,7 @@ void FaceWriteSpeedOfLightElementOperator(
       [&]( auto const & face_info )
       {
          // Write the result back to the neighbor
-         WriteAddDofs( kernel_conf, fe_space, face_info.plus_side(), u, dofs_out );
+         WriteAddDofs( kernel_conf, fe_space, face_info.PlusSide(), u, dofs_out );
       }
    );
 
@@ -93,14 +93,14 @@ void ReadWriteSpeedOfLightFaceOperator(
    const auto face_info = face_mesh.GetGlobalFaceInfo( face_index );
    
    // Read the current element DOFs
-   auto u_minus = ReadDofs( kernel_conf, fe_space, face_info.minus_side(), dofs_in );
-   auto u_plus = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+   auto u_minus = ReadDofs( kernel_conf, fe_space, face_info.MinusSide(), dofs_in );
+   auto u_plus = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
    u_minus += u_plus;
 
    // Write own contribution to own dofs_out
-   WriteAddDofs( kernel_conf, fe_space, face_info.minus_side(), u_minus, dofs_out );
-   WriteAddDofs( kernel_conf, fe_space, face_info.plus_side(), u_minus, dofs_out );
+   WriteAddDofs( kernel_conf, fe_space, face_info.MinusSide(), u_minus, dofs_out );
+   WriteAddDofs( kernel_conf, fe_space, face_info.PlusSide(), u_minus, dofs_out );
 }
 /**
  * @brief Explicit speed-of-light "face" operator.

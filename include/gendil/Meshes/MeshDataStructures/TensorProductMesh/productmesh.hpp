@@ -111,11 +111,11 @@ namespace details
          using face_index = std::integral_constant< Integer, sub_face_index >;
          auto neighbor = head_mesh.GetLocalFaceInfo( head_index, face_index{} );
 
-         auto head_neighbor_index = neighbor.plus_side().get_cell_index();
+         auto head_neighbor_index = neighbor.PlusSide().GetCellIndex();
 
          neighbor_index = head_neighbor_index + HeadNumCells * tail_index;
-         Set< 0 >( orientation, static_cast< Permutation< HeadDim > >( neighbor.plus_side().get_orientation() ) );
-         boundary = neighbor.plus_side().boundary;
+         Set< 0 >( orientation, static_cast< Permutation< HeadDim > >( neighbor.PlusSide().GetOrientation() ) );
+         boundary = neighbor.PlusSide().boundary;
       }
       else
       {
@@ -126,11 +126,11 @@ namespace details
          // recursion step
          auto neighbor = GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
 
-         GlobalIndex tail_neighbor_index = neighbor.plus_side().get_cell_index();
+         GlobalIndex tail_neighbor_index = neighbor.PlusSide().GetCellIndex();
 
          neighbor_index = head_index + HeadNumCells * tail_neighbor_index;
-         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.plus_side().get_orientation() ) );
-         boundary = neighbor.plus_side().boundary;
+         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.PlusSide().GetOrientation() ) );
+         boundary = neighbor.PlusSide().boundary;
       }
 
       constexpr Integer face_id = FaceIndex;

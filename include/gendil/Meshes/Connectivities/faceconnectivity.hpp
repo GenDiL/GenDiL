@@ -14,24 +14,24 @@ struct GlobalFaceInfo {
    using plus_side_type  = PlusView;
 
    GENDIL_HOST_DEVICE
-   const minus_side_type& minus_side() const { return minus; }
+   const minus_side_type& MinusSide() const { return minus; }
    GENDIL_HOST_DEVICE
-   const plus_side_type&  plus_side()  const { return plus;  }
+   const plus_side_type&  PlusSide()  const { return plus;  }
 
    GENDIL_HOST_DEVICE
-   constexpr auto is_boundary() const
+   constexpr auto IsBoundary() const
    {
-      return minus_side().is_boundary() || plus_side().is_boundary();
+      return MinusSide().IsBoundary() || PlusSide().IsBoundary();
    }
    GENDIL_HOST_DEVICE
-   constexpr auto is_conforming() const
+   constexpr auto IsConforming() const
    {
-      return minus_side().is_conforming() && plus_side().is_conforming();
+      return MinusSide().IsConforming() && PlusSide().IsConforming();
    }
    GENDIL_HOST_DEVICE
-   constexpr auto get_reference_normal() const
+   constexpr auto GetReferenceNormal() const
    {
-      return minus_side().get_reference_normal();
+      return MinusSide().GetReferenceNormal();
    }
 
    MinusView minus;
@@ -44,9 +44,9 @@ concept CellFaceView =
       std::integral_constant<Integer, CFV::dim>{};
       std::bool_constant<CFV::is_conforming>{};
 
-      { v.get_cell_index() } -> std::convertible_to<GlobalIndex>;
-      { v.get_orientation() } -> std::convertible_to<typename CFV::orientation_type>;
-      { v.get_reference_normal() };
+      { v.GetCellIndex() } -> std::convertible_to<GlobalIndex>;
+      { v.GetOrientation() } -> std::convertible_to<typename CFV::orientation_type>;
+      { v.GetReferenceNormal() };
    };
 
 template <int Dim>
@@ -54,13 +54,13 @@ struct ConformingFaceMap {
    static constexpr bool is_conforming = true;
 
    GENDIL_HOST_DEVICE
-   Point<Dim> map_reference_to_face_coordinates(const Point<Dim>& p) const { return p; }
+   Point<Dim> MapReferenceToFaceCoordinates(const Point<Dim>& p) const { return p; }
 
    GENDIL_HOST_DEVICE
-   Point<Dim> map_reference_to_face_coordinates_1d(const Point<1>& p) const { return p; }
+   Point<Dim> MapReferenceToFaceCoordinates1d(const Point<1>& p) const { return p; }
 
    GENDIL_HOST_DEVICE
-   Real measure() const { return 1.0; }
+   Real Measure() const { return 1.0; }
 };
 
 template <int Dim>
@@ -71,14 +71,14 @@ struct NonconformingHyperCubeFaceMap
    std::array<Real, Dim> size{};
 
    GENDIL_HOST_DEVICE
-   auto map_reference_to_face_coordinates(const Point<Dim>& p) const
+   auto MapReferenceToFaceCoordinates(const Point<Dim>& p) const
    {
       return origin + size * p;
    }
 
    template < Integer d >
    GENDIL_HOST_DEVICE
-   auto map_reference_to_face_coordinates_1d(const Point<1>& p) const
+   auto MapReferenceToFaceCoordinates1d(const Point<1>& p) const
    {
       static_assert(
          d < Dim,
@@ -88,7 +88,7 @@ struct NonconformingHyperCubeFaceMap
    }
 
    GENDIL_HOST_DEVICE
-   Real measure() const { return Product(size); }
+   Real Measure() const { return Product(size); }
 };
 
 template <
@@ -118,29 +118,29 @@ struct FaceView
    boundary_type boundary;
 
    GENDIL_HOST_DEVICE
-   GlobalIndex get_cell_index() const { return cell_index; }
+   GlobalIndex GetCellIndex() const { return cell_index; }
 
    GENDIL_HOST_DEVICE
-   const auto & get_orientation() const { return orientation; }
+   const auto & GetOrientation() const { return orientation; }
 
    GENDIL_HOST_DEVICE
-   const auto & get_reference_normal() const { return normal; }
+   const auto & GetReferenceNormal() const { return normal; }
 
    GENDIL_HOST_DEVICE
-   auto map_reference_to_face_coordinates(const Point<dim> & p) const
+   auto MapReferenceToFaceCoordinates(const Point<dim> & p) const
    {
-      return conformity.map_reference_to_face_coordinates(p);
+      return conformity.MapReferenceToFaceCoordinates(p);
    }
 
    template < Integer DimIndex >
    GENDIL_HOST_DEVICE
-   auto map_reference_to_face_coordinates_1d(const Point<1> & p) const
+   auto MapReferenceToFaceCoordinates1d(const Point<1> & p) const
    {
-      return conformity.template map_reference_to_face_coordinates_1d<DimIndex>(p);
+      return conformity.template MapReferenceToFaceCoordinates1d<DimIndex>(p);
    }
 
    GENDIL_HOST_DEVICE
-   Real measure() const { return conformity.measure(); }
+   Real Measure() const { return conformity.Measure(); }
 };
 
 template < Integer Dim >
@@ -194,7 +194,7 @@ template < typename FaceInfo >
 GENDIL_HOST_DEVICE
 constexpr auto GetReferenceNormal( const FaceInfo & face_info )
 {
-   return face_info.get_reference_normal();
+   return face_info.GetReferenceNormal();
 }
 
 }

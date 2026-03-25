@@ -170,15 +170,15 @@ void DiffusionFaceOperator(
       {
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.plus_side(), dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
 
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u );
-         auto Gu = InterpolateGradient( kernel_conf, face_info.minus_side(), face_quad_data, u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), face_quad_data, u );
+         auto Gu = InterpolateGradient( kernel_conf, face_info.MinusSide(), face_quad_data, u );
 
-         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.plus_side(), face_quad_data, neighbor_u );
-         auto neighbor_Gu = InterpolateGradient( kernel_conf, face_info.plus_side(), face_quad_data, neighbor_u );
+         auto neighbor_Bu = InterpolateValues( kernel_conf, face_info.PlusSide(), face_quad_data, neighbor_u );
+         auto neighbor_Gu = InterpolateGradient( kernel_conf, face_info.PlusSide(), face_quad_data, neighbor_u );
 
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
          auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, face_int_rule );
          auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, face_int_rule );
 
@@ -192,12 +192,12 @@ void DiffusionFaceOperator(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( face_info.minus_side(), quad_index, face_quad_data );
+               const Real weight = GetWeight( face_info.MinusSide(), quad_index, face_quad_data );
 
                Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
                Real Gu_q[ Dim ];
@@ -240,16 +240,16 @@ void DiffusionFaceOperator(
          );
 
          // Application of the test functions
-         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.minus_side(), face_quad_data, Duq, DGuq, BfDBfu );
+         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.MinusSide(), face_quad_data, Duq, DGuq, BfDBfu );
       },
       [&]( auto const & face_info )
       {
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
-         auto Bu = InterpolateValues( kernel_conf, face_info.minus_side(), face_quad_data, u );
-         auto Gu = InterpolateGradient( kernel_conf, face_info.minus_side(), face_quad_data, u );
+         auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), face_quad_data, u );
+         auto Gu = InterpolateGradient( kernel_conf, face_info.MinusSide(), face_quad_data, u );
 
-         auto face_int_rule = GetFaceIntegrationRule( face_info.minus_side(), face_integration_rules );
+         auto face_int_rule = GetFaceIntegrationRule( face_info.MinusSide(), face_integration_rules );
          auto Duq = MakeQuadraturePointValuesContainer( kernel_conf, face_int_rule );
          auto DGuq = MakeQuadraturePointValuesContainer<Dim>( kernel_conf, face_int_rule );
 
@@ -265,12 +265,12 @@ void DiffusionFaceOperator(
                PhysicalCoordinates X;
                Jacobian J_mesh;
 
-               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.minus_side(), quad_index, mesh_face_quad_data, X, J_mesh );
+               mesh::ComputePhysicalCoordinatesAndJacobian( cell, face_info.MinusSide(), quad_index, mesh_face_quad_data, X, J_mesh );
 
                Jacobian inv_J;
                const Real detJ = ComputeInverseAndDeterminant( J_mesh, inv_J );
 
-               const Real weight = GetWeight( face_info.minus_side(), quad_index, face_quad_data );
+               const Real weight = GetWeight( face_info.MinusSide(), quad_index, face_quad_data );
 
                Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
                Real Gu_q[ Dim ];
@@ -308,7 +308,7 @@ void DiffusionFaceOperator(
          );
 
          // Application of the test functions
-         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.minus_side(), face_quad_data, Duq, DGuq, BfDBfu );
+         ApplyValuesAndGradientTestFunctions<true>( kernel_conf, face_info.MinusSide(), face_quad_data, Duq, DGuq, BfDBfu );
       }
    );
    WriteAddDofs( kernel_conf, fe_space, element_index, BfDBfu, dofs_out );
