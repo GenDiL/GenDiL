@@ -31,19 +31,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
-## [0.0.3] - 2025-09-4
+## [0.0.3] - 2026-03-25
 
 ### Added
-- Switch to C++20,
-- Introduce Mesh concept,
-- Introduce GlobalFaceMeshConnectivity concept,
-- Introduce DofToQuadMapping concept,
-- Support for face meshes,
-- Support for h-adaptivity,
-- Support for p-adaptivity,
+- Support for h-adaptivity.
+- Support for p-adaptivity.
+- Support for face meshes.
+- Mesh concept.
+- GlobalFaceMeshConnectivity concept.
+- DofToQuadMapping concept.
 
 ### Changed
-- Rename GetFaceNeighborInfo to GetLocalFaceInfo
+- Switched the project to C++20.
+- Renamed `GetFaceNeighborInfo` to `GetLocalFaceInfo`.
+
+### Fixed
+- Caliper integration fixes and assorted correctness/cleanup changes included in PR #16.
 
 
 
