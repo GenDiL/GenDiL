@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use GenDiL in your research, please cite it as below."
 title: "Generic Discretization Library"
-version: "0.0.2"
+version: "0.0.3"
 doi: "10.11578/dc.20250507.2"
 authors:
   - family-names: "Dudouit"

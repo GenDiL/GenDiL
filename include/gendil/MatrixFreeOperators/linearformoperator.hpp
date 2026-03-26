@@ -30,9 +30,9 @@ namespace gendil {
  * @param dofs_out The output degrees of freedom.
  */
 template <
-   typename IntegrationRule,
    typename KernelContext,
    typename FiniteElementSpace,
+   typename IntegrationRule,
    typename Lambda,
    typename MeshQuadData,
    typename ElementQuadData >
@@ -40,6 +40,7 @@ GENDIL_HOST_DEVICE
 void LinearFormElementOperator(
    const KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
+   const IntegrationRule & integration_rule,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
@@ -53,11 +54,10 @@ void LinearFormElementOperator(
    const auto cell = fe_space.GetCell( element_index );
 
    // Container to store values at all the quadrature points
-   auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, IntegrationRule{} );
+   auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, integration_rule );
 
    // Application of the QFunction
-   QuadraturePointLoop< IntegrationRule >(
-   [&] ( auto const & quad_index )
+   QuadraturePointLoop( kernel_conf, integration_rule, [&] ( auto const & quad_index )
    {
       PhysicalCoordinates X;
       Jacobian J_mesh;
@@ -119,9 +119,10 @@ void LinearFormOperator( const FiniteElementSpace & fe_space,
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
-         LinearFormElementOperator< IntegrationRule >(
+         LinearFormElementOperator(
             kernel_conf,
             fe_space,
+            IntegrationRule{},
             element_index,
             mesh_quad_data,
             element_quad_data,

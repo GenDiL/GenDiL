@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
    const Integer n_z = 3*num_elem_1d;
    const Real h_z = 1.0/n_z;
    Point< 3 > origin { 0.0, 0.0, 0.0 };
-   PeriodicCartesian3DMesh struct_mesh( h_x, h_y, h_z, n_x, n_y, n_y, origin );
+   PeriodicCartesian3DMesh struct_mesh( h_x, h_y, h_z, n_x, n_y, n_z, origin );
 
    /////////////////////////////////
    // MFEM periodic Cartesian mesh

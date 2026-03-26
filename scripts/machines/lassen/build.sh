@@ -3,7 +3,7 @@
 mkdir -p build_lassen
 cd build_lassen
 
-module purge && module load cuda/12.2.2 gcc/12.2.1 cmake/3.23.1
+module purge && module load cuda/12.2.2 gcc/12.2.1 cmake/3.29.2
 
 cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install_lassen \

@@ -45,9 +45,9 @@ inline void Assert(bool condition, const char* condition_str,
 #ifdef NDEBUG
 #define GENDIL_ASSERT(cond, ...)
 #else
-#define GENDIL_ASSERT(cond, ...) Assert((cond), #cond, __FILE__, __LINE__, ##__VA_ARGS__)
+#define GENDIL_ASSERT(cond, ...) Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
 #endif
 
-#define GENDIL_VERIFY(cond, ...) Assert((cond), #cond, __FILE__, __LINE__, ##__VA_ARGS__)
+#define GENDIL_VERIFY(cond, ...) Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
 
 } // namespace gendil

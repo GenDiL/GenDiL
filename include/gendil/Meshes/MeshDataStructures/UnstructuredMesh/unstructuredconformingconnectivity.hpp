@@ -5,7 +5,7 @@
 #pragma once
 
 #include <vector>
-#include "conformingcellconnectivity.hpp"
+#include "gendil/Meshes/Connectivities/conformingcellconnectivity.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Utilities/MemoryManagement/garbagecollector.hpp"
 
@@ -18,6 +18,18 @@ struct UnstructuredConformingConnectivity
    using geometry = Geometry;
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
+   using conformity_type = ConformingFaceMap<dim>;
+   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % dim, int NormalSign = FaceIndex < Geometry::geometry_dim ? -1 : 1 >
+   using face_info_type =
+      ConformingCellFaceView <
+         geometry,
+         std::integral_constant< Integer, FaceIndex >,
+         std::integral_constant< Integer, FaceIndex < Geometry::geometry_dim ? FaceIndex + Geometry::geometry_dim : FaceIndex - Geometry::geometry_dim >,
+         orientation_type,
+         CanonicalVector< dim, NormalAxis, NormalSign >,
+         CanonicalVector< dim, NormalAxis, -NormalSign >,
+         boundary_type
+      >;
 
    HostDevicePointer< ConformingCellConnectivity< Geometry > > element_connectivities;
 
@@ -42,7 +54,7 @@ struct UnstructuredConformingConnectivity
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto operator()( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > ) const
    {
       static_assert(
          FaceIndex < geometry::num_faces,
@@ -51,19 +63,10 @@ struct UnstructuredConformingConnectivity
 
       auto face_info = element_connectivities[ cell_index ].faces[ FaceIndex ];
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % dim;
-      constexpr int Sign = FaceIndex < dim ? -1 : 1;
-      using normal_type = CanonicalVector< dim, Index, Sign >;
-      using FaceInfo =
-         FaceConnectivity<
-            FaceIndex,
-            geometry,
-            orientation_type,
-            boundary_type,
-            normal_type
-         >;
-      return FaceInfo{ face_info.neighbor_index, face_info.orientation, face_info.boundary };
+      return face_info_type< FaceIndex >{
+         { cell_index, {}, {}, {}, {}, face_info.boundary },
+         { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary }
+      };
    }
 };
 
