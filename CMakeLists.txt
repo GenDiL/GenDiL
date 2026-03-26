@@ -9,9 +9,9 @@ project(
 include(GNUInstallDirs)
 
 # Set optimization flags for different build types
-set(CMAKE_CXX_FLAGS_DEBUG "-g -DNDEBUG -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -DNDEBUG" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -DNDEBUG -g" CACHE STRING "")
 
 # Print warnings
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-limit=0")
