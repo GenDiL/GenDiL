@@ -76,6 +76,12 @@ struct Point<1>
       // TODO: Add debug assertion?
       return coordinates[ 0 ];
    }
+
+   constexpr Real& operator[]( size_t index )
+   {
+      // TODO: Add debug assertion?
+      return coordinates[ 0 ];
+   }
 };
 
 template < size_t Dim >
@@ -89,14 +95,35 @@ std::ostream& operator<<(std::ostream& os, Point<Dim> const & index) {
    return os;
 }
 
-// TODO: defines simple operations on Point, e.g. +,-?
+template < size_t Dim >
+bool operator==( Point<Dim> const & a, Point<Dim> const & b )
+{
+   bool equal = true;
+   for ( size_t i = 0; i < Dim; ++i )
+   {
+      equal = equal && (a[i] == b[i]);
+   }
+   return equal;
+}
+
 template < size_t Dim >
 auto operator+( Point<Dim> const & a, Point<Dim> const & b )
 {
    Point<Dim> result;
    for ( size_t i = 0; i < Dim; ++i )
    {
-      result.coordinates[i] = a.coordinates[i] + b.coordinates[i];
+      result[i] = a[i] + b[i];
+   }
+   return result;
+}
+
+template < size_t Dim >
+auto operator-( Point<Dim> const & a, Point<Dim> const & b )
+{
+   Point<Dim> result;
+   for ( size_t i = 0; i < Dim; ++i )
+   {
+      result[i] = a[i] - b[i];
    }
    return result;
 }
@@ -107,9 +134,28 @@ auto operator*( std::array<Real,Dim> const & a, Point<Dim> const & b )
    Point<Dim> result;
    for ( size_t i = 0; i < Dim; ++i )
    {
-      result.coordinates[i] = a[i] * b.coordinates[i];
+      result[i] = a[i] * b[i];
    }
    return result;
+}
+
+template < size_t Dim >
+Real Distance( Point<Dim> const & a, Point<Dim> const & b )
+{
+   Real result = 0.0;
+   for ( size_t i = 0; i < Dim; ++i )
+   {
+      Real d = a[i] - b[i];
+      result += d * d;
+   }
+   return Sqrt(result);
+}
+
+template < size_t Dim >
+bool AlmostEqual( Point<Dim> const & a, Point<Dim> const & b )
+{
+   const Real tol = 1e-8;
+   return Distance(a, b) < tol;
 }
 
 }

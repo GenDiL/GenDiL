@@ -34,7 +34,7 @@ struct SquareCell
    { }
 
    using physical_coordinates = std::array< Real, Dim >;
-   using jacobian = std::array< std::array< Real, Dim >, Dim >;
+   using jacobian = std::array< Real, Dim >;
    template < typename IntRule >
    using QuadData =  std::tuple<
                         std::tuple_element_t< 0, typename IntRule::points::points_1d_tuple >,
@@ -63,11 +63,25 @@ struct SquareCell
       using quad_y = std::tuple_element_t< 1, QuadData >;
       X[0] = origin[0] + h_x * quad_x::GetCoord( qx );
       X[1] = origin[1] + h_y * quad_y::GetCoord( qy );
-      J_mesh[0][0] = h_x;
-      J_mesh[0][1] = 0.0;
-      J_mesh[1][0] = 0.0;
-      J_mesh[1][1] = h_y;
+      J_mesh[0] = h_x;
+      J_mesh[1] = h_y;
+   }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh{};
+      J_mesh[0] = h_x;
+      J_mesh[1] = h_y;
+      return J_mesh;
    }
 };
+
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(const Permutation<2>& orientation, SquareCell& cell)
+{
+   GENDIL_VERIFY( orientation == MakeReferencePermutation<2>(),
+      "Orientation of SquareCell must be the reference orientation." );
+}
 
 }

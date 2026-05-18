@@ -59,6 +59,33 @@ struct HyperCubeCell
    {
       return face_index < Dim ? -1 : 1;
    }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh{};
+      for (Integer i = 0; i < Dim; ++i)
+      {
+            J_mesh[i] = h[i];
+      }
+      return J_mesh;
+   }
 };
+
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell( const Permutation<Dim>& orientation, HyperCubeCell<Dim>& cell )
+{
+   GENDIL_VERIFY( orientation == MakeReferencePermutation<Dim>(),
+      "Orientation of HyperCubeCell must be the reference orientation." );
+}
+
+template < typename Orientation, Integer Dim >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell( const Orientation& orientation, HyperCubeCell<Dim>& cell )
+{
+   // GENDIL_VERIFY( orientation == MakeReferencePermutation<Dim>(),
+   //    "Orientation of HyperCubeCell must be the reference orientation." );
+}
 
 }

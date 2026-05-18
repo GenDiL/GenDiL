@@ -20,6 +20,7 @@ add_my_test(test-advection-6d-mfem-mesh test-advection-6d-mfem-mesh.cpp)
 add_my_test(test-mass-advection-3d test-mass-advection-3d.cpp)
 # Diffusion
 add_my_test(test-diffusion-3d test-diffusion-3d.cpp)
+add_my_test(test-diffusion-3d-unstructured test-diffusion-3d-unstructured.cpp)
 # Other
 add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
 add_my_test(test-nested-product-mesh test-nested-product-mesh.cpp)

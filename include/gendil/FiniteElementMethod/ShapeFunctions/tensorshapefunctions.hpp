@@ -24,6 +24,7 @@ struct TensorShapeFunctions
    using dof_shape = std::index_sequence< ShapeFunctions::num_dofs ... >;
 
    static constexpr Integer num_dofs = Product( ShapeFunctions::num_dofs... );
+   static constexpr Integer num_comp = 1;
    static constexpr Integer dim = sizeof...( ShapeFunctions ); // Sum( ShapeFunctions::dim... );
    using index_type = TensorIndex< dim >;
    using ref_point_type = Point< dim >;

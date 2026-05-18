@@ -17,11 +17,13 @@ using namespace gendil;
 // ===== Manufactured solution u(x) = sin(pi x) in 1D (kept generic in Dim) =====
 template<int Dim>
 struct Manufactured {
+    GENDIL_HOST_DEVICE
     static Real u_exact(const array<Real,Dim>& X) {
         Real prod = 1.0;
         for (int i=0;i<Dim;++i) prod *= sin(M_PI * X[i]);
         return prod;
     }
+    GENDIL_HOST_DEVICE
     static void grad_exact(const array<Real,Dim>& X, array<Real,Dim>& grad) {
         for (int i=0;i<Dim;++i) {
             Real g = M_PI * cos(M_PI * X[i]);
@@ -138,7 +140,25 @@ void test_advection_1D(const Integer n)
     }
 
     // 7) L2 error vs continuous exact u
-    auto err_L2 = L2Error<KernelPolicy>(fe_space, int_rules_err, Manufactured<Dim>::u_exact, x);
+#if defined(GENDIL_USE_DEVICE)
+using ErrorThreadLayout = ThreadBlockLayout<num_quad_err>;
+using ErrorKernelPolicy =
+   ThreadFirstKernelConfiguration<ErrorThreadLayout, 1>;
+#else
+using ErrorKernelPolicy = SerialKernelConfiguration;
+#endif
+
+    auto u_exact = [] GENDIL_HOST_DEVICE (
+    const std::array<Real, Dim>& X) -> Real
+    {
+    return Manufactured<Dim>::u_exact(X);
+    };
+
+    auto err_L2 = L2Error<ErrorKernelPolicy>(
+        fe_space, int_rules_err,
+        u_exact,
+        x
+    );
 
     // 8) TikZ-friendly point
     cout << "       (" << ndofs << ", " << err_L2 << ")\n";

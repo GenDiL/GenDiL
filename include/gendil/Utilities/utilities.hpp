@@ -27,3 +27,6 @@
 
 // Debugging macros
 #include "debug.hpp"
+
+// A map structure with static string keys.
+#include "gendil/Utilities/staticmap.hpp"

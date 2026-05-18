@@ -12,6 +12,7 @@ using namespace gendil;
 // exact solution for prod sin(pi x_i)
 template<int Dim>
 struct Manufactured {
+    GENDIL_HOST_DEVICE
     static Real u_exact(const array<Real,Dim>& X) {
         Real prod = 1.0;
         for(int i=0;i<Dim;i++)
@@ -74,9 +75,25 @@ void test_mass_2D( const Integer n )
     constexpr Integer num_quad_error = num_quad_1d+2;
     IntegrationRuleNumPoints<num_quad_error, num_quad_error> nq_error;
     auto error_int_rules = MakeIntegrationRule(nq_error);
-    auto err_L2 = L2Error<KernelPolicy>(
+
+
+#if defined(GENDIL_USE_DEVICE)
+using ErrorThreadLayout = ThreadBlockLayout<num_quad_error,num_quad_error>;
+using ErrorKernelPolicy =
+   ThreadFirstKernelConfiguration<ErrorThreadLayout, NumShared>;
+#else
+using ErrorKernelPolicy = SerialKernelConfiguration;
+#endif
+
+    auto u_exact = [] GENDIL_HOST_DEVICE (
+    const std::array<Real, Dim>& X) -> Real
+    {
+    return Manufactured<Dim>::u_exact(X);
+    };
+
+    auto err_L2 = L2Error<ErrorKernelPolicy>(
         fe_space, error_int_rules,
-        Manufactured<Dim>::u_exact,
+        u_exact,
         u_h
     );
 

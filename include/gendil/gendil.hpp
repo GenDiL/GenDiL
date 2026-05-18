@@ -24,4 +24,6 @@
 #include "gendil/Solvers/solvers.hpp"
 
 // The different matrix-free operators
-#include "gendil/MatrixFreeOperators/matrixfreeoperators.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/matrixfreeoperators.hpp"
+
+#include "gendil/Algebra/algebra.hpp"

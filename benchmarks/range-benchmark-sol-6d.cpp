@@ -8,7 +8,7 @@
 using namespace std;
 using namespace gendil;
 
-template < typename OperatorFactory, Integer order, Integer num_quad_1d = order + 2 >
+template < typename OperatorFactory, Integer order, Integer num_quad_1d = order + 1 >
 void test_speed_of_light_6D( const Integer n1, const Integer n2, const Integer n3,
                              const Integer n4, const Integer n5, const Integer n6,
                              OperatorFactory make_operator )
@@ -27,9 +27,10 @@ void test_speed_of_light_6D( const Integer n1, const Integer n2, const Integer n
    auto int_rules = MakeIntegrationRule( num_quads );
 
 #if defined(GENDIL_USE_DEVICE)
-   constexpr Integer NumSharedDimensions = 6;
-   using ThreadLayout = ThreadBlockLayout<num_quad_1d, num_quad_1d, num_quad_1d,
-                                          num_quad_1d, num_quad_1d>;
+   constexpr Integer NumSharedDimensions = 5;
+   using ThreadLayout = ThreadBlockLayout<num_quad_1d, num_quad_1d, num_quad_1d>;
+   // using ThreadLayout = ThreadBlockLayout<num_quad_1d, num_quad_1d, num_quad_1d,
+   //                                        num_quad_1d, num_quad_1d, num_quad_1d>;
    using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
    using KernelPolicy = SerialKernelConfiguration;
@@ -83,7 +84,7 @@ template < typename Factory, Integer order, Integer num_quad_1d = order + 2 >
 void test_sol_range_6D(const std::string& label, Factory factory)
 {
    constexpr Integer dim = 6;
-   const Integer max_dofs = 1e6;
+   const Integer max_dofs = 1e9;
    Integer n[dim] = {1, 1, 1, 1, 1, 1};
    Integer num_dofs = Pow<dim>(order + 1) * n[0]*n[1]*n[2]*n[3]*n[4]*n[5];
    Integer i = 0;

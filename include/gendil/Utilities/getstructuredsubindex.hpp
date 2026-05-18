@@ -86,12 +86,16 @@ template < Integer Dims >
 GENDIL_HOST_DEVICE
 constexpr std::array< GlobalIndex, Dims > GetStructuredSubIndices( GlobalIndex index, std::array< GlobalIndex, Dims > const & sizes )
 {
-    static_assert( Dims >= 2, "GetStructuredSubIndices is not defined for Dim < 2." );
-    
-    std::array< GlobalIndex, Dims > sub_index;
-    details::ComputeStructuredSubIndices< Dims >( sub_index, index, sizes );
-
-    return sub_index;
+    if constexpr ( Dims == 1 )
+    {
+        return std::array< GlobalIndex, 1 >{ index };
+    }
+    else
+    {
+        std::array< GlobalIndex, Dims > sub_index;
+        details::ComputeStructuredSubIndices< Dims >( sub_index, index, sizes );
+        return sub_index;
+    }
 }
 
 /**
@@ -101,10 +105,16 @@ template < Integer Dim, Integer Dims >
 GENDIL_HOST_DEVICE
 constexpr GlobalIndex GetStructuredSubIndex( GlobalIndex index, std::array< GlobalIndex, Dims > const & sizes )
 {
-    static_assert( Dims >= 2 );
     static_assert( Dim < Dims );
 
-    return details::ComputeStructuredSubIndex< Dim, Dims, Dims >( index, sizes );
+    if constexpr ( Dims == 1 )
+    {
+        return index;
+    }
+    else
+    {
+         return details::ComputeStructuredSubIndex< Dim, Dims, Dims >( index, sizes );
+    }
 }
 
 } // namespace gendil

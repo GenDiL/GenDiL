@@ -230,7 +230,10 @@ public:
       size_t sharedMemSize = 0;
       Stream_t stream = 0;    // Use default stream
 
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR("ThreadBlockLayout< BlockDim >::BlockLoop: before launch");
       details::GridLoop<<< gridDim, blockDim, sharedMemSize, stream >>>( n, body );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH("ThreadBlockLayout< BlockDim >::BlockLoop");
    #elif defined( GENDIL_USE_MFEM )
       mfem::forall_2D( n, BlockDim, 1, std::forward< Lambda >( body ) );
    #else
@@ -301,7 +304,10 @@ public:
       size_t sharedMemSize = 0;
       Stream_t stream = 0;    // Use default stream
 
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR("ThreadBlockLayout< BlockDimX, BlockDimY >::BlockLoop: before launch");
       details::GridLoop<<< gridDim, blockDim, sharedMemSize, stream >>>( n, std::forward< Lambda >(body) );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH("ThreadBlockLayout< BlockDimX, BlockDimY >::BlockLoop");
    #elif defined( GENDIL_USE_MFEM )
       mfem::forall_2D( n, BlockDimX, BlockDimY, std::forward< Lambda >( body ) );
    #else
@@ -376,7 +382,10 @@ public:
       size_t sharedMemSize = 0;
       Stream_t stream = 0; // Use default stream
 
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR("ThreadBlockLayout< BlockDimX, BlockDimY, BlockDimZ >::BlockLoop: before launch");
       details::GridLoop<<< gridDim, blockDim, sharedMemSize, stream >>>( n, body );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH("ThreadBlockLayout< BlockDimX, BlockDimY, BlockDimZ >::BlockLoop");
    #elif defined( GENDIL_USE_MFEM )
       mfem::forall_3D( n, BlockDimX, BlockDimY, BlockDimZ, std::forward< Lambda >( body ) );
    #else
@@ -444,7 +453,10 @@ public:
       size_t sharedMemSize = 0;
       Stream_t stream = 0;    // Use default stream
 
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR("ThreadBlockLayout< BlockDims... >::BlockLoop: before launch");
       details::GridLoop<<< gridDim, blockDim, sharedMemSize, stream >>>( n, body );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH("ThreadBlockLayout< BlockDims... >::BlockLoop");
    #elif defined( GENDIL_USE_MFEM )
       mfem::forall_2D( n, GetNumberOfThreads(), 1, std::forward< Lambda >( body ) );
    #else

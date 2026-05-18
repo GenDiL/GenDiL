@@ -24,6 +24,12 @@
 // A function to compute the dot product of two vector types.
 #include "dot.hpp"
 
+// A function to compute the inner (Frobenius) product of two matrix types.
+#include "inner.hpp"
+
+// A function to compute the outer product of two vector types.
+#include "outer.hpp"
+
 // A function to compute the determinant.
 #include "determinant.hpp"
 

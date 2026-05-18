@@ -6,6 +6,7 @@
 
 #include <ostream>
 
+#include "gendil/prelude.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 
 namespace gendil {
@@ -33,6 +34,29 @@ struct Permutation
       return dimension_indices[ i ];
    }
 };
+
+template < size_t Rank >
+GENDIL_HOST_DEVICE
+bool operator==( const Permutation< Rank > & a,
+                 const Permutation< Rank > & b )
+{
+   for ( size_t i = 0; i < Rank; ++i )
+   {
+      if ( a( i ) != b( i ) )
+      {
+         return false;
+      }
+   }
+   return true;
+}
+
+template < size_t Rank >
+GENDIL_HOST_DEVICE
+bool operator!=( const Permutation< Rank > & a,
+                 const Permutation< Rank > & b )
+{
+   return !( a == b );
+}
 
 template < size_t Offset, size_t Size, size_t Rank >
 GENDIL_HOST_DEVICE
@@ -73,6 +97,85 @@ std::ostream& operator<<(std::ostream& os, Permutation<Rank> const & orientation
    }
    os << std::endl;
    return os;
+}
+
+template < size_t SubDim, size_t Dim >
+GENDIL_HOST_DEVICE
+auto GetSubPermutation( const Permutation< Dim > & orientation, size_t offset )
+{
+   Permutation< SubDim > sub_permutation{};
+   for (size_t i = 0; i < SubDim; ++i)
+   {
+      sub_permutation( i ) = orientation( offset + i ) > 0
+         ? orientation( offset + i ) - static_cast<LocalIndex>( offset )
+         : orientation( offset + i ) + static_cast<LocalIndex>( offset );
+   }
+
+   return sub_permutation;
+}
+
+template <Integer Dim>
+GENDIL_HOST_DEVICE
+std::array<Integer, Dim> ReferenceToNativeIndex(
+   const std::array<Integer, Dim>& k_ref,
+   const std::array<size_t, Dim>& sizes,
+   const Permutation<Dim>& orientation)
+{
+   std::array<Integer, Dim> k_native{};
+
+   for (size_t j = 0; j < Dim; ++j)
+   {
+      const int o = orientation(j);
+      const size_t p = static_cast<size_t>(o > 0 ? o - 1 : -o - 1);
+
+      k_native[j] = (o > 0)
+         ? k_ref[p]
+         : static_cast<Integer>(sizes[j] - 1 - k_ref[p]);
+   }
+
+   return k_native;
+}
+
+template <Integer Dim, size_t... Is >
+GENDIL_HOST_DEVICE
+std::array<Integer, Dim> ReferenceToNativeIndex(
+   const std::array<Integer, Dim>& k_ref,
+   const std::index_sequence<Is...>& sizes,
+   const Permutation<Dim>& orientation)
+{
+   return ReferenceToNativeIndex( k_ref, std::array<size_t, Dim>{ Is... }, orientation );
+}
+
+template <Integer Dim>
+GENDIL_HOST_DEVICE
+std::array<Integer, Dim> NativeToReferenceIndex(
+   const std::array<Integer, Dim>& k_native,
+   const std::array<size_t, Dim>& sizes,
+   const Permutation<Dim>& orientation)
+{
+   std::array<Integer, Dim> k_ref{};
+
+   for (size_t j = 0; j < Dim; ++j)
+   {
+      const int o = orientation(j);
+      const size_t p = static_cast<size_t>(o > 0 ? o - 1 : -o - 1);
+
+      k_ref[p] = (o > 0)
+         ? k_native[j]
+         : static_cast<Integer>(sizes[j] - 1 - k_native[j]);
+   }
+
+   return k_ref;
+}
+
+template <Integer Dim, size_t... Is >
+GENDIL_HOST_DEVICE
+std::array<Integer, Dim> NativeToReferenceIndex(
+   const std::array<Integer, Dim>& k_native,
+   const std::index_sequence<Is...>& sizes,
+   const Permutation<Dim>& orientation)
+{
+   return NativeToReferenceIndex( k_native, std::array<size_t, Dim>{ Is... }, orientation );
 }
 
 }

@@ -132,6 +132,18 @@ struct RecursiveArray< T, StaticDimension< Size >, DimensionInfo... >
    }
 
    GENDIL_HOST_DEVICE
+   const auto & operator[]( size_t first_index ) const
+   {
+      return data[ first_index ];
+   }
+
+   GENDIL_HOST_DEVICE
+   auto & operator[]( size_t first_index )
+   {
+      return data[ first_index ];
+   }
+
+   GENDIL_HOST_DEVICE
    RecursiveArray & operator=( T const & a )
    {
       for (size_t i = 0; i < Size; i++) this->data[i] = a;
@@ -410,6 +422,36 @@ SerialRecursiveArray< T, Dims... > operator*( const T & a, const SerialRecursive
       res( indices... ) = a * x( indices... );
    });
    return res;
+}
+
+// Generic scalar multiplication (scalar on right)
+template< typename T, size_t... Dims >
+GENDIL_HOST_DEVICE
+SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dims... > & x, const T & a )
+{
+   return a * x;
+}
+
+// Generic scalar multiplication with compatible scalar types (0.5, coefficients, etc.)
+template< typename Scalar, typename T, size_t... Dims >
+requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+GENDIL_HOST_DEVICE
+SerialRecursiveArray< T, Dims... > operator*( const Scalar & scalar, const SerialRecursiveArray< T, Dims... > & arr )
+{
+   SerialRecursiveArray< T, Dims... > res;
+   UnitLoop< Dims... >( [&]( auto... indices )
+   {
+      res( indices... ) = scalar * arr( indices... );
+   });
+   return res;
+}
+
+template< typename Scalar, typename T, size_t... Dims >
+requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+GENDIL_HOST_DEVICE
+SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dims... > & arr, const Scalar & scalar )
+{
+   return scalar * arr;
 }
 
 template< typename T, size_t... Dims >

@@ -23,6 +23,7 @@ struct LagrangeShapeFunctions
    using value_type = Real;
    using gradient_type = Real;
    static constexpr Integer num_dofs = Points::GetNumPoints();
+   static constexpr Integer num_comp = 1;
    static constexpr Integer dim = 1;
    using dof_shape = std::index_sequence< num_dofs >;
 

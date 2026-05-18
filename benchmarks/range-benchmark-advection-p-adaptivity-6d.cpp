@@ -91,8 +91,8 @@ void bench_face_components_once_6D(Integer nx_full, Integer ny, Integer nz, Inte
   };
 
 #if defined(GENDIL_USE_DEVICE)
-  using ThreadLayout = ThreadBlockLayout<q1d,q1d,q1d,q1d,q1d,q1d>;
-  constexpr size_t NumSharedDimensions = 6;
+  using ThreadLayout = ThreadBlockLayout<q1d,q1d,q1d,q1d>;
+  constexpr size_t NumSharedDimensions = 4;
   using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
   using KernelPolicy = SerialKernelConfiguration;

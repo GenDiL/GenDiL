@@ -12,6 +12,7 @@ using namespace gendil;
 // exact solution for prod sin(pi x_i)
 template<int Dim>
 struct Manufactured {
+    GENDIL_HOST_DEVICE
     static Real u_exact(const array<Real,Dim>& X) {
         Real prod = 1.0;
         for(int i=0;i<Dim;i++)
@@ -44,10 +45,9 @@ void test_mass_6D( const Integer n )
     constexpr Integer Dim = GetDim( fe_space );
 #if defined(GENDIL_USE_DEVICE)
     using ThreadLayout = ThreadBlockLayout<
-      num_quad_1d,num_quad_1d,num_quad_1d,
       num_quad_1d,num_quad_1d,num_quad_1d
     >;
-    constexpr size_t NumShared = Dim;
+    constexpr size_t NumShared = Dim-1;
     using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout,NumShared>;
 #else
     using KernelPolicy = SerialKernelConfiguration;
@@ -78,9 +78,29 @@ void test_mass_6D( const Integer n )
     ConjugateGradient(mass_op, b, dot, max_iters, tol, u_h, tmp, z, residual, p);
 
     // 7) Compute L2 error: ∥u_h − u_exact∥_{L2}
-    auto err_L2 = L2Error<KernelPolicy>(
-        fe_space, int_rules,
-        Manufactured<Dim>::u_exact,
+    constexpr Integer num_quad_error = num_quad_1d;
+    IntegrationRuleNumPoints<num_quad_error,num_quad_error,num_quad_error,
+                             num_quad_error,num_quad_error,num_quad_error> nq_error;
+    auto error_int_rules = MakeIntegrationRule(nq_error);
+
+#if defined(GENDIL_USE_DEVICE)
+using ErrorThreadLayout = ThreadBlockLayout<num_quad_error,num_quad_error,num_quad_error,
+                                           num_quad_error>;
+using ErrorKernelPolicy =
+   ThreadFirstKernelConfiguration<ErrorThreadLayout, NumShared>;
+#else
+using ErrorKernelPolicy = SerialKernelConfiguration;
+#endif
+
+    auto u_exact = [] GENDIL_HOST_DEVICE (
+    const std::array<Real, Dim>& X) -> Real
+    {
+    return Manufactured<Dim>::u_exact(X);
+    };
+
+    auto err_L2 = L2Error<ErrorKernelPolicy>(
+        fe_space, error_int_rules,
+        u_exact,
         u_h
     );
 
@@ -91,7 +111,7 @@ void test_mass_6D( const Integer n )
 template < Integer order, Integer num_quad_1d = order + 2 >
 void test_range()
 {
-    const Integer max_dofs = 1e7;
+    const Integer max_dofs = 1e9;
     Integer n = 1;
     cout << "       \\addplot coordinates {\n";
     while ( true )
@@ -109,7 +129,7 @@ void test_range()
 
 int main()
 {
-    constexpr Integer max_p = 2;
+    constexpr Integer max_p = 3;
 
     cout << "\n6D Mass‐Matrix Convergence Study\n"
          << "  Manufactured: ∏ sin(π x_i)\n\n"

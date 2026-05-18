@@ -6,10 +6,10 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
-#include "gendil/MatrixFreeOperators/KernelOperators/elementdof.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/Utilities/KernelContext/isserial.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
-#include "gendil/MatrixFreeOperators/KernelOperators/vector.hpp"
+#include "gendil/Algebra/vector.hpp"
 
 namespace gendil {
 
@@ -66,9 +66,9 @@ Real Dot( const ElementDoF< FiniteElementSpace > & u, const ElementDoF< FiniteEl
 
 template < typename T, Integer ... Dims >
 GENDIL_HOST_DEVICE
-Real Dot( const SerialRecursiveArray< T, Dims... > & u, const SerialRecursiveArray< T, Dims... > & v )
+T Dot( const SerialRecursiveArray< T, Dims... > & u, const SerialRecursiveArray< T, Dims... > & v )
 {
-   Real local_res = 0.0;
+   T local_res = T{0};
    UnitLoop< Dims... >(
       [&]( auto... indices )
       {

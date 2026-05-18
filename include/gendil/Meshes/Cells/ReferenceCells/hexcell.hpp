@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
-#include "gendil/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
@@ -130,6 +130,95 @@ struct HexCell
          }
       }
    }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh{};
+      for (LocalIndex dz = 0; dz < D1D; ++dz)
+      {
+         const Real bz = std::tuple_element<2,basis>::ComputeValue(dz, ref_point[2]);
+         const Real gz = std::tuple_element<2,basis>::ComputeGradientValue(dz, ref_point[2]);
+         for (LocalIndex dy = 0; dy < D1D; ++dy)
+         {
+            const Real by = std::tuple_element<1,basis>::ComputeValue(dy, ref_point[1]);
+            const Real gy = std::tuple_element<1,basis>::ComputeGradientValue(dy, ref_point[1]);
+            for (LocalIndex dx = 0; dx < D1D; ++dx)
+            {
+               const Real bx = std::tuple_element<0,basis>::ComputeValue(dx, ref_point[0]);
+               const Real gx = std::tuple_element<0,basis>::ComputeGradientValue(dx, ref_point[0]);
+               Real x[3] = { nodes[ dx ][ dy ][ dz ][ 0 ],
+                              nodes[ dx ][ dy ][ dz ][ 1 ],
+                              nodes[ dx ][ dy ][ dz ][ 2 ] };
+               const Real Gx = gx * by * bz;
+               const Real Gy = bx * gy * bz;
+               const Real Gz = bx * by * gz;
+               J_mesh[0][0] += Gx * x[0];
+               J_mesh[1][0] += Gy * x[0];
+               J_mesh[2][0] += Gz * x[0];
+               J_mesh[0][1] += Gx * x[1];
+               J_mesh[1][1] += Gy * x[1];
+               J_mesh[2][1] += Gz * x[1];
+               J_mesh[0][2] += Gx * x[2];
+               J_mesh[1][2] += Gy * x[2];
+               J_mesh[2][2] += Gz * x[2];
+            }
+         }
+      }
+      return J_mesh;
+   }
 };
+
+template <int D1D>
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(const Permutation<3>& orientation,
+                            HexCell<D1D>& cell)
+{
+   constexpr Integer v_dim = 3;
+   constexpr size_t data_size = D1D * D1D * D1D;
+
+   std::array<size_t, 3> dofs_sizes = {D1D, D1D, D1D};
+
+   ConstexprLoop<v_dim>([&](auto i)
+   {
+      Real data[data_size];
+
+      auto oriented_view =
+         MakeOrientedView(data, dofs_sizes, orientation);
+
+      auto reference_view =
+         MakeFIFOView(data, dofs_sizes);
+
+      auto cell_comp_value =
+         [&](size_t x, size_t y, size_t z) -> Real&
+         {
+            return cell.nodes[x][y][z][i];
+         };
+
+      // Read native cell component and write it into oriented/canonical storage.
+      for (size_t x = 0; x < D1D; ++x)
+      {
+         for (size_t y = 0; y < D1D; ++y)
+         {
+            for (size_t z = 0; z < D1D; ++z)
+            {
+               oriented_view(x, y, z) = cell_comp_value(x, y, z);
+            }
+         }
+      }
+
+      // Copy canonical/reference-oriented data back into the cell.
+      for (size_t x = 0; x < D1D; ++x)
+      {
+         for (size_t y = 0; y < D1D; ++y)
+         {
+            for (size_t z = 0; z < D1D; ++z)
+            {
+               cell_comp_value(x, y, z) = reference_view(x, y, z);
+            }
+         }
+      }
+   });
+}
 
 }
