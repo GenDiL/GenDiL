@@ -16,3 +16,6 @@
 // Arbitrary dimensional loop abstraction which is guaranteed to unroll and
 // whose loop indices are compile time constants.
 #include "constexprloop.hpp"
+
+// A loop that parallelizes on the current device (e.g. GPU or CPU with OpenMP).
+#include "deviceloop.hpp"

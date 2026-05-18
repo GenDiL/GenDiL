@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
-#include "gendil/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
@@ -83,6 +83,58 @@ struct LineCell
          J_mesh[0][0] += Gx * x;
       }
    }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh{};
+      for (LocalIndex dx = 0; dx < D1D; ++dx)
+      {
+         const Real bx = std::tuple_element<0,basis>::ComputeValue(dx, ref_point[0]);
+         const Real gx = std::tuple_element<0,basis>::ComputeGradientValue(dx, ref_point[0]);
+         Real x = nodes[ dx ];
+         const Real Gx = gx;
+         J_mesh[0][0] += Gx * x;
+      }
+      return J_mesh;
+   }
 };
+
+template < int D1D >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell( const Permutation<1>& orientation, LineCell<D1D>& cell )
+{
+   constexpr Integer v_dim = 1;
+   constexpr size_t data_size = D1D;
+
+   std::array<size_t, v_dim> dofs_sizes = { D1D };
+
+   ConstexprLoop<v_dim>( [&]( auto i )
+   {
+      Real data[ data_size ];
+      auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+
+      auto reference_view =
+         MakeFIFOView(data, dofs_sizes);
+
+      auto cell_comp_value =
+         [&](size_t x) -> Real&
+         {
+            return cell.nodes[x];
+         };
+
+      // Read native cell component and write it into oriented/canonical storage.
+      for (size_t x = 0; x < D1D; ++x)
+      {
+         oriented_view(x) = cell_comp_value(x);
+      }
+
+      // Copy canonical/reference-oriented data back into the cell.
+      for (size_t x = 0; x < D1D; ++x)
+      {
+         cell_comp_value(x) = reference_view(x);
+      }
+   });
+}
 
 }

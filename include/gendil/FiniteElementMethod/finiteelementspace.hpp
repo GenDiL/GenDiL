@@ -111,4 +111,9 @@ constexpr Integer GetDim( FESpace const & fe_space )
    return get_dim_v< FESpace >;
 }
 
+// Extract NumComp from a Finite Element space
+template<class SpaceView>
+inline constexpr size_t num_comp_v =
+   std::remove_cvref_t<SpaceView>::finite_element_type::shape_functions::num_comp;
+
 }

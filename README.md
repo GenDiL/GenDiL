@@ -30,7 +30,8 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - Continuous and Discontinuous Galerkin methods
 - Arbitrary dimension hypercube finite elements
 - Anisotropic polynomial orders and quadrature rules
-- Matrix-free operator evaluation
+- Matrix-free operator evaluation and sparse-matrix assembly
+- Weak-form expression templates for high-level operator specification
 
 ### Third-Party Integrations & Parallelization Support
 - Interfaces with the [MFEM](https://github.com/mfem/mfem), [RAJA](https://github.com/LLNL/RAJA), and [Caliper](https://github.com/LLNL/Caliper) libraries.

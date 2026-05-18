@@ -98,6 +98,18 @@ void ComputeInverse(
    });
 }
 
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+void ComputeInverse(
+   const std::array< Real, Dim > & A,
+   std::array< Real, Dim > & inv_A )
+{
+   ConstexprLoop< Dim >( [&] ( auto i )
+   {
+      inv_A[i] = 1.0 / A[i];
+   });
+}
+
 template < Integer N >
 GENDIL_HOST_DEVICE
 void ComputeInverse(

@@ -21,6 +21,6 @@ cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_HIP_ARCHITECTURES="gfx90a" \
       ..
 
-make -j 16 && make test && make install
+make -j 16 && ctest --output-on-failure && make install
 
 cd ..

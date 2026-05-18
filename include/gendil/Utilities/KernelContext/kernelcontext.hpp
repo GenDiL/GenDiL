@@ -51,10 +51,11 @@ template <
    typename IntegrationRule >
 struct shared_block_size
 {
+   using IR = std::remove_cvref_t<IntegrationRule>;
    static constexpr size_t value =
       Product( subsequence_t<
-         typename IntegrationRule::points::num_points_tensor,
-         typename KernelContext::template shared_dimensions< IntegrationRule::points::num_points_tensor::size() > >{} );
+         typename IR::points::num_points_tensor,
+         typename KernelContext::template shared_dimensions< IR::points::num_points_tensor::size() > >{} );
 };
 
 template <

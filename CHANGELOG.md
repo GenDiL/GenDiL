@@ -48,6 +48,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 - Caliper integration fixes and assorted correctness/cleanup changes included in PR #16.
 
+## [0.0.4] - 2026-05-17
+
+### Added
+- Added initial sparse matrix assembly support using BSR format.
+- Added a high-level operator factory for constructing matrix-free and assembled operators from expression-template weak form specifications.
 
 
 <!-- TEMPLATE: Future Versions -->

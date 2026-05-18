@@ -1,0 +1,68 @@
+// Copyright GenDiL Project Developers. See COPYRIGHT file for details.
+//
+// SPDX-License-Identifier: (BSD-3-Clause)
+
+#pragma once
+
+#include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+
+namespace gendil
+{
+
+template < FieldExpr Expr>
+struct JumpExpr : FieldBase
+{
+   Expr expr;
+
+   JumpExpr(const Expr& expr_)
+      : expr(expr_)
+   {}
+
+   template <
+      typename KernelContext,
+      typename WeakFormContext,
+      typename OperatorContext,
+      typename ElementContext,
+      typename QuadPtContext,
+      typename Fields >
+   GENDIL_HOST_DEVICE
+   auto operator()(
+      const KernelContext & kernel_context,
+      const WeakFormContext & weak_form_context,
+      const OperatorContext & operator_context,
+      const ElementContext & element_context,
+      const QuadPtContext & quad_pt_context,
+      const Fields & fields ) const
+   {
+      if constexpr ( facet_role<Expr>::is_trial )
+      {
+         if constexpr ( need_trial_grads_v<Expr> )
+         {
+            return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context.MinusSide(), fields.minus_fields ) - expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context.PlusSide(), fields.plus_fields );
+         }
+         else
+         {
+            return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.minus_fields ) - expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.plus_fields );
+         }
+      }
+      else
+      {
+         return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.minus_fields );
+      }
+   }
+};
+
+template < FieldExpr Expr >
+std::ostream& operator<<(std::ostream& os, const JumpExpr<Expr>& jump)
+{
+   return os << "[[ " << jump.expr << " ]]";
+}
+
+template < FieldExpr Expr >
+auto jump(const Expr& expr)
+{
+   return JumpExpr<Expr>(expr);
+}
+
+} // namespace gendil

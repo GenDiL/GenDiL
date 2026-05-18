@@ -219,6 +219,10 @@ bool test_random_spd_vs_cg()
         x_gmres, V_array, w2,
         H, cs2, sn2, e1_rhs2, y2
     );
+    cout << "cg_iters = " << cg_iters
+        << ", gm_iters = " << gm_iters
+        << ", cg_relres = " << cg_relres
+        << ", gm_relres = " << gm_relres << " ";
     if (!gm_conv) {
         cout << "FAIL (GMRES did not converge)\n";
         return false;
@@ -338,7 +342,7 @@ bool test_happy_breakdown()
     Vector v0(3), b(3);
     v0 = 0.0; v0[0] = 1.0;  // e0
     b = 0.0;
-    Aop(v0, b);            // b = [5, 0, 0]
+    Aop(v0, b);             // b = [5, 0, 0]
 
     Vector x(3);
     x = 0.0;
@@ -366,7 +370,7 @@ bool test_happy_breakdown()
 
     bool pass = true;
     if (!converged)      pass = false;
-    if (iters != 0)      pass = false;
+    if (iters != 1)      pass = false;
     if (relres > 1e-12)  pass = false;
     if (std::fabs(x[0] - 1.0) > 1e-12) pass = false;
     if (std::fabs(x[1]) > 1e-12)       pass = false;

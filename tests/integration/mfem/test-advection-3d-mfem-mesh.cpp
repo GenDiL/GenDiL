@@ -119,7 +119,7 @@ mfem::Mesh mesh_3d_orientation(int face_perm_1, int face_perm_2)
    mesh.AddVertex(x);
    x[0] = 1.0;   x[1] = 1.0;   x[2] = 1.0;
    mesh.AddVertex(x);
-   x[0] = 3.0;   x[1] = 1.0;   x[2] = 1.0;
+   x[0] = 3.0;   x[1] = 1.0;   x[2] = 2.0;
    mesh.AddVertex(x);
 
    int el[8];

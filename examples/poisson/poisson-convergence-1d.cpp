@@ -13,12 +13,14 @@ using namespace gendil;
 // exact solution and RHS for prod sin(pi x_i)
 template<int Dim>
 struct Manufactured {
+    GENDIL_HOST_DEVICE
     static Real u_exact(const array<Real,Dim>& X) {
         Real prod = 1.0;
         for(int i=0;i<Dim;i++)
             prod *= sin(M_PI * X[i]);
         return prod;
     }
+    GENDIL_HOST_DEVICE
     static void grad_exact(const array<Real,Dim>& X, array<Real,Dim>& grad) {
         // ∂_i u = π cos(π x_i) ∏_{j≠i} sin(π x_j)
         for(int i=0;i<Dim;i++){
@@ -28,6 +30,7 @@ struct Manufactured {
             grad[i] = term;
         }
     }
+    GENDIL_HOST_DEVICE
     static Real rhs(const array<Real,Dim>& X) {
         // f = d π^2 ∏ sin(π x_i)
         Real prod = 1.0;
@@ -96,7 +99,29 @@ void test_poisson_1D( const Integer n )
     ConjugateGradient( poisson_op, b, dot, max_iters, tol, x, tmp, z, residual, p );
 
     // 7) Compute L2 error: ∥u_h−u_exact∥_{L2}
-    auto err_L2 = L2Error<KernelPolicy>( fe_space, int_rules, Manufactured<1>::u_exact, x );
+    constexpr Integer num_quad_error = num_quad_1d+2;
+    IntegrationRuleNumPoints<num_quad_error> nq_error;
+    auto error_int_rules = MakeIntegrationRule(nq_error);
+
+#if defined(GENDIL_USE_DEVICE)
+using ErrorThreadLayout = ThreadBlockLayout<num_quad_error>;
+using ErrorKernelPolicy =
+   ThreadFirstKernelConfiguration<ErrorThreadLayout, NumShared>;
+#else
+using ErrorKernelPolicy = SerialKernelConfiguration;
+#endif
+
+    auto u_exact = [] GENDIL_HOST_DEVICE (
+    const std::array<Real, Dim>& X) -> Real
+    {
+    return Manufactured<Dim>::u_exact(X);
+    };
+
+    auto err_L2 = L2Error<ErrorKernelPolicy>(
+        fe_space, error_int_rules,
+        u_exact,
+        x
+    );
 
     // 8) Print for TikZ
     cout << "       (" << ndofs << ", " << err_L2 << ")\n";

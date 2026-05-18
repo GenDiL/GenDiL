@@ -11,3 +11,8 @@
 
 // A generic high-dimension finite element space inheriting from a Mesh and a FiniteElement.
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
+
+// An expression template domain specific language (DSL) to represent weak forms.
+#include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
+
+#include "gendil/FiniteElementMethod/MatrixAssembly/assembly.hpp"

@@ -83,10 +83,11 @@ public:
 
    template < typename QuadData >
    GENDIL_HOST_DEVICE
-   void GetValuesAndJacobian( const TensorIndex< Dim > & quad_index,
-                         const QuadData & quad_data,
-                         physical_coordinates & X,
-                         jacobian & J_mesh ) const
+   void GetValuesAndJacobian(
+      const TensorIndex< Dim > & quad_index,
+      const QuadData & quad_data,
+      physical_coordinates & X,
+      jacobian & J_mesh ) const
    {
       constexpr Integer NumSubCells = sizeof...( CellTypes );
 
@@ -114,6 +115,42 @@ public:
          }
       );
    }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh;
+
+      constexpr Integer NumSubCells = sizeof...( CellTypes );
+
+      Integer head = 0;
+
+      ConstexprLoop< NumSubCells >(
+         [&] ( auto cell_index )
+         {
+            constexpr Integer sub_dim = SubDim< cell_index >;
+            Point< sub_dim > p;
+            for ( GlobalIndex i = 0; i < sub_dim; ++i )
+            {
+               p[ i ] = ref_point[ head + i ];
+            }
+
+            auto sub_J =std::get< cell_index >( Cells ).ComputeJacobian( p );
+
+            for ( GlobalIndex i = 0; i < sub_dim; ++i )
+            {
+               for ( GlobalIndex j = 0; j < sub_dim; ++j )
+               {
+                  std::get< cell_index >( J_mesh )[ i ][ j ] = sub_J[ i ][ j ];
+               }
+            }
+
+            head += sub_dim;
+         }
+      );
+
+      return J_mesh;
+   }
 };
 
 template < Integer Dim, typename ... Meshes, size_t ... Is >
@@ -129,6 +166,21 @@ auto MakeProductCell( std::tuple< Meshes ... > const & meshes, std::array< Globa
 {
    static_assert( Dim == sizeof...(Meshes) );
    return MakeProductCell( meshes, indices, std::make_index_sequence< Dim >() );
+}
+
+template < Integer Dim, typename ... CellTypes >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell( const Permutation< Dim > & orientation, ProductCell< CellTypes ... > & cell )
+{
+   constexpr Integer NumSubCells = sizeof...( CellTypes );
+   Integer offset = 0;
+   ConstexprLoop< NumSubCells >( [&] ( auto cell_index )
+   {
+      constexpr Integer sub_dim = ProductCell< CellTypes ... >::template SubDim< cell_index >;
+      Permutation< sub_dim > sub_orientation = GetSubPermutation< sub_dim >( orientation, offset );
+      ApplyOrientationToCell( sub_orientation, std::get< cell_index >( cell.Cells ) );
+      offset += sub_dim;
+   });      
 }
 
 }

@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
    //----------------------------------------------------------------------------
    // Benchmark loop
    const Integer num_iter = 5;
-   double tensor_tp = 0.0, unstruct_tp = 0.0;
+   double tensor_tp = 0.0;
 
    // --- Tensor‐mesh grad-grad ---
    {
@@ -123,6 +123,8 @@ int main(int argc, char *argv[])
    }
 
 #ifdef GENDIL_USE_MFEM
+   double unstruct_tp = 0.0;
+
    // --- Unstructured‐mesh grad-grad ---
    {
       cout << "\n>> Vector grad-grad on unstructured mesh\n";

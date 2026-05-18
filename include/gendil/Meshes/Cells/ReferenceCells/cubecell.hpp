@@ -21,7 +21,7 @@ struct CubeCell
     const Point<Dim> origin;
 
    using physical_coordinates = std::array< Real, Dim >;
-   using jacobian = std::tuple< Real, Real, Real >;
+   using jacobian = std::array< Real, Dim >;
     template < typename IntRule >
     using QuadData =  std::tuple<
                         typename std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >,
@@ -73,10 +73,27 @@ struct CubeCell
         X[0] = origin[0] + h_x * q_pt_x;
         X[1] = origin[1] + h_y * q_pt_y;
         X[2] = origin[2] + h_z * q_pt_z;
-        std::get< 0 >( J_mesh ) = h_x;
-        std::get< 1 >( J_mesh ) = h_y;
-        std::get< 2 >( J_mesh ) = h_z;
+        J_mesh[0] = h_x;
+        J_mesh[1] = h_y;
+        J_mesh[2] = h_z;
+    }
+
+    GENDIL_HOST_DEVICE
+    jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+    {
+        jacobian J_mesh{};
+        J_mesh[0] = h_x;
+        J_mesh[1] = h_y;
+        J_mesh[2] = h_z;
+        return J_mesh;
     }
 };
+
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(const Permutation<3>& orientation, CubeCell& cell)
+{
+    GENDIL_VERIFY( orientation == MakeReferencePermutation<3>(),
+        "Orientation of CubeCell must be the reference orientation." );
+}
 
 }

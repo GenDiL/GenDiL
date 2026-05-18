@@ -18,9 +18,7 @@ struct CartesianMesh
    static constexpr Integer Dim = Dim_;
    using geometry = HyperCube< Dim >;
    using cell_type = HyperCubeCell< Dim >;
-   using orientation_type = Permutation< Dim >;
-   // Requires C++20
-   // using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
+   using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
    template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
@@ -105,7 +103,7 @@ struct CartesianMesh
 
    template < Integer FaceIndex >
    GENDIL_HOST_DEVICE
-   auto GetFaceNeighborInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
+   auto GetLocalFaceInfo( GlobalIndex cell_index, std::integral_constant< Integer, FaceIndex > face_index ) const
    {
       static_assert(
          FaceIndex < 2*Dim,

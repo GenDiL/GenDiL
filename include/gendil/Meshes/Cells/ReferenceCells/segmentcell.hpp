@@ -28,7 +28,7 @@ struct SegmentCell
    }
 
    using physical_coordinates = std::array< Real, Dim >;
-   using jacobian = std::array< std::array< Real, Dim >, Dim >;
+   using jacobian = std::array< Real, Dim >;
    template < typename IntRule >
    using QuadData =  std::tuple<
                         std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
@@ -54,8 +54,23 @@ struct SegmentCell
    {
       using QuadType = std::tuple_element_t<0, QuadData>;
       X[0] = cell_origin + h * QuadType::GetCoord( qx );
-      J_mesh[0][0] = h;
+      J_mesh[0] = h;
+   }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian( const Point< Dim > & ref_point ) const
+   {
+      jacobian J_mesh{};
+      J_mesh[0] = h;
+      return J_mesh;
    }
 };
+
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell( const Permutation<1>& orientation, SegmentCell& cell )
+{
+   GENDIL_VERIFY( orientation == MakeReferencePermutation<1>(),
+      "Orientation of SegmentCell must be the reference orientation." );
+}
 
 }
