@@ -90,7 +90,6 @@ struct LineCell
       jacobian J_mesh{};
       for (LocalIndex dx = 0; dx < D1D; ++dx)
       {
-         const Real bx = std::tuple_element<0,basis>::ComputeValue(dx, ref_point[0]);
          const Real gx = std::tuple_element<0,basis>::ComputeGradientValue(dx, ref_point[0]);
          Real x = nodes[ dx ];
          const Real Gx = gx;
