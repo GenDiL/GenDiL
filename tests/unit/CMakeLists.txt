@@ -1,4 +1,5 @@
 
+add_my_test(test-constexprloop test-constexprloop.cpp)
 add_my_test(test-dot test-dot.cpp)
 add_my_test(test-getpoint test-getpoint.cpp)
 add_my_test(test-garbage-collector test-garbage-collector.cpp)
