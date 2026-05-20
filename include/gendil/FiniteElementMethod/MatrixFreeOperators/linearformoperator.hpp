@@ -9,7 +9,7 @@
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Algebra/vector.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/evectorview.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementvectorview.hpp"
 
 namespace gendil {
 
@@ -192,7 +192,7 @@ public:
    {
       MeshQuadData mesh_quad_data;
       ElementQuadData element_quad_data;
-      auto dofs_out = MakeWriteOnlyEVectorView< KernelPolicy >( finite_element_space, *this );
+      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( finite_element_space, *this );
 
       LinearFormOperator< KernelPolicy, integration_rule >( finite_element_space, mesh_quad_data, element_quad_data, lambda, dofs_out );
    }

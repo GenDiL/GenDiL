@@ -118,7 +118,7 @@ Real L2Error(
 
    const MeshQuadData mesh_quad_data{};
    const auto element_quad_data = MakeDofToQuad<shape_functions,IntegrationRule>();
-   auto dofs_in = MakeReadOnlyEVectorView< KernelConfiguration >( fe_space, dofs_vector_in );
+   auto dofs_in = MakeReadOnlyElementVectorView< KernelConfiguration >( fe_space, dofs_vector_in );
 
    HostDevicePointer< Real > sum_ptr;
    AllocateHostPointer< Real >( 1, sum_ptr );

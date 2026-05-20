@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 
-// Make an element level view (EVector) on the degrees-of-freedom.
-#include "evectorview.hpp"
+// Make an element level view (ElementVector) on the degrees-of-freedom.
+#include "elementvectorview.hpp"
 
 // Read degrees-of-freedom associated to an element index.
 #include "readdofs.hpp"
