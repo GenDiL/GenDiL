@@ -8,6 +8,7 @@
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/FiniteElementMethod/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 
 #include <type_traits>
 
@@ -266,5 +267,95 @@ struct CGScatterFromBsr
       }
    }
 };
+
+template <
+   typename FESpace,
+   typename Restriction =
+      typename std::remove_cvref_t< FESpace >::restriction_type >
+struct DefaultBsrGatherFor
+{
+   static_assert(
+      dependent_false_v< FESpace >,
+      "DefaultBsrGatherFor supports only L2Restriction and scalar H1Restriction finite element spaces." );
+};
+
+template < typename FESpace >
+struct DefaultBsrGatherFor< FESpace, L2Restriction >
+{
+   using space_type = std::remove_cvref_t< FESpace >;
+   using type = DGGatherToBsr< space_type >;
+
+   static type Make( const space_type & finite_element_space )
+   {
+      return type{ finite_element_space };
+   }
+};
+
+template < typename FESpace >
+struct DefaultBsrGatherFor< FESpace, H1Restriction >
+{
+   using space_type = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename space_type::finite_element_type::shape_functions;
+
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "CGGatherToBsr currently supports scalar H1 finite element spaces only." );
+
+   using type = CGGatherToBsr< space_type >;
+
+   static type Make( const space_type & finite_element_space )
+   {
+      return type{ finite_element_space };
+   }
+};
+
+template < typename FESpace >
+using default_bsr_gather_t = typename DefaultBsrGatherFor< FESpace >::type;
+
+template <
+   typename FESpace,
+   typename Restriction =
+      typename std::remove_cvref_t< FESpace >::restriction_type >
+struct DefaultBsrScatterFor
+{
+   static_assert(
+      dependent_false_v< FESpace >,
+      "DefaultBsrScatterFor supports only L2Restriction and scalar H1Restriction finite element spaces." );
+};
+
+template < typename FESpace >
+struct DefaultBsrScatterFor< FESpace, L2Restriction >
+{
+   using space_type = std::remove_cvref_t< FESpace >;
+   using type = DGScatterFromBsr< space_type >;
+
+   static type Make( const space_type & finite_element_space )
+   {
+      return type{ finite_element_space };
+   }
+};
+
+template < typename FESpace >
+struct DefaultBsrScatterFor< FESpace, H1Restriction >
+{
+   using space_type = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename space_type::finite_element_type::shape_functions;
+
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "CGScatterFromBsr currently supports scalar H1 finite element spaces only." );
+
+   using type = CGScatterFromBsr< space_type >;
+
+   static type Make( const space_type & finite_element_space )
+   {
+      return type{ finite_element_space };
+   }
+};
+
+template < typename FESpace >
+using default_bsr_scatter_t = typename DefaultBsrScatterFor< FESpace >::type;
 
 } // namespace gendil
