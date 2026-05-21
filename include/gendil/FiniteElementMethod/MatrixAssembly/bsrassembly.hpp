@@ -6,7 +6,16 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
+#include "gendil/FiniteElementMethod/doflayout.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/localdoforientation.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/localdofoperations.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
+
+#include <algorithm>
+#include <limits>
+#include <vector>
 
 namespace gendil {
 
@@ -130,27 +139,6 @@ auto MakeDGBSRPattern(const FESpace& fe_space)
    return bsr_matrix;
 }
 
-template <Integer CurrentIndex, typename Shape, Integer Dim>
-GENDIL_HOST_DEVICE
-constexpr GlobalIndex FlattenMultiIndex_impl(const std::array<GlobalIndex, Dim> & indices)
-{
-   if constexpr (CurrentIndex == Dim-1)
-   {
-      return indices[CurrentIndex];
-   }
-   else
-   {
-      return indices[CurrentIndex] + seq_get_v<CurrentIndex,Shape> * FlattenMultiIndex_impl<CurrentIndex + 1, Shape>(indices);
-   }
-}
-
-template <typename Shape, Integer Dim>
-GENDIL_HOST_DEVICE
-constexpr GlobalIndex FlattenMultiIndex(const std::array<GlobalIndex, Dim> & indices)
-{
-   return FlattenMultiIndex_impl<0, Shape>(indices);
-}
-
 template <typename ValueType, typename IndexType>
 GENDIL_HOST_DEVICE
 IndexType FindBSRBlockIndex(
@@ -236,10 +224,81 @@ template <
    typename KernelContext,
    typename TrialFESpace,
    typename TestFESpace,
+   typename TrialDofDescriptor,
+   typename ElementVector,
+   typename ValueType,
+   typename IndexType >
+requires is_local_dof_descriptor_v< TrialDofDescriptor >
+GENDIL_HOST_DEVICE
+void AddSparseMatrixEntry(
+   const KernelContext & kernel_context,
+   const TrialFESpace & trial_fe_space,
+   const TestFESpace & test_fe_space,
+   const GlobalIndex & row_element_index,
+   const GlobalIndex & col_element_index,
+   const TrialDofDescriptor & trial_dof,
+   const ElementVector & y,
+   BSRMatrix<ValueType, IndexType> & bsr_matrix )
+{
+   using Matrix = BSRMatrix<ValueType, IndexType>;
+   using TrialShapeFunctions =
+      typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
+
+   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
+
+   const LocalIndex local_col =
+      FlattenLocalDof(
+         trial_fe_space,
+         typename std::remove_cvref_t< TrialDofDescriptor >::component{},
+         trial_dof.indices );
+
+   const IndexType block_index =
+      FindBSRBlockIndex(
+         bsr_matrix,
+         static_cast<IndexType>(row_element_index),
+         static_cast<IndexType>(col_element_index) );
+
+   constexpr IndexType Invalid = std::numeric_limits<IndexType>::max();
+   GENDIL_VERIFY(block_index != Invalid,
+      "Missing BSR block for row element / col element pair.");
+
+   const GlobalIndex block_offset = block_index * ntest * ntrial;
+
+   ForEachLocalResidualDof(
+      kernel_context,
+      test_fe_space,
+      y,
+      [&] ( const auto & test_dof, const auto & value )
+      {
+         const LocalIndex local_row =
+            FlattenLocalDof(
+               test_fe_space,
+               typename std::remove_cvref_t< decltype(test_dof) >::component{},
+               test_dof.indices );
+
+         if constexpr (Matrix::block_layout == BlockLayout::ColumnMajor)
+         {
+            bsr_matrix.values[block_offset + local_col * ntest + local_row] += value;
+         }
+         else
+         {
+            bsr_matrix.values[block_offset + local_row * ntrial + local_col] += value;
+         }
+      });
+}
+
+template <
+   typename KernelContext,
+   typename TrialFESpace,
+   typename TestFESpace,
    typename TrialDofIndices,
    typename ElementVector,
    typename ValueType,
    typename IndexType >
+requires (!is_local_dof_descriptor_v< TrialDofIndices >)
 GENDIL_HOST_DEVICE
 void AddSparseMatrixEntry(
    const KernelContext & kernel_context,

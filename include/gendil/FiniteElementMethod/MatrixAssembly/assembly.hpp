@@ -9,3 +9,6 @@
 
 // Assembly of block sparse matrices in BSR format.
 #include "gendil/FiniteElementMethod/MatrixAssembly/bsrassembly.hpp"
+
+// Scatter/gather wrapper for applying BSR matrices to finite-element vectors.
+#include "gendil/FiniteElementMethod/MatrixAssembly/sgbsrgatherscatter.hpp"

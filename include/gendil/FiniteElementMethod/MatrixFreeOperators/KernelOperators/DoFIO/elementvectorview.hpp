@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/FiniteElementMethod/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
@@ -133,16 +134,6 @@ auto MakeScalarElementVectorView(
    {
       return MakeIndirectedTensor( finite_element_space, data );
    }
-}
-
-template <
-   typename Tuple,
-   size_t ... I >
-GENDIL_HOST_DEVICE
-size_t VectorOffset( Tuple dof_shapes, GlobalIndex num_elements, std::index_sequence< I ... > )
-{
-   // Source of truth for component-major vector E-vector component offsets.
-   return ( size_t{0} + ... + ( num_elements * Product( std::tuple_element_t< I, Tuple >{} ) ) );
 }
 
 template < typename FiniteElementSpace, typename T, size_t ... v_dims >

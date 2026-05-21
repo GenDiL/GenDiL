@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperator.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/bsrassembly.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
@@ -15,14 +16,24 @@ namespace gendil {
 
 template < typename KernelContext, typename FE_Space >
 GENDIL_HOST_DEVICE
-auto MakeZeroElementVector(const KernelContext& /*kernel_context*/, const FE_Space& fe_space)
+auto MakeZeroElementVector(const KernelContext& kernel_context, const FE_Space& /*fe_space*/)
 {
    using FE = typename std::remove_cvref_t<FE_Space>::finite_element_type;
-   using DofShape = orders_to_num_dofs< typename FE::shape_functions::orders >;
-   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
-   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+   using ShapeFunctions = typename FE::shape_functions;
 
-   return MakeSerialRecursiveArray< Real >( rshape{} );
+   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   {
+      constexpr Integer v_dim = ShapeFunctions::vector_dim;
+      using dof_shape = typename ShapeFunctions::dof_shape;
+      return MakeVectorDofs( kernel_context, dof_shape{}, std::make_index_sequence< v_dim >{} );
+   }
+   else
+   {
+      using DofShape = orders_to_num_dofs< typename ShapeFunctions::orders >;
+      using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+
+      return MakeSerialRecursiveArray< Real >( rshape{} );
+   }
 }
 
 template <typename LHS, typename RHS>
@@ -67,38 +78,23 @@ void AssembleElementSparseMatrix(
       );
    };
 
-   using TrialFES = typename std::remove_cvref_t<decltype(trial_fe_space)>;
-   using DofShape = orders_to_num_dofs< typename TrialFES::finite_element_type::shape_functions::orders >;
-   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
-   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
-
-   UnitLoop< tshape >( [&] ( auto... t )
+   ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
    {
-      UnitLoop< rshape >( [&] ( auto... k )
-      {
-         auto x = MakeZeroElementVector( kernel_context, trial_fe_space );
-         // Only the owner thread sets the 1
-         ThreadLoop< tshape >( kernel_context, [&] ( auto... tt )
-         {
-            if ( (AreEqual(t, tt) && ...) )
-            {
-               x( k... ) = 1.0;
-            }
-         } );
-         auto y = MakeZeroElementVector( kernel_context, test_fe_space );
+      auto x = MakeZeroElementVector( kernel_context, trial_fe_space );
+      SetLocalDofOnOwnerThread( kernel_context, x, trial_dof, Real(1.0) );
+      auto y = MakeZeroElementVector( kernel_context, test_fe_space );
 
-         element_operator( x, y );
+      element_operator( x, y );
 
-         AddSparseMatrixEntry(
-            kernel_context,
-            trial_fe_space,
-            test_fe_space,
-            element_index,
-            element_index,
-            std::array<GlobalIndex, sizeof...(t) + sizeof...(k)>{ t..., k... },
-            y,
-            sparse_matrix );
-      });
+      AddSparseMatrixEntry(
+         kernel_context,
+         trial_fe_space,
+         test_fe_space,
+         element_index,
+         element_index,
+         trial_dof,
+         y,
+         sparse_matrix );
    });
 }
 
@@ -130,15 +126,6 @@ void AssembleInteriorFacetSparseMatrix(
       trial_fe_space.GetCell(element_index)
    };
 
-   using TrialFES =
-      typename std::remove_cvref_t<decltype(trial_fe_space)>;
-   using TrialDofShape =
-      orders_to_num_dofs<typename TrialFES::finite_element_type::shape_functions::orders>;
-   using tshape =
-      subsequence_t<TrialDofShape, typename KernelContext::template threaded_dimensions<TrialDofShape::size()>>;
-   using rshape =
-      subsequence_t<TrialDofShape, typename KernelContext::template register_dimensions<TrialDofShape::size()>>;
-
    InteriorFaceLoop(
       trial_fe_space,
       element_index,
@@ -147,96 +134,77 @@ void AssembleInteriorFacetSparseMatrix(
          const GlobalIndex plus_element_index = face_info.PlusSide().GetCellIndex();
 
          // Block A(e,e): minus-side trial basis -> minus-side test residual
-         UnitLoop<tshape>([&] ( auto... t )
+         ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
          {
-            UnitLoop<rshape>([&] ( auto... k )
-            {
-               auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
-               auto x_plus  = MakeZeroElementVector(kernel_context, trial_fe_space);
-               // Only the owner thread sets the 1
-               ThreadLoop< tshape >( kernel_context, [&] ( auto... tt )
-               {
-                  if ( (AreEqual(t, tt) && ...) )
-                  {
-                     x_minus( k... ) = 1.0;
-                  }
-               } );
+            auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
+            auto x_plus  = MakeZeroElementVector(kernel_context, trial_fe_space);
+            SetLocalDofOnOwnerThread( kernel_context, x_minus, trial_dof, Real(1.0) );
 
-               auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
+            auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-               // GenericInteriorFacetWeakFormOperator(
-               GenericInteriorFacetIntegrandOperator(
-                  kernel_context,
-                  weak_form_context,
-                  operator_context,
-                  element_context,
-                  face_info,
-                  integrand,
-                  x_minus,
-                  x_plus,
-                  y_minus
-               );
+            // GenericInteriorFacetWeakFormOperator(
+            GenericInteriorFacetIntegrandOperator(
+               kernel_context,
+               weak_form_context,
+               operator_context,
+               element_context,
+               face_info,
+               integrand,
+               x_minus,
+               x_plus,
+               y_minus
+            );
 
-               AddSparseMatrixEntry(
-                  kernel_context,
-                  trial_fe_space,
-                  test_fe_space,
-                  element_index,
-                  element_index,
-                  std::array<GlobalIndex, sizeof...(t) + sizeof...(k)>{ t..., k... },
-                  y_minus,
-                  sparse_matrix
-               );
-            });
+            AddSparseMatrixEntry(
+               kernel_context,
+               trial_fe_space,
+               test_fe_space,
+               element_index,
+               element_index,
+               trial_dof,
+               y_minus,
+               sparse_matrix
+            );
          });
 
          // Block A(e,nb): plus-side trial basis -> minus-side test residual
-         UnitLoop<tshape>([&] ( auto... t )
+         ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
          {
-            UnitLoop<rshape>([&] ( auto... k )
-            {
-               auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
-               auto x_plus  = MakeZeroElementVector(kernel_context, trial_fe_space);
-               // Only the owner thread sets the 1
-               ThreadLoop< tshape >( kernel_context, [&] ( auto... tt )
-               {
-                  if ( (AreEqual(t, tt) && ...) )
-                  {
-                     x_plus( k... ) = 1.0;
-                  }
-               } );
+            auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
+            auto x_plus  = MakeZeroElementVector(kernel_context, trial_fe_space);
+            SetLocalDofOnOwnerThread( kernel_context, x_plus, trial_dof, Real(1.0) );
 
-               auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
+            auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-               // GenericInteriorFacetWeakFormOperator(
-               GenericInteriorFacetIntegrandOperator(
-                  kernel_context,
-                  weak_form_context,
-                  operator_context,
-                  element_context,
-                  face_info,
-                  integrand,
-                  x_minus,
-                  x_plus,
-                  y_minus
-               );
+            // GenericInteriorFacetWeakFormOperator(
+            GenericInteriorFacetIntegrandOperator(
+               kernel_context,
+               weak_form_context,
+               operator_context,
+               element_context,
+               face_info,
+               integrand,
+               x_minus,
+               x_plus,
+               y_minus
+            );
 
-               auto k_ref = std::array<GlobalIndex, sizeof...(t) + sizeof...(k)>{ t..., k... };
-               Permutation<TrialFES::Dim> orientation = face_info.PlusSide().orientation;
-               auto dof_sizes = GetDofsSizes(typename TrialFES::finite_element_type::shape_functions{});
-               auto k_native = ReferenceToNativeIndex(k_ref, dof_sizes, orientation);
-
-               AddSparseMatrixEntry(
-                  kernel_context,
+            const auto plus_native_dof =
+               OrientReferenceDofToNative(
                   trial_fe_space,
-                  test_fe_space,
-                  element_index,
-                  plus_element_index,
-                  k_native,
-                  y_minus,
-                  sparse_matrix
-               );
-            });
+                  trial_dof,
+                  face_info.PlusSide().orientation );
+
+            AddSparseMatrixEntry(
+               kernel_context,
+               trial_fe_space,
+               test_fe_space,
+               element_index,
+               plus_element_index,
+               plus_native_dof,
+               y_minus,
+               sparse_matrix
+            );
          });
       } );
 }
@@ -269,15 +237,6 @@ void AssembleBoundaryFacetSparseMatrix(
       trial_fe_space.GetCell(element_index)
    };
 
-   using TrialFES =
-      typename std::remove_cvref_t<decltype(trial_fe_space)>;
-   using TrialDofShape =
-      orders_to_num_dofs<typename TrialFES::finite_element_type::shape_functions::orders>;
-   using tshape =
-      subsequence_t<TrialDofShape, typename KernelContext::template threaded_dimensions<TrialDofShape::size()>>;
-   using rshape =
-      subsequence_t<TrialDofShape, typename KernelContext::template register_dimensions<TrialDofShape::size()>>;
-
    BoundaryFaceLoop(
       trial_fe_space,
       element_index,
@@ -300,51 +259,42 @@ void AssembleBoundaryFacetSparseMatrix(
          );
 
          // Block A(e,e): minus-side trial basis -> minus-side test residual
-         UnitLoop<tshape>([&] ( auto... t )
+         ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
          {
-            UnitLoop<rshape>([&] ( auto... k )
-            {
-               auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
-               // Only the owner thread sets the 1
-               ThreadLoop< tshape >( kernel_context, [&] ( auto... tt )
-               {
-                  if ( (AreEqual(t, tt) && ...) )
-                  {
-                     x_minus( k... ) = 1.0;
-                  }
-               } );
+            auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
+            SetLocalDofOnOwnerThread( kernel_context, x_minus, trial_dof, Real(1.0) );
 
-               auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
+            auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-               // GenericBoundaryFacetWeakFormOperator(
-               GenericBoundaryFacetIntegrandOperator(
-                  kernel_context,
-                  weak_form_context,
-                  operator_context,
-                  element_context,
-                  face_info,
-                  integrand,
-                  x_minus,
-                  y_minus
-               );
+            // GenericBoundaryFacetWeakFormOperator(
+            GenericBoundaryFacetIntegrandOperator(
+               kernel_context,
+               weak_form_context,
+               operator_context,
+               element_context,
+               face_info,
+               integrand,
+               x_minus,
+               y_minus
+            );
 
-               // Subtract RHS contribution to get pure matrix column
-               ThreadLoop< rshape >( kernel_context, [&] ( auto... kk )
-               {
-                  y_minus( kk... ) -= y_rhs( kk... );
-               } );
+            // Subtract RHS contribution to get pure matrix column.
+            SubtractLocalDofVector(
+               kernel_context,
+               test_fe_space,
+               y_minus,
+               y_rhs );
 
-               AddSparseMatrixEntry(
-                  kernel_context,
-                  trial_fe_space,
-                  test_fe_space,
-                  element_index,
-                  element_index,  // Diagonal block only
-                  std::array<GlobalIndex, sizeof...(t) + sizeof...(k)>{ t..., k... },
-                  y_minus,
-                  sparse_matrix
-               );
-            });
+            AddSparseMatrixEntry(
+               kernel_context,
+               trial_fe_space,
+               test_fe_space,
+               element_index,
+               element_index,  // Diagonal block only
+               trial_dof,
+               y_minus,
+               sparse_matrix
+            );
          });
       }
    );

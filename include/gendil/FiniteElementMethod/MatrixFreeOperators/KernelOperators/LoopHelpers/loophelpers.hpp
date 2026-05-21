@@ -6,6 +6,10 @@
 // Iterator over the element degrees of freedom indices.
 #include "dofloop.hpp"
 
+// Local DoF descriptors and scalar/vector local DoF traversal.
+#include "localdofdescriptor.hpp"
+#include "localdofloop.hpp"
+
 // Iterator over the quadrature point indices.
 #include "quadraturepointloop.hpp"
 

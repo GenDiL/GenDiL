@@ -6,6 +6,9 @@
 // Make an element level view (ElementVector) on the degrees-of-freedom.
 #include "elementvectorview.hpp"
 
+// Component-aware operations on local DoF containers.
+#include "localdofoperations.hpp"
+
 // Read degrees-of-freedom associated to an element index.
 #include "readdofs.hpp"
 
