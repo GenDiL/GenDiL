@@ -155,7 +155,7 @@ bool TestRawBsrOperatorDelegatesToBackendApply()
    y_apply = 0.0;
 
    raw_matrix( x, y_operator );
-   Apply( raw_matrix.GetBackend(), raw_matrix, x, y_apply );
+   Apply( raw_matrix.backend, raw_matrix, x, y_apply );
 
    bool success = true;
    const Real * y_operator_data = y_operator.ReadHostData();

@@ -74,16 +74,6 @@ struct BSRMatrix
    // BSRMatrix itself remains copyable.
    Backend backend{};
 
-   Backend & GetBackend()
-   {
-      return backend;
-   }
-
-   const Backend & GetBackend() const
-   {
-      return backend;
-   }
-
    GENDIL_HOST_DEVICE
    constexpr ValueType GetBlockEntry(
       const IndexType block_index,
