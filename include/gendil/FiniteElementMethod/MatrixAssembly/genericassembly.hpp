@@ -454,8 +454,11 @@ void GenericAssembly(
 
 template <
    class WeakForm,
-   class FESpace >
-auto MakeSGBSRInternalPattern( const FESpace & trial_space )
+   class FESpace,
+   typename Backend = DefaultBSRBackend >
+auto MakeSGBSRInternalPattern(
+   const FESpace & trial_space,
+   Backend backend = Backend{} )
 {
    using I = std::remove_cvref_t< WeakForm >;
 
@@ -466,11 +469,11 @@ auto MakeSGBSRInternalPattern( const FESpace & trial_space )
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I > )
    {
-      return MakeDGBSRPattern( trial_space );
+      return MakeDGBSRPattern( trial_space, backend );
    }
    else
    {
-      return MakeBlockDiagonalDGBSRPattern( trial_space );
+      return MakeBlockDiagonalDGBSRPattern( trial_space, backend );
    }
 }
 
@@ -478,15 +481,17 @@ template<
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
-   class IntegrationRule >
+   class IntegrationRule,
+   typename Backend >
 auto GenericBSRAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
+   const IntegrationRule& integration_rule,
+   Backend backend)
 {
    constexpr auto TrialName = requirements<WeakForm>::trial_name;
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto bsr_matrix = MakeDGBSRPattern( trial_space );
+   auto bsr_matrix = MakeDGBSRPattern( trial_space, backend );
 
    GenericAssembly<KernelPolicy>(
       weak_form,
@@ -508,10 +513,29 @@ template<
    class WeakForm,
    class WeakFormContext,
    class IntegrationRule >
-auto GenericSGBSRAssembly(
+auto GenericBSRAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule)
+{
+   return GenericBSRAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      DefaultBSRBackend{} );
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   typename Backend >
+auto GenericSGBSRAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   Backend backend)
 {
    using I = std::remove_cvref_t<WeakForm>;
 
@@ -543,7 +567,7 @@ auto GenericSGBSRAssembly(
       !( ( trial_is_h1 || test_is_h1 ) && has_facet_terms ),
       "SGBSR GenericAssembly currently supports H1Restriction cell terms only; H1 boundary/interior facet terms are unsupported." );
 
-   auto bsr_matrix = MakeSGBSRInternalPattern< I >( trial_space );
+   auto bsr_matrix = MakeSGBSRInternalPattern< I >( trial_space, backend );
 
    GenericAssembly<KernelPolicy>(
       weak_form,
@@ -565,6 +589,23 @@ auto GenericSGBSRAssembly(
       std::move( bsr_matrix ),
       DefaultBsrGatherFor< TrialSpace >::Make( trial_space ),
       DefaultBsrScatterFor< TestSpace >::Make( test_space ) );
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericSGBSRAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericSGBSRAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      DefaultBSRBackend{} );
 }
 
 template < typename FESpace >
@@ -592,25 +633,29 @@ template<
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
-   class IntegrationRule >
+   class IntegrationRule,
+   typename Backend >
 auto GenericAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
+   const IntegrationRule& integration_rule,
+   Backend backend)
 {
    if constexpr ( Type == MatrixAssemblyType::BSR )
    {
       return GenericBSRAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
-         integration_rule );
+         integration_rule,
+         backend );
    }
    else if constexpr ( Type == MatrixAssemblyType::SGBSR )
    {
       return GenericSGBSRAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
-         integration_rule );
+         integration_rule,
+         backend );
    }
    else
    {
@@ -618,6 +663,24 @@ auto GenericAssembly(
          dependent_false_value_v< Type >,
          "GenericAssembly: COO, CSR, and CSC assembly are reserved but not implemented yet." );
    }
+}
+
+template<
+   MatrixAssemblyType Type,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericAssembly<Type, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      DefaultBSRBackend{} );
 }
 
 template<
@@ -630,26 +693,10 @@ auto GenericAssembly(
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule)
 {
-   using I = std::remove_cvref_t<WeakForm>;
-
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TestName  = requirements<I>::test_name;
-
-   static_assert(TrialName != StaticString{"Error"}, "GenericAssembly: missing TrialSpace in integrand.");
-   static_assert(TestName  != StaticString{"Error"}, "GenericAssembly: missing TestSpace in integrand.");
-
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
-
-   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
-   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-
-   return GenericAssembly<
-      default_matrix_assembly_type_v< TrialSpace, TestSpace >,
-      KernelPolicy >(
-         weak_form,
-         wf_ctx,
-         integration_rule );
+   return GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+      weak_form,
+      wf_ctx,
+      integration_rule );
 }
 
 }

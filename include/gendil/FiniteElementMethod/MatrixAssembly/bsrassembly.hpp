@@ -19,10 +19,19 @@
 
 namespace gendil {
 
-template <typename ValueType = Real, typename IndexType = GlobalIndex>
-auto MakeBlockDiagonalDGBSRPattern( const GlobalIndex num_elements, const IndexType block_rows, const IndexType block_cols )
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend >
+auto MakeBlockDiagonalDGBSRPattern(
+   const GlobalIndex num_elements,
+   const IndexType block_rows,
+   const IndexType block_cols,
+   Backend backend = Backend{} )
 {
-   BSRMatrix<ValueType, IndexType> bsr_matrix{};
+   BSRMatrix<ValueType, IndexType, Layout, Backend> bsr_matrix{};
+   bsr_matrix.backend = backend;
    bsr_matrix.block_rows = block_rows;
    bsr_matrix.block_cols = block_cols;
    bsr_matrix.num_row_blocks = num_elements;
@@ -57,18 +66,38 @@ auto MakeBlockDiagonalDGBSRPattern( const GlobalIndex num_elements, const IndexT
    return bsr_matrix;
 }
 
-template <typename ValueType = Real, typename IndexType = GlobalIndex, typename Mesh, typename FiniteElement, typename Restriction >
-auto MakeBlockDiagonalDGBSRPattern( const FiniteElementSpace<Mesh, FiniteElement, Restriction>& fe_space )
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend,
+   typename Mesh,
+   typename FiniteElement,
+   typename Restriction >
+auto MakeBlockDiagonalDGBSRPattern(
+   const FiniteElementSpace<Mesh, FiniteElement, Restriction>& fe_space,
+   Backend backend = Backend{} )
 {
    const auto num_elements = fe_space.GetNumberOfFiniteElements();
    const auto block_rows = fe_space.finite_element.GetNumDofs();
    const auto block_cols = fe_space.finite_element.GetNumDofs();
 
-   return MakeBlockDiagonalDGBSRPattern<ValueType, IndexType>( num_elements, block_rows, block_cols );
+   return MakeBlockDiagonalDGBSRPattern<ValueType, IndexType, Layout, Backend>(
+      num_elements,
+      block_rows,
+      block_cols,
+      backend );
 }
 
-template <typename ValueType = Real, typename IndexType = GlobalIndex, typename FESpace>
-auto MakeDGBSRPattern(const FESpace& fe_space)
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend,
+   typename FESpace>
+auto MakeDGBSRPattern(
+   const FESpace& fe_space,
+   Backend backend = Backend{} )
 {
    const GlobalIndex num_elements = fe_space.GetNumberOfFiniteElements();
    const IndexType block_rows = fe_space.finite_element.GetNumDofs();
@@ -101,7 +130,8 @@ auto MakeDGBSRPattern(const FESpace& fe_space)
       host_col_indices.insert(host_col_indices.end(), cols.begin(), cols.end());
    }
 
-   BSRMatrix<ValueType, IndexType> bsr_matrix{};
+   BSRMatrix<ValueType, IndexType, Layout, Backend> bsr_matrix{};
+   bsr_matrix.backend = backend;
    bsr_matrix.block_rows = block_rows;
    bsr_matrix.block_cols = block_cols;
    bsr_matrix.num_row_blocks = num_elements;
@@ -139,10 +169,14 @@ auto MakeDGBSRPattern(const FESpace& fe_space)
    return bsr_matrix;
 }
 
-template <typename ValueType, typename IndexType>
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
 GENDIL_HOST_DEVICE
 IndexType FindBSRBlockIndex(
-   const BSRMatrix<ValueType, IndexType>& bsr_matrix,
+   const BSRMatrix<ValueType, IndexType, Layout, Backend>& bsr_matrix,
    const IndexType row_block,
    const IndexType col_block )
 {
@@ -168,7 +202,9 @@ template <
    typename TrialDofIndices,
    typename ElementVector,
    typename ValueType,
-   typename IndexType >
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
 GENDIL_HOST_DEVICE
 void SetSparseMatrixEntry(
    const KernelContext & kernel_context,
@@ -177,7 +213,7 @@ void SetSparseMatrixEntry(
    const GlobalIndex & element_index,
    const TrialDofIndices & trial_dof_indices,
    const ElementVector & y,
-   BSRMatrix<ValueType, IndexType> & bsr_matrix )
+   BSRMatrix<ValueType, IndexType, Layout, Backend> & bsr_matrix )
 {
    using TrialFE = typename std::remove_cvref_t<TrialFESpace>::finite_element_type;
    using TestFE  = typename std::remove_cvref_t<TestFESpace>::finite_element_type;
@@ -227,7 +263,9 @@ template <
    typename TrialDofDescriptor,
    typename ElementVector,
    typename ValueType,
-   typename IndexType >
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
 requires is_local_dof_descriptor_v< TrialDofDescriptor >
 GENDIL_HOST_DEVICE
 void AddSparseMatrixEntry(
@@ -238,9 +276,9 @@ void AddSparseMatrixEntry(
    const GlobalIndex & col_element_index,
    const TrialDofDescriptor & trial_dof,
    const ElementVector & y,
-   BSRMatrix<ValueType, IndexType> & bsr_matrix )
+   BSRMatrix<ValueType, IndexType, Layout, Backend> & bsr_matrix )
 {
-   using Matrix = BSRMatrix<ValueType, IndexType>;
+   using Matrix = BSRMatrix<ValueType, IndexType, Layout, Backend>;
    using TrialShapeFunctions =
       typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
    using TestShapeFunctions =
@@ -297,7 +335,9 @@ template <
    typename TrialDofIndices,
    typename ElementVector,
    typename ValueType,
-   typename IndexType >
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
 requires (!is_local_dof_descriptor_v< TrialDofIndices >)
 GENDIL_HOST_DEVICE
 void AddSparseMatrixEntry(
@@ -308,9 +348,9 @@ void AddSparseMatrixEntry(
    const GlobalIndex & col_element_index,
    const TrialDofIndices & trial_dof_indices,
    const ElementVector & y,
-   BSRMatrix<ValueType, IndexType> & bsr_matrix )
+   BSRMatrix<ValueType, IndexType, Layout, Backend> & bsr_matrix )
 {
-   using Matrix = BSRMatrix<ValueType, IndexType>;
+   using Matrix = BSRMatrix<ValueType, IndexType, Layout, Backend>;
    using TrialFE = typename std::remove_cvref_t<TrialFESpace>::finite_element_type;
    using TestFE  = typename std::remove_cvref_t<TestFESpace>::finite_element_type;
 

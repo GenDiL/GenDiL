@@ -7,6 +7,7 @@ add_my_test(test-mass-2d-mfem-mesh test-mass-2d-mfem-mesh.cpp)
 add_my_test(test-mass-3d-mfem-mesh test-mass-3d-mfem-mesh.cpp)
 add_my_test(test-mass-4d-mfem-mesh test-mass-4d-mfem-mesh.cpp)
 add_my_test(test-mass-H1-3d test-mass-H1-3d.cpp)
+add_my_test(test-mass-H1-bsr-3d test-mass-H1-bsr-3d.cpp)
 add_my_test(test-mass-inverse test-mass-inverse.cpp)
 add_my_test(test-vector-mass-3d test-vector-mass-3d.cpp)
 # Advection
@@ -21,6 +22,7 @@ add_my_test(test-mass-advection-3d test-mass-advection-3d.cpp)
 # Diffusion
 add_my_test(test-diffusion-3d test-diffusion-3d.cpp)
 add_my_test(test-diffusion-3d-unstructured test-diffusion-3d-unstructured.cpp)
+add_my_test(test-vector-interior-orientation-bsr-3d test-vector-interior-orientation-bsr-3d.cpp)
 # Other
 add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
 add_my_test(test-nested-product-mesh test-nested-product-mesh.cpp)

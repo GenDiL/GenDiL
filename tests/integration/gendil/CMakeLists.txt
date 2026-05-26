@@ -1,6 +1,9 @@
 
 add_my_test(test-mass-3d-generic test-mass-3d-generic.cpp)
 add_my_test(test-vector-mass-cell-3d test-vector-mass-cell-3d.cpp)
+add_my_test(test-vector-mass-bsr-3d test-vector-mass-bsr-3d.cpp)
+add_my_test(test-vector-boundary-mass-bsr-2d test-vector-boundary-mass-bsr-2d.cpp)
+add_my_test(test-vector-interior-jump-bsr-2d test-vector-interior-jump-bsr-2d.cpp)
 add_my_test(test-vector-gradgrad-cell-3d test-vector-gradgrad-cell-3d.cpp)
 # add_my_test(test-vector-jump-penalty-interior-3d test-vector-jump-penalty-interior-3d.cpp)
 add_my_test(test-advection-1d-generic test-advection-1d-generic.cpp)
