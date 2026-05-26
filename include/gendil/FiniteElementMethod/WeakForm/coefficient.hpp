@@ -7,6 +7,8 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymapping.hpp"
 
 #include <type_traits>
 #include <utility>
@@ -76,10 +78,12 @@ decltype(auto) ReadFieldGradientAtQuadraturePoint(
    const QuadPtContext& quad_pt_context,
    const Fields& fields)
 {
-   return ReadQuadratureLocalValues(
+   auto grad_q = ReadQuadratureLocalGradients(
       kernel_context,
       quad_pt_context.quad_index,
       fields.template get<NameTag<Name>>().gradients);
+   ApplyMapping(quad_pt_context.inv_J_mesh, grad_q);
+   return grad_q;
 }
 
 // -----------------------------------------------------------------------------

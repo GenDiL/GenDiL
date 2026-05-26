@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrpattern.hpp"
@@ -22,6 +23,16 @@
 #include <utility>
 
 namespace gendil {
+
+template<class WeakForm>
+consteval void ValidateSparseLinearAssemblyCoefficientInputs()
+{
+   static_assert(
+      !has_active_trial_coefficient_dependency_v<WeakForm>,
+      "Coefficient expression depends on active trial field during sparse "
+      "linear assembly. This is nonlinear or ambiguous. Use a supplied frozen "
+      "field with a distinct name, for example \"u_lagged\".");
+}
 
 template < typename KernelContext, typename FE_Space >
 GENDIL_HOST_DEVICE
@@ -324,6 +335,7 @@ void GenericBlockDiagonalAssembly(
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
       
    using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
@@ -395,6 +407,7 @@ void GenericAssembly(
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
    using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
@@ -561,6 +574,7 @@ auto GenericSGBSRAssembly(
    Backend backend)
 {
    using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;

@@ -6,7 +6,9 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
+#include "gendil/Utilities/staticmap.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
 
 namespace gendil
 {
@@ -25,14 +27,17 @@ struct FiniteElementField : FieldBase
       typename Fields >
    GENDIL_HOST_DEVICE
    auto operator()(
-      KernelContext& kernel_context,
-      WeakFormContext& weak_form_context,
-      OperatorContext& operator_context,
-      ElementContext& element_context,
-      QuadPtContext& quad_pt_context,
-      Fields& fields )
+      const KernelContext& kernel_context,
+      const WeakFormContext& weak_form_context,
+      const OperatorContext& operator_context,
+      const ElementContext& element_context,
+      const QuadPtContext& quad_pt_context,
+      const Fields& fields ) const
    {
-      return ReadQuadratureLocalValues( kernel_context, quad_pt_context.quad_index, fields.template get<Name>().values );
+      return ReadQuadratureLocalValues(
+         kernel_context,
+         quad_pt_context.quad_index,
+         fields.template get<NameTag<Name>>().values );
    }
 };
 
