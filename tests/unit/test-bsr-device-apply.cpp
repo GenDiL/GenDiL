@@ -156,9 +156,11 @@ bool CompareDeviceApplyWithCpu(
 
    Vector y_cpu( static_cast< size_t >( y_size ) );
    Vector y_gpu( static_cast< size_t >( y_size ) );
+   y_cpu = 0.0;
+   y_gpu = 0.0;
 
    matrix( x, y_cpu );
-   GenDiLDeviceBSRBackend device_backend{};
+   NativeDeviceBSRBackend device_backend{};
    Apply( device_backend, matrix, x, y_gpu );
 
    const Real * cpu_data = y_cpu.ReadHostData();
