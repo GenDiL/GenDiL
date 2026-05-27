@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/gendil.hpp>
+#include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/quadraturepointcontext.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp>
 
 #include <cmath>
@@ -204,6 +205,91 @@ int main()
    }
 
    {
+      TrialSpace<"u"> u;
+      TestSpace<"u"> v;
+      InteriorFacets<"mesh"> interior_facets;
+
+      auto coeff = MakeCoefficient<"k", FieldValue<"w">>(
+         [] (const auto&) { return 1.0; });
+      auto unqualified = integrate(interior_facets, coeff * jump(u) * jump(v));
+      auto averaged = integrate(interior_facets, average(coeff) * jump(u) * jump(v));
+      auto jumped = integrate(interior_facets, jump(coeff) * jump(u) * jump(v));
+
+      static_assert(has_unqualified_side_dependent_inputs_v<decltype(unqualified)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(averaged)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(jumped)>);
+
+      std::cout << "  [PASS] average/jump clear unqualified side dependency for side-evaluable coefficient expressions\n";
+   }
+
+   {
+      TrialSpace<"u"> u;
+      TestSpace<"u"> v;
+      InteriorFacets<"mesh"> interior_facets;
+
+      auto coeff = MakeCoefficient<"k", FieldGradient<"w">>(
+         [] (const auto&) { return 1.0; });
+      auto unqualified = integrate(interior_facets, coeff * jump(u) * jump(v));
+      auto averaged = integrate(interior_facets, average(coeff) * jump(u) * jump(v));
+
+      static_assert(has_unqualified_side_dependent_inputs_v<decltype(unqualified)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(averaged)>);
+
+      using Reqs =
+         unqualified_side_dependent_named_field_requirements_t<decltype(unqualified)>;
+      using WReq = find_named_field_requirement_t<Reqs, "w">;
+      static_assert(need_gradients(WReq::mask));
+      static_assert(!is_value_only_requirement_v<WReq>);
+
+      std::cout << "  [PASS] unqualified FieldGradient remains side-dependent until side-selected\n";
+   }
+
+   {
+      TrialSpace<"u"> u;
+      TestSpace<"u"> v;
+      InteriorFacets<"mesh"> interior_facets;
+
+      auto coeff = MakeCoefficient<"k", FieldValue<"w">>(
+         [] (const auto&) { return 1.0; });
+      auto mixed_pullback =
+         integrate(interior_facets, average(coeff * dot(grad(v), Normal{})) * jump(u));
+      auto trial_flux =
+         integrate(interior_facets, average(coeff * dot(grad(u), Normal{})) * jump(v));
+      auto invalid_mixed =
+         integrate(interior_facets, coeff * average(dot(grad(v), Normal{})) * jump(u));
+
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(mixed_pullback)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(trial_flux)>);
+      static_assert(has_unqualified_side_dependent_inputs_v<decltype(invalid_mixed)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(trial_flux)>);
+
+      std::cout << "  [PASS] side-dependent data inside test-space average uses current-side pullback semantics\n";
+   }
+
+   {
+      TrialSpace<"u"> u;
+      TestSpace<"u"> v;
+      InteriorFacets<"mesh"> interior_facets;
+
+      FiniteElementField<"rho"> rho;
+      auto coeff = MakeCoefficient<"k", FieldGradient<"rho">>(
+         [] (const auto&) { return 1.0; });
+      auto expr = rho * coeff;
+      auto form = integrate(interior_facets, expr * jump(u) * jump(v));
+
+      using Reqs =
+         unqualified_side_dependent_named_field_requirements_t<decltype(form)>;
+      static_assert(contains_named_field_requirement_v<Reqs, "rho">);
+      using RhoReq = find_named_field_requirement_t<Reqs, "rho">;
+      static_assert(need_values(RhoReq::mask));
+      static_assert(need_gradients(RhoReq::mask));
+      static_assert(has_provenance(RhoReq::provenance, NamedFieldProvenance::FiniteElementExpression));
+      static_assert(has_provenance(RhoReq::provenance, NamedFieldProvenance::CoefficientInput));
+
+      std::cout << "  [PASS] unqualified side dependencies preserve same-name value+gradient union\n";
+   }
+
+   {
       Real shared[1]{};
       KernelContext<SerialKernelConfiguration, 1> kernel(shared);
 
@@ -243,6 +329,70 @@ int main()
       }
 
       std::cout << "  [PASS] coefficient FieldValue/FieldGradient readers return plain physical data\n";
+   }
+
+   {
+      TrialSpace<"u"> u;
+      TestSpace<"u"> v;
+      InteriorFacets<"mesh"> interior_facets;
+
+      auto value_coeff = MakeCoefficient<"k_value", FieldValue<"w">>(
+         [] (const auto&) { return 1.0; });
+      auto gradient_coeff = MakeCoefficient<"k_gradient", FieldGradient<"w">>(
+         [] (const auto&) { return 1.0; });
+      auto coordinate_coeff = MakeCoefficient<"k_x", PhysicalCoordinate>(
+         [] (const auto&) { return 1.0; });
+      auto inverse_size_coeff = MakeCoefficient<"k_h", InverseFacetSize>(
+         [] (const auto&) { return 1.0; });
+
+      auto value_jump_form = integrate(interior_facets, jump(u) * jump(v));
+      auto averaged_value_coeff =
+         integrate(interior_facets, average(value_coeff) * jump(u) * jump(v));
+      auto jumped_value_coeff =
+         integrate(interior_facets, jump(value_coeff) * jump(u) * jump(v));
+      auto averaged_gradient_coeff =
+         integrate(interior_facets, average(gradient_coeff) * jump(u) * jump(v));
+      auto jumped_gradient_coeff =
+         integrate(interior_facets, jump(gradient_coeff) * jump(u) * jump(v));
+      auto averaged_coordinate_coeff =
+         integrate(interior_facets, average(coordinate_coeff) * jump(u) * jump(v));
+      auto inverse_size_form =
+         integrate(interior_facets, inverse_size_coeff * jump(u) * jump(v));
+
+      static_assert(!requires_plus_side_jacobian_v<decltype(value_jump_form)>);
+      static_assert(!requires_plus_side_jacobian_v<decltype(averaged_value_coeff)>);
+      static_assert(!requires_plus_side_jacobian_v<decltype(jumped_value_coeff)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(averaged_gradient_coeff)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(jumped_gradient_coeff)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(average(grad(u)))>);
+      static_assert(requires_plus_side_jacobian_v<decltype(jump(grad(u)))>);
+
+      FiniteElementField<"rho"> rho;
+      static_assert(requires_plus_side_jacobian_v<decltype(average(grad(rho)))>);
+
+      static_assert(!requires_plus_side_jacobian_v<decltype(averaged_coordinate_coeff)>);
+      static_assert(!requires_plus_side_jacobian_v<decltype(inverse_size_form)>);
+
+      using X2D = std::array<Real, 2>;
+      using Jacobian2D = std::array<std::array<Real, 2>, 2>;
+      using Normal2D = std::array<Real, 2>;
+      using ValueOnlyContext =
+         TwoSidedFacetQuadraturePointContext<
+            TensorIndex<2>, X2D, Jacobian2D, Empty, Normal2D>;
+      using GradientContext =
+         TwoSidedFacetQuadraturePointContext<
+            TensorIndex<2>, X2D, Jacobian2D, Jacobian2D, Normal2D>;
+      using ValueOnlyPlusSide = decltype(std::declval<ValueOnlyContext>().PlusSide());
+      using GradientPlusSide = decltype(std::declval<GradientContext>().PlusSide());
+
+      static_assert(std::is_same_v<
+         decltype(std::declval<ValueOnlyContext>().inv_J_mesh_plus), Empty>);
+      static_assert(std::is_same_v<
+         decltype(std::declval<ValueOnlyPlusSide>().inv_J_mesh), Empty>);
+      static_assert(std::is_same_v<
+         decltype(std::declval<GradientPlusSide>().inv_J_mesh), Jacobian2D>);
+
+      std::cout << "  [PASS] plus-side Jacobian requirements distinguish values from physical gradients\n";
    }
 
    std::cout << "All named-field requirement trait tests passed.\n";

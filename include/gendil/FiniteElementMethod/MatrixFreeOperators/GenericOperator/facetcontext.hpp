@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {
@@ -24,9 +25,9 @@ struct FacetContext : FaceInfo
 // Factory: domain fetched from weak form context by compile-time name
 template<typename WeakFormContext, typename Integrand, typename FaceInfo>
 GENDIL_HOST_DEVICE
-auto MakeInteriorFacetContext(const WeakFormContext & wf_ctx, const Integrand & integrand, const FaceInfo & face_info)
+auto MakeInteriorFacetContext(const WeakFormContext & wf_ctx, const Integrand & /*integrand*/, const FaceInfo & face_info)
 {
-   if constexpr (need_trial_grads_v<Integrand>)
+   if constexpr (requires_plus_side_jacobian_v<Integrand>)
    {
       constexpr auto DomainName = Integrand::domain_type::name;
       const auto& mesh = wf_ctx.template domain<DomainName>();

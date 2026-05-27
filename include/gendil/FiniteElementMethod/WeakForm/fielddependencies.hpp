@@ -3,9 +3,11 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
+#include "gendil/FiniteElementMethod/restriction.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 
 #include <type_traits>
+#include <utility>
 
 namespace gendil
 {
@@ -516,12 +518,504 @@ template<class Expr>
 inline constexpr bool has_side_dependent_named_field_inputs_v =
    !is_empty_type_list_v<named_field_requirements_t<Expr>>;
 
+// ---------------------------------------------------------------------------
+// Unqualified side-dependent named-field requirements.
+//
+// This collector is intentionally separate from the interpolation requirement
+// collector above. Interpolation needs every named field/channel used anywhere
+// in the expression. Interior-facet validation needs only the named-field uses
+// that are not protected by an explicit side-selection wrapper such as
+// average(...) or jump(...).
+//
+// average(E) and jump(E) clear the unqualified dependency set for the two
+// interior-facet cases with explicit side semantics:
+//   - test-free/side-evaluable expressions, where the operand is evaluated on
+//     the minus and plus sides and then combined;
+//   - test-linear pullback expressions, where GenDiL's current-side facet
+//     convention evaluates coefficient inputs on the current side and the
+//     opposite contribution is produced when the neighbor is current.
+// ---------------------------------------------------------------------------
+
+template<class Expr>
+struct unqualified_side_dependent_named_field_requirements
+{
+   using type = type_list<>;
+};
+
+template<StaticString Name, FieldShape Shape>
+struct unqualified_side_dependent_named_field_requirements<TrialSpace<Name, Shape>>
+{
+   using type = type_list<
+      NamedFieldRequirement<
+         Name,
+         OperatorMask::Values,
+         NamedFieldProvenance::ActiveTrial>>;
+};
+
+template<StaticString Name, FieldShape Shape>
+struct unqualified_side_dependent_named_field_requirements<
+   GradientExpr<TrialSpace<Name, Shape>>>
+{
+   using type = type_list<
+      NamedFieldRequirement<
+         Name,
+         OperatorMask::Gradients,
+         NamedFieldProvenance::ActiveTrial>>;
+};
+
+template<StaticString Name>
+struct unqualified_side_dependent_named_field_requirements<FiniteElementField<Name>>
+{
+   using type = type_list<
+      NamedFieldRequirement<
+         Name,
+         OperatorMask::Values,
+         NamedFieldProvenance::FiniteElementExpression>>;
+};
+
+template<StaticString Name>
+struct unqualified_side_dependent_named_field_requirements<
+   GradientExpr<FiniteElementField<Name>>>
+{
+   using type = type_list<
+      NamedFieldRequirement<
+         Name,
+         OperatorMask::Gradients,
+         NamedFieldProvenance::FiniteElementExpression>>;
+};
+
+template<StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs>
+struct unqualified_side_dependent_named_field_requirements<
+   Coefficient<Name, Shape, Fn, Inputs...>>
+{
+   using type = coefficient_inputs_named_field_requirements_t<Inputs...>;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<NegExpr<Expr>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<AverageExpr<Expr>>
+{
+   using type = std::conditional_t<
+      is_side_evaluable_v<Expr> || is_test_linear_v<Expr>,
+      type_list<>,
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type>;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<JumpExpr<Expr>>
+{
+   using type = std::conditional_t<
+      is_side_evaluable_v<Expr> || is_test_linear_v<Expr>,
+      type_list<>,
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type>;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<GradientExpr<Expr>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type;
+};
+
+template<FieldExpr AdvExpr, FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<
+   UpwindExpr<AdvExpr, Expr>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<AdvExpr>::type,
+      std::conditional_t<
+         is_side_evaluable_v<Expr>,
+         type_list<>,
+         typename unqualified_side_dependent_named_field_requirements<Expr>::type>>;
+};
+
+template<FieldExpr Head, FieldExpr... Tail>
+struct unqualified_side_dependent_named_field_requirements<
+   SumExpr<Head, Tail...>>
+{
+   using type = concat_many_t<
+      typename unqualified_side_dependent_named_field_requirements<Head>::type,
+      typename unqualified_side_dependent_named_field_requirements<Tail>::type...>;
+};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct unqualified_side_dependent_named_field_requirements<
+   MultFieldExpr<LHS,RHS>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<LHS>::type,
+      typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct unqualified_side_dependent_named_field_requirements<DotExpr<LHS,RHS>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<LHS>::type,
+      typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct unqualified_side_dependent_named_field_requirements<InnerExpr<LHS,RHS>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<LHS>::type,
+      typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct unqualified_side_dependent_named_field_requirements<OuterExpr<LHS,RHS>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<LHS>::type,
+      typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct unqualified_side_dependent_named_field_requirements<
+   ProductExpr<LHS,RHS>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<LHS>::type,
+      typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<class MatrixExpr, class VectorExpr>
+struct unqualified_side_dependent_named_field_requirements<
+   MatVecExpr<MatrixExpr, VectorExpr>>
+{
+   using type = concat_t<
+      typename unqualified_side_dependent_named_field_requirements<MatrixExpr>::type,
+      typename unqualified_side_dependent_named_field_requirements<VectorExpr>::type>;
+};
+
+template<DomainExpr Domain, FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<
+   Integrand<Domain, Expr>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type;
+};
+
+template<class Key, class T>
+struct unqualified_side_dependent_named_field_requirements<Entry<Key, T>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<T>::type;
+};
+
+template<class... Entries>
+struct unqualified_side_dependent_named_field_requirements<
+   StaticMap<Entries...>>
+{
+   using type = concat_many_t<
+      typename unqualified_side_dependent_named_field_requirements<Entries>::type...>;
+};
+
+template<class Map>
+struct unqualified_side_dependent_named_field_requirements<SumFormExpr<Map>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<Map>::type;
+};
+
+template<class Expr>
+using unqualified_side_dependent_named_field_requirements_t =
+   merge_named_field_requirement_list_t<
+      typename unqualified_side_dependent_named_field_requirements<
+         std::remove_cvref_t<Expr>>::type>;
+
+template<class Expr>
+inline constexpr bool has_unqualified_side_dependent_inputs_v =
+   !is_empty_type_list_v<
+      unqualified_side_dependent_named_field_requirements_t<Expr>>;
+
+template<class Req>
+inline constexpr bool is_value_only_requirement_v =
+   need_values(Req::mask) && !need_gradients(Req::mask);
+
+template<class WeakFormContext, StaticString Name, bool HasField>
+struct trace_continuous_named_field_impl : std::false_type {};
+
+template<class WeakFormContext, StaticString Name>
+struct trace_continuous_named_field_impl<WeakFormContext, Name, true>
+{
+   using WFC = std::remove_cvref_t<WeakFormContext>;
+   using FieldView = std::remove_cvref_t<
+      decltype(std::declval<const WFC&>().fe_fields.template get<
+         FiniteElementFieldKey<Name>>())>;
+   using Space = std::remove_cvref_t<
+      decltype(std::declval<FieldView>().space)>;
+
+   static constexpr bool value =
+      std::is_same_v<typename Space::restriction_type, H1Restriction>;
+};
+
+template<class WeakFormContext, StaticString Name>
+inline constexpr bool is_trace_continuous_named_field_v =
+   trace_continuous_named_field_impl<
+      std::remove_cvref_t<WeakFormContext>,
+      Name,
+      std::remove_cvref_t<WeakFormContext>::template has_fe_field<Name>()>::value;
+
+template<class FaceContext, class = void>
+struct face_context_is_conforming : std::false_type {};
+
+template<class FaceContext>
+struct face_context_is_conforming<
+   FaceContext,
+   std::void_t<
+      typename std::remove_cvref_t<FaceContext>::minus_side_type,
+      typename std::remove_cvref_t<FaceContext>::plus_side_type>>
+   : std::bool_constant<
+        std::remove_cvref_t<FaceContext>::minus_side_type::is_conforming &&
+        std::remove_cvref_t<FaceContext>::plus_side_type::is_conforming>
+{};
+
+template<class FaceContext>
+inline constexpr bool face_context_is_conforming_v =
+   face_context_is_conforming<FaceContext>::value;
+
+template<class Req, class WeakFormContext, class FaceContext, StaticString TrialName>
+struct is_allowed_unqualified_interior_side_dependency
+   : std::bool_constant<
+        is_value_only_requirement_v<Req> &&
+        Req::name != TrialName &&
+        !has_provenance(Req::provenance, NamedFieldProvenance::ActiveTrial) &&
+        std::remove_cvref_t<WeakFormContext>::template has_fe_field<Req::name>() &&
+        is_trace_continuous_named_field_v<WeakFormContext, Req::name> &&
+        face_context_is_conforming_v<FaceContext>>
+{};
+
+template<class List, class WeakFormContext, class FaceContext, StaticString TrialName>
+struct all_unqualified_interior_side_dependencies_allowed;
+
+template<class WeakFormContext, class FaceContext, StaticString TrialName>
+struct all_unqualified_interior_side_dependencies_allowed<
+   type_list<>, WeakFormContext, FaceContext, TrialName> : std::true_type {};
+
+template<class Req, class... Rest, class WeakFormContext, class FaceContext, StaticString TrialName>
+struct all_unqualified_interior_side_dependencies_allowed<
+   type_list<Req, Rest...>, WeakFormContext, FaceContext, TrialName>
+   : std::bool_constant<
+        is_allowed_unqualified_interior_side_dependency<
+           Req, WeakFormContext, FaceContext, TrialName>::value &&
+        all_unqualified_interior_side_dependencies_allowed<
+           type_list<Rest...>, WeakFormContext, FaceContext, TrialName>::value>
+{};
+
+template<class Expr, class WeakFormContext, class FaceContext>
+inline constexpr bool has_invalid_unqualified_interior_side_dependencies_v =
+   !all_unqualified_interior_side_dependencies_allowed<
+      unqualified_side_dependent_named_field_requirements_t<Expr>,
+      WeakFormContext,
+      FaceContext,
+      requirements<std::remove_cvref_t<Expr>>::trial_name>::value;
+
 template<class Expr>
 inline constexpr bool has_active_trial_coefficient_dependency_v =
    requirements<std::remove_cvref_t<Expr>>::trial_name != StaticString{"Error"} &&
    contains_named_field_requirement_v<
       coefficient_named_field_requirements_t<Expr>,
       requirements<std::remove_cvref_t<Expr>>::trial_name>;
+
+// ---------------------------------------------------------------------------
+// Plus-side physical geometry requirements for interior facets.
+//
+// Two-sided expression evaluation does not necessarily require two-sided
+// physical geometry. Value traces need plus-side field data and reference-side
+// evaluation, but they do not need the plus cell Jacobian. For this milestone,
+// plus-side Jacobians are required only when an expression is actually evaluated
+// in the plus-side context and asks for a physical gradient there.
+// ---------------------------------------------------------------------------
+
+template<class Input>
+struct coefficient_input_requires_plus_side_jacobian : std::false_type {};
+
+template<StaticString Name>
+struct coefficient_input_requires_plus_side_jacobian<FieldGradient<Name>>
+   : std::true_type {};
+
+template<class Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement
+{
+   static constexpr bool value = false;
+};
+
+template<StaticString Name, FieldShape Shape>
+struct plus_side_jacobian_requirement<
+   GradientExpr<TrialSpace<Name, Shape>>, true>
+{
+   static constexpr bool value = true;
+};
+
+template<StaticString Name>
+struct plus_side_jacobian_requirement<
+   GradientExpr<FiniteElementField<Name>>, true>
+{
+   static constexpr bool value = true;
+};
+
+template<StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs>
+struct plus_side_jacobian_requirement<
+   Coefficient<Name, Shape, Fn, Inputs...>, true>
+{
+   static constexpr bool value =
+      (coefficient_input_requires_plus_side_jacobian<Inputs>::value || ...);
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<NegExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<AverageExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value = [] {
+      if constexpr (is_side_evaluable_v<Expr>)
+      {
+         return plus_side_jacobian_requirement<Expr, true>::value;
+      }
+      else
+      {
+         return plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      }
+   }();
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<JumpExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value = [] {
+      if constexpr (is_side_evaluable_v<Expr>)
+      {
+         return plus_side_jacobian_requirement<Expr, true>::value;
+      }
+      else
+      {
+         return plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      }
+   }();
+};
+
+template<FieldExpr AdvExpr, FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   UpwindExpr<AdvExpr, Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<AdvExpr, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+};
+
+template<bool InPlusSideContext, FieldExpr Head, FieldExpr... Tail>
+struct plus_side_jacobian_requirement<
+   SumExpr<Head, Tail...>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Head, InPlusSideContext>::value ||
+      (plus_side_jacobian_requirement<Tail, InPlusSideContext>::value || ...);
+};
+
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   MultFieldExpr<LHS, RHS>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<DotExpr<LHS, RHS>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<InnerExpr<LHS, RHS>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<OuterExpr<LHS, RHS>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   ProductExpr<LHS, RHS>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<class MatrixExpr, class VectorExpr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   MatVecExpr<MatrixExpr, VectorExpr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<MatrixExpr, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<VectorExpr, InPlusSideContext>::value;
+};
+
+template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   Integrand<Domain, Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+};
+
+template<class Key, class T, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<Entry<Key, T>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<T, InPlusSideContext>::value;
+};
+
+template<bool InPlusSideContext, class... Entries>
+struct plus_side_jacobian_requirement<
+   StaticMap<Entries...>, InPlusSideContext>
+{
+   static constexpr bool value =
+      (plus_side_jacobian_requirement<Entries, InPlusSideContext>::value || ...);
+};
+
+template<class Map, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<SumFormExpr<Map>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Map, InPlusSideContext>::value;
+};
+
+template<class Expr>
+inline constexpr bool requires_plus_side_jacobian_v =
+   plus_side_jacobian_requirement<std::remove_cvref_t<Expr>, false>::value;
 
 //-------------------------------------------
 // Compatibility adapter: explicit FE fields used in an expression

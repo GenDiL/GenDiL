@@ -14,6 +14,9 @@
 #include "gendil/FiniteElementMethod/WeakForm/dot.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/mult.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumfieldexpr.hpp"
+#include "gendil/Algebra/accessors.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
+#include "gendil/Algebra/staticvector.hpp"
 
 namespace gendil
 {
@@ -134,6 +137,103 @@ inline constexpr bool is_seed_shape_compatible_v =
    is_seed_shape_compatible_impl<Expr, Seed>::value;
 
 // =============================================================================
+// Internal pullback helper: transpose matrix-vector product
+// =============================================================================
+
+/**
+ * @brief Internal expression for A^T * seed used by MatVec pullback.
+ *
+ * This intentionally does not introduce a public transpose(...) API. It exists
+ * solely to implement the adjoint of a test-free matrix applied to a
+ * test-linear vector:
+ *
+ *   pullback(A * x, seed) = pullback(x, A^T * seed)
+ */
+template<FieldExpr MatrixExpr, FieldExpr VectorExpr>
+struct TransposeMatVecExpr : FieldBase
+{
+   MatrixExpr matrix;
+   VectorExpr vector;
+
+   static_assert(field_shape_v<MatrixExpr> == FieldShape::Matrix,
+      "TransposeMatVecExpr requires a matrix-shaped first operand.");
+   static_assert(field_shape_v<VectorExpr> == FieldShape::Vector,
+      "TransposeMatVecExpr requires a vector-shaped second operand.");
+
+   GENDIL_HOST_DEVICE
+   constexpr TransposeMatVecExpr(
+      const MatrixExpr& matrix_,
+      const VectorExpr& vector_)
+      : matrix(matrix_), vector(vector_)
+   {}
+
+   template<typename... Args>
+   GENDIL_HOST_DEVICE
+   auto operator()(Args&&... args) const
+   {
+      auto matrix_q = matrix(std::forward<Args>(args)...);
+      auto vector_q = vector(std::forward<Args>(args)...);
+
+      using MatrixValue =
+         typename vector_element_type<
+            std::remove_cvref_t<decltype(matrix_access(matrix_q, 0, 0))>>::type;
+      using VectorValue =
+         typename vector_element_type<
+            std::remove_cvref_t<decltype(vector_access(vector_q, 0))>>::type;
+      using ResultValue =
+         decltype(std::declval<MatrixValue>() * std::declval<VectorValue>());
+
+      constexpr Integer Rows = static_num_rows_v<decltype(matrix_q)>;
+      constexpr Integer Cols = static_num_cols_v<decltype(matrix_q)>;
+      constexpr Integer VecSize = static_extent_v<decltype(vector_q)>;
+
+      static_assert(Rows != std::dynamic_extent &&
+                    Cols != std::dynamic_extent &&
+                    VecSize != std::dynamic_extent,
+         "TransposeMatVecExpr requires statically sized matrix/vector values.");
+      static_assert(Rows == VecSize,
+         "TransposeMatVecExpr requires matrix rows to match vector size.");
+
+      SerialRecursiveArray<ResultValue, Cols> result;
+      for (Integer col = 0; col < Cols; ++col)
+      {
+         result(col) = ResultValue{0};
+         for (Integer row = 0; row < Rows; ++row)
+         {
+            result(col) +=
+               matrix_access(matrix_q, row, col) *
+               vector_access(vector_q, row);
+         }
+      }
+      return result;
+   }
+};
+
+template<FieldExpr MatrixExpr, FieldExpr VectorExpr>
+struct field_shape_impl<TransposeMatVecExpr<MatrixExpr, VectorExpr>>
+{
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
+template<FieldExpr MatrixExpr, FieldExpr VectorExpr>
+struct test_linearity<TransposeMatVecExpr<MatrixExpr, VectorExpr>>
+{
+   static constexpr TestLinearity value =
+      (is_test_free_v<MatrixExpr> && is_test_free_v<VectorExpr>)
+         ? TestLinearity::TestFree
+         : TestLinearity::Unsupported;
+   static constexpr auto test_name = StaticString{""};
+};
+
+template<FieldExpr MatrixExpr, FieldExpr VectorExpr>
+std::ostream& operator<<(
+   std::ostream& os,
+   const TransposeMatVecExpr<MatrixExpr, VectorExpr>& expr)
+{
+   return os << "(" << expr.matrix << "^T * " << expr.vector << ")";
+}
+
+// =============================================================================
 // Primitive Pullback Rules
 // =============================================================================
 
@@ -199,7 +299,8 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
 /**
  * @brief Pullback for ProductExpr (algebraic product).
  *
- * Currently implemented for ProductKind::ScalarTimes only.
+ * Currently implemented for ProductKind::ScalarTimes and the narrow MatVec
+ * adjoint where a test-free matrix multiplies a test-linear vector.
  *
  * ScalarTimes adjoint rule:
  *   pullback(scalar_free * test_expr, seed)
@@ -212,7 +313,7 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
  * Invalid combinations (will fail with clear static_assert):
  *   - Both test-free → no test contribution
  *   - Both test-linear → NonlinearInTest
- *   - ProductKind::MatVec → requires transpose adjoint (not implemented)
+ *   - ProductKind::MatVec → supported for test-free matrix × test-linear vector
  *   - ProductKind::MatMat → requires product-specific adjoint (not implemented)
  *
  * @tparam LHS Left operand type
@@ -259,12 +360,37 @@ auto pullback(const ProductExpr<LHS, RHS>& expr, const Seed& seed)
             "Both test-free → no test contribution; both test-linear → NonlinearInTest.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatVec)
+   {
+      if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         static_assert(field_shape_v<L> == FieldShape::Matrix,
+            "MatVec ProductExpr pullback requires the left operand to be Matrix-shaped.");
+         static_assert(field_shape_v<R> == FieldShape::Vector,
+            "MatVec ProductExpr pullback requires the right operand to be Vector-shaped.");
+         static_assert(field_shape_v<S> == FieldShape::Vector,
+            "MatVec ProductExpr pullback requires a Vector-shaped seed.");
+         static_assert(is_test_free_v<S>,
+            "MatVec ProductExpr pullback requires a test-free seed.");
+
+         return pullback(
+            expr.rhs,
+            TransposeMatVecExpr<LHS, S>{expr.lhs, seed});
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "MatVec ProductExpr pullback is implemented only for a test-free "
+            "matrix multiplying a test-linear vector. Broader nonlinear or "
+            "test-dependent matrix-product pullbacks are intentionally unsupported.");
+      }
+   }
    else
    {
       static_assert(dependent_false_v<L, R, S>,
-         "ProductExpr pullback is only implemented for ProductKind::ScalarTimes. "
-         "MatVec requires transpose adjoint: pullback(A*v, s) → pullback(v, A^T*s). "
-         "MatMat requires product-specific adjoints. Not implemented yet.");
+         "ProductExpr pullback is implemented for ProductKind::ScalarTimes and "
+         "the narrow MatVec adjoint A*x with test-free A and test-linear x. "
+         "MatMat and broader product-specific adjoints are not implemented.");
    }
 }
 

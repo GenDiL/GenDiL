@@ -1,6 +1,12 @@
 
 add_my_test(test-mass-3d-generic test-mass-3d-generic.cpp)
 add_my_test(test-coefficient-field-inputs-cell test-coefficient-field-inputs-cell.cpp)
+add_my_test(test-boundary-coefficient-field-inputs test-boundary-coefficient-field-inputs.cpp)
+add_my_test(test-interior-coefficient-field-inputs test-interior-coefficient-field-inputs.cpp)
+add_my_test(test-vector-coefficient-field-inputs test-vector-coefficient-field-inputs.cpp)
+add_my_test(test-upwind-vector-coefficient-field-inputs test-upwind-vector-coefficient-field-inputs.cpp)
+add_my_test(test-sipdg-coefficient-field-inputs test-sipdg-coefficient-field-inputs.cpp)
+add_my_test(test-anisotropic-diffusion-coefficient test-anisotropic-diffusion-coefficient.cpp)
 add_my_test(test-vector-mass-cell-3d test-vector-mass-cell-3d.cpp)
 add_my_test(test-vector-mass-bsr-3d test-vector-mass-bsr-3d.cpp)
 add_my_test(test-vector-boundary-mass-bsr-2d test-vector-boundary-mass-bsr-2d.cpp)

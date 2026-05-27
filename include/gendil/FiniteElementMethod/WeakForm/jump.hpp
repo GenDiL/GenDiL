@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
 
 namespace gendil
 {
@@ -35,16 +36,23 @@ struct JumpExpr : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      if constexpr ( facet_role<Expr>::is_trial )
+      if constexpr ( is_side_evaluable_v<Expr> )
       {
-         if constexpr ( need_trial_grads_v<Expr> )
-         {
-            return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context.MinusSide(), fields.minus_fields ) - expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context.PlusSide(), fields.plus_fields );
-         }
-         else
-         {
-            return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.minus_fields ) - expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.plus_fields );
-         }
+         return expr(
+            kernel_context,
+            weak_form_context,
+            operator_context,
+            element_context,
+            quad_pt_context.MinusSide(),
+            fields.minus_fields
+         ) - expr(
+            kernel_context,
+            weak_form_context,
+            operator_context,
+            element_context,
+            quad_pt_context.PlusSide(),
+            fields.plus_fields
+         );
       }
       else
       {

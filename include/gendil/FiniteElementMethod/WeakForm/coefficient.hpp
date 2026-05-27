@@ -312,8 +312,8 @@ struct CoefficientInputGetter<InverseFacetSize>
       }
       else if constexpr (requires { quad_pt_context.inverse_facet_size_minus; })
       {
-         // For interior facets, return the minimum of the two sides' inverse facet sizes
-         return std::min(quad_pt_context.inverse_facet_size_minus, quad_pt_context.inverse_facet_size_plus);
+         // Interior facets use the current/minus-side facet size for now.
+         return quad_pt_context.inverse_facet_size_minus;
       }
       else
       {

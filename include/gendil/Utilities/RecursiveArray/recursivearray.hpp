@@ -41,6 +41,12 @@ struct RecursiveArray< T >
    }
 
    GENDIL_HOST_DEVICE
+   operator T() const
+   {
+      return data;
+   }
+
+   GENDIL_HOST_DEVICE
    const T & operator()() const
    {
       return data;
@@ -489,4 +495,3 @@ auto MakeSerialRecursiveArray( std::index_sequence< Dims... > )
 }
 
 }
-

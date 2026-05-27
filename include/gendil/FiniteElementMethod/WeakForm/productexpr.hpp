@@ -7,6 +7,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productkind.hpp"
+#include "gendil/Algebra/matrixvectorops.hpp"
 
 namespace gendil
 {

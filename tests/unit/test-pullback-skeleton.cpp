@@ -6,6 +6,7 @@
 #include <gendil/FiniteElementMethod/WeakForm/pullback.hpp>
 #include <gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writechannelcontributions.hpp>
 
+#include <cmath>
 #include <iostream>
 
 using namespace gendil;
@@ -339,6 +340,79 @@ int main()
       std::cout << "  [PASS] pullback(grad(vv) * mu, A) → GradientChannel (test-free Matrix)\n";
    }
 
+   // Test 16b: dot(A * grad(v), n) uses A^T n as the grad(v) seed
+   {
+      auto nonsymmetric_A = MakeMatrixCoefficient<"nonsymmetric_A">(
+         [] ()
+         {
+            std::array<std::array<Real, 2>, 2> result{};
+            result[0][0] = Real{2.0};
+            result[0][1] = -Real{0.35};
+            result[1][0] = Real{0.65};
+            result[1][1] = Real{1.4};
+            return result;
+         });
+
+      auto expr = dot(nonsymmetric_A * grad(v), Normal{});
+      auto result = pullback(expr, ScaleExpr{1.0});
+
+      static_assert(decltype(result)::contains<GradientChannel>());
+      static_assert(!decltype(result)::contains<ValueChannel>());
+
+      const auto& grad_seed = result.template get<GradientChannel>();
+
+      struct FakeFacetQuadPointContext
+      {
+         std::array<Real, 2> physical_normal;
+      };
+
+      const FakeFacetQuadPointContext qctx{
+         std::array<Real, 2>{Real{0.6}, -Real{0.8}}};
+      const Empty empty{};
+
+      const auto seed_q =
+         grad_seed(empty, empty, empty, empty, qctx, empty);
+
+      const std::array<Real, 2> expected_AT_n{
+         Real{2.0} * qctx.physical_normal[0] +
+            Real{0.65} * qctx.physical_normal[1],
+        -Real{0.35} * qctx.physical_normal[0] +
+            Real{1.4} * qctx.physical_normal[1]};
+
+      const std::array<Real, 2> wrong_A_n{
+         Real{2.0} * qctx.physical_normal[0] -
+            Real{0.35} * qctx.physical_normal[1],
+         Real{0.65} * qctx.physical_normal[0] +
+            Real{1.4} * qctx.physical_normal[1]};
+
+      const Real err =
+         std::abs(seed_q(0) - expected_AT_n[0]) +
+         std::abs(seed_q(1) - expected_AT_n[1]);
+      const Real wrong_sep =
+         std::abs(seed_q(0) - wrong_A_n[0]) +
+         std::abs(seed_q(1) - wrong_A_n[1]);
+
+      if (err > Real{1e-14} || wrong_sep < Real{1e-3})
+      {
+         std::cerr
+            << "FAILED: MatVec pullback seed should be A^T n, not A n.\n"
+            << "  seed = [" << seed_q(0) << ", " << seed_q(1) << "]\n"
+            << "  A^T n = [" << expected_AT_n[0] << ", "
+            << expected_AT_n[1] << "]\n"
+            << "  A n = [" << wrong_A_n[0] << ", "
+            << wrong_A_n[1] << "]\n";
+         return 1;
+      }
+
+      using GradSeedType = std::remove_cvref_t<decltype(grad_seed)>;
+      static_assert(field_shape_v<GradSeedType> == FieldShape::Vector);
+      static_assert(is_test_free_v<GradSeedType>);
+
+      std::cout
+         << "  [PASS] pullback(dot(A * grad(v), n), 1) → "
+         << "GradientChannel with A^T n seed\n";
+   }
+
    // Invalid ProductExpr cases (commented, documented)
    // Should fail: no test-linear operand
    // auto invalid_free = pullback(mu * u, c);
@@ -346,10 +420,10 @@ int main()
    // Should fail: nonlinear in test
    // auto invalid_nonlinear = pullback(v * v, c);
 
-   // Should fail: ProductKind::MatVec not implemented yet
-   // auto invalid_matvec = pullback(A * vv, beta);
+   // Should fail: ProductKind::MatVec with a test-dependent matrix is unsupported
+   // auto invalid_matvec = pullback(grad(vv) * beta, beta);
 
-   // Should fail: ProductKind::MatVec normal contraction not implemented yet
+   // Should fail: specialized MatVecExpr normal contraction is intentionally separate
    // auto invalid_normal = pullback(grad(vv) * Normal{}, beta);
 
    // Should fail: seed shape mismatch
