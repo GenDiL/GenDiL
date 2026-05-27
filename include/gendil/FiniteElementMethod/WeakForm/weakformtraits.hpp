@@ -279,6 +279,10 @@ template < FieldExpr LHS, FieldExpr RHS >
 struct requirements< ProductExpr<LHS, RHS> > : BinaryExprRequirements<LHS, RHS>
 {};
 
+template < FieldExpr Expr >
+struct requirements< TransposeExpr<Expr> > : UnaryExprRequirements<Expr>
+{};
+
 template<class T> inline constexpr bool need_trial_values_v = need_values(requirements<T>::trial_mask);
 template<class T> inline constexpr bool need_trial_grads_v  = need_gradients (requirements<T>::trial_mask);
 template<class T> inline constexpr bool need_test_values_v = need_values(requirements<T>::test_mask);

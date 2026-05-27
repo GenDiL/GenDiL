@@ -15,6 +15,7 @@ add_my_test(test-weak-form test-weak-form.cpp)
 add_my_test(test-named-field-requirements test-named-field-requirements.cpp)
 add_my_test(test-vector-weakform-traits test-vector-weakform-traits.cpp)
 add_my_test(test-vector-expression-construction test-vector-expression-construction.cpp)
+add_my_test(test-transpose-expression test-transpose-expression.cpp)
 add_my_test(test-pullback-skeleton test-pullback-skeleton.cpp)
 add_my_test(test-pullback-generic-cell test-pullback-generic-cell.cpp)
 

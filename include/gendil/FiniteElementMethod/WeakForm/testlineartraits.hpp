@@ -603,4 +603,11 @@ struct test_linearity<ProductExpr<LHS, RHS>>
       LHS, RHS>
 {};
 
+template<FieldExpr Expr>
+struct test_linearity<TransposeExpr<Expr>>
+{
+   static constexpr TestLinearity value = test_linearity<Expr>::value;
+   static constexpr auto test_name = test_linearity<Expr>::test_name;
+};
+
 } // namespace gendil

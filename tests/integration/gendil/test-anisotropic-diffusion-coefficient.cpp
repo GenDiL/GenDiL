@@ -370,11 +370,16 @@ int TestAnisotropicDiffusionCoefficient()
       integrate(cells, dot(A_const * grad(u), grad(v)));
    auto transpose_pullback_form =
       integrate(cells, dot(A_const * grad(v), grad(u)));
+   auto public_transpose_form =
+      integrate(cells, dot(transpose(A_const) * grad(u), grad(v)));
    auto named_field_form =
       integrate(cells, dot(A_named * grad(u), grad(v)));
 
    static_assert(is_test_linear_v<decltype(A_const * grad(v))>);
    static_assert(is_test_linear_v<decltype(dot(A_const * grad(v), grad(u)))>);
+   static_assert(
+      is_test_linear_v<
+         decltype(dot(transpose(A_const) * grad(u), grad(v)))>);
 
    using NamedReqs =
       interpolation_named_field_requirements_t<decltype(named_field_form)>;
@@ -407,6 +412,11 @@ int TestAnisotropicDiffusionCoefficient()
          transpose_pullback_form,
          base_ctx,
          integration_rule);
+   auto public_transpose_op =
+      MakeGenericOperator<KernelPolicy>(
+         public_transpose_form,
+         base_ctx,
+         integration_rule);
    auto named_field_op =
       MakeGenericOperator<KernelPolicy>(
          named_field_form,
@@ -415,6 +425,7 @@ int TestAnisotropicDiffusionCoefficient()
 
    const Vector y_primal = ApplyOperator(primal_op, u_h);
    const Vector y_transpose = ApplyOperator(transpose_pullback_op, u_h);
+   const Vector y_public_transpose = ApplyOperator(public_transpose_op, u_h);
    const Vector y_named = ApplyOperator(named_field_op, u_h);
 
    const Vector y_primal_ref =
@@ -453,6 +464,8 @@ int TestAnisotropicDiffusionCoefficient()
    const Real primal_err = RelativeL2Error(y_primal, y_primal_ref);
    const Real transpose_err =
       RelativeL2Error(y_transpose, y_transpose_ref);
+   const Real public_transpose_err =
+      RelativeL2Error(y_public_transpose, y_transpose_ref);
    const Real named_err = RelativeL2Error(y_named, y_named_ref);
 
    const Real wrong_transpose_sep =
@@ -462,6 +475,8 @@ int TestAnisotropicDiffusionCoefficient()
              << primal_err << "\n";
    std::cout << "  Constant A transpose pullback error  = "
              << transpose_err << "\n";
+   std::cout << "  Public transpose(A) runtime error    = "
+             << public_transpose_err << "\n";
    std::cout << "  Named-field matrix coefficient error = "
              << named_err << "\n";
    std::cout << "  A^T seed vs wrong A seed separation  = "
@@ -470,6 +485,7 @@ int TestAnisotropicDiffusionCoefficient()
    const Real tol = 1e-11;
    if (primal_err > tol ||
        transpose_err > tol ||
+       public_transpose_err > tol ||
        named_err > tol ||
        wrong_transpose_sep < Real{1e-4})
    {

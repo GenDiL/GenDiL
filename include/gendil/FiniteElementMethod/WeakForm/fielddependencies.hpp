@@ -414,6 +414,12 @@ struct raw_named_field_requirements<ProductExpr<LHS,RHS>>
                          typename raw_named_field_requirements<RHS>::type>;
 };
 
+template<FieldExpr Expr>
+struct raw_named_field_requirements<TransposeExpr<Expr>>
+{
+   using type = typename raw_named_field_requirements<Expr>::type;
+};
+
 template<class MatrixExpr, class VectorExpr>
 struct raw_named_field_requirements<MatVecExpr<MatrixExpr, VectorExpr>>
 {
@@ -684,6 +690,14 @@ struct unqualified_side_dependent_named_field_requirements<
    using type = concat_t<
       typename unqualified_side_dependent_named_field_requirements<LHS>::type,
       typename unqualified_side_dependent_named_field_requirements<RHS>::type>;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<
+   TransposeExpr<Expr>>
+{
+   using type =
+      typename unqualified_side_dependent_named_field_requirements<Expr>::type;
 };
 
 template<class MatrixExpr, class VectorExpr>
@@ -972,6 +986,14 @@ struct plus_side_jacobian_requirement<
    static constexpr bool value =
       plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
       plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<
+   TransposeExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
 };
 
 template<class MatrixExpr, class VectorExpr, bool InPlusSideContext>
