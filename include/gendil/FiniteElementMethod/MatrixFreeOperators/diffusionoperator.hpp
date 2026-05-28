@@ -171,6 +171,8 @@ void DiffusionFaceOperator(
          constexpr Integer Dim = FiniteElementSpace::Dim;
 
          auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
+         auto plus_cell = fe_space.GetCell( face_info.PlusSide().GetCellIndex() );
+         ApplyOrientationToCell( face_info.PlusSide().GetOrientation(), plus_cell );
 
          auto Bu = InterpolateValues( kernel_conf, face_info.MinusSide(), face_quad_data, u );
          auto Gu = InterpolateGradient( kernel_conf, face_info.MinusSide(), face_quad_data, u );
@@ -207,7 +209,22 @@ void DiffusionFaceOperator(
                Real neighbor_Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, neighbor_Bu );
                Real neighbor_Gu_q[ Dim ];
                ReadQuadratureLocalValues( kernel_conf, quad_index, neighbor_Gu, neighbor_Gu_q );
-               ApplyMapping( inv_J, neighbor_Gu_q );
+               {
+                  PhysicalCoordinates X_plus;
+                  Jacobian J_mesh_plus;
+                  Jacobian inv_J_plus;
+
+                  mesh::ComputePhysicalCoordinatesAndJacobian(
+                     plus_cell,
+                     face_info.PlusSide(),
+                     quad_index,
+                     mesh_face_quad_data,
+                     X_plus,
+                     J_mesh_plus );
+                  (void) X_plus;
+                  ComputeInverse( J_mesh_plus, inv_J_plus );
+                  ApplyMapping( inv_J_plus, neighbor_Gu_q );
+               }
 
                const auto reference_normal = GetReferenceNormal( face_info );
                const auto physical_normal = ComputePhysicalNormal( inv_J, reference_normal );
