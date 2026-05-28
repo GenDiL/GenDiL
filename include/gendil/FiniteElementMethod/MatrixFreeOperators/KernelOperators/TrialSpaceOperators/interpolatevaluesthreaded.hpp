@@ -195,8 +195,8 @@ auto InterpolateValuesThreaded(
    Real * register_buffer2 = buffer2;
 
    constexpr size_t shared_buffer_size = shared_block_size_v< KernelContext, max_shape >;
-   Real * shared_buffer1 = thread.SharedAllocator.allocate( shared_buffer_size );
-   Real * shared_buffer2 = thread.SharedAllocator.allocate( shared_buffer_size );
+   Real * shared_buffer1 = thread.SharedAllocator.template allocate<shared_buffer_size>();
+   Real * shared_buffer2 = thread.SharedAllocator.template allocate<shared_buffer_size>();
 
 // contraction along non-register dimensions
    using tshape = subsequence_t<quad_shape, ThreadedDimensions>;

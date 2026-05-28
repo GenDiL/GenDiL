@@ -24,25 +24,45 @@ struct MemoryArena
    GENDIL_HOST_DEVICE
    T * allocate( size_t size ) const
    {
-      T * ptr = nullptr;
-
       if ( offset + size <= Size )
       {
-         ptr = memory + offset;
+         T * ptr = memory + offset;
          offset += size;
-      }
-      else
-      {
-         // Out of memory, return nullptr
-         ptr = nullptr;
-         printf(
-            "Memory arena is full! Requested size: %llu, available size: %llu\n",
-            static_cast<unsigned long long>(size),
-            static_cast<unsigned long long>(Size - offset)
-         );
+         return ptr;
       }
 
-      return ptr;
+      const size_t remaining = ( offset < Size ) ? ( Size - offset ) : 0;
+
+      printf(
+         "GenDiL MemoryArena overflow: requested=%llu, offset=%llu, "
+         "remaining=%llu, capacity=%llu\n",
+         static_cast<unsigned long long>(size),
+         static_cast<unsigned long long>(offset),
+         static_cast<unsigned long long>(remaining),
+         static_cast<unsigned long long>(Size)
+      );
+
+#if defined( __CUDA_ARCH__ )
+      __trap();
+#elif defined( __HIP_DEVICE_COMPILE__ )
+      __builtin_trap();
+#else
+      std::abort();
+#endif
+
+      return nullptr;
+   }
+
+   template < size_t RequestSize >
+   GENDIL_HOST_DEVICE
+   T * allocate() const
+   {
+      static_assert(
+         RequestSize <= Size,
+         "GenDiL shared-memory arena is too small for this compile-time "
+         "allocation." );
+
+      return allocate( RequestSize );
    }
 
    GENDIL_HOST_DEVICE
