@@ -995,8 +995,8 @@ public:
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -1011,8 +1011,8 @@ public:
    void Mult( const mfem::Vector & dofs_vector_in,
               mfem::Vector & dofs_vector_out ) const override
    {
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -1098,8 +1098,8 @@ public:
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -1114,8 +1114,8 @@ public:
    void Mult( const mfem::Vector & dofs_vector_in,
               mfem::Vector & dofs_vector_out ) const override
    {
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -1293,10 +1293,10 @@ public:
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
-      auto dofs_in_lhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_in );
-      auto dofs_in_rhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_in );
-      auto dofs_out_lhs = MakeReadWriteElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
-      auto dofs_out_rhs = MakeReadWriteElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
+      auto dofs_in_lhs = MakeReadOnlyElementTensorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_in );
+      auto dofs_in_rhs = MakeReadOnlyElementTensorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_in );
+      auto dofs_out_lhs = MakeReadWriteElementTensorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
+      auto dofs_out_rhs = MakeReadWriteElementTensorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
 
       Apply( dofs_in_lhs, dofs_in_rhs, dofs_out_lhs, dofs_out_rhs );
    }
@@ -1311,10 +1311,10 @@ public:
    void Mult( const mfem::Vector & dofs_vector_in,
               mfem::Vector & dofs_vector_out ) const override
    {
-      auto dofs_in_lhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_in );
-      auto dofs_in_rhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_in );
-      auto dofs_out_lhs = MakeWriteOnlyElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
-      auto dofs_out_rhs = MakeWriteOnlyElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
+      auto dofs_in_lhs = MakeReadOnlyElementTensorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_in );
+      auto dofs_in_rhs = MakeReadOnlyElementTensorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_in );
+      auto dofs_out_lhs = MakeWriteOnlyElementTensorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
+      auto dofs_out_rhs = MakeWriteOnlyElementTensorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
 
       Apply( dofs_in_lhs, dofs_in_rhs, dofs_out_lhs, dofs_out_rhs );
    }

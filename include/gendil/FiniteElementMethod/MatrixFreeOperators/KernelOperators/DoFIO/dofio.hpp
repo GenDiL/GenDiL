@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 
-// Make an element level view (ElementVector) on the degrees-of-freedom.
-#include "elementvectorview.hpp"
+// Make an element level view (ElementTensor) on the degrees-of-freedom.
+#include "elementtensorview.hpp"
 
 // Component-aware operations on local DoF containers.
 #include "localdofoperations.hpp"

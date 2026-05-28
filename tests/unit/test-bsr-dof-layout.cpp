@@ -279,7 +279,7 @@ bool TestVectorGlobalDofIndex()
       data[i] = static_cast< Real >( i );
    }
 
-   auto evector = MakeVectorElementVectorView( vector_space, data.data() );
+   auto evector = MakeVectorElementTensorView( vector_space, data.data() );
    const GlobalIndex c0_global_index =
       GlobalDofIndex( vector_space, c0, element_index, c0_i11 );
    const GlobalIndex c1_global_index =
@@ -287,10 +287,10 @@ bool TestVectorGlobalDofIndex()
 
    success = Check(
       std::get< 0 >( evector )( c0_i11[0], c0_i11[1], element_index ) == data[c0_global_index],
-      "Vector GlobalDofIndex disagrees with component 0 ElementVectorView layout." ) && success;
+      "Vector GlobalDofIndex disagrees with component 0 ElementTensorView layout." ) && success;
    success = Check(
       std::get< 1 >( evector )( c1_i21[0], c1_i21[1], element_index ) == data[c1_global_index],
-      "Vector GlobalDofIndex disagrees with component 1 ElementVectorView layout." ) && success;
+      "Vector GlobalDofIndex disagrees with component 1 ElementTensorView layout." ) && success;
 
    return success;
 }

@@ -696,8 +696,8 @@ public:
    {
       constexpr auto TrialName = requirements<WeakForm>::trial_name;
       constexpr auto TestName  = requirements<WeakForm>::test_name;
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( wf_ctx.template fe_field<TrialName>().space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementVectorView< KernelPolicy >( wf_ctx.template fe_field<TestName>().space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( wf_ctx.template fe_field<TrialName>().space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( wf_ctx.template fe_field<TestName>().space, dofs_vector_out );
 
       GenericExplicitOperator<KernelPolicy>(
          weak_form, wf_ctx, op_ctx, dofs_in, dofs_out

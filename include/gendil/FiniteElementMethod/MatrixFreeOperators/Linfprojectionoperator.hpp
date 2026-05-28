@@ -296,8 +296,8 @@ public:
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
       dofs_vector_out = 0.0;
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeReadWriteElementVectorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeReadWriteElementTensorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -313,8 +313,8 @@ public:
               mfem::Vector & dofs_vector_out ) const override
    {
       dofs_vector_out = 0.0;
-      auto dofs_in = MakeReadOnlyElementVectorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeReadWriteElementVectorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeReadWriteElementTensorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
