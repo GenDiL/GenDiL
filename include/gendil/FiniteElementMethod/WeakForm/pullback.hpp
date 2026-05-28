@@ -14,6 +14,8 @@
 #include "gendil/FiniteElementMethod/WeakForm/dot.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/mult.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumfieldexpr.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/transpose.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/productexpr.hpp"
 
 namespace gendil
 {
@@ -199,7 +201,8 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
 /**
  * @brief Pullback for ProductExpr (algebraic product).
  *
- * Currently implemented for ProductKind::ScalarTimes only.
+ * Currently implemented for ProductKind::ScalarTimes and the narrow MatVec
+ * adjoint where a test-free matrix multiplies a test-linear vector.
  *
  * ScalarTimes adjoint rule:
  *   pullback(scalar_free * test_expr, seed)
@@ -212,7 +215,7 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
  * Invalid combinations (will fail with clear static_assert):
  *   - Both test-free → no test contribution
  *   - Both test-linear → NonlinearInTest
- *   - ProductKind::MatVec → requires transpose adjoint (not implemented)
+ *   - ProductKind::MatVec → supported for test-free matrix × test-linear vector
  *   - ProductKind::MatMat → requires product-specific adjoint (not implemented)
  *
  * @tparam LHS Left operand type
@@ -259,12 +262,37 @@ auto pullback(const ProductExpr<LHS, RHS>& expr, const Seed& seed)
             "Both test-free → no test contribution; both test-linear → NonlinearInTest.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatVec)
+   {
+      if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         static_assert(field_shape_v<L> == FieldShape::Matrix,
+            "MatVec ProductExpr pullback requires the left operand to be Matrix-shaped.");
+         static_assert(field_shape_v<R> == FieldShape::Vector,
+            "MatVec ProductExpr pullback requires the right operand to be Vector-shaped.");
+         static_assert(field_shape_v<S> == FieldShape::Vector,
+            "MatVec ProductExpr pullback requires a Vector-shaped seed.");
+         static_assert(is_test_free_v<S>,
+            "MatVec ProductExpr pullback requires a test-free seed.");
+
+         return pullback(
+            expr.rhs,
+            transpose(expr.lhs) * seed);
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "MatVec ProductExpr pullback is implemented only for a test-free "
+            "matrix multiplying a test-linear vector. Broader nonlinear or "
+            "test-dependent matrix-product pullbacks are intentionally unsupported.");
+      }
+   }
    else
    {
       static_assert(dependent_false_v<L, R, S>,
-         "ProductExpr pullback is only implemented for ProductKind::ScalarTimes. "
-         "MatVec requires transpose adjoint: pullback(A*v, s) → pullback(v, A^T*s). "
-         "MatMat requires product-specific adjoints. Not implemented yet.");
+         "ProductExpr pullback is implemented for ProductKind::ScalarTimes and "
+         "the narrow MatVec adjoint A*x with test-free A and test-linear x. "
+         "MatMat and broader product-specific adjoints are not implemented.");
    }
 }
 

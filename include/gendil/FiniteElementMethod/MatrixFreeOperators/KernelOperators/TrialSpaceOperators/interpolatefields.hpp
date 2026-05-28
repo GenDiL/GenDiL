@@ -16,13 +16,13 @@ namespace gendil
 
 /**
  * @file interpolatefields.hpp
- * @brief Utilities to interpolate trial and finite-element coefficient fields
+ * @brief Utilities to interpolate trial and named finite-element fields
  *        at quadrature points for cell and facet integrals.
  *
  * This file provides the interpolation layer that transforms:
  *
  * - element-local trial degrees of freedom, and
- * - finite-element coefficient fields stored in the weak-form context,
+ * - named finite-element fields stored in the weak-form context,
  *
  * into map-like structures containing interpolated values and/or gradients at
  * quadrature points.
@@ -31,13 +31,12 @@ namespace gendil
  *
  * - **cell integration**
  *   returns one flat map containing the trial field and all referenced
- *   finite-element coefficient fields;
+ *   named finite-element fields required by explicit field expressions or
+ *   coefficient input tags;
  *
- * - **facet integration**
- *   returns a `FaceFields` object containing:
- *   - minus-side trial traces,
- *   - plus-side trial traces,
- *   - minus-side finite-element coefficient fields.
+ * - **interior-facet integration**
+ *   returns a `FaceFields` object containing side-specific named-field maps for
+ *   the minus and plus sides.
  *
  * The facet path intentionally preserves the current face-aware interpolation
  * model:
@@ -50,12 +49,13 @@ namespace gendil
  *   are delegated to the existing overloads of `InterpolateValues` and
  *   `InterpolateGradient`.
  *
- * Only finite-element coefficient fields are interpolated through this layer.
- * Non-finite-element coefficients must be handled elsewhere.
+ * Only named finite-element data backed by the active trial field or by fields
+ * in the weak-form context is interpolated through this layer. Other coefficient
+ * inputs are read from the quadrature-point context.
  *
  * @note This file assumes the existence of:
  * - `requirements<Integrand>`
- * - `fe_field_deps_t<Expr>`
+ * - `interpolation_named_field_requirements_t<Expr>`
  * - `type_list<...>`
  * - `Entry<Key, Value>`
  * - `NameTag<Name>`
@@ -92,27 +92,25 @@ namespace gendil
 /**
  * @brief Container grouping the fields required on a facet.
  *
- * @tparam MinusFields  Map-like type storing minus-side trial/test fields.
- * @tparam PlusFields   Map-like type storing plus-side trial/test fields.
- * @tparam CoeffFields  Map-like type storing minus-side finite-element
- *                      coefficient fields.
- *
- * The asymmetry is intentional:
- *
- * - trial/test traces live on both sides of the facet,
- * - finite-element coefficient fields are evaluated only on the minus side.
+ * @tparam MinusFields  Map-like type storing minus-side named fields.
+ * @tparam PlusFields   Map-like type storing plus-side named fields.
  */
-template<class MinusFields, class PlusFields, class CoeffFields>
+template<class MinusFields, class PlusFields>
 struct FaceFields
 {
-   /// Minus-side trial/test fields.
+   /// Minus-side named fields.
    MinusFields minus_fields;
 
-   /// Plus-side trial/test fields.
+   /// Plus-side named fields.
    PlusFields plus_fields;
 
-   /// Minus-side finite-element coefficient fields.
-   CoeffFields coeff_fields;
+   /// Current-side access for forms that have passed interior-facet validation.
+   template<class Key>
+   GENDIL_HOST_DEVICE
+   constexpr decltype(auto) get() const
+   {
+      return minus_fields.template get<Key>();
+   }
 };
 
 
@@ -230,26 +228,27 @@ auto MakeTrialInterpolatedEntryFromQD(
 }
 
 /**
- * @brief Build the interpolated entry associated with a finite-element
- *        coefficient field for a cell integration context.
+ * @brief Build the interpolated entry associated with a supplied named
+ *        finite-element field for a cell integration context.
  *
- * The coefficient field is read from the weak-form context on the specified
- * element and interpolated in value form only.
+ * The field is read from the weak-form context on the specified element and
+ * interpolated according to the requested value/gradient mask.
  *
- * @tparam Name            Compile-time coefficient-field name.
+ * @tparam Name            Compile-time named-field name.
  * @tparam KernelContext   Kernel execution-context type.
  * @tparam WeakFormContext Weak-form-context type.
  * @tparam QuadData        Cell quadrature-data type.
  *
  * @param[in] k              Kernel execution context.
- * @param[in] wf             Weak-form context containing the coefficient field.
- * @param[in] qd             Cell quadrature data for the coefficient field.
+ * @param[in] wf             Weak-form context containing the named field.
+ * @param[in] qd             Cell quadrature data for the named field.
  * @param[in] element_index  Element index from which coefficient DOFs are read.
  *
  * @return An `Entry<NameTag<Name>, InterpolatedField<ValuesT, Empty>>`.
  */
 template<
    StaticString Name,
+   OperatorMask Mask,
    class KernelContext,
    class WeakFormContext,
    class QuadData>
@@ -260,16 +259,24 @@ auto MakeCoeffInterpolatedEntryFromQD(
    const QuadData& qd,
    const GlobalIndex element_index)
 {
+   constexpr bool need_vals  = need_values(Mask);
+   constexpr bool need_grads = need_gradients(Mask);
+
    const auto& fev = wf.template fe_field<Name>();
    auto elem_dofs  = ReadDofs(k, fev.space, element_index, fev.dofs);
 
-   using ValuesT = std::remove_cvref_t<decltype(InterpolateValues(k, qd, elem_dofs))>;
-   using IF      = InterpolatedField<ValuesT, Empty>;
+   using ValuesT = std::remove_cvref_t<
+      decltype(details::InterpolateValuesIfNeeded<need_vals>(k, qd, elem_dofs))>;
+
+   using GradsT = std::remove_cvref_t<
+      decltype(details::InterpolateGradientIfNeeded<need_grads>(k, qd, elem_dofs))>;
+
+   using IF      = InterpolatedField<ValuesT, GradsT>;
 
    return Entry<NameTag<Name>, IF>{
       IF{
-         InterpolateValues(k, qd, elem_dofs),
-         Empty{}
+         details::InterpolateValuesIfNeeded<need_vals>(k, qd, elem_dofs),
+         details::InterpolateGradientIfNeeded<need_grads>(k, qd, elem_dofs)
       }
    };
 }
@@ -341,52 +348,96 @@ auto MakeFacetTrialInterpolatedEntry(
 }
 
 /**
- * @brief Build the interpolated entry associated with a finite-element
- *        coefficient field on one side of a facet.
+ * @brief Build a masked interpolated entry associated with a supplied named
+ *        finite-element field on one side of a facet.
  *
- * The coefficient field is read from the cell identified by
- * `side.GetCellIndex()` and interpolated in value form only using the existing
- * face-aware interpolation routine.
- *
- * @tparam Name            Compile-time coefficient-field name.
- * @tparam KernelContext   Kernel execution-context type.
- * @tparam WeakFormContext Weak-form-context type.
- * @tparam FaceSide        Facet-side type.
- * @tparam FaceQuadData    Facet quadrature-data container type.
- *
- * @param[in] k        Kernel execution context.
- * @param[in] wf       Weak-form context containing the coefficient field.
- * @param[in] side     Facet side used both to select the local face and to
- *                     determine the cell index.
- * @param[in] face_qd  Full facet quadrature-data container.
- *
- * @return An `Entry<NameTag<Name>, InterpolatedField<ValuesT, Empty>>`.
+ * This is used by boundary facets and by the side-specific interior-facet
+ * maps. Coefficient input tags and explicit finite-element field expressions
+ * share the same named-field requirement model as cell integration.
  */
 template<
    StaticString Name,
+   OperatorMask Mask,
    class KernelContext,
    class WeakFormContext,
    class FaceSide,
    class FaceQuadData>
 GENDIL_HOST_DEVICE
-auto MakeFacetCoeffInterpolatedEntry(
+auto MakeFacetCoeffInterpolatedEntryWithMask(
    const KernelContext& k,
    const WeakFormContext& wf,
    const FaceSide& side,
    const FaceQuadData& face_qd)
 {
+   constexpr bool need_vals  = need_values(Mask);
+   constexpr bool need_grads = need_gradients(Mask);
+
    const auto& fev = wf.template fe_field<Name>();
    auto elem_dofs  = ReadDofs(k, fev.space, side.GetCellIndex(), fev.dofs);
 
-   using ValuesT = std::remove_cvref_t<decltype(InterpolateValues(k, side, face_qd, elem_dofs))>;
-   using IF      = InterpolatedField<ValuesT, Empty>;
+   using ValuesT = std::remove_cvref_t<
+      decltype(details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, elem_dofs))>;
+
+   using GradsT = std::remove_cvref_t<
+      decltype(details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, elem_dofs))>;
+
+   using IF = InterpolatedField<ValuesT, GradsT>;
 
    return Entry<NameTag<Name>, IF>{
       IF{
-         InterpolateValues(k, side, face_qd, elem_dofs),
-         Empty{}
+         details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, elem_dofs),
+         details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, elem_dofs)
       }
    };
+}
+
+/**
+ * @brief Build one named-field entry on one side of a facet.
+ *
+ * Active-trial requirements are interpolated from the side-specific trial DOF
+ * container. Supplied finite-element fields are read from the weak-form context
+ * on the side's cell and interpolated with the same value/gradient mask.
+ */
+template<
+   StaticString TrialName,
+   class Req,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceSide,
+   class ElementDofsIn>
+GENDIL_HOST_DEVICE
+auto MakeFacetNamedFieldInterpolatedEntry(
+   const KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const FaceSide&        side,
+   const ElementDofsIn&   dofs_in)
+{
+   constexpr auto Name = Req::name;
+   constexpr auto Mask = Req::mask;
+
+   if constexpr (Name == TrialName)
+   {
+      static_assert(
+         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
+         "InterpolateFields(facet): active trial field name conflicts with a "
+         "FiniteElementField expression name.");
+
+      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
+         k,
+         side,
+         op.template finite_element_facet_quad_data<TrialName>(),
+         dofs_in);
+   }
+   else
+   {
+      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
+         k,
+         wf,
+         side,
+         op.template finite_element_facet_quad_data<Name>());
+   }
 }
 
 
@@ -440,90 +491,6 @@ auto MakeFacetTrialFieldsMap(
    );
 }
 
-/**
- * @brief Helper for MakeFacetCoeffFieldsMap that is templated on TrialName.
- *
- * This helper avoids using TrialName as a captured variable in a generic lambda,
- * which causes template argument deduction issues when TrialName appears in
- * NameTag<TrialName>.
- */
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceSide,
-   class... Tags>
-GENDIL_HOST_DEVICE
-auto MakeFacetCoeffFieldsMapImpl(
-   const KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceSide&        side,
-   type_list<Tags...>)
-{
-   static_assert((!std::is_same_v<NameTag<TrialName>, Tags> && ...),
-                 "MakeFacetCoeffFieldsMap: trial field name conflicts with a "
-                 "FiniteElementField name.");
-
-   return make_map(
-      MakeFacetCoeffInterpolatedEntry<Tags::name>(
-         k,
-         wf,
-         side,
-         op.template finite_element_facet_quad_data<Tags::name>())...
-   );
-}
-
-/**
- * @brief Build the map containing all finite-element coefficient fields
- *        referenced by a facet integrand expression, evaluated on one side.
- *
- * This helper is intended for the asymmetric facet representation used here:
- * coefficient fields are interpolated only on the minus side and stored in
- * `FaceFields::coeff_fields`.
- *
- * @tparam KernelContext    Kernel execution-context type.
- * @tparam WeakFormContext  Weak-form-context type.
- * @tparam OperatorContext  Operator-context type.
- * @tparam Integrand        Integrand type.
- * @tparam FaceSide         Facet-side type.
- *
- * @param[in] k         Kernel execution context.
- * @param[in] wf        Weak-form context.
- * @param[in] op        Operator context.
- * @param[in] side      Facet side from which coefficient fields are
- *                      interpolated.
- * @param[in] integrand Integrand instance; only its type is inspected.
- *
- * @return A map-like object containing one entry per FE coefficient field
- * referenced by the integrand expression. This may be `StaticMap<>` when the
- * dependency list is empty.
- */
-template<
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class Integrand,
-   class FaceSide>
-GENDIL_HOST_DEVICE
-auto MakeFacetCoeffFieldsMap(
-   const KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceSide&        side,
-   const Integrand&       /*integrand*/)
-{
-   using I = std::remove_cvref_t<Integrand>;
-
-   using Expr = typename I::expression_type;
-   using Deps = fe_field_deps_t<Expr>;
-
-   return MakeFacetCoeffFieldsMapImpl<requirements<I>::trial_name>(
-      k, wf, op, side, Deps{});
-}
-
-
 /* -------------------------------------------------------------------------- */
 /*                            Public cell overload                            */
 /* -------------------------------------------------------------------------- */
@@ -537,13 +504,53 @@ auto MakeFacetCoeffFieldsMap(
  */
 template<
    StaticString TrialName,
-   OperatorMask TrialMask,
+   class Req,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class ElementContext,
+   class ElementDofsIn>
+GENDIL_HOST_DEVICE
+auto MakeCellNamedFieldInterpolatedEntry(
+   const KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const ElementContext&  ec,
+   const ElementDofsIn&   dofs_in)
+{
+   constexpr auto Name = Req::name;
+   constexpr auto Mask = Req::mask;
+
+   if constexpr (Name == TrialName)
+   {
+      static_assert(
+         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
+         "InterpolateFields(cell): active trial field name conflicts with a "
+         "FiniteElementField expression name.");
+
+      return MakeTrialInterpolatedEntryFromQD<TrialName, Mask>(
+         k,
+         op.template finite_element_quad_data<TrialName>(),
+         dofs_in);
+   }
+   else
+   {
+      return MakeCoeffInterpolatedEntryFromQD<Name, Mask>(
+         k,
+         wf,
+         op.template finite_element_quad_data<Name>(),
+         ec.element_index);
+   }
+}
+
+template<
+   StaticString TrialName,
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
    class ElementContext,
    class ElementDofsIn,
-   class... Tags>
+   class... Reqs>
 GENDIL_HOST_DEVICE
 auto InterpolateFieldsCellImpl(
    const KernelContext&   k,
@@ -551,24 +558,72 @@ auto InterpolateFieldsCellImpl(
    const OperatorContext& op,
    const ElementContext&  ec,
    const ElementDofsIn&   dofs_in,
-   type_list<Tags...>)
+   type_list<Reqs...>)
 {
-   static_assert((!std::is_same_v<NameTag<TrialName>, Tags> && ...),
-                 "InterpolateFields(cell): trial field name conflicts with a "
-                 "FiniteElementField name.");
-
    return make_map(
-      MakeTrialInterpolatedEntryFromQD<TrialName, TrialMask>(
-         k,
-         op.template finite_element_quad_data<TrialName>(),
-         dofs_in),
-
-      MakeCoeffInterpolatedEntryFromQD<Tags::name>(
-         k,
-         wf,
-         op.template finite_element_quad_data<Tags::name>(),
-         ec.element_index)...
+      MakeCellNamedFieldInterpolatedEntry<TrialName, Reqs>(
+         k, wf, op, ec, dofs_in)...
    );
+}
+
+template<
+   StaticString TrialName,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceSide,
+   class ElementDofsIn,
+   class... Reqs>
+GENDIL_HOST_DEVICE
+auto MakeFacetNamedFieldsMap(
+   const KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const FaceSide&        side,
+   const ElementDofsIn&   dofs_in,
+   type_list<Reqs...>)
+{
+   return make_map(
+      MakeFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
+         k, wf, op, side, dofs_in)...
+   );
+}
+
+template<
+   StaticString TrialName,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceSideMinus,
+   class FaceSidePlus,
+   class ElementDofsInMinus,
+   class ElementDofsInPlus,
+   class... Reqs>
+GENDIL_HOST_DEVICE
+auto InterpolateFieldsInteriorFacetImpl(
+   const KernelContext&      k,
+   const WeakFormContext&    wf,
+   const OperatorContext&    op,
+   const FaceSideMinus&      minus_side,
+   const FaceSidePlus&       plus_side,
+   const ElementDofsInMinus& dofs_in_minus,
+   const ElementDofsInPlus&  dofs_in_plus,
+   type_list<Reqs...> deps)
+{
+   auto minus_fields =
+      MakeFacetNamedFieldsMap<TrialName>(
+         k, wf, op, minus_side, dofs_in_minus, deps);
+
+   auto plus_fields =
+      MakeFacetNamedFieldsMap<TrialName>(
+         k, wf, op, plus_side, dofs_in_plus, deps);
+
+   return FaceFields<
+      std::remove_cvref_t<decltype(minus_fields)>,
+      std::remove_cvref_t<decltype(plus_fields)>>{
+         minus_fields,
+         plus_fields
+      };
 }
 
 /**
@@ -578,12 +633,13 @@ auto InterpolateFieldsCellImpl(
  * map containing:
  *
  * - the trial field required by the integrand,
- * - all finite-element coefficient fields referenced by the integrand
- *   expression.
+ * - all named finite-element fields required by explicit field expressions or
+ *   coefficient input tags.
  *
- * The trial field interpolation is controlled by
- * `requirements<Integrand>::trial_mask`. Finite-element coefficient fields are
- * interpolated in value form only.
+ * The interpolation mask is supplied by
+ * `interpolation_named_field_requirements_t<Integrand>`, which unions active
+ * trial, explicit field-expression, and coefficient-input requirements by
+ * field name.
  *
  * @tparam KernelContext    Kernel execution-context type.
  * @tparam WeakFormContext  Weak-form-context type.
@@ -599,8 +655,8 @@ auto InterpolateFieldsCellImpl(
  * @param[in] integrand Integrand instance; only its type is inspected.
  * @param[in] dofs_in   Element-local trial degrees of freedom.
  *
- * @return A flat map containing the trial field and all referenced finite-
- * element coefficient fields.
+ * @return A flat map containing the trial field and all referenced named
+ * finite-element fields.
  */
 template<
    class KernelContext,
@@ -625,12 +681,10 @@ auto InterpolateFields(
                  "InterpolateFields(cell): trial_name == \"Error\". "
                  "Integrand must contain a TrialSpace.");
 
-   using Expr = typename I::expression_type;
-   using Deps = fe_field_deps_t<Expr>;
+   using Deps = interpolation_named_field_requirements_t<I>;
 
    return InterpolateFieldsCellImpl<
-      requirements<I>::trial_name,
-      requirements<I>::trial_mask>(k, wf, op, ec, dofs_in, Deps{});
+      requirements<I>::trial_name>(k, wf, op, ec, dofs_in, Deps{});
 }
 
 
@@ -644,22 +698,16 @@ auto InterpolateFields(
  * This overload is intended for facet integration. It returns a `FaceFields`
  * object separating:
  *
- * - minus-side trial/test traces,
- * - plus-side trial/test traces,
- * - minus-side finite-element coefficient fields.
+ * - minus-side named-field traces,
+ * - plus-side named-field traces.
  *
  * More precisely:
  *
- * - `minus_fields` contains the trial field interpolated with
- *   `fc.MinusSide()` and the full facet FE quadrature-data container for the
- *   trial field;
+ * - `minus_fields` contains every named-field requirement interpolated with
+ *   `fc.MinusSide()`;
  *
- * - `plus_fields` contains the trial field interpolated with
- *   `fc.PlusSide()` and the full facet FE quadrature-data container for the
- *   trial field;
- *
- * - `coeff_fields` contains FE coefficient fields interpolated on the minus
- *   side only.
+ * - `plus_fields` contains every named-field requirement interpolated with
+ *   `fc.PlusSide()`.
  *
  * @tparam KernelContext      Kernel execution-context type.
  * @tparam WeakFormContext    Weak-form-context type.
@@ -679,7 +727,7 @@ auto InterpolateFields(
  * @param[in] dofs_in_minus  Trial degrees of freedom on the minus side.
  * @param[in] dofs_in_plus   Trial degrees of freedom on the plus side.
  *
- * @return A `FaceFields<MinusFields, PlusFields, CoeffFields>` object.
+ * @return A `FaceFields<MinusFields, PlusFields>` object.
  */
 template<
    class KernelContext,
@@ -695,7 +743,7 @@ auto InterpolateFields(
    const WeakFormContext&    wf,
    const OperatorContext&    op,
    const FaceContext&        fc,
-   const Integrand&          integrand,
+   const Integrand&          /*integrand*/,
    const ElementDofsInMinus& dofs_in_minus,
    const ElementDofsInPlus&  dofs_in_plus)
 {
@@ -712,42 +760,27 @@ auto InterpolateFields(
    const auto minus_side = fc.MinusSide();
    const auto plus_side  = fc.PlusSide();
 
-   auto minus_fields =
-      MakeFacetTrialFieldsMap(
-         k,
-         minus_side,
-         op.template finite_element_facet_quad_data<TrialName>(),
-         integrand,
-         dofs_in_minus);
+   static_assert(
+      !has_invalid_unqualified_interior_side_dependencies_v<I, WeakFormContext, FaceContext>,
+      "Side-dependent expression appears on an interior facet without side "
+      "selection. Use average(expr), jump(expr), or future minus(expr)/plus(expr).");
 
-   auto plus_fields =
-      MakeFacetTrialFieldsMap(
-         k,
-         plus_side,
-         op.template finite_element_facet_quad_data<TrialName>(),
-         integrand,
-         dofs_in_plus);
+   using Deps = interpolation_named_field_requirements_t<I>;
 
-   auto coeff_fields =
-      MakeFacetCoeffFieldsMap(
-         k,
-         wf,
-         op,
-         minus_side,
-         integrand);
-
-   return FaceFields<
-      std::remove_cvref_t<decltype(minus_fields)>,
-      std::remove_cvref_t<decltype(plus_fields)>,
-      std::remove_cvref_t<decltype(coeff_fields)>>{
-         minus_fields,
-         plus_fields,
-         coeff_fields
-      };
+   return InterpolateFieldsInteriorFacetImpl<TrialName>(
+      k,
+      wf,
+      op,
+      minus_side,
+      plus_side,
+      dofs_in_minus,
+      dofs_in_plus,
+      Deps{});
 }
 
 /**
- * @brief Helper for InterpolateFields (boundary facet) that is templated on TrialName/TrialMask.
+ * @brief Helper for InterpolateFields (boundary facet) that is templated on
+ *        TrialName and one named-field requirement.
  *
  * This helper avoids using TrialName as a captured variable in a generic lambda,
  * which causes template argument deduction issues when TrialName appears in
@@ -755,13 +788,54 @@ auto InterpolateFields(
  */
 template<
    StaticString TrialName,
-   OperatorMask TrialMask,
+   class Req,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceSide,
+   class ElementDofsIn>
+GENDIL_HOST_DEVICE
+auto MakeBoundaryFacetNamedFieldInterpolatedEntry(
+   const KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const FaceSide&        minus_side,
+   const ElementDofsIn&   dofs_in)
+{
+   constexpr auto Name = Req::name;
+   constexpr auto Mask = Req::mask;
+
+   if constexpr (Name == TrialName)
+   {
+      static_assert(
+         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
+         "InterpolateFields(boundary facet): active trial field name conflicts with a "
+         "FiniteElementField expression name.");
+
+      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
+         k,
+         minus_side,
+         op.template finite_element_facet_quad_data<TrialName>(),
+         dofs_in);
+   }
+   else
+   {
+      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
+         k,
+         wf,
+         minus_side,
+         op.template finite_element_facet_quad_data<Name>());
+   }
+}
+
+template<
+   StaticString TrialName,
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
    class FaceSide,
    class ElementDofsIn,
-   class... Tags>
+   class... Reqs>
 GENDIL_HOST_DEVICE
 auto InterpolateFieldsBoundaryFacetImpl(
    const KernelContext&   k,
@@ -769,24 +843,11 @@ auto InterpolateFieldsBoundaryFacetImpl(
    const OperatorContext& op,
    const FaceSide&        minus_side,
    const ElementDofsIn&   dofs_in,
-   type_list<Tags...>)
+   type_list<Reqs...>)
 {
-   static_assert((!std::is_same_v<NameTag<TrialName>, Tags> && ...),
-                 "InterpolateFields(boundary facet): trial field name conflicts with a "
-                 "FiniteElementField name.");
-
    return make_map(
-      MakeFacetTrialInterpolatedEntry<TrialName, TrialMask>(
-         k,
-         minus_side,
-         op.template finite_element_facet_quad_data<TrialName>(),
-         dofs_in),
-
-      MakeFacetCoeffInterpolatedEntry<Tags::name>(
-         k,
-         wf,
-         minus_side,
-         op.template finite_element_facet_quad_data<Tags::name>())...
+      MakeBoundaryFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
+         k, wf, op, minus_side, dofs_in)...
    );
 }
 
@@ -797,12 +858,13 @@ auto InterpolateFieldsBoundaryFacetImpl(
  * map containing:
  *
  * - the trial field required by the integrand (from interior/minus side only),
- * - all finite-element coefficient fields referenced by the integrand
- *   expression (from interior/minus side only).
+ * - all named finite-element fields required by explicit field expressions or
+ *   coefficient input tags (from interior/minus side only).
  *
- * The trial field interpolation is controlled by
- * `requirements<Integrand>::trial_mask`. Finite-element coefficient fields are
- * interpolated in value form only.
+ * The interpolation mask is supplied by
+ * `interpolation_named_field_requirements_t<Integrand>`, which unions active
+ * trial, explicit field-expression, and coefficient-input requirements by
+ * field name.
  *
  * @tparam KernelContext    Kernel execution-context type.
  * @tparam WeakFormContext  Weak-form-context type.
@@ -843,15 +905,13 @@ auto InterpolateFields(
                  "InterpolateFields(boundary facet): trial_name == \"Error\". "
                  "Integrand must contain a TrialSpace.");
 
-   using Expr = typename I::expression_type;
-   using Deps = fe_field_deps_t<Expr>;
+   using Deps = interpolation_named_field_requirements_t<I>;
 
    // Boundary facets are one-sided: use minus side only
    const auto minus_side = fc.MinusSide();
 
    return InterpolateFieldsBoundaryFacetImpl<
-      requirements<I>::trial_name,
-      requirements<I>::trial_mask>(k, wf, op, minus_side, dofs_in, Deps{});
+      requirements<I>::trial_name>(k, wf, op, minus_side, dofs_in, Deps{});
 }
 
 } // namespace gendil

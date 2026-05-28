@@ -22,6 +22,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/average.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/transpose.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productkind.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"

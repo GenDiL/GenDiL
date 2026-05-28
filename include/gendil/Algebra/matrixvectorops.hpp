@@ -55,8 +55,12 @@ auto operator*(const Mat& A, const Vec& v)
    constexpr Integer Rows = static_num_rows_v<Mat>;
    constexpr Integer Cols = static_num_cols_v<Mat>;
 
-   using MatValue = std::remove_cvref_t<decltype(matrix_access(A, 0, 0))>;
-   using VecValue = std::remove_cvref_t<decltype(vector_access(v, 0))>;
+   using MatValue =
+      typename vector_element_type<
+         std::remove_cvref_t<decltype(matrix_access(A, 0, 0))>>::type;
+   using VecValue =
+      typename vector_element_type<
+         std::remove_cvref_t<decltype(vector_access(v, 0))>>::type;
    using ResultValue = decltype(std::declval<MatValue>() * std::declval<VecValue>());
 
    SerialRecursiveArray<ResultValue, Rows> result;

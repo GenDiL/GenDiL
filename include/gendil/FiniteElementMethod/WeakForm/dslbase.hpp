@@ -48,6 +48,7 @@ template < FieldExpr LHS, FieldExpr RHS > struct InnerExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct OuterExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct MultFieldExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct ProductExpr;
+template < FieldExpr Expr > struct TransposeExpr;
 template < FieldExpr Head, FieldExpr... Tail > struct SumExpr;
 template < DomainExpr Domain, FieldExpr Expr > struct Integrand;
 template < typename Map > struct SumFormExpr;

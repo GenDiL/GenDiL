@@ -49,6 +49,14 @@ inline constexpr bool is_unsupported_test_linear_v =
    (test_linearity<std::remove_cvref_t<Expr>>::value == TestLinearity::Unsupported);
 
 template<typename Expr>
+inline constexpr bool has_test_space_dependency_v =
+   !is_test_free_v<Expr>;
+
+template<typename Expr>
+inline constexpr bool is_side_evaluable_v =
+   is_test_free_v<Expr>;
+
+template<typename Expr>
 inline constexpr auto test_name_v = test_linearity<std::remove_cvref_t<Expr>>::test_name;
 
 // ============================================================================
@@ -594,5 +602,12 @@ struct test_linearity<ProductExpr<LHS, RHS>>
       test_linearity<RHS>::value,
       LHS, RHS>
 {};
+
+template<FieldExpr Expr>
+struct test_linearity<TransposeExpr<Expr>>
+{
+   static constexpr TestLinearity value = test_linearity<Expr>::value;
+   static constexpr auto test_name = test_linearity<Expr>::test_name;
+};
 
 } // namespace gendil

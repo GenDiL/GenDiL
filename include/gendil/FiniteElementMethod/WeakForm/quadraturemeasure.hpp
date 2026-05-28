@@ -77,7 +77,8 @@ struct field_shape_impl<QuadratureMeasureExpr>
 template<>
 struct test_linearity<QuadratureMeasureExpr>
 {
-   static constexpr bool is_test_linear = false;
+   static constexpr TestLinearity value = TestLinearity::TestFree;
+   static constexpr auto test_name = StaticString{""};
 };
 
 /**
@@ -138,8 +139,8 @@ struct FacetQuadratureMeasureExpr : FieldBase
       }
       else
       {
-         const Real det_J_facet = std::min( facet_quad_pt_context.det_J_facet_minus, facet_quad_pt_context.det_J_facet_plus );
-         // Fallback (should not happen if contexts are correct): use base measure
+         const Real det_J_facet = facet_quad_pt_context.det_J_facet_minus;
+         // Fallback for old two-sided contexts: use the current/minus measure.
          return facet_quad_pt_context.weight * det_J_facet;
       }
    }
@@ -155,7 +156,8 @@ struct field_shape_impl<FacetQuadratureMeasureExpr>
 template<>
 struct test_linearity<FacetQuadratureMeasureExpr>
 {
-   static constexpr bool is_test_linear = false;
+   static constexpr TestLinearity value = TestLinearity::TestFree;
+   static constexpr auto test_name = StaticString{""};
 };
 
 template<>
