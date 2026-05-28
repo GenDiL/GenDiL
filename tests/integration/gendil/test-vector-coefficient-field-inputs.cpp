@@ -63,7 +63,7 @@ void FillAffineVectorField(
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -101,7 +101,7 @@ void FillTrialField(
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -151,11 +151,11 @@ Vector ApplyCellMassOracle(
    y = 0.0;
 
    auto x_dofs =
-      MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          x);
    auto y_dofs =
-      MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+      MakeReadWriteElementTensorView<SerialKernelConfiguration>(
          fe_space,
          y);
 
@@ -228,11 +228,11 @@ void AccumulateBoundaryFaceOracle(
    using QuadPoints = GaussLegendrePoints<num_quad_1d>;
 
    auto x_dofs =
-      MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          x);
    auto y_dofs =
-      MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+      MakeReadWriteElementTensorView<SerialKernelConfiguration>(
          fe_space,
          y);
 
@@ -404,7 +404,7 @@ int TestVectorCoefficientFieldInputs()
    FillAffineVectorField<order>(vector_fe_space, w_vec_h);
 
    auto w_vec_view =
-      MakeReadOnlyElementVectorView<KernelPolicy>(
+      MakeReadOnlyElementTensorView<KernelPolicy>(
          vector_fe_space,
          w_vec_h);
 

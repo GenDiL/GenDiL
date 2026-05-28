@@ -29,7 +29,7 @@ void FillAffineScalarField(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(fe_space, field);
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(fe_space, field);
 
    for (GlobalIndex element_index = 0; element_index < fe_space.GetNumberOfCells(); ++element_index)
    {
@@ -57,7 +57,7 @@ void FillTrialField(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(fe_space, field);
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(fe_space, field);
 
    for (GlobalIndex element_index = 0; element_index < fe_space.GetNumberOfCells(); ++element_index)
    {
@@ -97,8 +97,8 @@ void AccumulateBoundaryFaceOracle(
    constexpr Integer num_quad_1d = order + 3;
    using QuadPoints = GaussLegendrePoints<num_quad_1d>;
 
-   auto x_dofs = MakeReadOnlyElementVectorView<SerialKernelConfiguration>(fe_space, x);
-   auto y_dofs = MakeReadWriteElementVectorView<SerialKernelConfiguration>(fe_space, y);
+   auto x_dofs = MakeReadOnlyElementTensorView<SerialKernelConfiguration>(fe_space, x);
+   auto y_dofs = MakeReadWriteElementTensorView<SerialKernelConfiguration>(fe_space, y);
 
    const GlobalIndex nx = fe_space.sizes[0];
    const GlobalIndex ny = fe_space.sizes[1];
@@ -249,7 +249,7 @@ int TestBoundaryCoefficientFieldInputs()
    Vector w_h(num_dofs);
    FillAffineScalarField<order>(fe_space, w_h);
 
-   auto w_view = MakeReadOnlyElementVectorView<KernelPolicy>(fe_space, w_h);
+   auto w_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, w_h);
 
    BoundaryFacets<"mesh"> boundary_facets;
    TrialSpace<"u"> u;

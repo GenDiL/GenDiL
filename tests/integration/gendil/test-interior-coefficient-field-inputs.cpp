@@ -52,7 +52,7 @@ void FillDiscontinuousAffineW(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
       fe_space,
       field);
 
@@ -89,7 +89,7 @@ void FillTrialField(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
       fe_space,
       field);
 
@@ -162,10 +162,10 @@ Vector ApplyInteriorJumpOracle(
    Vector y(fe_space.GetNumberOfFiniteElementDofs());
    y = 0.0;
 
-   auto u_dofs = MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+   auto u_dofs = MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
       fe_space,
       u);
-   auto y_dofs = MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+   auto y_dofs = MakeReadWriteElementTensorView<SerialKernelConfiguration>(
       fe_space,
       y);
 
@@ -313,7 +313,7 @@ int TestInteriorCoefficientFieldInputsDG()
    Vector w_h(num_dofs);
    FillDiscontinuousAffineW<order>(fe_space, w_h);
 
-   auto w_view = MakeReadOnlyElementVectorView<KernelPolicy>(fe_space, w_h);
+   auto w_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, w_h);
 
    InteriorFacets<"mesh"> interior_facets;
    TrialSpace<"u"> u;

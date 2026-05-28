@@ -21,7 +21,7 @@ void FillAffineScalarField(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(fe_space, field);
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(fe_space, field);
 
    for (GlobalIndex element_index = 0; element_index < fe_space.GetNumberOfCells(); ++element_index)
    {
@@ -110,9 +110,9 @@ int TestCoefficientFieldInputsCell()
    constexpr std::array<Real, 3> affine_gradient{1.0, 2.0, -0.4};
    FillAffineScalarField<order>(fe_space, g_h, affine_gradient, 0.75);
 
-   auto w_view = MakeReadOnlyElementVectorView<KernelPolicy>(fe_space, w_h);
-   auto z_view = MakeReadOnlyElementVectorView<KernelPolicy>(fe_space, z_h);
-   auto g_view = MakeReadOnlyElementVectorView<KernelPolicy>(fe_space, g_h);
+   auto w_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, w_h);
+   auto z_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, z_h);
+   auto g_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, g_h);
 
    Cells<"mesh"> cells;
    TrialSpace<"u"> u;

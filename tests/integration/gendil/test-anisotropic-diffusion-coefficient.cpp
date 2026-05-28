@@ -87,7 +87,7 @@ void FillTrialField(const FiniteElementSpace& fe_space, Vector& field)
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -123,7 +123,7 @@ void FillScalarCoefficientField(const FiniteElementSpace& fe_space, Vector& fiel
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -217,11 +217,11 @@ Vector ApplyAnisotropicCellOracle(
    y = 0.0;
 
    auto u_dofs =
-      MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          u);
    auto y_dofs =
-      MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+      MakeReadWriteElementTensorView<SerialKernelConfiguration>(
          fe_space,
          y);
 
@@ -344,7 +344,7 @@ int TestAnisotropicDiffusionCoefficient()
    Vector a_h(fe_space.GetNumberOfFiniteElementDofs());
    FillScalarCoefficientField<order>(fe_space, a_h);
    auto a_view =
-      MakeReadOnlyElementVectorView<KernelPolicy>(
+      MakeReadOnlyElementTensorView<KernelPolicy>(
          fe_space,
          a_h);
 

@@ -26,7 +26,7 @@ void FillContinuousW(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
       fe_space,
       field);
 
@@ -63,7 +63,7 @@ void FillTrialField(
 {
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
-   auto dofs = MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+   auto dofs = MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
       fe_space,
       field);
 
@@ -140,13 +140,13 @@ Vector ApplyInteriorJumpOracle(
    y = 0.0;
    max_trace_difference = 0.0;
 
-   auto u_dofs = MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+   auto u_dofs = MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
       dg_space,
       u);
-   auto y_dofs = MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+   auto y_dofs = MakeReadWriteElementTensorView<SerialKernelConfiguration>(
       dg_space,
       y);
-   auto w_dofs = MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+   auto w_dofs = MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
       h1_space,
       w);
 
@@ -322,7 +322,7 @@ int TestInteriorCoefficientFieldInputsH1()
    Vector w_h(h1_space.GetNumberOfFiniteElementDofs());
    FillContinuousW<order>(h1_space, w_h);
 
-   auto w_view = MakeReadOnlyElementVectorView<KernelPolicy>(h1_space, w_h);
+   auto w_view = MakeReadOnlyElementTensorView<KernelPolicy>(h1_space, w_h);
 
    InteriorFacets<"mesh"> interior_facets;
    TrialSpace<"u"> u;

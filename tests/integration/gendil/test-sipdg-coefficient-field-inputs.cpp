@@ -70,7 +70,7 @@ void FillDiscontinuousMuField(
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -108,7 +108,7 @@ void FillDiscontinuousTrialField(
    using DofPoints = GaussLobattoLegendrePoints<order + 1>;
 
    auto dofs =
-      MakeWriteOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeWriteOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          field);
 
@@ -218,11 +218,11 @@ void AccumulateCellOracle(
    using QuadPoints = GaussLegendrePoints<num_quad_1d>;
 
    auto u_dofs =
-      MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          u);
    auto y_dofs =
-      MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+      MakeReadWriteElementTensorView<SerialKernelConfiguration>(
          fe_space,
          y);
 
@@ -293,11 +293,11 @@ void AccumulateInteriorSIPDGOracle(
    using QuadPoints = GaussLegendrePoints<num_quad_1d>;
 
    auto u_dofs =
-      MakeReadOnlyElementVectorView<SerialKernelConfiguration>(
+      MakeReadOnlyElementTensorView<SerialKernelConfiguration>(
          fe_space,
          u);
    auto y_dofs =
-      MakeReadWriteElementVectorView<SerialKernelConfiguration>(
+      MakeReadWriteElementTensorView<SerialKernelConfiguration>(
          fe_space,
          y);
 
@@ -531,7 +531,7 @@ int TestSIPDGCoefficientFieldInputs()
    FillDiscontinuousMuField<order>(fe_space, mu_h);
 
    auto mu_view =
-      MakeReadOnlyElementVectorView<KernelPolicy>(
+      MakeReadOnlyElementTensorView<KernelPolicy>(
          fe_space,
          mu_h);
 
