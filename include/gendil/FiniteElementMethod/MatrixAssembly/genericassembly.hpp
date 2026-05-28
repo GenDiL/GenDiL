@@ -14,6 +14,7 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/sgbsrgatherscatter.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
+#include "gendil/Utilities/KernelContext/isserial.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 
 #include <type_traits>
@@ -452,6 +453,30 @@ void GenericAssembly(
    );
 }
 
+template < typename KernelPolicy, typename BSRMatrixType >
+void SyncAssembledBSRValues(
+   BSRMatrixType & bsr_matrix )
+{
+#if defined(GENDIL_USE_DEVICE)
+   const GlobalIndex value_count =
+      static_cast< GlobalIndex >( bsr_matrix.num_blocks ) *
+      static_cast< GlobalIndex >( bsr_matrix.block_rows ) *
+      static_cast< GlobalIndex >( bsr_matrix.block_cols );
+
+   if constexpr ( is_serial_v< KernelPolicy > )
+   {
+      ToDevice( value_count, bsr_matrix.values );
+   }
+   else
+   {
+      GENDIL_DEVICE_SYNC;
+      ToHost( value_count, bsr_matrix.values );
+   }
+#else
+   (void) bsr_matrix;
+#endif
+}
+
 template <
    class WeakForm,
    class FESpace,
@@ -500,10 +525,7 @@ auto GenericBSRAssembly(
       bsr_matrix
    );
 
-   #ifdef GENDIL_USE_DEVICE
-      // Copy assembled matrix from device to host before returning
-      ToHost(bsr_matrix.num_blocks * bsr_matrix.block_rows * bsr_matrix.block_cols, bsr_matrix.values);
-   #endif
+   SyncAssembledBSRValues< KernelPolicy >( bsr_matrix );
 
    return bsr_matrix;
 }
@@ -576,10 +598,7 @@ auto GenericSGBSRAssembly(
       bsr_matrix
    );
 
-   #ifdef GENDIL_USE_DEVICE
-      // Copy assembled matrix from device to host before returning
-      ToHost(bsr_matrix.num_blocks * bsr_matrix.block_rows * bsr_matrix.block_cols, bsr_matrix.values);
-   #endif
+   SyncAssembledBSRValues< KernelPolicy >( bsr_matrix );
 
    using BSRType = std::remove_cvref_t<decltype(bsr_matrix)>;
    using TrialGather = default_bsr_gather_t< TrialSpace >;

@@ -36,6 +36,52 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const HostBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const Vector & x,
+   Vector & y );
+
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const NativeDeviceBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const Vector & x,
+   Vector & y );
+
+#ifdef GENDIL_USE_MFEM
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const HostBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const mfem::Vector & x,
+   mfem::Vector & y );
+
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const NativeDeviceBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const mfem::Vector & x,
+   mfem::Vector & y );
+#endif
+
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
    typename MatrixBackend,
    typename InputVector,
    typename OutputVector >
@@ -114,6 +160,42 @@ void Apply(
    const InputVector & x,
    OutputVector & y )
 {
+   static_assert(
+      dependent_false_v< InputVector >,
+      "Apply(HostBSRBackend, BSRMatrix, x, y) supports only explicit "
+      "host vector overloads. Add an overload that acquires the correct "
+      "read/write memory space before entering the BSR loop." );
+}
+
+template <
+   typename Matrix,
+   typename InputVector,
+   typename OutputVector >
+void Apply(
+   const NativeDeviceBSRBackend &,
+   const Matrix & matrix,
+   const InputVector & x,
+   OutputVector & y )
+{
+   static_assert(
+      dependent_false_v< Matrix >,
+      "Apply(NativeDeviceBSRBackend, BSRMatrix, x, y) supports only "
+      "explicit device vector overloads. Add an overload that acquires "
+      "device pointers before launching the BSR kernel." );
+}
+
+namespace details
+{
+
+template < typename Matrix >
+void ApplyHostBSRToRawPointers(
+   const Matrix & matrix,
+   const Real * x_data,
+   Real * y_data )
+{
+   using IndexType = typename Matrix::index_type;
+   using ValueType = typename Matrix::value_type;
+
    #pragma omp parallel for
    for (IndexType block_row = 0;
         block_row < matrix.num_row_blocks;
@@ -140,19 +222,87 @@ void Apply(
 
                sum +=
                   matrix.GetBlockEntry(block_it, local_row, local_col) *
-                  x[global_col];
+                  x_data[global_col];
             }
          }
 
          const IndexType global_row =
             block_row * matrix.block_rows + local_row;
-         y[global_row] = sum;
+         y_data[global_row] = sum;
       }
    }
 }
 
+} // namespace details
+
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const HostBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const Vector & x,
+   Vector & y )
+{
+   const Real * x_data = x.ReadHostData();
+   Real * y_data = y.WriteHostData();
+
+   details::ApplyHostBSRToRawPointers( matrix, x_data, y_data );
+}
+
+#ifdef GENDIL_USE_MFEM
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const HostBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const mfem::Vector & x,
+   mfem::Vector & y )
+{
+   const Real * x_data = x.HostRead();
+   Real * y_data = y.HostWrite();
+
+   details::ApplyHostBSRToRawPointers( matrix, x_data, y_data );
+}
+#endif
+
 namespace details
 {
+
+template < typename Matrix >
+GlobalIndex CheckBSRApplyDimensions(
+   const Matrix & matrix,
+   const size_t x_size,
+   const size_t y_size )
+{
+   GENDIL_VERIFY(
+      matrix.block_rows > 0,
+      "Apply(BSR backend, ...) requires a positive row block size." );
+   GENDIL_VERIFY(
+      matrix.block_cols > 0,
+      "Apply(BSR backend, ...) requires a positive column block size." );
+
+   const GlobalIndex expected_x_size =
+      static_cast< GlobalIndex >( matrix.num_col_blocks ) *
+      static_cast< GlobalIndex >( matrix.block_cols );
+   const GlobalIndex expected_y_size =
+      static_cast< GlobalIndex >( matrix.num_row_blocks ) *
+      static_cast< GlobalIndex >( matrix.block_rows );
+
+   GENDIL_VERIFY(
+      x_size == static_cast< size_t >( expected_x_size ),
+      "Apply(BSR backend, ...) input vector has the wrong size." );
+   GENDIL_VERIFY(
+      y_size == static_cast< size_t >( expected_y_size ),
+      "Apply(BSR backend, ...) output vector has the wrong size." );
+
+   return expected_y_size;
+}
 
 #if defined(GENDIL_USE_DEVICE)
 template < typename Matrix >
@@ -209,50 +359,22 @@ void BSRDeviceApplyKernel(
       y[ global_row ] = sum;
    }
 }
-#endif
-
-} // namespace details
 
 template < typename Matrix >
-void Apply(
-   const NativeDeviceBSRBackend &,
+void ApplyDeviceBSRToRawPointers(
    const Matrix & matrix,
-   const Vector & x,
-   Vector & y )
+   const Real * x_data,
+   Real * y_data,
+   const GlobalIndex total_rows )
 {
-   GENDIL_VERIFY(
-      matrix.block_rows > 0,
-      "Apply(NativeDeviceBSRBackend, ...) requires a positive row block size." );
-   GENDIL_VERIFY(
-      matrix.block_cols > 0,
-      "Apply(NativeDeviceBSRBackend, ...) requires a positive column block size." );
-
-   const GlobalIndex expected_x_size =
-      static_cast< GlobalIndex >( matrix.num_col_blocks ) *
-      static_cast< GlobalIndex >( matrix.block_cols );
-   const GlobalIndex expected_y_size =
-      static_cast< GlobalIndex >( matrix.num_row_blocks ) *
-      static_cast< GlobalIndex >( matrix.block_rows );
-
-   GENDIL_VERIFY(
-      x.Size() == static_cast< size_t >( expected_x_size ),
-      "Apply(NativeDeviceBSRBackend, ...) input vector has the wrong size." );
-   GENDIL_VERIFY(
-      y.Size() == static_cast< size_t >( expected_y_size ),
-      "Apply(NativeDeviceBSRBackend, ...) output vector has the wrong size." );
-
-#if defined(GENDIL_USE_DEVICE)
-   const Real * x_data = x.ReadDeviceData();
-   Real * y_data = y.WriteDeviceData();
-
-   if ( expected_y_size == 0 )
+   if ( total_rows == 0 )
    {
       return;
    }
 
    constexpr unsigned int threads_per_block = 256;
    const GlobalIndex grid_x_size =
-      ( expected_y_size + threads_per_block - 1 ) / threads_per_block;
+      ( total_rows + threads_per_block - 1 ) / threads_per_block;
 
    GENDIL_VERIFY(
       grid_x_size <=
@@ -265,19 +387,86 @@ void Apply(
    CheckDeviceLaunchConfiguration( grid_dim, block_dim, 0 );
    GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
       "Apply(NativeDeviceBSRBackend, ...): before launch" );
-   details::BSRDeviceApplyKernel<<< grid_dim, block_dim >>>(
+   BSRDeviceApplyKernel<<< grid_dim, block_dim >>>(
+      matrix,
+      x_data,
+      y_data,
+      total_rows );
+   GENDIL_CHECK_LAST_DEVICE_LAUNCH(
+      "Apply(NativeDeviceBSRBackend, ...)" );
+}
+#endif
+
+} // namespace details
+
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const NativeDeviceBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const Vector & x,
+   Vector & y )
+{
+#if defined(GENDIL_USE_DEVICE)
+   const GlobalIndex expected_y_size =
+      details::CheckBSRApplyDimensions(
+         matrix,
+         x.Size(),
+         y.Size() );
+
+   const Real * x_data = x.ReadDeviceData();
+   Real * y_data = y.WriteDeviceData();
+
+   details::ApplyDeviceBSRToRawPointers(
       matrix,
       x_data,
       y_data,
       expected_y_size );
-   GENDIL_CHECK_LAST_DEVICE_LAUNCH(
-      "Apply(NativeDeviceBSRBackend, ...)" );
 #else
    static_assert(
-      dependent_false_v< Matrix >,
+      dependent_false_v< BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> >,
       "Apply(NativeDeviceBSRBackend, ...) requires GENDIL_USE_DEVICE "
       "(CUDA or HIP). Use BSRMatrix::operator() for CPU execution." );
 #endif
 }
+
+#ifdef GENDIL_USE_MFEM
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename MatrixBackend >
+void Apply(
+   const NativeDeviceBSRBackend &,
+   const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
+   const mfem::Vector & x,
+   mfem::Vector & y )
+{
+#if defined(GENDIL_USE_DEVICE)
+   const GlobalIndex expected_y_size =
+      details::CheckBSRApplyDimensions(
+         matrix,
+         static_cast< size_t >( x.Size() ),
+         static_cast< size_t >( y.Size() ) );
+
+   const Real * x_data = x.DeviceRead();
+   Real * y_data = y.DeviceWrite();
+
+   details::ApplyDeviceBSRToRawPointers(
+      matrix,
+      x_data,
+      y_data,
+      expected_y_size );
+#else
+   static_assert(
+      dependent_false_v< BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> >,
+      "Apply(NativeDeviceBSRBackend, mfem::Vector, ...) requires "
+      "GENDIL_USE_DEVICE (CUDA or HIP)." );
+#endif
+}
+#endif
 
 } // namespace gendil
