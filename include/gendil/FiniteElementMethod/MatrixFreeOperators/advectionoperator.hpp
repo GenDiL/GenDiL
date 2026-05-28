@@ -1295,8 +1295,8 @@ public:
    {
       auto dofs_in_lhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_in );
       auto dofs_in_rhs = MakeReadOnlyElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_in );
-      auto dofs_out_lhs = MakeWriteOnlyElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
-      auto dofs_out_rhs = MakeWriteOnlyElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
+      auto dofs_out_lhs = MakeReadWriteElementVectorView< KernelPolicy >( finite_element_space_lhs, dofs_vector_out );
+      auto dofs_out_rhs = MakeReadWriteElementVectorView< KernelPolicy >( finite_element_space_rhs, dofs_vector_out );
 
       Apply( dofs_in_lhs, dofs_in_rhs, dofs_out_lhs, dofs_out_rhs );
    }

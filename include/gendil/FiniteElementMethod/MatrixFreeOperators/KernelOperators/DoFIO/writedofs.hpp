@@ -426,6 +426,8 @@ void ThreadedWriteDofs(
       });
    });
 
+   thread.Synchronize();
+
    // Apply orientation
    Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
