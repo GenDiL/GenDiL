@@ -452,8 +452,8 @@ void Apply(
          static_cast< size_t >( x.Size() ),
          static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.DeviceRead();
-   Real * y_data = y.DeviceWrite();
+   const Real * x_data = x.Read();
+   Real * y_data = y.Write();
 
    details::ApplyDeviceBSRToRawPointers(
       matrix,
