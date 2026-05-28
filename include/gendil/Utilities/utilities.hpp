@@ -22,6 +22,9 @@
 // A tensor index.
 #include "tensorindex.hpp"
 
+// FIFO multi-index linearization helpers.
+#include "multiindex.hpp"
+
 // Data structures representing the device kernels configurations
 #include "gendil/Utilities/KernelContext/kernelconfiguration.hpp"
 

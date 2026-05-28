@@ -4,3 +4,6 @@
 
 // A block sparse row (BSR) sparse matrix type.
 #include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
+
+// Algebraic scatter/gather wrapper for BSR sparse matrix application.
+#include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"

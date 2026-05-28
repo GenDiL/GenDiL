@@ -414,6 +414,7 @@ void ThreadedWriteDofs(
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
+   GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
    Real * data = thread.SharedAllocator.allocate( data_size );
 
    // Copy local dofs into reference view
@@ -425,6 +426,8 @@ void ThreadedWriteDofs(
          reference_view( t..., k... ) = local_dofs( k... );
       });
    });
+
+   thread.Synchronize();
 
    // Apply orientation
    Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();

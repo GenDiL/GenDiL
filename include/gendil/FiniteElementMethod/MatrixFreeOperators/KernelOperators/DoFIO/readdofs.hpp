@@ -516,6 +516,7 @@ auto ThreadedReadDofs(
 
    // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
+   GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
    Real * data = thread.SharedAllocator.allocate( data_size );
 
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
@@ -720,6 +721,7 @@ auto ReadVectorDofsThreaded(
    Permutation< space_dim > orientation = face_info.orientation;
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
+   GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
    Real * data = thread.SharedAllocator.allocate( data_size );
 
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
@@ -794,7 +796,11 @@ auto ReadVectorDofsThreaded(
 
       constexpr size_t data_size = Product(component_dof_shape{});
 
-      Real * data = thread.SharedAllocator.allocate(data_size);
+      // TODO: This shared-memory staging was added as a presumed optimization.
+      // Direct reads through oriented indices may be faster and would avoid
+      // this hidden shared-memory requirement.
+      GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
+      Real * data = thread.SharedAllocator.allocate( data_size );
 
       auto dofs_sizes = to_array(component_dof_shape{});
 
@@ -822,9 +828,8 @@ auto ReadVectorDofsThreaded(
       });
 
       thread.Synchronize();
+      thread.SharedAllocator.reset();
    });
-
-   thread.SharedAllocator.reset();
 
    return local_dofs;
 }

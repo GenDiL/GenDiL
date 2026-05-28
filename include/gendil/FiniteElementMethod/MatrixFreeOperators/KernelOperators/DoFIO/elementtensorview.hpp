@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/FiniteElementMethod/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
@@ -120,7 +121,7 @@ auto MakeIndirectedTensor(
 }
 
 template < typename FiniteElementSpace, typename T >
-auto MakeScalarEVectorView(
+auto MakeScalarElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
@@ -135,23 +136,15 @@ auto MakeScalarEVectorView(
    }
 }
 
-template <
-   typename Tuple,
-   size_t ... I >
-size_t VectorOffset( Tuple dof_shapes, GlobalIndex num_elements, std::index_sequence< I ... > )
-{
-   return Sum( ( num_elements * Product( std::tuple_element_t< I, Tuple >{} ) )... );
-}
-
 template < typename FiniteElementSpace, typename T, size_t ... v_dims >
-auto MakeVectorEVectorView(
+auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data,
    std::index_sequence< v_dims... > )
 {
    static_assert(
       std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-      "MakeVectorEVectorView only supports L2Restriction."
+      "MakeVectorElementTensorView only supports L2Restriction."
    );
    const GlobalIndex num_elements = finite_element_space.GetNumberOfFiniteElements();
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
@@ -166,12 +159,12 @@ auto MakeVectorEVectorView(
 }
 
 template < typename FiniteElementSpace, typename T >
-auto MakeVectorEVectorView(
+auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
    constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
-   return MakeVectorEVectorView( finite_element_space, data, std::make_index_sequence< v_dim >{} );
+   return MakeVectorElementTensorView( finite_element_space, data, std::make_index_sequence< v_dim >{} );
 }
 /**
  * @brief Utility function to transform a vector of deegrees of freedom into a tensor view of degrees of freedom.
@@ -185,108 +178,108 @@ auto MakeVectorEVectorView(
  * @return auto The tensor sized according to the finite element space.
  */
 template < typename FiniteElementSpace, typename T >
-auto MakeEVectorView(
+auto MakeElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
    if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
    {
-      return MakeVectorEVectorView( finite_element_space, data );
+      return MakeVectorElementTensorView( finite_element_space, data );
    }
    else
    {
-      return MakeScalarEVectorView( finite_element_space, data );
+      return MakeScalarElementTensorView( finite_element_space, data );
    }
 }
 
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadOnlyEVectorView(
+auto MakeReadOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    const Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.ReadHostData() );
+      return MakeElementTensorView( finite_element_space, data.ReadHostData() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.ReadDeviceData() );
+      return MakeElementTensorView( finite_element_space, data.ReadDeviceData() );
    }
 }
 
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeWriteOnlyEVectorView(
+auto MakeWriteOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.WriteHostData() );
+      return MakeElementTensorView( finite_element_space, data.WriteHostData() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.WriteDeviceData() );
+      return MakeElementTensorView( finite_element_space, data.WriteDeviceData() );
    }
 }
 
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadWriteEVectorView(
+auto MakeReadWriteElementTensorView(
    const FiniteElementSpace & finite_element_space,
    Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.ReadWriteHostData() );
+      return MakeElementTensorView( finite_element_space, data.ReadWriteHostData() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.ReadWriteDeviceData() );
+      return MakeElementTensorView( finite_element_space, data.ReadWriteDeviceData() );
    }
 }
 
 #ifdef GENDIL_USE_MFEM
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadOnlyEVectorView(
+auto MakeReadOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    const mfem::Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.HostRead() );
+      return MakeElementTensorView( finite_element_space, data.HostRead() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.Read() );
+      return MakeElementTensorView( finite_element_space, data.Read() );
    }
 }
 
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeWriteOnlyEVectorView(
+auto MakeWriteOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    mfem::Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.HostWrite() );
+      return MakeElementTensorView( finite_element_space, data.HostWrite() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.Write() );
+      return MakeElementTensorView( finite_element_space, data.Write() );
    }
 }
 
 template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadWriteEVectorView(
+auto MakeReadWriteElementTensorView(
    const FiniteElementSpace & finite_element_space,
    mfem::Vector & data )
 {
    if constexpr ( is_serial_v< KernelPolicy > )
    {
-      return MakeEVectorView( finite_element_space, data.HostReadWrite() );
+      return MakeElementTensorView( finite_element_space, data.HostReadWrite() );
    }
    else
    {
-      return MakeEVectorView( finite_element_space, data.ReadWrite() );
+      return MakeElementTensorView( finite_element_space, data.ReadWrite() );
    }
 }
 #endif // GENDIL_USE_MFEM

@@ -109,7 +109,12 @@ int main()
    mass_op(u_h, v_h);
 
    // Testing assembly
-   auto mass_bsr_matrix = GenericAssembly<KernelPolicy>(
+   auto mass_bsr_matrix = GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
+      mass_weak_form,
+      mass_wf_context,
+      integration_rule
+   );
+   auto mass_bsr_compat_matrix = GenericAssembly<KernelPolicy>(
       mass_weak_form,
       mass_wf_context,
       integration_rule
@@ -118,11 +123,25 @@ int main()
    // Comparing matrix-free application to assembled application
    Vector v_h_matrix(fe_space.GetNumberOfFiniteElementDofs());
    v_h_matrix = 0.0;
+   Vector v_h_compat(fe_space.GetNumberOfFiniteElementDofs());
+   v_h_compat = 0.0;
 
    mass_bsr_matrix(u_h, v_h_matrix);
+   mass_bsr_compat_matrix(u_h, v_h_compat);
 
    std::cout << "v_h after matrix-free application: " << v_h << "\n";
    std::cout << "v_h after assembled application: " << v_h_matrix << "\n";
+
+   Real compat_error = 0.0;
+   for (size_t i = 0; i < v_h_matrix.Size(); ++i)   {
+      compat_error += std::abs(v_h_matrix[i] - v_h_compat[i]);
+   }
+   std::cout << "Error between explicit BSR and compatibility assembly: " << compat_error << "\n";
+   if ( compat_error > 1.0e-12 )
+   {
+      std::cerr << "Explicit BSR assembly disagrees with compatibility GenericAssembly alias.\n";
+      return 1;
+   }
 
    v_h -= v_h_matrix;
    Real error = 0.0;

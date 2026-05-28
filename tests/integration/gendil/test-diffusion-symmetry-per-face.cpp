@@ -72,7 +72,6 @@ int TestSingleFaceDirection() {
               << nx << "×" << ny << "×" << nz << ") ===\n";
 
     bool has_exact_minus_one = false;
-    int count = 0;
     for (Integer i = 0; i < num_dofs; i++) {
         if (std::abs(v_h_legacy_symm[i]) > 1e-14 || std::abs(v_h_generic[i]) > 1e-14) {
             Real ratio = (std::abs(v_h_legacy_symm[i]) > 1e-14) ? (v_h_generic[i] / v_h_legacy_symm[i]) : 0.0;
@@ -82,7 +81,6 @@ int TestSingleFaceDirection() {
             if (std::abs(ratio + 1.0) < 0.01) {  // Close to -1.0
                 has_exact_minus_one = true;
             }
-            count++;
         }
     }
 

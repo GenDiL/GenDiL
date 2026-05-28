@@ -12,6 +12,6 @@ cmake -D CMAKE_BUILD_TYPE=Release \
       -D CMAKE_INSTALL_PREFIX=../install \
       ..
 
-make -j 8 && make test && make install
+make -j 8 && ctest --output-on-failure && make install
 
 cd ..

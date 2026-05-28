@@ -90,7 +90,7 @@ void bench_face_components_once_5D(Integer nx_full, Integer ny, Integer nz, Inte
 
 #if defined(GENDIL_USE_DEVICE)
   using ThreadLayout = ThreadBlockLayout<q1d,q1d,q1d,q1d>;
-  constexpr size_t NumSharedDimensions = 4;
+  constexpr size_t NumSharedDimensions = 5;
   using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
   using KernelPolicy = SerialKernelConfiguration;
@@ -197,7 +197,9 @@ int main()
   // Choose (pL,pR) combos to sweep
   sweep_face_components</*pL=*/1, /*pR=*/2>(curves_L, curves_R, curves_IF);
   sweep_face_components</*pL=*/1, /*pR=*/3>(curves_L, curves_R, curves_IF);
+#ifndef GENDIL_USE_DEVICE  
   sweep_face_components</*pL=*/2, /*pR=*/4>(curves_L, curves_R, curves_IF);
+#endif  
 
   std::cout << std::fixed << std::setprecision(6);
   std::cout << " \\begin{tikzpicture}[scale=0.9]\n";

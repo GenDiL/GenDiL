@@ -132,6 +132,8 @@ auto MakeSharedQuadraturePointValuesContainer( const KernelContext & kernel_conf
    using quad_shape = typename IntegrationRule::points::num_points_tensor;
    using shape = cat_t< quad_shape, std::index_sequence< Dims... > >;
    constexpr size_t shared_size = Product( shape{} );
+   GENDIL_CHECK_MEMORY_ARENA_REQUEST(
+      kernel_conf.SharedAllocator, shared_size );
    Real * buffer = kernel_conf.SharedAllocator.allocate( shared_size );
    return MakeFixedFIFOView( buffer, shape{} );
 }

@@ -4,8 +4,10 @@
 
 #pragma once
 
+#include <cstdio>
+#include <type_traits>
+
 #include "gendil/Utilities/types.hpp"
-#include "gendil/Utilities/debug.hpp"
 
 namespace gendil
 {
@@ -52,4 +54,21 @@ struct MemoryArena
    }
 };
 
+template < typename Arena >
+struct MemoryArenaCapacity;
+
+template < typename T, size_t Size >
+struct MemoryArenaCapacity< MemoryArena< T, Size > >
+{
+   static constexpr size_t value = Size;
+};
+
 } // namespace gendil
+
+#define GENDIL_CHECK_MEMORY_ARENA_REQUEST(ALLOCATOR, REQUEST_SIZE) \
+   static_assert( \
+      ( REQUEST_SIZE ) <= \
+         ::gendil::MemoryArenaCapacity< \
+            std::remove_cvref_t< decltype( ALLOCATOR ) > >::value, \
+      "GenDiL shared-memory arena is too small for this compile-time " \
+      "allocation." )

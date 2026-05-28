@@ -224,8 +224,8 @@ public:
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
-      auto dofs_in = MakeReadOnlyEVectorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyEVectorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
@@ -240,8 +240,8 @@ public:
    void Mult( const mfem::Vector & dofs_vector_in,
               mfem::Vector & dofs_vector_out ) const override
    {
-      auto dofs_in = MakeReadOnlyEVectorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyEVectorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->trial_finite_element_space, dofs_vector_in );
+      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->test_finite_element_space, dofs_vector_out );
 
       Apply( dofs_in, dofs_out );
    }
