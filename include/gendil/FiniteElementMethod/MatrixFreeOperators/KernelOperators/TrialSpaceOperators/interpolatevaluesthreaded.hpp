@@ -195,7 +195,8 @@ auto InterpolateValuesThreaded(
    Real * register_buffer2 = buffer2;
 
    constexpr size_t shared_buffer_size = shared_block_size_v< KernelContext, max_shape >;
-   thread.SharedAllocator.template CheckRequestSize<2*shared_buffer_size>();
+   GENDIL_CHECK_MEMORY_ARENA_REQUEST(
+      thread.SharedAllocator, 2 * shared_buffer_size );
    Real * shared_buffer1 = thread.SharedAllocator.allocate( shared_buffer_size );
    Real * shared_buffer2 = thread.SharedAllocator.allocate( shared_buffer_size );
 
