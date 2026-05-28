@@ -122,7 +122,8 @@ void InterpolateGradientAtQPointsThreaded(
 // Memory use
    using shared_shape = subsequence_t< quad_shape, cat_t< ThreadedDimensions, SharedRegisterDimensions > >;
    constexpr size_t shared_buffer_size = shared_block_size_v< KernelContext, quad_shape >;
-   Real * shared_data = thread.SharedAllocator.template allocate<shared_buffer_size>();
+   thread.SharedAllocator.template CheckRequestSize<shared_buffer_size>();
+   Real * shared_data = thread.SharedAllocator.allocate( shared_buffer_size );
    auto sx = MakeFixedFIFOView( shared_data, shared_shape{} );
 
 // contractions along threaded dimensions

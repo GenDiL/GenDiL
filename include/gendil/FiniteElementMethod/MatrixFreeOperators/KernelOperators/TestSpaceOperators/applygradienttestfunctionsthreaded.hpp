@@ -188,7 +188,8 @@ void ApplyGradientTestFunctionsAtQPoints(
 // Memory use
    using shared_shape = subsequence_t< quad_shape, cat_t< ThreadedDimensions, SharedRegisterDimensions > >;
    constexpr size_t shared_size = Product( shared_shape{} );
-   Real * shared_data = thread.SharedAllocator.template allocate<shared_size>();
+   thread.SharedAllocator.template CheckRequestSize<shared_size>();
+   Real * shared_data = thread.SharedAllocator.allocate( shared_size );
    auto sx = MakeFixedFIFOView( shared_data, shared_shape{} );
 
    using rshape_non_shared = subsequence_t< quad_shape, NonSharedRegisterDimensions >;

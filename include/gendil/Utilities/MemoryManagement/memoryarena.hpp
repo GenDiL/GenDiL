@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <cstdio>
 
 #include "gendil/Utilities/types.hpp"
@@ -79,13 +80,20 @@ struct MemoryArena
    }
 
    template < size_t RequestSize >
-   GENDIL_HOST_DEVICE
-   T * allocate() const
+   static GENDIL_HOST_DEVICE constexpr
+   void CheckRequestSize()
    {
       static_assert(
          RequestSize <= Size,
          "GenDiL shared-memory arena is too small for this compile-time "
          "allocation." );
+   }
+
+   template < size_t RequestSize >
+   GENDIL_HOST_DEVICE
+   T * allocate() const
+   {
+      CheckRequestSize< RequestSize >();
 
       return allocate( RequestSize );
    }
