@@ -59,13 +59,11 @@ namespace details
  */
 
 template < typename ... CellTypes >
-class ProductCell
+struct ProductCell
 {
-private:
    using CellTuple = std::tuple< CellTypes ... >;
    CellTuple Cells;
 
-public:
    template < Integer Index >
    static constexpr Integer SubDim = std::tuple_element_t< Index, CellTuple >::Dim;
    
