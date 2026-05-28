@@ -154,8 +154,8 @@ int TestVectorInteriorJumpBsrAction()
    auto integration_rule = MakeIntegrationRule( num_quads );
 
 #if defined(GENDIL_USE_DEVICE)
-   constexpr Integer NumSharedDimensions = 1;
-   using ThreadLayout = ThreadBlockLayout< num_quad_1d >;
+   constexpr Integer NumSharedDimensions = Dim;
+   using ThreadLayout = ThreadBlockLayout< num_quad_1d, num_quad_1d >;
    using KernelPolicy =
       ThreadFirstKernelConfiguration< ThreadLayout, NumSharedDimensions >;
 #else
