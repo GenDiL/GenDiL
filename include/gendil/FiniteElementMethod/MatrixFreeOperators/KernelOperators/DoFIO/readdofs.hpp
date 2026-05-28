@@ -822,9 +822,8 @@ auto ReadVectorDofsThreaded(
       });
 
       thread.Synchronize();
+      thread.SharedAllocator.reset();
    });
-
-   thread.SharedAllocator.reset();
 
    return local_dofs;
 }

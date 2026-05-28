@@ -21,6 +21,11 @@ template <
 class ThreadFirstKernelConfiguration : public ThreadLayout
 {
 public:
+   static_assert(
+      MaxSharedDimensions >= ThreadLayout::thread_block_dim,
+      "ThreadFirstKernelConfiguration requires MaxSharedDimensions to be "
+      "greater than or equal to the number of threaded dimensions." );
+
    using thread_layout_type = ThreadLayout;
 
    static constexpr size_t shared_block_max_dim = MaxSharedDimensions;
