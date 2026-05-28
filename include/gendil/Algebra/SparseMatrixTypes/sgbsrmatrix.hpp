@@ -54,7 +54,6 @@ public:
          GENDIL_VERIFY(
             y_fe.Size() == static_cast< size_t >( TestBsrSize() ),
             "SGBSRMatrix identity scatter output has the wrong BSR size." );
-         y_fe.WriteHostData();
          bsr_matrix( x_fe, y_fe );
       }
       else if constexpr ( TrialGather::is_identity )
@@ -62,7 +61,6 @@ public:
          GENDIL_VERIFY(
             x_fe.Size() == static_cast< size_t >( TrialBsrSize() ),
             "SGBSRMatrix identity gather input has the wrong BSR size." );
-         y_bsr = 0.0;
          bsr_matrix( x_fe, y_bsr );
          test_scatter( y_bsr, y_fe );
       }
@@ -72,13 +70,11 @@ public:
             y_fe.Size() == static_cast< size_t >( TestBsrSize() ),
             "SGBSRMatrix identity scatter output has the wrong BSR size." );
          trial_gather( x_fe, x_bsr );
-         y_fe.WriteHostData();
          bsr_matrix( x_bsr, y_fe );
       }
       else
       {
          trial_gather( x_fe, x_bsr );
-         y_bsr = 0.0;
          bsr_matrix( x_bsr, y_bsr );
          test_scatter( y_bsr, y_fe );
       }
