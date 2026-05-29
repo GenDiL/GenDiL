@@ -16,6 +16,12 @@ template < typename KernelConfiguration, Integer RequiredSharedMemorySize >
 class KernelContext : public KernelConfiguration
 {
 public:
+   using kernel_configuration_type = KernelConfiguration;
+
+   static constexpr bool is_host_configuration =
+      KernelConfiguration::is_host_configuration;
+   static constexpr bool is_device_configuration =
+      KernelConfiguration::is_device_configuration;
    static constexpr size_t per_work_item_shared_memory_size =
       RequiredSharedMemorySize;
    static constexpr size_t shared_memory_stride_per_work_item =

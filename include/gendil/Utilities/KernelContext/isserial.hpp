@@ -38,7 +38,7 @@ struct is_host_configuration<
 
 template < typename KernelConfig >
 static constexpr bool is_host_configuration_v =
-   is_host_configuration< KernelConfig >::value;
+   is_host_configuration< std::remove_cvref_t< KernelConfig > >::value;
 
 template < typename KernelConfig >
 struct is_device_configuration
@@ -67,13 +67,14 @@ struct is_device_configuration<
 
 template < typename KernelConfig >
 static constexpr bool is_device_configuration_v =
-   is_device_configuration< KernelConfig >::value;
+   is_device_configuration< std::remove_cvref_t< KernelConfig > >::value;
 
 template < typename KernelConfig >
 struct is_serial : is_host_configuration< KernelConfig >
 {};
 
 template < typename KernelConfig >
-static constexpr bool is_serial_v = is_host_configuration_v< KernelConfig >;
+static constexpr bool is_serial_v =
+   is_serial< std::remove_cvref_t< KernelConfig > >::value;
 
 } // namespace gendil

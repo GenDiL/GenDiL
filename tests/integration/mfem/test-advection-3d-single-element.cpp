@@ -104,15 +104,14 @@ int main(int argc, char *argv[])
    using ThreadLayout2d = ThreadBlockLayout<num_quad_1d,num_quad_1d>;
    using ThreadLayout3d = ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>;
    constexpr size_t NumSharedDimensions = Dim;
-#else
-   using ThreadLayout1d = ThreadBlockLayout<>;
-   using ThreadLayout2d = ThreadBlockLayout<>;
-   using ThreadLayout3d = ThreadBlockLayout<>;
-   constexpr size_t NumSharedDimensions = 0;
-#endif
    using ThreadingPolicy1d = ThreadFirstKernelConfiguration< ThreadLayout1d, NumSharedDimensions >;
    using ThreadingPolicy2d = ThreadFirstKernelConfiguration< ThreadLayout2d, NumSharedDimensions >;
    using ThreadingPolicy3d = ThreadFirstKernelConfiguration< ThreadLayout3d, NumSharedDimensions >;
+#else
+   using ThreadingPolicy1d = SerialKernelConfiguration;
+   using ThreadingPolicy2d = SerialKernelConfiguration;
+   using ThreadingPolicy3d = SerialKernelConfiguration;
+#endif
 
    auto advection_operator_1d = MakeAdvectionOperator< ThreadingPolicy1d >( fe_space, int_rules, adv, zero );
    auto advection_operator_2d = MakeAdvectionOperator< ThreadingPolicy2d >( fe_space, int_rules, adv, zero );

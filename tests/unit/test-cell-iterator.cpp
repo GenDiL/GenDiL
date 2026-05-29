@@ -42,7 +42,7 @@ int main()
    TinyMesh mesh{ num_cells };
 
    std::array< int, num_cells > visits{};
-   mesh::CellIterator(
+   mesh::CellIterator<HostKernelConfiguration<1>>(
       mesh,
       [&] ( const GlobalIndex cell_index )
       {

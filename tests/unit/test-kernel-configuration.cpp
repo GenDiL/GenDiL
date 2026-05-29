@@ -38,11 +38,23 @@ int main( int, char ** )
 
    static_assert( is_host_configuration_v< SerialKernelConfiguration > );
    static_assert( is_host_configuration_v< HostKernelConfiguration<> > );
+   static_assert( is_host_configuration_v< HostKernelConfiguration< 1 > > );
+   static_assert( is_host_configuration_v< const HostKernelConfiguration< 1 > & > );
    static_assert( is_serial_v< SerialKernelConfiguration > );
+   static_assert( is_serial_v< HostKernelConfiguration< 1 > > );
+   static_assert( is_serial_v< const HostKernelConfiguration< 1 > & > );
    static_assert( !is_device_configuration_v< SerialKernelConfiguration > );
    static_assert( SerialKernelConfiguration::batch_size == 1 );
    static_assert( HostKernelConfiguration< 4 >::batch_size == 4 );
    static_assert( HostKernelConfiguration< 4 >::GetNumberOfThreads() == 1 );
+
+   using HostContext = KernelContext< HostKernelConfiguration< 1 >, 0 >;
+   static_assert( is_host_configuration_v< HostContext > );
+   static_assert( is_host_configuration_v< const HostContext & > );
+   static_assert( is_serial_v< HostContext > );
+   static_assert( is_serial_v< const HostContext & > );
+   static_assert( !is_device_configuration_v< HostContext > );
+   static_assert( !is_device_configuration_v< const HostContext & > );
 
    std::array< int, 8 > host_visits{};
    HostKernelConfiguration< 4 >::BlockLoop(
