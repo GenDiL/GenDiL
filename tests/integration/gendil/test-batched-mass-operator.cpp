@@ -57,17 +57,6 @@ Real RelativeL2Error( const VectorType & a, const VectorType & b )
    return abs_err / norm_b;
 }
 
-void FillDeterministicInput( Vector & x )
-{
-   for ( Integer i = 0; i < x.Size(); ++i )
-   {
-      x[ i ] =
-         0.125 +
-         0.03125 * static_cast< Real >( i ) +
-         0.17 * static_cast< Real >( ( i * 7 ) % 11 );
-   }
-}
-
 template < typename KernelPolicy, typename FiniteElementSpace, typename Rule, typename Sigma >
 Vector ApplyMass(
    const FiniteElementSpace & fe_space,
@@ -131,8 +120,14 @@ bool RunThreadedMassCase()
       return 1.0 + 0.25 * x + x * x;
    };
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
-   FillDeterministicInput( x );
+   Vector x(
+      fe_space.GetNumberOfFiniteElementDofs(),
+      [] GENDIL_HOST_DEVICE ( Integer i )
+      {
+         return 0.125 +
+            0.03125 * static_cast< Real >( i ) +
+            0.17 * static_cast< Real >( ( i * 7 ) % 11 );
+      } );
 
    using LegacyConfig =
       ThreadFirstKernelConfiguration< Layout, MaxSharedDimensions >;
@@ -183,8 +178,14 @@ bool RunRegisterOnlyMassCase()
       return 0.75 + x + 0.5 * x * x;
    };
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
-   FillDeterministicInput( x );
+   Vector x(
+      fe_space.GetNumberOfFiniteElementDofs(),
+      [] GENDIL_HOST_DEVICE ( Integer i )
+      {
+         return 0.125 +
+            0.03125 * static_cast< Real >( i ) +
+            0.17 * static_cast< Real >( ( i * 7 ) % 11 );
+      } );
 
    using Layout = ThreadBlockLayout<>;
    static constexpr Integer MaxSharedDimensions = 0;
