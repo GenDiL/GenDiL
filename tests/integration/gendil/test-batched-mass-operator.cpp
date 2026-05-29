@@ -181,7 +181,7 @@ bool CheckZeroWorkItems( const char * label )
 
    Config::BlockLoop(
       0,
-      [=] GENDIL_DEVICE ( auto ) mutable
+      [=] GENDIL_DEVICE ( const Config & ) mutable
       {
          marker_data[ 0 ] = 1;
       } );
