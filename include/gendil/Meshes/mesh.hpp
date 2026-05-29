@@ -90,7 +90,27 @@ void CellIterator( const Mesh & mesh, Lambda && body )
 {
    const GlobalIndex num_cells = mesh.GetNumberOfCells();
 
-   KernelConfiguration::BlockLoop( num_cells, std::forward< Lambda >( body ) );
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      auto config_body =
+         [body = std::forward< Lambda >( body )]
+         GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+         {
+         #ifdef GENDIL_DEVICE_CODE
+            body( kernel );
+         #else
+            (void) kernel;
+         #endif
+         };
+
+      KernelConfiguration::BlockLoop( num_cells, config_body );
+   }
+   else
+   {
+      KernelConfiguration::BlockLoop(
+         num_cells,
+         std::forward< Lambda >( body ) );
+   }
 }
 
 } // namespace mesh
