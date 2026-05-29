@@ -121,30 +121,72 @@ void MassExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
-   mesh::CellIterator< KernelConfiguration >(
-      fe_space,
-      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-      {
-         constexpr size_t required_shared_mem =
-            Max(
-               required_shared_memory_v< KernelConfiguration, IntegrationRule >,
-               FiniteElementSpace::finite_element_type::GetNumDofs()
-            );
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      // Temporary experimental batched path. CellIterator filters inactive
+      // final-batch lanes while SyncWorkItem() is still block-wide.
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
+         {
+            const GlobalIndex element_index = kernel.WorkItemIndex();
+            constexpr size_t required_shared_mem =
+               Max(
+                  required_shared_memory_v<
+                     KernelConfiguration,
+                     IntegrationRule >,
+                  FiniteElementSpace::finite_element_type::GetNumDofs()
+               );
+            GENDIL_SHARED Real _shared_mem[
+               KernelContext<
+                  KernelConfiguration,
+                  required_shared_mem >::shared_memory_block_size ];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem, kernel );
 
-         MassElementOperator< IntegrationRule >(
-            kernel_conf,
-            fe_space,
-            element_index,
-            mesh_quad_data,
-            element_quad_data,
-            sigma,
-            dofs_in,
-            dofs_out );
-      }
-   );
+            MassElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               dofs_in,
+               dofs_out );
+         }
+      );
+   }
+   else
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+         {
+            constexpr size_t required_shared_mem =
+               Max(
+                  required_shared_memory_v<
+                     KernelConfiguration,
+                     IntegrationRule >,
+                  FiniteElementSpace::finite_element_type::GetNumDofs()
+               );
+            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem );
+
+            MassElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               dofs_in,
+               dofs_out );
+         }
+      );
+   }
 }
 
 /**

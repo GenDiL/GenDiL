@@ -11,6 +11,16 @@
 
 namespace gendil {
 
+#if defined( GENDIL_USE_CUDA )
+static constexpr size_t device_warp_size = 32;
+#elif defined( GENDIL_USE_HIP )
+// HIP's wavefront size can depend on the AMD GPU architecture or compilation
+// mode. Use the common AMD backend default for now and refine when needed.
+static constexpr size_t device_warp_size = 64;
+#else
+static constexpr size_t device_warp_size = 1;
+#endif
+
 /**
  * @brief Experimental batched GPU kernel configuration.
  *

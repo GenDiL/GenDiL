@@ -14,6 +14,15 @@ if(USE_CUDA OR USE_HIP)
   add_my_test(test-bsr-device-apply test-bsr-device-apply.cpp)
   add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
   add_my_test(test-cell-iterator-device test-cell-iterator-device.cpp)
+  add_my_test(
+    test-cell-iterator-filtered-sync-experiment
+    test-cell-iterator-filtered-sync-experiment.cpp
+  )
+  set_tests_properties(
+    test-cell-iterator-filtered-sync-experiment
+    PROPERTIES
+    TIMEOUT 15
+  )
 
   add_executable(
     test-device-kernel-configuration-one-index-fail

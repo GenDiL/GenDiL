@@ -1,5 +1,13 @@
 
 add_my_test(test-mass-3d-generic test-mass-3d-generic.cpp)
+if(USE_CUDA OR USE_HIP)
+  add_my_test(test-batched-mass-operator test-batched-mass-operator.cpp)
+  set_tests_properties(
+    test-batched-mass-operator
+    PROPERTIES
+    TIMEOUT 30
+  )
+endif()
 add_my_test(test-coefficient-field-inputs-cell test-coefficient-field-inputs-cell.cpp)
 add_my_test(test-boundary-coefficient-field-inputs test-boundary-coefficient-field-inputs.cpp)
 add_my_test(test-interior-coefficient-field-inputs test-interior-coefficient-field-inputs.cpp)

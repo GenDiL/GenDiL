@@ -63,16 +63,16 @@ auto GetLocalFaceInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID &
  *
  * @code
  * CellIterator< Config >( mesh, [] GENDIL_DEVICE ( auto kernel ) {
- *    if ( kernel.IsActive( num_cells ) ) { ... }
+ *    auto cell_index = kernel.WorkItemIndex();
+ *    ...
  * });
  * @endcode
  *
- * Batched device configurations invoke config-aware bodies for both active and
- * inactive lanes in the final partial batch. kernel.WorkItemIndex() is the
- * candidate cell index, and kernel.IsActive(num_cells) is the
- * final-partial-batch guard. Bodies must guard reads, writes, and atomics with
- * IsActive(num_cells). Inactive lanes should remain alive if SyncWorkItem() may
- * fall back to block-wide synchronization later in the kernel.
+ * Batched device configurations currently use an experimental filtered model:
+ * config-aware bodies are invoked only for active lanes in the final partial
+ * batch. kernel.WorkItemIndex() is the active cell index. While SyncWorkItem()
+ * remains block-wide, bodies that synchronize after CellIterator filtering are
+ * intentionally experimental and must be validated per operator.
  *
  * One-index bodies remain the legacy path and are only valid for
  * KernelConfiguration::batch_size == 1.
@@ -85,11 +85,14 @@ void CellIterator( const Mesh & mesh, Lambda && body )
    if constexpr ( KernelConfiguration::batch_size > 1 )
    {
       auto config_body =
-         [body = std::forward< Lambda >( body )]
+         [body = std::forward< Lambda >( body ), num_cells]
          GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
          {
          #ifdef GENDIL_DEVICE_CODE
-            body( kernel );
+            if ( kernel.IsActive( num_cells ) )
+            {
+               body( kernel );
+            }
          #else
             (void) kernel;
          #endif
