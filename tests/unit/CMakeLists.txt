@@ -9,6 +9,50 @@ add_my_test(test-bsr-dof-layout test-bsr-dof-layout.cpp)
 add_my_test(test-sgbsr-matrix test-sgbsr-matrix.cpp)
 if(USE_CUDA OR USE_HIP)
   add_my_test(test-bsr-device-apply test-bsr-device-apply.cpp)
+  add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
+
+  add_executable(
+    test-device-kernel-configuration-one-index-fail
+    EXCLUDE_FROM_ALL
+    test-device-kernel-configuration-one-index-fail.cpp
+  )
+  target_link_libraries(
+    test-device-kernel-configuration-one-index-fail
+    PRIVATE
+    GENDIL
+  )
+  if(USE_CUDA)
+    set_source_files_properties(
+      test-device-kernel-configuration-one-index-fail.cpp
+      PROPERTIES
+      LANGUAGE CUDA
+    )
+  endif()
+  if(USE_HIP)
+    set_source_files_properties(
+      test-device-kernel-configuration-one-index-fail.cpp
+      PROPERTIES
+      LANGUAGE HIP
+    )
+  endif()
+  target_include_directories(
+    test-device-kernel-configuration-one-index-fail
+    PRIVATE
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
+  )
+  add_test(
+    NAME test-device-kernel-configuration-one-index-fail
+    COMMAND
+      ${CMAKE_COMMAND}
+      --build ${CMAKE_BINARY_DIR}
+      --target test-device-kernel-configuration-one-index-fail
+  )
+  set_tests_properties(
+    test-device-kernel-configuration-one-index-fail
+    PROPERTIES
+    WILL_FAIL TRUE
+  )
 endif()
 # add_my_test(test-gmres test-gmres.cpp)
 # add_my_test(test-solvers test-solvers.cpp)
