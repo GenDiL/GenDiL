@@ -7,9 +7,11 @@ add_my_test(test-read-write test-read-write.cpp)
 add_my_test(test-bsr-block-layout test-bsr-block-layout.cpp)
 add_my_test(test-bsr-dof-layout test-bsr-dof-layout.cpp)
 add_my_test(test-sgbsr-matrix test-sgbsr-matrix.cpp)
+add_my_test(test-cell-iterator test-cell-iterator.cpp)
 if(USE_CUDA OR USE_HIP)
   add_my_test(test-bsr-device-apply test-bsr-device-apply.cpp)
   add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
+  add_my_test(test-cell-iterator-device test-cell-iterator-device.cpp)
 
   add_executable(
     test-device-kernel-configuration-one-index-fail
