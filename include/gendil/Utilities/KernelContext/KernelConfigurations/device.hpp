@@ -9,42 +9,41 @@
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
 #include "gendil/Utilities/debug.hpp"
 
-#if defined( GENDIL_USE_MFEM )
-#include <mfem.hpp>
-#include "general/forall.hpp"
-#endif
-
 namespace gendil {
 
 /**
- * @brief Legacy GPU kernel configuration using one semantic work item per
- * thread block.
+ * @brief Experimental batched GPU kernel configuration.
  *
- * @details This configuration intentionally preserves the legacy physical block
- * shape for comparison with the new batched DeviceKernelConfiguration:
- *  - BatchSize is fixed to 1.
- *  - BatchIndex() is always 0.
- *  - WorkItemIndex() is blockIdx.x on device.
- *  - ThreadBlockLayout< D0, D1, D2 > launches as dim3(D0, D1, D2).
- *  - Higher-dimensional ThreadBlockLayout instances are linearized in
- *    threadIdx.x.
+ * @details BatchIndex() is the local batch lane inside a thread block. It is
+ * not a global element or face id. WorkItemIndex() is the semantic global
+ * work-item index: for cell kernels it is the cell/element index, and for
+ * global-facet kernels it is the global face index.
+ *
+ * Physical mapping:
+ *  - local logical thread index is decoded from threadIdx.x
+ *  - BatchIndex() is threadIdx.y
+ *  - WorkItemIndex() is blockIdx.x * BatchSize + BatchIndex()
+ *  - block dim is dim3(ThreadLayout::GetNumberOfThreads(), BatchSize)
+ *  - grid dim is dim3(ceil_div(num_work_items, BatchSize))
  */
 template <
    typename ThreadLayout,
-   size_t MaxSharedDimensions >
-class ThreadFirstKernelConfiguration
+   size_t MaxSharedDimensions,
+   size_t BatchSize = 1 >
+class DeviceKernelConfiguration
 {
 public:
    static_assert(
       MaxSharedDimensions >= ThreadLayout::thread_block_dim,
-      "ThreadFirstKernelConfiguration requires MaxSharedDimensions to be "
-      "greater than or equal to the number of threaded dimensions." );
+      "DeviceKernelConfiguration requires MaxSharedDimensions to be greater "
+      "than or equal to the number of threaded dimensions." );
+   static_assert( BatchSize >= 1, "BatchSize must be at least one." );
 
    using thread_layout_type = ThreadLayout;
 
    static constexpr bool is_host_configuration = false;
    static constexpr bool is_device_configuration = true;
-   static constexpr size_t batch_size = 1;
+   static constexpr size_t batch_size = BatchSize;
    static constexpr size_t thread_block_dim = ThreadLayout::thread_block_dim;
    static constexpr size_t shared_block_max_dim = MaxSharedDimensions;
 
@@ -62,20 +61,22 @@ public:
    using shared_dimensions = cat_t< threaded_dimensions< space_dim >, shared_register_dimensions< space_dim > >;
 
    GENDIL_HOST_DEVICE
-   ThreadFirstKernelConfiguration() = default;
+   DeviceKernelConfiguration() = default;
 
    GENDIL_HOST_DEVICE
-   explicit ThreadFirstKernelConfiguration(
+   explicit DeviceKernelConfiguration(
       const GlobalIndex work_item_index,
+      const GlobalIndex batch_index = 0,
       const GlobalIndex linear_thread_index = 0 )
       : work_item_index_( work_item_index ),
+        batch_index_( batch_index ),
         linear_thread_index_( linear_thread_index )
    {}
 
    GENDIL_HOST_DEVICE
    static constexpr size_t GetNumberOfThreads()
    {
-      return ThreadLayout::GetNumberOfThreads();
+      return ThreadLayout::GetNumberOfThreads(); // FIXME this is per batch, not total threads
    }
 
    template < size_t Index >
@@ -89,42 +90,11 @@ public:
    static constexpr details::KernelLaunchGeometry GetLaunchGeometry(
       const GlobalIndex num_work_items )
    {
-      if constexpr ( ThreadLayout::thread_block_dim == 0 )
-      {
-         return { num_work_items, 1, 1, 1 };
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 1 )
-      {
-         return {
-            num_work_items,
-            ThreadLayout::template GetBlockDim< 0 >(),
-            1,
-            1 };
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 2 )
-      {
-         return {
-            num_work_items,
-            ThreadLayout::template GetBlockDim< 0 >(),
-            ThreadLayout::template GetBlockDim< 1 >(),
-            1 };
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 3 )
-      {
-         return {
-            num_work_items,
-            ThreadLayout::template GetBlockDim< 0 >(),
-            ThreadLayout::template GetBlockDim< 1 >(),
-            ThreadLayout::template GetBlockDim< 2 >() };
-      }
-      else
-      {
-         return {
-            num_work_items,
-            ThreadLayout::GetNumberOfThreads(),
-            1,
-            1 };
-      }
+      return {
+         details::CeilDiv( num_work_items, BatchSize ),
+         ThreadLayout::GetNumberOfThreads(),
+         BatchSize,
+         1 };
    }
 
    template < size_t Index >
@@ -136,26 +106,7 @@ public:
          "Thread block index dimension is out of bounds." );
 
    #ifdef GENDIL_DEVICE_CODE
-      if constexpr ( ThreadLayout::thread_block_dim == 1 )
-      {
-         static_assert( Index == 0 );
-         return threadIdx.x;
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 2 )
-      {
-         if constexpr ( Index == 0 ) { return threadIdx.x; }
-         else { return threadIdx.y; }
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 3 )
-      {
-         if constexpr ( Index == 0 ) { return threadIdx.x; }
-         else if constexpr ( Index == 1 ) { return threadIdx.y; }
-         else { return threadIdx.z; }
-      }
-      else
-      {
-         return ThreadLayout::template GetThreadIndex< Index >( threadIdx.x );
-      }
+      return ThreadLayout::template GetThreadIndex< Index >( threadIdx.x );
    #else
       return ThreadLayout::template GetThreadIndex< Index >(
          linear_thread_index_ );
@@ -166,30 +117,7 @@ public:
    GlobalIndex GetLinearThreadIndex() const
    {
    #ifdef GENDIL_DEVICE_CODE
-      if constexpr ( ThreadLayout::thread_block_dim == 0 )
-      {
-         return 0;
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 1 )
-      {
-         return threadIdx.x;
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 2 )
-      {
-         return threadIdx.x +
-            ThreadLayout::template GetBlockDim< 0 >() * threadIdx.y;
-      }
-      else if constexpr ( ThreadLayout::thread_block_dim == 3 )
-      {
-         return threadIdx.x +
-            ThreadLayout::template GetBlockDim< 0 >() *
-               ( threadIdx.y +
-                 ThreadLayout::template GetBlockDim< 1 >() * threadIdx.z );
-      }
-      else
-      {
-         return threadIdx.x;
-      }
+      return threadIdx.x;
    #else
       return linear_thread_index_;
    #endif
@@ -198,14 +126,18 @@ public:
    GENDIL_HOST_DEVICE
    GlobalIndex BatchIndex() const
    {
-      return 0;
+   #ifdef GENDIL_DEVICE_CODE
+      return threadIdx.y;
+   #else
+      return batch_index_;
+   #endif
    }
 
    GENDIL_HOST_DEVICE
    GlobalIndex WorkItemIndex() const
    {
    #ifdef GENDIL_DEVICE_CODE
-      return blockIdx.x;
+      return blockIdx.x * BatchSize + BatchIndex();
    #else
       return work_item_index_;
    #endif
@@ -220,13 +152,34 @@ public:
    static constexpr size_t SharedMemoryStride(
       const size_t per_work_item_reals )
    {
+      // Shared-memory arenas are counted in Real slots, so a whole-slot stride
+      // keeps each batch-local arena aligned for Real-backed views.
       return per_work_item_reals;
    }
 
    static constexpr size_t SharedMemoryBlockSize(
       const size_t per_work_item_reals )
    {
-      return per_work_item_reals;
+      return BatchSize * SharedMemoryStride( per_work_item_reals );
+   }
+
+   GENDIL_HOST_DEVICE
+   Real * SharedMemoryForWorkItem(
+      Real * shared_data,
+      const size_t per_work_item_reals ) const
+   {
+      return shared_data + BatchIndex() * SharedMemoryStride(
+         per_work_item_reals );
+   }
+
+   template < size_t WarpOrWavefrontSize >
+   GENDIL_HOST_DEVICE
+   static constexpr bool WorkItemThreadsAlignWithWarpOrWavefront()
+   {
+      static_assert(
+         WarpOrWavefrontSize > 0,
+         "Warp or wavefront size must be positive." );
+      return ThreadLayout::GetNumberOfThreads() % WarpOrWavefrontSize == 0;
    }
 
    template < typename Lambda >
@@ -246,38 +199,18 @@ public:
 
       CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
-         "ThreadFirstKernelConfiguration::BlockLoop: before launch" );
-      details::DeviceGridLoop< ThreadFirstKernelConfiguration ><<<
+         "DeviceKernelConfiguration::BlockLoop: before launch" );
+      details::DeviceGridLoop< DeviceKernelConfiguration ><<<
          gridDim,
          blockDim,
          sharedMemSize,
          stream >>>( n, std::forward< Lambda >( body ) );
       GENDIL_CHECK_LAST_DEVICE_LAUNCH(
-         "ThreadFirstKernelConfiguration::BlockLoop" );
-   #elif defined( GENDIL_USE_MFEM )
-      const auto geometry = GetLaunchGeometry( n );
-      if constexpr ( ThreadLayout::thread_block_dim == 3 )
-      {
-         mfem::forall_3D(
-            n,
-            geometry.block_x,
-            geometry.block_y,
-            geometry.block_z,
-            std::forward< Lambda >( body ) );
-      }
-      else
-      {
-         mfem::forall_2D(
-            n,
-            geometry.block_x,
-            geometry.block_y,
-            std::forward< Lambda >( body ) );
-      }
+         "DeviceKernelConfiguration::BlockLoop" );
    #else
       static_assert(
          sizeof( Lambda ) == 0,
-         "ThreadFirstKernelConfiguration::BlockLoop() requires a device or "
-         "MFEM backend." );
+         "DeviceKernelConfiguration::BlockLoop() requires a device backend." );
    #endif
    }
 
@@ -301,6 +234,7 @@ public:
 
 private:
    GlobalIndex work_item_index_ = 0;
+   GlobalIndex batch_index_ = 0;
    GlobalIndex linear_thread_index_ = 0;
 };
 

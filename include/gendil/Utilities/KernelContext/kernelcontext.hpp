@@ -7,7 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MemoryManagement/memoryarena.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
-#include "gendil/Utilities/KernelContext/kernelcontext.hpp"
+#include "gendil/Utilities/KernelContext/KernelConfigurations/helpers.hpp"
 
 namespace gendil
 {
@@ -16,12 +16,37 @@ template < typename KernelConfiguration, Integer RequiredSharedMemorySize >
 class KernelContext : public KernelConfiguration
 {
 public:
+   static constexpr size_t per_work_item_shared_memory_size =
+      RequiredSharedMemorySize;
+   static constexpr size_t shared_memory_stride_per_work_item =
+      details::shared_memory_stride< KernelConfiguration >::value(
+         RequiredSharedMemorySize );
+   static constexpr size_t shared_memory_block_size =
+      details::shared_memory_block_size< KernelConfiguration >::value(
+         RequiredSharedMemorySize );
+
    MemoryArena< Real, RequiredSharedMemorySize > SharedAllocator; // TODO Replace with generic 
 
    GENDIL_HOST_DEVICE
    KernelContext( Real * shared_data )
       : KernelConfiguration(),
-        SharedAllocator(shared_data)
+        SharedAllocator(
+           details::SharedMemoryForConfiguration(
+              static_cast< const KernelConfiguration & >( *this ),
+              shared_data,
+              RequiredSharedMemorySize ) )
+   {}
+
+   GENDIL_HOST_DEVICE
+   KernelContext(
+      Real * shared_data,
+      const KernelConfiguration & kernel_configuration )
+      : KernelConfiguration( kernel_configuration ),
+        SharedAllocator(
+           details::SharedMemoryForConfiguration(
+              kernel_configuration,
+              shared_data,
+              RequiredSharedMemorySize ) )
    {}
 };
 

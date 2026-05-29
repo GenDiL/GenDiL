@@ -1,5 +1,6 @@
 
 add_my_test(test-dot test-dot.cpp)
+add_my_test(test-kernel-configuration test-kernel-configuration.cpp)
 add_my_test(test-getpoint test-getpoint.cpp)
 add_my_test(test-garbage-collector test-garbage-collector.cpp)
 add_my_test(test-read-write test-read-write.cpp)
