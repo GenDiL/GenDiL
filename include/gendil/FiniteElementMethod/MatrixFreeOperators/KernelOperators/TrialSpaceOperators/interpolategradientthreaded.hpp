@@ -43,7 +43,11 @@ namespace GradHelperFunctions
                value += g * sx_view( q );
             }
 
-            Gu( j..., ActiveDim ) = value;
+            auto idx = std::tuple_cat(
+               std::tie( j... ),
+               std::forward< SliceIndexTuple >( slice_index ),
+               std::make_tuple( ActiveDim ) );
+            std::apply( Gu, idx ) = value;
          });
       });
    }
