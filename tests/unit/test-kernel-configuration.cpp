@@ -155,6 +155,18 @@ int main( int, char ** )
       return 1;
    }
 
+   BatchedConfig batch_lane_0_leader( 8, 0, 0 );
+   BatchedConfig batch_lane_1_leader( 9, 1, 0 );
+   if ( !Check(
+           batch_lane_0_leader.GetLinearThreadIndex() == 0 &&
+           batch_lane_1_leader.GetLinearThreadIndex() == 0 &&
+           batch_lane_0_leader.BatchIndex() == 0 &&
+           batch_lane_1_leader.BatchIndex() == 1,
+           "DeviceKernelConfiguration must expose one x-thread leader per batch lane." ) )
+   {
+      return 1;
+   }
+
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;
    static_assert( !is_batched_device_configuration_v< BatchedSingle > );

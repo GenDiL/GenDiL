@@ -10,6 +10,10 @@
 
 namespace gendil {
 
+template < typename KernelConfiguration >
+static constexpr size_t required_l2_error_reduction_shared_memory_v =
+   is_device_configuration_v< KernelConfiguration > ? 1 : 0;
+
 /**
  * @brief Implementation of the L2Error operator at the element level.
  * 
@@ -57,16 +61,53 @@ void L2ErrorElementOperator(
 
    const auto cell = fe_space.GetCell( element_index );
 
-   // TODO: migrate this reduction scalar into the KernelContext SharedAllocator
-   // before supporting DeviceKernelConfiguration<..., BatchSize > 1>.
-   GENDIL_SHARED Real error;
 #ifdef GENDIL_DEVICE_CODE
-   if( kernel_conf.GetLinearThreadIndex() == 0 ) error = 0.0;
-   GENDIL_SYNC_THREADS();
-#else
-   error = 0.0;
+   if constexpr ( !is_serial_v< KernelContext > )
+   {
+      auto mark = kernel_conf.SharedAllocator.mark();
+      Real * error = kernel_conf.SharedAllocator.allocate( 1 );
+
+      // DeviceKernelConfiguration uses threadIdx.x as the per-work-item
+      // logical thread index, so this elects one leader per BatchIndex lane.
+      if ( kernel_conf.GetLinearThreadIndex() == 0 )
+      {
+         *error = 0.0;
+      }
+      kernel_conf.Sync();
+
+      QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+      {
+         PhysicalCoordinates X;
+         Jacobian J_mesh;
+
+         const Real Bu_q =
+            ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
+
+         cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
+
+         const Real detJ = Determinant( J_mesh );
+         const Real weight = GetWeight( quad_index, element_quad_data );
+         const Real analytical_sol = sigma( X );
+
+         const Real diff = Bu_q - analytical_sol;
+         const Real Du_q = weight * detJ * diff * diff;
+
+         AtomicAdd( *error, Du_q );
+      } );
+
+      kernel_conf.Sync();
+      if ( kernel_conf.GetLinearThreadIndex() == 0 )
+      {
+         AtomicAdd( *sum_ptr, *error );
+      }
+      kernel_conf.Sync();
+
+      kernel_conf.SharedAllocator.restore( mark );
+      return;
+   }
 #endif
 
+   Real error = 0.0;
    QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
    {
       PhysicalCoordinates X;
@@ -83,7 +124,7 @@ void L2ErrorElementOperator(
       const Real diff = Bu_q - analytical_sol;
       const Real Du_q = weight * detJ * diff * diff;
 
-      AtomicAdd( error, Du_q );
+      error += Du_q;
    } );
 
    AtomicAdd( *sum_ptr, error );
@@ -113,10 +154,6 @@ Real L2Error(
    Sigma & sigma,
    const Vector & dofs_vector_in )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "L2Error" );
-
    using finite_element_type = typename FiniteElementSpace::finite_element_type;
    using shape_functions = typename finite_element_type::shape_functions;
    using Mesh = typename FiniteElementSpace::mesh_type;
@@ -132,27 +169,73 @@ Real L2Error(
    *sum_ptr = 0.0;
    ToDevice( 1, sum_ptr );
 
-   mesh::CellIterator< KernelConfiguration >(
-      fe_space,
-      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-      {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+         {
+            const GlobalIndex element_index = kernel.WorkItemIndex();
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v<
+                  KernelConfiguration,
+                  IntegrationRule > +
+               required_l2_error_reduction_shared_memory_v<
+                  KernelConfiguration >;
+            GENDIL_SHARED Real _shared_mem[
+               KernelContext<
+                  KernelConfiguration,
+                  required_shared_mem >::shared_memory_block_size ];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem > kernel_conf( _shared_mem, kernel );
 
-         L2ErrorElementOperator(
-            kernel_conf,
-            fe_space,
-            int_rule,
-            element_index,
-            mesh_quad_data,
-            element_quad_data,
-            sigma,
-            dofs_in,
-            sum_ptr );
-      }
-   );
+            L2ErrorElementOperator(
+               kernel_conf,
+               fe_space,
+               int_rule,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               dofs_in,
+               sum_ptr );
+         }
+      );
+   }
+   else
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+         {
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v<
+                  KernelConfiguration,
+                  IntegrationRule > +
+               required_l2_error_reduction_shared_memory_v<
+                  KernelConfiguration >;
+            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem > kernel_conf( _shared_mem );
+
+            L2ErrorElementOperator(
+               kernel_conf,
+               fe_space,
+               int_rule,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               dofs_in,
+               sum_ptr );
+         }
+      );
+   }
+
    ToHost( 1, sum_ptr );
    Real sum = Sqrt( *sum_ptr );
    FreeHostPointer( sum_ptr );
