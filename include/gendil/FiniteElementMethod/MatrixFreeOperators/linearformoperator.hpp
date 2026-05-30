@@ -35,7 +35,8 @@ template <
    typename IntegrationRule,
    typename Lambda,
    typename MeshQuadData,
-   typename ElementQuadData >
+   typename ElementQuadData,
+   typename DofsOutView >
 GENDIL_HOST_DEVICE
 void LinearFormElementOperator(
    KernelContext & kernel_conf,
@@ -45,7 +46,7 @@ void LinearFormElementOperator(
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
    Lambda && lambda,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   DofsOutView & dofs_out )
 {
    using Mesh = typename FiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -96,6 +97,11 @@ void LinearFormElementOperator(
  * @param element_quad_data The finite element data at quadrature points need to perform the computation.
  * @param lambda The input function.
  * @param dofs_out The output degrees of freedom.
+ *
+ * This is a cell-volume assembly primitive. L2 spaces own the cell-local
+ * output entries and `WriteDofs` overwrites them. Scalar H1 spaces share
+ * global output entries and `WriteDofs` atomically accumulates into the
+ * existing output values.
  */
 template <
    typename KernelConfiguration,
@@ -103,37 +109,70 @@ template <
    typename FiniteElementSpace,
    typename Lambda,
    typename MeshQuadData,
-   typename ElementQuadData >
+   typename ElementQuadData,
+   typename DofsOutView >
 void LinearFormOperator( const FiniteElementSpace & fe_space,
                          const MeshQuadData & mesh_quad_data,
                          const ElementQuadData & element_quad_data,
                          Lambda && lambda,
-                         StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+                         DofsOutView & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "LinearFormOperator" );
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      // Temporary experimental batched path. CellIterator filters inactive
+      // final-batch lanes while Sync() is currently block-wide.
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
+         {
+            const GlobalIndex element_index = kernel.WorkItemIndex();
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+            GENDIL_SHARED Real _shared_mem[
+               KernelContext<
+                  KernelConfiguration,
+                  required_shared_mem >::shared_memory_block_size ];
 
-   mesh::CellIterator< KernelConfiguration >(
-      fe_space,
-      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-      {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem, kernel );
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            LinearFormElementOperator(
+               kernel_conf,
+               fe_space,
+               IntegrationRule{},
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               lambda,
+               dofs_out );
+         }
+      );
+   }
+   else
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+         {
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
-         LinearFormElementOperator(
-            kernel_conf,
-            fe_space,
-            IntegrationRule{},
-            element_index,
-            mesh_quad_data,
-            element_quad_data,
-            lambda,
-            dofs_out );
-      }
-   );
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem );
+
+            LinearFormElementOperator(
+               kernel_conf,
+               fe_space,
+               IntegrationRule{},
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               lambda,
+               dofs_out );
+         }
+      );
+   }
 }
 
 /**
@@ -196,9 +235,37 @@ public:
    {
       MeshQuadData mesh_quad_data;
       ElementQuadData element_quad_data;
-      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( finite_element_space, *this );
 
-      LinearFormOperator< KernelPolicy, integration_rule >( finite_element_space, mesh_quad_data, element_quad_data, lambda, dofs_out );
+      if constexpr (
+         std::is_same_v<
+            typename FiniteElementSpace::restriction_type,
+            L2Restriction > )
+      {
+         auto dofs_out =
+            MakeWriteOnlyElementTensorView< KernelPolicy >(
+               finite_element_space,
+               *this );
+         LinearFormOperator< KernelPolicy, integration_rule >(
+            finite_element_space,
+            mesh_quad_data,
+            element_quad_data,
+            lambda,
+            dofs_out );
+      }
+      else
+      {
+         static_cast< Vector & >( *this ) = 0.0;
+         auto dofs_out =
+            MakeReadWriteElementTensorView< KernelPolicy >(
+               finite_element_space,
+               *this );
+         LinearFormOperator< KernelPolicy, integration_rule >(
+            finite_element_space,
+            mesh_quad_data,
+            element_quad_data,
+            lambda,
+            dofs_out );
+      }
    }
 };
 

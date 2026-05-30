@@ -11,11 +11,16 @@ if(USE_CUDA OR USE_HIP)
     test-batched-mass-inverse-operator
     test-batched-mass-inverse-operator.cpp
   )
+  add_my_test(
+    test-batched-linear-form-operator
+    test-batched-linear-form-operator.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
     test-batched-l2-projection-operator
     test-batched-l2-error
     test-batched-mass-inverse-operator
+    test-batched-linear-form-operator
     PROPERTIES
     TIMEOUT 30
   )
