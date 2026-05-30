@@ -97,29 +97,62 @@ void GradGradExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "GradGradExplicitOperator" );
+   // This is a cell-volume operator only. The face data arguments are inherited
+   // wrapper plumbing and are intentionally unused here.
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      // Temporary experimental batched path. CellIterator filters inactive
+      // final-batch lanes while Sync() is currently block-wide.
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
+         {
+            const GlobalIndex element_index = kernel.WorkItemIndex();
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+            GENDIL_SHARED Real _shared_mem[
+               KernelContext<
+                  KernelConfiguration,
+                  required_shared_mem >::shared_memory_block_size ];
 
-   mesh::CellIterator< KernelConfiguration >(
-      fe_space,
-      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-      {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem, kernel );
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            GradGradElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               dofs_in,
+               dofs_out );
+         }
+      );
+   }
+   else
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+         {
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
-         GradGradElementOperator< IntegrationRule >(
-            kernel_conf,
-            fe_space,
-            element_index,
-            mesh_quad_data,
-            element_quad_data,
-            dofs_in,
-            dofs_out );
-      }
-   );
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem );
+
+            GradGradElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               dofs_in,
+               dofs_out );
+         }
+      );
+   }
 }
 
 /**
