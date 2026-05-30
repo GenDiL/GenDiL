@@ -66,6 +66,12 @@ auto InterpolateValues( KernelContext & ctx,
       // serial interpolation
       return InterpolateValuesSerial( element_quad_data, u );
    }
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      // Device register-only configurations have one logical thread per work
+      // item and no shared-memory staging dimensions.
+      return InterpolateValuesSerial( element_quad_data, u );
+   }
    else
    {
       // threaded interpolation

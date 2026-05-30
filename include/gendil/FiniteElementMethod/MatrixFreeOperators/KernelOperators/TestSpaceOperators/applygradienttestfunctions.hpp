@@ -31,6 +31,10 @@ void ApplyGradientTestFunctions(
    {
       ApplyGradientTestFunctions<Add>( element_quad_data, DGuq, dofs_out );
    }
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      ApplyGradientTestFunctions<Add>( element_quad_data, DGuq, dofs_out );
+   }
    else
    {
       ApplyGradientTestFunctionsThreaded<Add>( thread, element_quad_data, DGuq, dofs_out );

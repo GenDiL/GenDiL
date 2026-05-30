@@ -55,6 +55,12 @@ auto InterpolateGradient( KernelContext & thread, const ProductOperator & elemen
       // serial interpolation
       InterpolateGradientSerial( element_quad_data, u, Gu );
    }
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      // Device register-only configurations have one logical thread per work
+      // item and no shared-memory staging dimensions.
+      InterpolateGradientSerial( element_quad_data, u, Gu );
+   }
    else
    {
       // threaded interpolation

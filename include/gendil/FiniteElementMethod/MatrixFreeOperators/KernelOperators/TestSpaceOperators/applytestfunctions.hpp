@@ -59,6 +59,16 @@ auto ApplyTestFunctions(
       ApplyTestFunctionsSerial< false, DiffDim >( element_quad_data, quad_point_values, dofs_out );
       return dofs_out;
    }
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      using dof_shape  = make_contraction_input_shape< ProductOperator >;
+      auto dofs_out = MakeSerialRecursiveArray< Real >( dof_shape{} );
+      ApplyTestFunctionsSerial< false, DiffDim >(
+         element_quad_data,
+         quad_point_values,
+         dofs_out );
+      return dofs_out;
+   }
    else
    {
       return ApplyTestFunctionsThreaded< DiffDim >( thread, element_quad_data, quad_point_values );
@@ -190,6 +200,13 @@ void ApplyAddTestFunctions(
    if constexpr ( is_serial_v< KernelContext > )
    {
       ApplyTestFunctionsSerial< true, DiffDim >( element_quad_data, quad_point_values, dofs_out );
+   }
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      ApplyTestFunctionsSerial< true, DiffDim >(
+         element_quad_data,
+         quad_point_values,
+         dofs_out );
    }
    else
    {

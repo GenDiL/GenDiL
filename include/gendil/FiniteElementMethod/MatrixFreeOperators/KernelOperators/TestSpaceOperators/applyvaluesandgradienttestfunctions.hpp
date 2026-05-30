@@ -27,6 +27,16 @@ void ApplyValuesAndGradientTestFunctions(
 {
    if constexpr ( is_serial_v< KernelContext > )
       ApplyValuesAndGradientTestFunctions< Add >( element_quad_data, Duq, DGuq, dofs_out );
+   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   {
+      // Device register-only configurations have one logical thread per work
+      // item and no shared-memory staging dimensions.
+      ApplyValuesAndGradientTestFunctions< Add >(
+         element_quad_data,
+         Duq,
+         DGuq,
+         dofs_out );
+   }
    else
    {
       ApplyValuesAndGradientTestFunctionsThreaded< Add >( thread, element_quad_data, Duq, DGuq, dofs_out );
