@@ -172,7 +172,9 @@ Vector ApplyMassInverse(
    const FiniteElementSpace & fe_space,
    const Rule & integration_rule,
    Sigma & sigma,
-   const Vector & rhs )
+   const Vector & rhs,
+   const Integer max_iters = 10000,
+   const Real tolerance = 1e-14 )
 {
    Vector x( fe_space.GetNumberOfFiniteElementDofs() );
    x = 0.0;
@@ -181,7 +183,9 @@ Vector ApplyMassInverse(
       MakeMassInverseFiniteElementOperator< KernelPolicy >(
          fe_space,
          integration_rule,
-         sigma );
+         sigma,
+         max_iters,
+         tolerance );
    op( rhs, x );
    GENDIL_DEVICE_SYNC;
 
@@ -338,6 +342,27 @@ bool RunMassInverseCaseForCellCount(
          x_legacy,
          tolerance ) && success;
 
+   if constexpr ( BatchSize == 2 )
+   {
+      if ( num_cells == 1 )
+      {
+         auto x_explicit_defaults =
+            ApplyMassInverse< DeviceBatchN >(
+               fe_space,
+               integration_rule,
+               sigma,
+               rhs,
+               10000,
+               1e-14 );
+         success =
+            CheckClose(
+               "DeviceBatchN explicit defaults vs implicit defaults",
+               x_explicit_defaults,
+               x_batchn,
+               tolerance ) && success;
+      }
+   }
+
    if constexpr ( RunResidualCheck )
    {
       if ( ShouldRunResidualCheck< BatchSize >( num_cells ) )
@@ -430,6 +455,27 @@ bool RunRegisterOnlyMassInverseCaseForCellCount(
          x_batchn,
          x_batch1,
          tolerance ) && success;
+
+   if constexpr ( BatchSize == 2 )
+   {
+      if ( num_cells == 1 )
+      {
+         auto x_explicit_defaults =
+            ApplyMassInverse< DeviceBatchN >(
+               fe_space,
+               integration_rule,
+               sigma,
+               rhs,
+               10000,
+               1e-14 );
+         success =
+            CheckClose(
+               "Register-only explicit defaults vs implicit defaults",
+               x_explicit_defaults,
+               x_batchn,
+               tolerance ) && success;
+      }
+   }
 
    if ( ShouldRunResidualCheck< BatchSize >( num_cells ) )
    {
