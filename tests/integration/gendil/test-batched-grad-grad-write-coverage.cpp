@@ -32,11 +32,11 @@ constexpr Real value_sentinel = -777777.25;
 constexpr Real tolerance = 1.0e-12;
 
 GENDIL_HOST_DEVICE
-Real ExpectedWriteValue( const GlobalIndex element_index, const GlobalIndex dof )
+Real ExpectedWriteValue( const GlobalIndex element_index, const int writer_id )
 {
    return 1000.0 +
       17.0 * static_cast< Real >( element_index ) +
-      0.25 * static_cast< Real >( dof );
+      1.0e-4 * static_cast< Real >( writer_id );
 }
 
 GENDIL_HOST_DEVICE
@@ -59,9 +59,9 @@ struct CountingAssignmentProxy
    int writer_id;
 
    GENDIL_HOST_DEVICE
-   void operator=( const Real value ) const
+   const CountingAssignmentProxy & operator=( const Real value ) const
    {
-      const int old_count = AtomicAdd( counts[ index ], 1 );
+      const int old_count = gendil::AtomicAdd( counts[ index ], 1 );
       if ( old_count == 0 )
       {
          first_writers[ index ] = writer_id;
@@ -71,6 +71,7 @@ struct CountingAssignmentProxy
          duplicates[ index ] = 1;
       }
       values[ index ] = value;
+      return *this;
    }
 };
 
@@ -123,13 +124,20 @@ void RunWriteCoverageKernel(
          KernelContext< Config, required_shared_mem >
             kernel_conf( _shared_mem, kernel );
 
-         using DofShape = std::index_sequence< dof_count >;
-         auto local = MakeStaticFIFOView< Real >( DofShape{} );
+         using DofShape = orders_to_num_dofs<
+            typename FiniteElementSpace::finite_element_type::
+               shape_functions::orders >;
+         using RegisterShape = subsequence_t<
+            DofShape,
+            typename Config::template register_dimensions<
+               DofShape::size() > >;
+         auto local = MakeStaticFIFOView< Real >( RegisterShape{} );
          const GlobalIndex element_index = kernel.WorkItemIndex();
-         UnitLoop< DofShape >(
-            [&] ( auto dof )
+         const int writer_id = CurrentWriterId();
+         UnitLoop< RegisterShape >(
+            [&] ( auto... k )
             {
-               local( dof ) = ExpectedWriteValue( element_index, dof );
+               local( k... ) = ExpectedWriteValue( element_index, writer_id );
             } );
 
          WriteDofs( kernel_conf, fe_space, element_index, local, output );
@@ -171,7 +179,6 @@ bool CheckCoverage(
 
          if ( active )
          {
-            const Real expected = ExpectedWriteValue( element, dof );
             if ( count == 0 || std::abs( value - value_sentinel ) < tolerance )
             {
                ++missing;
@@ -199,7 +206,10 @@ bool CheckCoverage(
                   ++printed;
                }
             }
-            else if ( std::abs( value - expected ) > tolerance )
+            else if (
+               std::abs(
+                  value - ExpectedWriteValue( element, first_writer ) ) >
+               tolerance )
             {
                ++wrong_value;
                success = false;
@@ -208,7 +218,8 @@ bool CheckCoverage(
                   std::cout << "FAILED: correct write count but wrong value in "
                             << label << " at element " << element
                             << ", dof " << dof << ". observed=" << value
-                            << ", expected=" << expected
+                            << ", expected="
+                            << ExpectedWriteValue( element, first_writer )
                             << ", writer=" << first_writer << ".\n";
                   ++printed;
                }
