@@ -117,69 +117,116 @@ void MassInverseExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "MassInverseExplicitOperator" );
-
-   mesh::CellIterator< KernelConfiguration >(
-      fe_space,
-      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-      {
-         constexpr size_t required_shared_mem =
-            required_shared_memory_v< KernelConfiguration, IntegrationRule > +
-            required_threaded_dot_shared_memory_v< KernelConfiguration >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
-
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
-
-         auto op = [&]( const auto & in, auto & out )
+   if constexpr ( KernelConfiguration::batch_size > 1 )
+   {
+      // Temporary experimental batched path. Mass inverse has no
+      // MassInverse-specific helper-local shared scratch: CG work vectors are
+      // ThreadedView/register containers, Dot(ThreadedView) uses
+      // SharedAllocator mark/restore, and interpolation/apply-test helpers use
+      // the existing arena reset discipline validated by batched L2 projection.
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_DEVICE (
+            const KernelConfiguration & kernel ) mutable
          {
-           MassInvElementOperator< IntegrationRule >(
-            kernel_conf,
-            fe_space,
-            element_index,
-            mesh_quad_data,
-            element_quad_data,
-            sigma,
-            in,
-            out );
-         };
-         
-         auto rhs = MakeThreadedView( kernel_conf, fe_space, ReadDofs( kernel_conf, fe_space, element_index, dofs_in ) );
-         decltype(rhs) x{};
+            const GlobalIndex element_index = kernel.WorkItemIndex();
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule > +
+               required_threaded_dot_shared_memory_v< KernelConfiguration >;
+            GENDIL_SHARED Real _shared_mem[
+               KernelContext<
+                  KernelConfiguration,
+                  required_shared_mem >::shared_memory_block_size ];
 
-         Integer max_iters = 10000;
-         Real tolerance = 1e-14;
-         ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
-         // std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );
-         // std::cout << "Element " << element_index << ": ";
-         // if ( std::get< 0 >( result ) )
-         // {
-         //    std::cout << " SUCCESS, " << std::get< 1 >( result ) << " iterations " << std::endl;
-         //    ElementDoF< FiniteElementSpace > y;
-         //    op( x, y );
-         //    Real norm = Norml2( y - rhs );
-         //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
-         //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
-         //    std:: cout << "norm diff=" << norm << std::endl;
-         //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // }
-         // else
-         // {
-         //    std::cout << " FAILED!!! " << std::get< 1 >( result ) << " iterations " << std::endl;
-         //    ElementDoF< FiniteElementSpace > y;
-         //    op( x, y );
-         //    Real norm = Norml2( y - rhs );
-         //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
-         //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
-         //    std:: cout << "norm diff=" << norm << std::endl;
-         //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // }
+            KernelContext< KernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem, kernel );
 
-         WriteDofs( kernel_conf, fe_space, element_index, x, dofs_out );
-      }
-   );
+            auto op = [&]( const auto & in, auto & out )
+            {
+              MassInvElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               in,
+               out );
+            };
+
+            auto rhs = MakeThreadedView( kernel_conf, fe_space, ReadDofs( kernel_conf, fe_space, element_index, dofs_in ) );
+            decltype(rhs) x{};
+
+            Integer max_iters = 10000;
+            Real tolerance = 1e-14;
+            ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
+
+            WriteDofs( kernel_conf, fe_space, element_index, x, dofs_out );
+         }
+      );
+   }
+   else
+   {
+      mesh::CellIterator< KernelConfiguration >(
+         fe_space,
+         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+         {
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v< KernelConfiguration, IntegrationRule > +
+               required_threaded_dot_shared_memory_v< KernelConfiguration >;
+            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+
+            KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+
+            auto op = [&]( const auto & in, auto & out )
+            {
+              MassInvElementOperator< IntegrationRule >(
+               kernel_conf,
+               fe_space,
+               element_index,
+               mesh_quad_data,
+               element_quad_data,
+               sigma,
+               in,
+               out );
+            };
+
+            auto rhs = MakeThreadedView( kernel_conf, fe_space, ReadDofs( kernel_conf, fe_space, element_index, dofs_in ) );
+            decltype(rhs) x{};
+
+            Integer max_iters = 10000;
+            Real tolerance = 1e-14;
+            ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
+            // std:: cout << "norm x=" << Norml2( x ) << std::endl;
+            // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );
+            // std::cout << "Element " << element_index << ": ";
+            // if ( std::get< 0 >( result ) )
+            // {
+            //    std::cout << " SUCCESS, " << std::get< 1 >( result ) << " iterations " << std::endl;
+            //    ElementDoF< FiniteElementSpace > y;
+            //    op( x, y );
+            //    Real norm = Norml2( y - rhs );
+            //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
+            //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
+            //    std:: cout << "norm diff=" << norm << std::endl;
+            //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
+            // }
+            // else
+            // {
+            //    std::cout << " FAILED!!! " << std::get< 1 >( result ) << " iterations " << std::endl;
+            //    ElementDoF< FiniteElementSpace > y;
+            //    op( x, y );
+            //    Real norm = Norml2( y - rhs );
+            //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
+            //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
+            //    std:: cout << "norm diff=" << norm << std::endl;
+            //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
+            // }
+
+            WriteDofs( kernel_conf, fe_space, element_index, x, dofs_out );
+         }
+      );
+   }
    
 }
 

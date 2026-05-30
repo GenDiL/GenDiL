@@ -7,10 +7,15 @@ if(USE_CUDA OR USE_HIP)
     test-batched-l2-projection-operator.cpp
   )
   add_my_test(test-batched-l2-error test-batched-l2-error.cpp)
+  add_my_test(
+    test-batched-mass-inverse-operator
+    test-batched-mass-inverse-operator.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
     test-batched-l2-projection-operator
     test-batched-l2-error
+    test-batched-mass-inverse-operator
     PROPERTIES
     TIMEOUT 30
   )
