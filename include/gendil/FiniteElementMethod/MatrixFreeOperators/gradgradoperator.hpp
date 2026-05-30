@@ -44,7 +44,8 @@ void GradGradElementOperator(
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
    const DofsInView & dofs_in,
-   DofsOutView & dofs_out )
+   DofsOutView & dofs_out,
+   const bool write_output = true )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
@@ -54,7 +55,10 @@ void GradGradElementOperator(
    auto GDGu = ApplyGradientTestFunctionsAtQPoints( kernel_conf, element_quad_data, Gu );
    auto BGDGu = ApplyTestFunctions( kernel_conf, element_quad_data, GDGu );
 
-   WriteDofs( kernel_conf, fe_space, element_index, BGDGu, dofs_out );
+   if ( write_output )
+   {
+      WriteDofs( kernel_conf, fe_space, element_index, BGDGu, dofs_out );
+   }
 }
 
 /**
@@ -101,13 +105,25 @@ void GradGradExplicitOperator(
    // wrapper plumbing and are intentionally unused here.
    if constexpr ( KernelConfiguration::batch_size > 1 )
    {
-      // Temporary experimental batched path. CellIterator filters inactive
-      // final-batch lanes while Sync() is currently block-wide.
-      mesh::CellIterator< KernelConfiguration >(
-         fe_space,
+      // Temporary debugging hypothesis test, not the intended long-term
+      // GradGrad batching design. The filtered CellIterator version failed in
+      // a final partial batch for a threaded layout, which is consistent with
+      // inactive lanes skipping a body that later reaches block-wide Sync().
+      //
+      // This branch keeps every candidate lane alive, clamps inactive lanes to
+      // a valid element for reads/shared-memory work, and guards only the final
+      // write. If this fixes the GPU failure, the follow-up design should move
+      // toward a general all-candidate/guarded-write contract or true
+      // per-work-item synchronization rather than keeping this operator-local
+      // special case.
+      const GlobalIndex num_cells = fe_space.GetNumberOfCells();
+      KernelConfiguration::BlockLoop(
+         num_cells,
          [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
          {
-            const GlobalIndex element_index = kernel.WorkItemIndex();
+            const bool active = kernel.IsActive( num_cells );
+            const GlobalIndex element_index =
+               active ? kernel.WorkItemIndex() : GlobalIndex( 0 );
             constexpr size_t required_shared_mem =
                required_shared_memory_v< KernelConfiguration, IntegrationRule >;
             GENDIL_SHARED Real _shared_mem[
@@ -125,7 +141,8 @@ void GradGradExplicitOperator(
                mesh_quad_data,
                element_quad_data,
                dofs_in,
-               dofs_out );
+               dofs_out,
+               active );
          }
       );
    }
