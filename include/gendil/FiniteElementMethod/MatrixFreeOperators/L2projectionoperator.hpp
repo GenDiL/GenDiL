@@ -41,7 +41,7 @@ template <
    typename TestElementQuadData >
 GENDIL_HOST_DEVICE
 void L2ProjectionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const TrialFiniteElementSpace & trial_fe_space,
    const TestFiniteElementSpace & test_fe_space,
    const GlobalIndex trial_element_index,
@@ -110,7 +110,7 @@ template <
    typename DofsOut >
 GENDIL_HOST_DEVICE
 void UnitMassElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
@@ -199,15 +199,24 @@ void L2ProjectionOperator(
       {
          constexpr size_t required_shared_mem =
             Max(
-               required_shared_memory_v< TrialKernelConfiguration, TrialIntegrationRule >, // Interpolation
-               required_shared_memory_v< TrialKernelConfiguration, TestIntegrationRule >, // Interpolation
-               Product( typename TestIntegrationRule::points::num_points_tensor{} ) // Accumulation at quadrature point
+                  required_shared_memory_v<
+                     TrialKernelConfiguration,
+                     TrialIntegrationRule >, // Interpolation
+                  required_shared_memory_v<
+                     TrialKernelConfiguration,
+                     TestIntegrationRule >, // Interpolation
+                  Product(
+                     typename TestIntegrationRule::points::
+                        num_points_tensor{} ) // Accumulation at quadrature point
             );
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
-         KernelContext< TrialKernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            KernelContext< TrialKernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem );
 
-         L2ProjectionElementOperator< TrialIntegrationRule, TestIntegrationRule >(
+            L2ProjectionElementOperator<
+               TrialIntegrationRule,
+               TestIntegrationRule >(
             kernel_conf,
             trial_fe_space,
             test_fe_space,
@@ -223,10 +232,16 @@ void L2ProjectionOperator(
       test_fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< TestKernelConfiguration, TestIntegrationRule >;
+            constexpr size_t required_shared_mem =
+               required_shared_memory_v<
+                  TestKernelConfiguration,
+                  TestIntegrationRule > +
+               required_threaded_dot_shared_memory_v<
+                  TestKernelConfiguration >;
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
 
-         KernelContext< TestKernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+            KernelContext< TestKernelConfiguration, required_shared_mem >
+               kernel_conf( _shared_mem );
       
          auto op = [&]( const auto & in, auto & out )
          {
@@ -240,12 +255,26 @@ void L2ProjectionOperator(
                out );
          };
          
-         auto rhs = MakeThreadedView( kernel_conf, test_fe_space, ReadDofs( kernel_conf, test_fe_space, element_index, dofs_out ) );
+            auto rhs =
+               MakeThreadedView(
+                  kernel_conf,
+                  test_fe_space,
+                  ReadDofs(
+                     kernel_conf,
+                     test_fe_space,
+                     element_index,
+                     dofs_out ) );
          decltype(rhs) x{};
 
          Integer max_iters = 1000;
          Real tolerance = 1e-10;
-         ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
+            ConjugateGradient(
+               kernel_conf,
+               op,
+               rhs,
+               max_iters,
+               tolerance,
+               x );
          // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );
          // std::cout << "Element " << element_index.linear_index << ": ";
          // if ( std::get< 0 >( result ) )
@@ -263,7 +292,12 @@ void L2ProjectionOperator(
          //    std::cout << " FAILED!!! " << std::get< 1 >( result ) << " iterations " << std::endl;
          // }
 
-         WriteDofs( kernel_conf, test_fe_space, element_index, x, dofs_out );
+            WriteDofs(
+               kernel_conf,
+               test_fe_space,
+               element_index,
+               x,
+               dofs_out );
       }
    );
 }

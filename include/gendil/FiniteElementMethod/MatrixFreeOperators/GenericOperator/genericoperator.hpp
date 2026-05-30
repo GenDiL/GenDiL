@@ -64,7 +64,7 @@ template <
    typename ElementDofsOut >
 GENDIL_HOST_DEVICE
 void GenericCellIntegrandOperator(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const ElementContext & element_context,
@@ -145,7 +145,7 @@ template <
    typename ElementDofsOut >
 GENDIL_HOST_DEVICE
 void GenericCellIntegrandOperator(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const ElementContext & element_context,
@@ -193,7 +193,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -290,7 +290,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -335,7 +335,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -393,7 +393,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -484,7 +484,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -526,7 +526,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,

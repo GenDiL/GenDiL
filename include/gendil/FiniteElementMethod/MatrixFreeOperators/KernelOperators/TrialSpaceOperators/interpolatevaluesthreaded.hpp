@@ -155,7 +155,7 @@ template <
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto InterpolateValuesThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & element_dofs )
 {

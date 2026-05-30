@@ -34,7 +34,7 @@ template <
    typename DofsOut >
 GENDIL_HOST_DEVICE inline
 void SoLElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,

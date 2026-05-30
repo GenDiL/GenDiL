@@ -213,7 +213,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 auto ThreadedReadDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const GlobalTensor & global_dofs )
@@ -492,7 +492,7 @@ template <
    typename T >
 GENDIL_HOST_DEVICE
 auto ThreadedReadDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
@@ -698,7 +698,7 @@ template <
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
@@ -761,7 +761,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const GlobalTensor & global_dofs )
@@ -842,7 +842,7 @@ template <
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
@@ -877,7 +877,7 @@ template <
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadScalarDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
@@ -914,7 +914,7 @@ template <
    typename T >
 GENDIL_HOST_DEVICE
 auto ReadDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
@@ -936,7 +936,7 @@ template <
    typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ReadVectorDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const GlobalDofs & global_dofs )
@@ -958,7 +958,7 @@ template <
    typename GlobalDofs >
 GENDIL_HOST_DEVICE
 auto ReadDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const GlobalDofs & global_dofs )

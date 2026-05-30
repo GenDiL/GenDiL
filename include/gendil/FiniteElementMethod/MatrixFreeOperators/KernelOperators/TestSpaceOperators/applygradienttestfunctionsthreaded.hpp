@@ -133,7 +133,7 @@ template <
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
@@ -147,7 +147,7 @@ template <
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
@@ -161,7 +161,7 @@ template <
    typename OutputTensor >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctionsAtQPoints(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u,
    OutputTensor & GTu )
@@ -252,7 +252,7 @@ template <
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u )
 {
@@ -275,7 +275,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctionsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const Input & DGuq,
    Output & dofs_out )

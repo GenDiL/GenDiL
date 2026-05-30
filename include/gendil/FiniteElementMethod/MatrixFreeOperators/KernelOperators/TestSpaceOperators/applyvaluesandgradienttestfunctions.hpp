@@ -19,7 +19,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const ValuesInput & Duq,
    const GradientsInput & DGuq,
@@ -43,7 +43,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 auto ApplyValuesAndGradientTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const ValuesInput & Duq,

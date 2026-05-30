@@ -215,7 +215,7 @@ template<
    typename Vector >
 GENDIL_HOST_DEVICE
 auto ConjugateGradient(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const Operator & A,
    const RHSVector & rhs,
    const Integer & max_iters,

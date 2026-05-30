@@ -127,7 +127,7 @@ template <
    typename KernelContext,
    typename IntegrationRule >
 GENDIL_HOST_DEVICE
-auto MakeSharedQuadraturePointValuesContainer( const KernelContext & kernel_conf, IntegrationRule )
+auto MakeSharedQuadraturePointValuesContainer( KernelContext & kernel_conf, IntegrationRule )
 {
    using quad_shape = typename IntegrationRule::points::num_points_tensor;
    using shape = cat_t< quad_shape, std::index_sequence< Dims... > >;

@@ -37,7 +37,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void MassElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
@@ -124,7 +124,7 @@ void MassExplicitOperator(
    if constexpr ( KernelConfiguration::batch_size > 1 )
    {
       // Temporary experimental batched path. CellIterator filters inactive
-      // final-batch lanes while SyncWorkItem() is still block-wide.
+      // final-batch lanes while Sync() is currently block-wide.
       mesh::CellIterator< KernelConfiguration >(
          fe_space,
          [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable

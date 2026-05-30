@@ -52,7 +52,7 @@ void InterpolateValuesAndGradients(
 template < typename KernelContext, typename ProductOperator, typename InputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateValuesAndGradients(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u )
 {

@@ -24,7 +24,7 @@ template<
    class ElementDofsOut>
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext&   kernel,
+   KernelContext&         kernel,
    const WeakFormContext& /*wf_ctx*/,
    const OperatorContext& op_ctx,
    const ElementContext<Cell>&  /*ec*/,
@@ -87,7 +87,7 @@ template<
    class ElementDofsOut>
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext&   kernel,
+   KernelContext&         kernel,
    const WeakFormContext& /*wf_ctx*/,
    const OperatorContext& op_ctx,
    const GlobalFaceInfo<MinusFace,PlusFace>&  fc,

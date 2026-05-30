@@ -94,7 +94,7 @@ namespace GradHelperFunctions
 template < typename KernelContext, typename ProductOperator, typename InputTensor, typename OutputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateGradientAtQPointsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & uq,
    OutputTensor & Gu )
@@ -175,7 +175,7 @@ void InterpolateGradientAtQPointsThreaded(
 template < typename KernelContext, typename ProductOperator, typename InputTensor, typename OutputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateGradientThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u,
    OutputTensor & Gu )

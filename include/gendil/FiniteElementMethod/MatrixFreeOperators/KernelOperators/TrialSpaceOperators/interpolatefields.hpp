@@ -124,7 +124,7 @@ namespace details
 template<bool Need, class KernelContext, class QuadData, class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto InterpolateValuesIfNeeded(
-   const KernelContext& k,
+   KernelContext& k,
    const QuadData& qd,
    const ElementDofsIn& dofs_in)
 {
@@ -135,7 +135,7 @@ auto InterpolateValuesIfNeeded(
 template<bool Need, class KernelContext, class QuadData, class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto InterpolateGradientIfNeeded(
-   const KernelContext& k,
+   KernelContext& k,
    const QuadData& qd,
    const ElementDofsIn& dofs_in)
 {
@@ -146,7 +146,7 @@ auto InterpolateGradientIfNeeded(
 template<bool Need, class KernelContext, class FaceSide, class FaceQuadData, class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto InterpolateFacetValuesIfNeeded(
-   const KernelContext& k,
+   KernelContext& k,
    const FaceSide& side,
    const FaceQuadData& face_qd,
    const ElementDofsIn& dofs_in)
@@ -158,7 +158,7 @@ auto InterpolateFacetValuesIfNeeded(
 template<bool Need, class KernelContext, class FaceSide, class FaceQuadData, class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto InterpolateFacetGradientIfNeeded(
-   const KernelContext& k,
+   KernelContext& k,
    const FaceSide& side,
    const FaceQuadData& face_qd,
    const ElementDofsIn& dofs_in)
@@ -204,7 +204,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeTrialInterpolatedEntryFromQD(
-   const KernelContext& k,
+   KernelContext& k,
    const QuadData& qd,
    const ElementDofsIn& dofs_in)
 {
@@ -254,7 +254,7 @@ template<
    class QuadData>
 GENDIL_HOST_DEVICE
 auto MakeCoeffInterpolatedEntryFromQD(
-   const KernelContext& k,
+   KernelContext& k,
    const WeakFormContext& wf,
    const QuadData& qd,
    const GlobalIndex element_index)
@@ -323,7 +323,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeFacetTrialInterpolatedEntry(
-   const KernelContext& k,
+   KernelContext& k,
    const FaceSide& side,
    const FaceQuadData& face_qd,
    const ElementDofsIn& dofs_in)
@@ -364,7 +364,7 @@ template<
    class FaceQuadData>
 GENDIL_HOST_DEVICE
 auto MakeFacetCoeffInterpolatedEntryWithMask(
-   const KernelContext& k,
+   KernelContext& k,
    const WeakFormContext& wf,
    const FaceSide& side,
    const FaceQuadData& face_qd)
@@ -408,7 +408,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeFacetNamedFieldInterpolatedEntry(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const FaceSide&        side,
@@ -471,7 +471,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeFacetTrialFieldsMap(
-   const KernelContext& k,
+   KernelContext& k,
    const FaceSide&      side,
    const FaceQuadData&  face_qd,
    const Integrand&     /*integrand*/,
@@ -512,7 +512,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeCellNamedFieldInterpolatedEntry(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const ElementContext&  ec,
@@ -553,7 +553,7 @@ template<
    class... Reqs>
 GENDIL_HOST_DEVICE
 auto InterpolateFieldsCellImpl(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const ElementContext&  ec,
@@ -576,7 +576,7 @@ template<
    class... Reqs>
 GENDIL_HOST_DEVICE
 auto MakeFacetNamedFieldsMap(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const FaceSide&        side,
@@ -601,7 +601,7 @@ template<
    class... Reqs>
 GENDIL_HOST_DEVICE
 auto InterpolateFieldsInteriorFacetImpl(
-   const KernelContext&      k,
+   KernelContext&      k,
    const WeakFormContext&    wf,
    const OperatorContext&    op,
    const FaceSideMinus&      minus_side,
@@ -668,7 +668,7 @@ template<
    requires CellIntegrand<Integrand>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const ElementContext&  ec,
@@ -739,7 +739,7 @@ template<
    class ElementDofsInPlus>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   const KernelContext&      k,
+   KernelContext&      k,
    const WeakFormContext&    wf,
    const OperatorContext&    op,
    const FaceContext&        fc,
@@ -796,7 +796,7 @@ template<
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeBoundaryFacetNamedFieldInterpolatedEntry(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const FaceSide&        minus_side,
@@ -838,7 +838,7 @@ template<
    class... Reqs>
 GENDIL_HOST_DEVICE
 auto InterpolateFieldsBoundaryFacetImpl(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const FaceSide&        minus_side,
@@ -892,7 +892,7 @@ template<
    requires BoundaryFacetIntegrand<Integrand>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   const KernelContext&   k,
+   KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
    const FaceContext&     fc,

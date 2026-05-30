@@ -42,7 +42,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MassAdvectionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const GlobalIndex element_index,
@@ -151,7 +151,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MassAdvectionFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,

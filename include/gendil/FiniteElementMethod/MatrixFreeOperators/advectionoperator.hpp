@@ -47,7 +47,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithoutBC(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const FaceIntegrationRulesTuple & face_integration_rules,
@@ -210,7 +210,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithBC(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const FaceIntegrationRulesTuple & face_integration_rules,
@@ -419,7 +419,7 @@ template <
    typename BCType >
 GENDIL_HOST_DEVICE
 void AdvectionLocalFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
    const FaceIntegrationRules & face_integration_rules,
@@ -537,7 +537,7 @@ template <
    typename OutputDofsPlus >
 GENDIL_HOST_DEVICE
 void AdvectionNonconformingLocalFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpaceMinus & minus_fe_space,
    const FiniteElementSpacePlus & plus_fe_space,
    const FaceMesh & face_mesh,

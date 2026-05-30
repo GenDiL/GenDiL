@@ -39,7 +39,7 @@ template <
    typename TestElementQuadData >
 GENDIL_HOST_DEVICE
 void LinfProjectionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const TrialFiniteElementSpace & trial_fe_space,
    const TestFiniteElementSpace & test_fe_space,
    const GlobalIndex trial_element_index,

@@ -38,7 +38,7 @@ template <
    typename ElementQuadData >
 GENDIL_HOST_DEVICE
 void LinearFormElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const GlobalIndex element_index,

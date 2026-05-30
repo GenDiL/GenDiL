@@ -17,7 +17,7 @@ Real Norml2( const Vector & vec )
 
 template < typename KernelContext, typename Vector >
 GENDIL_HOST_DEVICE
-Real Norml2( const KernelContext & kernel_conf, const Vector & vec )
+Real Norml2( KernelContext & kernel_conf, const Vector & vec )
 {
    return  Sqrt( Dot( kernel_conf, vec, vec ) );
 }

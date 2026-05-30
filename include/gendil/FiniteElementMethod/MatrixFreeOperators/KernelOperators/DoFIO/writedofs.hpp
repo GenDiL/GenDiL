@@ -115,7 +115,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void ThreadedWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -290,7 +290,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -313,7 +313,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE
 void WriteAddDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -508,7 +508,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteSubDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,

@@ -71,7 +71,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleElementSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,
@@ -126,7 +126,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,
@@ -237,7 +237,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleBoundaryFacetSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,

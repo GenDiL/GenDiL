@@ -153,7 +153,7 @@ template <
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctionsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & quad_point_values )
 {

@@ -37,7 +37,7 @@ template <
    typename DofsInView >
 GENDIL_HOST_DEVICE
 void L2ErrorElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & int_rule,
    const GlobalIndex element_index,
@@ -57,6 +57,8 @@ void L2ErrorElementOperator(
 
    const auto cell = fe_space.GetCell( element_index );
 
+   // TODO: migrate this reduction scalar into the KernelContext SharedAllocator
+   // before supporting DeviceKernelConfiguration<..., BatchSize > 1>.
    GENDIL_SHARED Real error;
 #ifdef GENDIL_DEVICE_CODE
    if( kernel_conf.GetLinearThreadIndex() == 0 ) error = 0.0;

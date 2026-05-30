@@ -31,7 +31,7 @@ template <
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceReadSpeedOfLightElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
@@ -56,7 +56,7 @@ template <
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceWriteSpeedOfLightElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
@@ -83,7 +83,7 @@ template <
    typename FaceMesh >
 GENDIL_HOST_DEVICE
 void ReadWriteSpeedOfLightFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
    const GlobalIndex face_index,

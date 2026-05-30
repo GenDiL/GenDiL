@@ -49,7 +49,7 @@ template <
    typename Input >
 GENDIL_HOST_DEVICE
 auto ThreadedAggregateDimensions(
-   const KernelConf & kernel_conf,
+   KernelConf & kernel_conf,
    const Input & u
 )
 {
@@ -88,7 +88,7 @@ template <
    typename Input >
 GENDIL_HOST_DEVICE
 auto AggregateDimensions(
-   const KernelConf & kernel_conf,
+   KernelConf & kernel_conf,
    const Input & u,
    std::index_sequence< Dims ... >
 )

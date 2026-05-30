@@ -70,8 +70,9 @@ auto GetLocalFaceInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID &
  *
  * Batched device configurations currently use an experimental filtered model:
  * config-aware bodies are invoked only for active lanes in the final partial
- * batch. kernel.WorkItemIndex() is the active cell index. While SyncWorkItem()
- * remains block-wide, bodies that synchronize after CellIterator filtering are
+ * batch. kernel.WorkItemIndex() is the active cell index. Sync() is currently
+ * block-wide for device configurations, so bodies that synchronize after
+ * CellIterator filtering are
  * intentionally experimental and must be validated per operator.
  *
  * One-index bodies remain the legacy path and are only valid for

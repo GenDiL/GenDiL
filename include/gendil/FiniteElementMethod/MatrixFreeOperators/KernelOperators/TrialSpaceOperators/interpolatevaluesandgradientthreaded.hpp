@@ -23,7 +23,7 @@ template <
     typename GradientOutputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateValuesAndGradientsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u,
    ValuesOutputTensor & Bu,
