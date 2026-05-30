@@ -9,9 +9,9 @@
 // Manual sanitizer diagnostic:
 // num_cells = 10 and BatchSize = 4 make the final block contain candidates
 // 8, 9, 10, and 11. CellIterator filters candidates 10 and 11 before invoking
-// the body below, while candidates 8 and 9 enter a body that calls
-// SyncWorkItem(). DeviceKernelConfiguration::SyncWorkItem() currently maps to
-// block-wide __syncthreads(), so this target is intentionally not a normal
+// the body below, while candidates 8 and 9 enter a body that calls Sync().
+// DeviceKernelConfiguration::Sync() currently maps to block-wide
+// __syncthreads(), so this target is intentionally not a normal
 // pass/fail correctness test. Run it manually with CUDA compute-sanitizer
 // --tool synccheck when auditing the experimental filtered model.
 
@@ -123,7 +123,7 @@ bool RunFilteredSyncExperiment( const char * name )
                static_cast< long long >( 1000 + cell_index );
          }
 
-         kernel.SyncWorkItem();
+         kernel.Sync();
 
          if ( kernel.GetLinearThreadIndex() == 0 )
          {
@@ -187,7 +187,7 @@ bool TestWarpAlignedLayout()
    static_assert( Layout::GetNumberOfThreads() == 32 );
 
    return RunFilteredSyncExperiment< Config >(
-      "filtered CellIterator SyncWorkItem experiment" );
+      "filtered CellIterator Sync experiment" );
 }
 } // namespace
 

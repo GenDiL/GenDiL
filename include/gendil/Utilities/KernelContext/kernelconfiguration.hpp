@@ -7,3 +7,4 @@
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
 #include "gendil/Utilities/KernelContext/KernelConfigurations/kernelconfigurations.hpp"
 #include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"

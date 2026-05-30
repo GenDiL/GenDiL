@@ -199,7 +199,7 @@ bool RunSmokeCase( const char * name )
                linear_thread_index );
          }
 
-         kernel.SyncWorkItem();
+         kernel.Sync();
 
          if ( linear_thread_index == 0 )
          {
@@ -226,7 +226,7 @@ bool RunSmokeCase( const char * name )
             shared_checksum_data[ candidate ] = checksum;
          }
 
-         kernel.SyncWorkItem();
+         kernel.Sync();
 
          if ( linear_thread_index == 0 )
          {
@@ -273,7 +273,7 @@ bool RunSmokeCase( const char * name )
       success = Check(
          post_sync_status.data.host_pointer[ candidate ] ==
             static_cast< long long >( 2000 + candidate ),
-         "A lane did not survive SyncWorkItem()." ) && success;
+            "A lane did not survive Sync()." ) && success;
       success = Check(
          shared_ok.data.host_pointer[ candidate ] == 1,
          "Batch-local shared-memory contents were not independent." ) &&

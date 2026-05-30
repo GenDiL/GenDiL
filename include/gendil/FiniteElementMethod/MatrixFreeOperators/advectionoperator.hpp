@@ -661,6 +661,10 @@ void AdvectionExplicitOperatorWithoutBC(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "AdvectionExplicitOperatorWithoutBC" );
+
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -734,6 +738,10 @@ void AdvectionExplicitOperatorWithBC(
    const DofsInView dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "AdvectionExplicitOperatorWithBC" );
+
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -801,6 +809,10 @@ void AdvectionExplicitFaceOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "AdvectionExplicitFaceOperator" );
+
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
@@ -882,6 +894,10 @@ void AdvectionExplicitNonconformingFaceOperator(
    OutputDofsLHS & dofs_out_lhs,
    OutputDofsRHS & dofs_out_rhs )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "AdvectionExplicitNonconformingFaceOperator" );
+
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable

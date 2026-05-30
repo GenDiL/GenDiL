@@ -110,6 +110,10 @@ void LinearFormOperator( const FiniteElementSpace & fe_space,
                          Lambda && lambda,
                          StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "LinearFormOperator" );
+
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable

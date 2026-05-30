@@ -375,6 +375,10 @@ void DiffusionExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "DiffusionExplicitOperator" );
+
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable

@@ -17,6 +17,7 @@
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
 #include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 
 #include <type_traits>
@@ -332,6 +333,10 @@ void GenericBlockDiagonalAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelPolicy,
+      "GenericBlockDiagonalAssembly" );
+
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
       
    using I = std::remove_cvref_t<WeakForm>;
@@ -404,6 +409,10 @@ void GenericAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelPolicy,
+      "GenericAssembly" );
+
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
    using I = std::remove_cvref_t<WeakForm>;

@@ -44,9 +44,13 @@ int main( int, char ** )
    static_assert( is_serial_v< HostKernelConfiguration< 1 > > );
    static_assert( is_serial_v< const HostKernelConfiguration< 1 > & > );
    static_assert( !is_device_configuration_v< SerialKernelConfiguration > );
+   static_assert(
+      !is_batched_device_configuration_v< SerialKernelConfiguration > );
    static_assert( SerialKernelConfiguration::batch_size == 1 );
    static_assert( HostKernelConfiguration< 4 >::batch_size == 4 );
    static_assert( HostKernelConfiguration< 4 >::GetNumberOfThreads() == 1 );
+   static_assert(
+      !is_batched_device_configuration_v< HostKernelConfiguration< 4 > > );
 
    using HostContext = KernelContext< HostKernelConfiguration< 1 >, 0 >;
    static_assert( is_host_configuration_v< HostContext > );
@@ -79,6 +83,7 @@ int main( int, char ** )
    static_assert( is_device_configuration_v< LegacyConfig > );
    static_assert( !is_host_configuration_v< LegacyConfig > );
    static_assert( !is_serial_v< LegacyConfig > );
+   static_assert( !is_batched_device_configuration_v< LegacyConfig > );
    static_assert( LegacyConfig::batch_size == 1 );
    static_assert( LegacyConfig::GetNumberOfThreads() == 6 );
    static_assert( LegacyConfig::SharedMemoryStride( 7 ) == 7 );
@@ -113,6 +118,10 @@ int main( int, char ** )
    static_assert( is_device_configuration_v< BatchedConfig > );
    static_assert( !is_host_configuration_v< BatchedConfig > );
    static_assert( !is_serial_v< BatchedConfig > );
+   static_assert( is_batched_device_configuration_v< BatchedConfig > );
+   static_assert(
+      is_batched_device_configuration_v<
+         const KernelContext< BatchedConfig, 7 > & > );
    static_assert( BatchedConfig::batch_size == 4 );
    static_assert( BatchedConfig::GetNumberOfThreads() == 6 );
    static_assert( BatchedConfig::SharedMemoryStride( 7 ) == 7 );
@@ -148,6 +157,7 @@ int main( int, char ** )
 
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;
+   static_assert( !is_batched_device_configuration_v< BatchedSingle > );
    constexpr auto batched_single_geometry =
       BatchedSingle::GetLaunchGeometry( 11 );
    static_assert( batched_single_geometry.grid_x == 11 );

@@ -575,6 +575,10 @@ void GenericExplicitOperator(
   const DofsInView& dofs_in,
   DofsOutView& dofs_out)
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelPolicy,
+      "GenericExplicitOperator" );
+
    using I = std::remove_cvref_t<WeakForm>;
 
    constexpr auto TrialName = requirements<I>::trial_name;

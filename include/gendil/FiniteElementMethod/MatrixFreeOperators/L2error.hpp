@@ -113,6 +113,10 @@ Real L2Error(
    Sigma & sigma,
    const Vector & dofs_vector_in )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "L2Error" );
+
    using finite_element_type = typename FiniteElementSpace::finite_element_type;
    using shape_functions = typename finite_element_type::shape_functions;
    using Mesh = typename FiniteElementSpace::mesh_type;

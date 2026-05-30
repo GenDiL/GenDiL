@@ -134,6 +134,10 @@ void MixedMassExplicitOperator(
    const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
+      KernelConfiguration,
+      "MixedMassExplicitOperator" );
+
    // Assumes same underlying mesh for trial_fe_space and test_fe_space
    mesh::CellIterator< KernelConfiguration >(
       trial_fe_space,
