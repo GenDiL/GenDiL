@@ -9,6 +9,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
@@ -247,7 +248,7 @@ auto ReadScalarDofs(
    GlobalIndex element_index,
    const GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return SerialReadDofs( thread, fe_space, element_index, global_dofs );
    }
@@ -370,7 +371,7 @@ auto ReadVectorDofs(
    GlobalIndex element_index,
    const GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return ReadVectorDofsSerial( thread, fe_space, element_index, global_dofs );
    }

@@ -22,7 +22,7 @@ namespace gendil
          }
          else // Handle the case where we have more threaded dimensions than loop bounds
          {
-            if ( thread.template GetThreadIndex< I >() == 0 ) // TODO is_threaded_v< I, KernelConfiguration >
+            if ( thread.template GetThreadIndex< I >() == 0 ) // TODO is_threaded_dim_v< I, KernelConfiguration >
             {
                ReverseThreadLoopImpl< I+1 >( thread, std::forward< Lambda >( body ), std::index_sequence<>{}, std::forward< Args >( args )... );
             }
@@ -36,7 +36,7 @@ namespace gendil
          GlobalIndex begin, delta;
 
          // !FIXME: Assumes the threaded dimensions are the first dimensions
-         if constexpr ( I < ThreadLayout::thread_block_dim ) // TODO is_threaded_v< I, KernelConfiguration >
+         if constexpr ( I < ThreadLayout::thread_block_dim ) // TODO is_threaded_dim_v< I, KernelConfiguration >
          {
             begin = thread.template GetThreadIndex< I >();
             delta = ThreadLayout::template GetBlockDim< I >();

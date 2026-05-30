@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesthreaded.hpp"
 
@@ -61,15 +62,9 @@ auto InterpolateValues( KernelContext & ctx,
                         const ElementDofToQuad & element_quad_data,
                         const DofTensor & u )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // serial interpolation
-      return InterpolateValuesSerial( element_quad_data, u );
-   }
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
-   {
-      // Device register-only configurations have one logical thread per work
-      // item and no shared-memory staging dimensions.
+      // Register-only configurations have no shared-memory staging dimensions.
       return InterpolateValuesSerial( element_quad_data, u );
    }
    else

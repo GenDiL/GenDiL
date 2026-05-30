@@ -7,6 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/isserial.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
 #include "gendil/Algebra/vector.hpp"
@@ -83,7 +84,7 @@ GENDIL_HOST_DEVICE
 Real Dot( KernelContext & kernel_conf, const ThreadedView< Sizes, KernelContext, Container > & u, const ThreadedView< Sizes, KernelContext, Container > & v )
 {
    #ifdef GENDIL_DEVICE_CODE
-   if constexpr ( !is_serial_v< KernelContext > )
+   if constexpr ( is_threaded_v< KernelContext > )
    {
       auto mark = kernel_conf.SharedAllocator.mark();
       Real * res = kernel_conf.SharedAllocator.allocate( 1 );

@@ -7,6 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
@@ -166,7 +167,7 @@ void WriteScalarDofs(
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return SerialWriteDofs<Add>( thread, fe_space, element_index, x, global_dofs );
    }
@@ -269,7 +270,7 @@ void WriteVectorDofs(
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return WriteVectorDofsSerial<Add>( thread, fe_space, element_index, x, global_dofs );
    }

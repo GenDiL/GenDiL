@@ -59,6 +59,9 @@ int main( int, char ** )
    static_assert( is_serial_v< const HostContext & > );
    static_assert( !is_device_configuration_v< HostContext > );
    static_assert( !is_device_configuration_v< const HostContext & > );
+   static_assert( !is_threaded_v< HostKernelConfiguration< 1 > > );
+   static_assert( !is_threaded_v< HostContext > );
+   static_assert( !is_threaded_v< const HostContext & > );
 
    std::array< int, 8 > host_visits{};
    HostKernelConfiguration< 4 >::BlockLoop(
@@ -166,6 +169,30 @@ int main( int, char ** )
    {
       return 1;
    }
+
+   using RegisterOnlyBatchedConfig =
+      DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 4 >;
+   using RegisterOnlyBatchedContext =
+      KernelContext< RegisterOnlyBatchedConfig, 0 >;
+   static_assert( !is_threaded_v< RegisterOnlyBatchedConfig > );
+   static_assert( !is_threaded_v< RegisterOnlyBatchedContext > );
+   static_assert( !is_threaded_v< const RegisterOnlyBatchedContext & > );
+
+   using OneDimThreadedBatchedConfig =
+      DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 4 >;
+   using OneDimThreadedBatchedContext =
+      KernelContext< OneDimThreadedBatchedConfig, 0 >;
+   static_assert( is_threaded_v< OneDimThreadedBatchedConfig > );
+   static_assert( is_threaded_v< OneDimThreadedBatchedContext > );
+   static_assert( is_threaded_v< const OneDimThreadedBatchedContext & > );
+
+   using UnitExtentThreadedBatchedConfig =
+      DeviceKernelConfiguration< ThreadBlockLayout< 1 >, 1, 4 >;
+   static_assert( is_threaded_v< UnitExtentThreadedBatchedConfig > );
+
+   using TwoDimThreadedBatchedConfig =
+      DeviceKernelConfiguration< ThreadBlockLayout< 4, 8 >, 2, 4 >;
+   static_assert( is_threaded_v< TwoDimThreadedBatchedConfig > );
 
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
 
 namespace gendil
@@ -93,14 +94,9 @@ auto AggregateDimensions(
    std::index_sequence< Dims ... >
 )
 {
-   if constexpr ( is_serial_v< KernelConf > )
+   if constexpr ( !is_threaded_v< KernelConf > )
    {
-      return SerialAggregateDimensions< TrialIntegrationRule, TestIntegrationRule, Dims... >( kernel_conf, u );
-   }
-   else if constexpr ( KernelConf::thread_block_dim == 0 )
-   {
-      // Device register-only configurations have one logical thread per work
-      // item and no shared-memory aggregation dimensions.
+      // Register-only configurations have no shared-memory aggregation dimensions.
       return SerialAggregateDimensions< TrialIntegrationRule, TestIntegrationRule, Dims... >( kernel_conf, u );
    }
    else

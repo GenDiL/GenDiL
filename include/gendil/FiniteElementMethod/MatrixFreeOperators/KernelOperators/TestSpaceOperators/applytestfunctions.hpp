@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsthreaded.hpp"
 
@@ -51,15 +52,7 @@ auto ApplyTestFunctions(
    const ProductOperator & element_quad_data,
    const InputTensor & quad_point_values )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      using dof_shape  = make_contraction_input_shape< ProductOperator >;
-      auto dofs_out = MakeSerialRecursiveArray< Real >( dof_shape{} );
-      // auto dofs_out = MakeStaticFIFOView< Real >( dof_shape{} );
-      ApplyTestFunctionsSerial< false, DiffDim >( element_quad_data, quad_point_values, dofs_out );
-      return dofs_out;
-   }
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       using dof_shape  = make_contraction_input_shape< ProductOperator >;
       auto dofs_out = MakeSerialRecursiveArray< Real >( dof_shape{} );
@@ -197,11 +190,7 @@ void ApplyAddTestFunctions(
    const InputTensor & quad_point_values,
    OutputTensor & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      ApplyTestFunctionsSerial< true, DiffDim >( element_quad_data, quad_point_values, dofs_out );
-   }
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       ApplyTestFunctionsSerial< true, DiffDim >(
          element_quad_data,

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applyvaluesandgradienttestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applyvaluesandgradienttestfunctionsthreaded.hpp"
 
@@ -25,12 +26,9 @@ void ApplyValuesAndGradientTestFunctions(
    const GradientsInput & DGuq,
    Output & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-      ApplyValuesAndGradientTestFunctions< Add >( element_quad_data, Duq, DGuq, dofs_out );
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // Device register-only configurations have one logical thread per work
-      // item and no shared-memory staging dimensions.
+      // Register-only configurations have no shared-memory staging dimensions.
       ApplyValuesAndGradientTestFunctions< Add >(
          element_quad_data,
          Duq,

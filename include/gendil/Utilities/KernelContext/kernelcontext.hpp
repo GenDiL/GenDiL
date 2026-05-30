@@ -111,20 +111,6 @@ static constexpr size_t required_shared_memory_v = 2 * shared_block_size< Kernel
 template <
    size_t I,
    typename KernelConfiguration >
-struct is_threaded
-{
-   static constexpr bool value = (I < KernelConfiguration::space_dim) && (I >= ( KernelConfiguration::space_dim - KernelConfiguration::Dim ) );
-};
-
-template <
-   size_t I,
-   typename KernelConfiguration >
-static constexpr bool is_threaded_v = is_threaded< I, KernelConfiguration >::value;
-
-// TODO This will need to be generalized when we change the thread layout
-template <
-   size_t I,
-   typename KernelConfiguration >
 struct get_thread_dim_index
 {
    static constexpr size_t num_reg_dims = KernelConfiguration::space_dim - KernelConfiguration::Dim;

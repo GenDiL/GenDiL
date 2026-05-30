@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolategradientserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolategradientthreaded.hpp"
 
@@ -50,15 +51,9 @@ auto InterpolateGradient( KernelContext & thread, const ProductOperator & elemen
    // auto Gu = MakeSerialRecursiveArray< Real >( shape{} );
    auto Gu = MakeStaticFIFOView< Real >( shape{} );
 
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // serial interpolation
-      InterpolateGradientSerial( element_quad_data, u, Gu );
-   }
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
-   {
-      // Device register-only configurations have one logical thread per work
-      // item and no shared-memory staging dimensions.
+      // Register-only configurations have no shared-memory staging dimensions.
       InterpolateGradientSerial( element_quad_data, u, Gu );
    }
    else

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsthreaded.hpp"
 
@@ -27,11 +28,7 @@ void ApplyGradientTestFunctions(
    const Input & DGuq,
    Output & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      ApplyGradientTestFunctions<Add>( element_quad_data, DGuq, dofs_out );
-   }
-   else if constexpr ( KernelContext::thread_block_dim == 0 )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       ApplyGradientTestFunctions<Add>( element_quad_data, DGuq, dofs_out );
    }
