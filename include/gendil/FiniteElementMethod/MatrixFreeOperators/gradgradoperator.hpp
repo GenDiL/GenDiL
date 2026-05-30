@@ -119,7 +119,7 @@ void GradGradExplicitOperator(
       const GlobalIndex num_cells = fe_space.GetNumberOfCells();
       KernelConfiguration::BlockLoop(
          num_cells,
-         [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
+         [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
          {
             const bool active = kernel.IsActive( num_cells );
             const GlobalIndex element_index =
