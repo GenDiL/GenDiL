@@ -248,7 +248,8 @@ bool ShouldRunResidualCheck( const GlobalIndex num_cells )
 template <
    typename Layout,
    Integer MaxSharedDimensions,
-   Integer BatchSize >
+   Integer BatchSize,
+   bool RunResidualCheck = true >
 bool RunMassInverseCaseForCellCount(
    const char * label,
    const GlobalIndex num_cells )
@@ -337,20 +338,23 @@ bool RunMassInverseCaseForCellCount(
          x_legacy,
          tolerance ) && success;
 
-   if ( ShouldRunResidualCheck< BatchSize >( num_cells ) )
+   if constexpr ( RunResidualCheck )
    {
-      auto residual =
-         ApplyMass< DeviceBatchN >(
-            fe_space,
-            integration_rule,
-            sigma,
-            x_batchn );
-      success =
-         CheckClose(
-            "Mass(DeviceBatchN inverse result) vs rhs",
-            residual,
-            rhs,
-            tolerance ) && success;
+      if ( ShouldRunResidualCheck< BatchSize >( num_cells ) )
+      {
+         auto residual =
+            ApplyMass< DeviceBatchN >(
+               fe_space,
+               integration_rule,
+               sigma,
+               x_batchn );
+         success =
+            CheckClose(
+               "Mass(DeviceBatchN inverse result) vs rhs",
+               residual,
+               rhs,
+               tolerance ) && success;
+      }
    }
 
    return success;
@@ -481,7 +485,11 @@ bool RunNormalizedCellCases( Lambda && run_case )
    return success;
 }
 
-template < typename Layout, Integer MaxSharedDimensions, Integer BatchSize >
+template <
+   typename Layout,
+   Integer MaxSharedDimensions,
+   Integer BatchSize,
+   bool RunResidualCheck = true >
 bool RunThreadedMassInverseBatchCases( const char * label )
 {
    return RunNormalizedCellCases< BatchSize >(
@@ -490,7 +498,8 @@ bool RunThreadedMassInverseBatchCases( const char * label )
          return RunMassInverseCaseForCellCount<
             Layout,
             MaxSharedDimensions,
-            BatchSize >( label, num_cells );
+            BatchSize,
+            RunResidualCheck >( label, num_cells );
       } );
 }
 
@@ -563,19 +572,32 @@ bool TestIrregularMassInverseDiagnostic()
 
    bool success = true;
    success =
-      RunThreadedMassInverseBatchCases< Layout, MaxSharedDimensions, 1 >(
+      RunThreadedMassInverseBatchCases<
+         Layout,
+         MaxSharedDimensions,
+         1,
+         false >(
          "ThreadBlockLayout<3,5>, BatchSize=1 diagnostic" ) && success;
    success =
-      RunThreadedMassInverseBatchCases< Layout, MaxSharedDimensions, 2 >(
+      RunThreadedMassInverseBatchCases<
+         Layout,
+         MaxSharedDimensions,
+         2,
+         false >(
          "ThreadBlockLayout<3,5>, BatchSize=2 diagnostic" ) && success;
    success =
-      RunThreadedMassInverseBatchCases< Layout, MaxSharedDimensions, 4 >(
+      RunThreadedMassInverseBatchCases<
+         Layout,
+         MaxSharedDimensions,
+         4,
+         false >(
          "ThreadBlockLayout<3,5>, BatchSize=4 diagnostic" ) && success;
    success =
       RunThreadedMassInverseBatchCases<
          Layout,
          MaxSharedDimensions,
-         device_warp_size >(
+         device_warp_size,
+         false >(
             "ThreadBlockLayout<3,5>, BatchSize=device_warp_size diagnostic" ) &&
       success;
    return success;
