@@ -2,8 +2,13 @@
 add_my_test(test-mass-3d-generic test-mass-3d-generic.cpp)
 if(USE_CUDA OR USE_HIP)
   add_my_test(test-batched-mass-operator test-batched-mass-operator.cpp)
+  add_my_test(
+    test-batched-l2-projection-operator
+    test-batched-l2-projection-operator.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
+    test-batched-l2-projection-operator
     PROPERTIES
     TIMEOUT 30
   )
