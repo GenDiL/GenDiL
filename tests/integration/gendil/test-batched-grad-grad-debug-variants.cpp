@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <type_traits>
 
 #if !defined(GENDIL_USE_DEVICE)
 
@@ -44,6 +45,361 @@ bool PrintScaledL2Diagnostic(
    const Real scaled_error = ScaledL2Error( observed, expected );
    std::cout << label << " scaled L2 error = " << scaled_error << '\n';
    return std::isfinite( scaled_error ) && scaled_error <= tolerance;
+}
+
+enum class StageId : Integer
+{
+   read_dofs = 0,
+   interpolate_gradient,
+   apply_gradient_test,
+   before_write_dofs,
+   after_write_dofs,
+   count
+};
+
+enum class BarrierMode : Integer
+{
+   none = 0,
+   sync_after_read_dofs,
+   sync_after_interpolate_gradient,
+   sync_after_apply_gradient_test,
+   sync_before_write_dofs,
+   sync_after_allocator_reset
+};
+
+enum class InvocationMode : Integer
+{
+   direct_debug_write_true = 0,
+   runtime_active_guarded_write,
+   early_return,
+   all_candidate_guarded_write
+};
+
+constexpr Integer diagnostic_threads = 15;
+constexpr Integer diagnostic_components = 1;
+constexpr Integer diagnostic_dofs = 4;
+constexpr Real diagnostic_sentinel = -9.87654321e123;
+
+const char * StageName( const StageId stage )
+{
+   switch ( stage )
+   {
+      case StageId::read_dofs:
+         return "after ReadDofs";
+      case StageId::interpolate_gradient:
+         return "after InterpolateGradient";
+      case StageId::apply_gradient_test:
+         return "after ApplyGradientTestFunctionsAtQPoints";
+      case StageId::before_write_dofs:
+         return "before WriteDofs";
+      case StageId::after_write_dofs:
+         return "after WriteDofs";
+      default:
+         return "unknown stage";
+   }
+}
+
+const char * BarrierName( const BarrierMode mode )
+{
+   switch ( mode )
+   {
+      case BarrierMode::none:
+         return "no_extra_sync";
+      case BarrierMode::sync_after_read_dofs:
+         return "sync_after_read_dofs";
+      case BarrierMode::sync_after_interpolate_gradient:
+         return "sync_after_interpolate_gradient";
+      case BarrierMode::sync_after_apply_gradient_test:
+         return "sync_after_apply_gradient_test";
+      case BarrierMode::sync_before_write_dofs:
+         return "sync_before_write_dofs";
+      case BarrierMode::sync_after_allocator_reset:
+         return "sync_after_allocator_reset";
+      default:
+         return "unknown_sync_variant";
+   }
+}
+
+const char * InvocationName( const InvocationMode mode )
+{
+   switch ( mode )
+   {
+      case InvocationMode::direct_debug_write_true:
+         return "direct_debug_write_true";
+      case InvocationMode::runtime_active_guarded_write:
+         return "runtime_active_guarded_write";
+      case InvocationMode::early_return:
+         return "early_return";
+      case InvocationMode::all_candidate_guarded_write:
+         return "all_candidate_guarded_write";
+      default:
+         return "unknown_invocation";
+   }
+}
+
+struct StageRecorder
+{
+   Real * values;
+   int * writes;
+   GlobalIndex num_cells;
+
+   GENDIL_HOST_DEVICE
+   bool enabled() const
+   {
+      return values != nullptr && writes != nullptr;
+   }
+
+   GENDIL_HOST_DEVICE
+   GlobalIndex Index(
+      const StageId stage,
+      const Integer component,
+      const GlobalIndex element_index,
+      const GlobalIndex thread_index ) const
+   {
+      return (
+         ( static_cast< GlobalIndex >( stage ) * diagnostic_components +
+           component ) *
+            num_cells +
+         element_index ) *
+            diagnostic_threads +
+         thread_index;
+   }
+
+   template < typename KernelContext >
+   GENDIL_HOST_DEVICE
+   bool DiagnosticThreadParticipates( const KernelContext & kernel ) const
+   {
+      if constexpr ( KernelContext::thread_block_dim > 1 )
+      {
+         return kernel.template GetThreadIndex< 1 >() == 0;
+      }
+      else
+      {
+         return true;
+      }
+   }
+
+   template < typename KernelContext >
+   GENDIL_HOST_DEVICE
+   void Record(
+      const KernelContext & kernel,
+      const GlobalIndex element_index,
+      const StageId stage,
+      const Integer component,
+      const Real value ) const
+   {
+      if ( !enabled() ||
+           !DiagnosticThreadParticipates( kernel ) ||
+           element_index >= num_cells )
+      {
+         return;
+      }
+
+      const GlobalIndex thread_index = kernel.GetLinearThreadIndex();
+      if ( thread_index >= diagnostic_threads )
+      {
+         return;
+      }
+
+      const GlobalIndex index =
+         Index( stage, component, element_index, thread_index );
+      values[ index ] = value;
+      writes[ index ] = 1;
+   }
+};
+
+struct StageDiagnostics
+{
+   DeviceBuffer< Real > values;
+   DeviceBuffer< int > writes;
+   GlobalIndex num_cells;
+
+   StageDiagnostics( const GlobalIndex cells )
+      : values(
+           cells *
+              static_cast< GlobalIndex >( StageId::count ) *
+              diagnostic_components *
+              diagnostic_threads,
+           diagnostic_sentinel ),
+        writes(
+           cells *
+              static_cast< GlobalIndex >( StageId::count ) *
+              diagnostic_components *
+              diagnostic_threads,
+           0 ),
+        num_cells( cells )
+   {}
+
+   StageRecorder Recorder() const
+   {
+      return {
+         values.data.device_pointer,
+         writes.data.device_pointer,
+         num_cells
+      };
+   }
+
+   void CopyToHost() const
+   {
+      values.CopyToHost();
+      writes.CopyToHost();
+   }
+
+   GlobalIndex Index(
+      const StageId stage,
+      const Integer component,
+      const GlobalIndex element_index,
+      const GlobalIndex thread_index ) const
+   {
+      return (
+         ( static_cast< GlobalIndex >( stage ) * diagnostic_components +
+           component ) *
+            num_cells +
+         element_index ) *
+            diagnostic_threads +
+         thread_index;
+   }
+};
+
+bool PrintStageComparison(
+   const char * label,
+   const StageDiagnostics & observed,
+   const StageDiagnostics & expected,
+   const Real tolerance )
+{
+   observed.CopyToHost();
+   expected.CopyToHost();
+
+   bool matches = true;
+
+   for ( Integer stage_int = 0;
+         stage_int < static_cast< Integer >( StageId::count );
+         ++stage_int )
+   {
+      const StageId stage = static_cast< StageId >( stage_int );
+      for ( Integer component = 0;
+            component < diagnostic_components;
+            ++component )
+      {
+         Real observed_sum = 0.0;
+         Real observed_sum_sq = 0.0;
+         Real observed_max_abs = 0.0;
+         Real expected_sum = 0.0;
+         Real expected_sum_sq = 0.0;
+         Real expected_max_abs = 0.0;
+         Integer observed_count = 0;
+         Integer expected_count = 0;
+         Integer mismatches = 0;
+         Integer printed = 0;
+
+         for ( GlobalIndex element = 0;
+               element < observed.num_cells;
+               ++element )
+         {
+            for ( GlobalIndex thread = 0;
+                  thread < diagnostic_threads;
+                  ++thread )
+            {
+               const GlobalIndex index =
+                  observed.Index( stage, component, element, thread );
+               const bool observed_written =
+                  observed.writes.data.host_pointer[ index ] != 0;
+               const bool expected_written =
+                  expected.writes.data.host_pointer[ index ] != 0;
+               const Real observed_value =
+                  observed.values.data.host_pointer[ index ];
+               const Real expected_value =
+                  expected.values.data.host_pointer[ index ];
+
+               if ( observed_written )
+               {
+                  ++observed_count;
+                  observed_sum += observed_value;
+                  observed_sum_sq += observed_value * observed_value;
+                  observed_max_abs =
+                     std::max( observed_max_abs, std::abs( observed_value ) );
+               }
+
+               if ( expected_written )
+               {
+                  ++expected_count;
+                  expected_sum += expected_value;
+                  expected_sum_sq += expected_value * expected_value;
+                  expected_max_abs =
+                     std::max( expected_max_abs, std::abs( expected_value ) );
+               }
+
+               const bool value_mismatch =
+                  observed_written &&
+                  expected_written &&
+                  std::abs( observed_value - expected_value ) > tolerance;
+
+               if (
+                  observed_written != expected_written ||
+                  value_mismatch )
+               {
+                  ++mismatches;
+                  matches = false;
+                  if ( printed < 8 )
+                  {
+                     std::cout
+                        << "    mismatch " << label << " "
+                        << StageName( stage )
+                        << ", component " << component
+                        << ", element " << element
+                        << ", logical-thread " << thread
+                        << ": observed_written=" << observed_written
+                        << ", expected_written=" << expected_written
+                        << ", observed=" << observed_value
+                        << ", expected=" << expected_value << '\n';
+                     ++printed;
+                  }
+               }
+            }
+         }
+
+         std::cout
+            << label << " " << StageName( stage )
+            << ", component " << component
+            << ": observed(count=" << observed_count
+            << ", sum=" << observed_sum
+            << ", sumsq=" << observed_sum_sq
+            << ", maxabs=" << observed_max_abs
+            << "), expected(count=" << expected_count
+            << ", sum=" << expected_sum
+            << ", sumsq=" << expected_sum_sq
+            << ", maxabs=" << expected_max_abs
+            << "), mismatches=" << mismatches << ".\n";
+      }
+   }
+
+   return matches;
+}
+
+void PrintAllocatorResetAudit()
+{
+   static bool printed = false;
+   if ( printed )
+   {
+      return;
+   }
+   printed = true;
+
+   std::cout
+      << "GradGrad SharedAllocator.reset() audit:\n"
+      << "  InterpolateValuesThreaded: suspicious - reset follows final "
+      << "shared-to-register read without a post-read Sync() before arena "
+      << "reuse.\n"
+      << "  InterpolateGradientThreaded: suspicious - reset follows shared "
+      << "gradient contractions without an unconditional final Sync().\n"
+      << "  ApplyGradientTestFunctionsAtQPoints: suspicious - reset follows "
+      << "shared adjoint-gradient contractions without an unconditional final "
+      << "Sync().\n"
+      << "  ApplyTestFunctionsThreaded: suspicious - reset follows final "
+      << "shared-to-register read without a post-read Sync() before arena "
+      << "reuse.\n"
+      << "  ThreadedWriteDofs cell path: safe - no shared arena allocation or "
+      << "reset in the active cell L2/H1 write path.\n";
 }
 
 Vector MakeInputVector( const Integer size )
@@ -84,6 +440,7 @@ Vector ApplyFilteredGradGradWithInitial(
 }
 
 template <
+   BarrierMode Mode,
    typename IntegrationRule,
    typename KernelContext,
    typename FiniteElementSpace,
@@ -100,20 +457,84 @@ void DebugGradGradElementOperator(
    const ElementQuadData & element_quad_data,
    const DofsInView & dofs_in,
    DofsOutView & dofs_out,
-   const bool write_output )
+   const bool write_output,
+   const StageRecorder & recorder )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
+   recorder.Record(
+      kernel_conf,
+      element_index,
+      StageId::read_dofs,
+      0,
+      u() );
+   if constexpr ( Mode == BarrierMode::sync_after_read_dofs )
+   {
+      kernel_conf.Sync();
+   }
+
    auto Gu = InterpolateGradient( kernel_conf, element_quad_data, u );
+   recorder.Record(
+      kernel_conf,
+      element_index,
+      StageId::interpolate_gradient,
+      0,
+      Gu( 0 ) );
+   if constexpr (
+      Mode == BarrierMode::sync_after_interpolate_gradient ||
+      Mode == BarrierMode::sync_after_allocator_reset )
+   {
+      kernel_conf.Sync();
+   }
+
    auto GDGu =
       ApplyGradientTestFunctionsAtQPoints(
          kernel_conf,
          element_quad_data,
          Gu );
+   recorder.Record(
+      kernel_conf,
+      element_index,
+      StageId::apply_gradient_test,
+      0,
+      GDGu() );
+   if constexpr (
+      Mode == BarrierMode::sync_after_apply_gradient_test ||
+      Mode == BarrierMode::sync_after_allocator_reset )
+   {
+      kernel_conf.Sync();
+   }
+
    auto BGDGu = ApplyTestFunctions( kernel_conf, element_quad_data, GDGu );
+   recorder.Record(
+      kernel_conf,
+      element_index,
+      StageId::before_write_dofs,
+      0,
+      BGDGu() );
+   if constexpr (
+      Mode == BarrierMode::sync_before_write_dofs ||
+      Mode == BarrierMode::sync_after_allocator_reset )
+   {
+      kernel_conf.Sync();
+   }
 
    if ( write_output )
    {
       WriteDofs( kernel_conf, fe_space, element_index, BGDGu, dofs_out );
+
+      if ( recorder.DiagnosticThreadParticipates( kernel_conf ) )
+      {
+         const GlobalIndex dof = kernel_conf.template GetThreadIndex< 0 >();
+         if ( dof < diagnostic_dofs )
+         {
+            recorder.Record(
+               kernel_conf,
+               element_index,
+               StageId::after_write_dofs,
+               0,
+               dofs_out( dof, element_index ) );
+         }
+      }
    }
 }
 
@@ -151,7 +572,7 @@ void DebugAllCandidateGradGradExplicitOperator(
          KernelContext< KernelConfiguration, required_shared_mem >
             kernel_conf( _shared_mem, kernel );
 
-         DebugGradGradElementOperator< IntegrationRule >(
+         DebugGradGradElementOperator< BarrierMode::none, IntegrationRule >(
             kernel_conf,
             fe_space,
             element_index,
@@ -159,7 +580,8 @@ void DebugAllCandidateGradGradExplicitOperator(
             element_quad_data,
             dofs_in,
             dofs_out,
-            active );
+            active,
+            StageRecorder{ nullptr, nullptr, num_cells } );
       } );
 }
 
@@ -205,7 +627,7 @@ void DebugEarlyReturnGradGradExplicitOperator(
          KernelContext< KernelConfiguration, required_shared_mem >
             kernel_conf( _shared_mem, kernel );
 
-         DebugGradGradElementOperator< IntegrationRule >(
+         DebugGradGradElementOperator< BarrierMode::none, IntegrationRule >(
             kernel_conf,
             fe_space,
             element_index,
@@ -213,7 +635,87 @@ void DebugEarlyReturnGradGradExplicitOperator(
             element_quad_data,
             dofs_in,
             dofs_out,
-            true );
+            true,
+            StageRecorder{ nullptr, nullptr, num_cells } );
+      } );
+}
+
+template <
+   InvocationMode Invocation,
+   BarrierMode Barrier,
+   typename KernelConfiguration,
+   typename IntegrationRule,
+   typename FiniteElementSpace,
+   typename MeshQuadData,
+   typename ElementQuadData,
+   typename DofsInView,
+   typename DofsOutView >
+void DebugVariantGradGradExplicitOperator(
+   const FiniteElementSpace & fe_space,
+   const MeshQuadData & mesh_quad_data,
+   const ElementQuadData & element_quad_data,
+   const DofsInView & dofs_in,
+   DofsOutView & dofs_out,
+   const StageRecorder & recorder )
+{
+   const GlobalIndex num_cells = fe_space.GetNumberOfCells();
+   KernelConfiguration::BlockLoop(
+      num_cells,
+      [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+      {
+         const bool active = kernel.IsActive( num_cells );
+         bool write_output = true;
+         GlobalIndex element_index = kernel.WorkItemIndex();
+
+         if constexpr ( Invocation == InvocationMode::early_return )
+         {
+            if ( !active )
+            {
+               return;
+            }
+         }
+         else if constexpr (
+            Invocation == InvocationMode::runtime_active_guarded_write )
+         {
+            if ( !active )
+            {
+               return;
+            }
+            write_output = active;
+         }
+         else if constexpr (
+            Invocation == InvocationMode::all_candidate_guarded_write )
+         {
+            element_index =
+               active ? kernel.WorkItemIndex() : GlobalIndex( 0 );
+            write_output = active;
+         }
+         else
+         {
+            // direct_debug_write_true is only used for full-batch cases.
+            write_output = true;
+         }
+
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
+
+         KernelContext< KernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem, kernel );
+
+         DebugGradGradElementOperator< Barrier, IntegrationRule >(
+            kernel_conf,
+            fe_space,
+            element_index,
+            mesh_quad_data,
+            element_quad_data,
+            dofs_in,
+            dofs_out,
+            write_output,
+            recorder );
       } );
 }
 
@@ -293,9 +795,115 @@ Vector ApplyEarlyReturnGradGradWithInitial(
    return output;
 }
 
+template <
+   InvocationMode Invocation,
+   BarrierMode Barrier,
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
+Vector ApplyDebugVariantGradGradWithInitial(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Vector & initial,
+   StageDiagnostics & stages )
+{
+   Vector output( initial );
+
+   auto dofs_in =
+      MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
+   auto dofs_out =
+      MakeReadWriteElementTensorView< KernelPolicy >( fe_space, output );
+
+   using Mesh = typename FiniteElementSpace::mesh_type;
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+
+   typename Mesh::cell_type::template QuadData< Rule > mesh_quad_data{};
+   auto element_quad_data =
+      MakeDofToQuad< ShapeFunctions, Rule >();
+
+   (void) integration_rule;
+
+   DebugVariantGradGradExplicitOperator<
+      Invocation,
+      Barrier,
+      KernelPolicy,
+      Rule >(
+         fe_space,
+         mesh_quad_data,
+         element_quad_data,
+         dofs_in,
+         dofs_out,
+         stages.Recorder() );
+   GENDIL_DEVICE_SYNC;
+
+   return output;
+}
+
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
+Vector ApplyDirectProductionGradGradWithInitial(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Vector & initial )
+{
+   Vector output( initial );
+
+   auto dofs_in =
+      MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
+   auto dofs_out =
+      MakeReadWriteElementTensorView< KernelPolicy >( fe_space, output );
+
+   using Mesh = typename FiniteElementSpace::mesh_type;
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+
+   typename Mesh::cell_type::template QuadData< Rule > mesh_quad_data{};
+   auto element_quad_data =
+      MakeDofToQuad< ShapeFunctions, Rule >();
+   const GlobalIndex num_cells = fe_space.GetNumberOfCells();
+
+   (void) integration_rule;
+
+   KernelPolicy::BlockLoop(
+      num_cells,
+      [=] GENDIL_HOST_DEVICE ( const KernelPolicy & kernel ) mutable
+      {
+         const GlobalIndex element_index = kernel.WorkItemIndex();
+
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v< KernelPolicy, Rule >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelPolicy,
+               required_shared_mem >::shared_memory_block_size ];
+
+         KernelContext< KernelPolicy, required_shared_mem >
+            kernel_conf( _shared_mem, kernel );
+
+         GradGradElementOperator< Rule >(
+            kernel_conf,
+            fe_space,
+            element_index,
+            mesh_quad_data,
+            element_quad_data,
+            dofs_in,
+            dofs_out );
+      } );
+   GENDIL_DEVICE_SYNC;
+
+   return output;
+}
+
 template < GlobalIndex NumCells >
 bool RunDebugVariantCase()
 {
+   PrintAllocatorResetAudit();
+
    using Layout = ThreadBlockLayout< 3, 5 >;
    static constexpr Integer MaxSharedDimensions = 2;
    static constexpr Integer BatchSize = device_warp_size;
@@ -333,6 +941,11 @@ bool RunDebugVariantCase()
          fe_space.GetNumberOfFiniteElementDofs(),
          0.0 );
 
+   StageDiagnostics stages_batch1( NumCells );
+   StageDiagnostics stages_runtime_active( NumCells );
+   StageDiagnostics stages_early_return( NumCells );
+   StageDiagnostics stages_all_candidate( NumCells );
+
    auto y_legacy =
       ApplyFilteredGradGradWithInitial< LegacyConfig >(
          fe_space,
@@ -345,24 +958,52 @@ bool RunDebugVariantCase()
          integration_rule,
          input,
          zero );
+   auto y_batch1_debug =
+      ApplyDebugVariantGradGradWithInitial<
+         InvocationMode::direct_debug_write_true,
+         BarrierMode::none,
+         DeviceBatch1 >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_batch1 );
    auto y_filtered =
       ApplyFilteredGradGradWithInitial< DeviceBatchN >(
          fe_space,
          integration_rule,
          input,
          zero );
+   auto y_runtime_active =
+      ApplyDebugVariantGradGradWithInitial<
+         InvocationMode::runtime_active_guarded_write,
+         BarrierMode::none,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_runtime_active );
    auto y_early_return =
-      ApplyEarlyReturnGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
+      ApplyDebugVariantGradGradWithInitial<
+         InvocationMode::early_return,
+         BarrierMode::none,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_early_return );
    auto y_all_candidate =
-      ApplyAllCandidateGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
+      ApplyDebugVariantGradGradWithInitial<
+         InvocationMode::all_candidate_guarded_write,
+         BarrierMode::none,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_all_candidate );
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
@@ -376,6 +1017,12 @@ bool RunDebugVariantCase()
          y_batch1,
          y_legacy,
          tolerance ) && success;
+   success =
+      CheckScaledL2Close(
+         "Debug DeviceBatch1 vs production DeviceBatch1",
+         y_batch1_debug,
+         y_batch1,
+         tolerance ) && success;
    const bool filtered_matches_legacy =
       PrintScaledL2Diagnostic(
          "Filtered DeviceBatchN vs LegacyConfig",
@@ -388,6 +1035,16 @@ bool RunDebugVariantCase()
          y_filtered,
          y_batch1,
          tolerance );
+   PrintScaledL2Diagnostic(
+      "Runtime-active guarded-write DeviceBatchN vs LegacyConfig",
+      y_runtime_active,
+      y_legacy,
+      tolerance );
+   PrintScaledL2Diagnostic(
+      "Runtime-active guarded-write DeviceBatchN vs DeviceBatch1",
+      y_runtime_active,
+      y_batch1,
+      tolerance );
    const bool early_return_matches_legacy =
       PrintScaledL2Diagnostic(
          "Early-return DeviceBatchN vs LegacyConfig",
@@ -415,28 +1072,134 @@ bool RunDebugVariantCase()
 
    if constexpr ( NumCells % BatchSize == 0 )
    {
-      if ( !filtered_matches_legacy || !filtered_matches_batch1 )
+      StageDiagnostics stages_direct_debug( NumCells );
+      auto y_direct_production =
+         ApplyDirectProductionGradGradWithInitial< DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
+      auto y_direct_debug =
+         ApplyDebugVariantGradGradWithInitial<
+            InvocationMode::direct_debug_write_true,
+            BarrierMode::none,
+            DeviceBatchN >(
+               fe_space,
+               integration_rule,
+               input,
+               zero,
+               stages_direct_debug );
+
+      PrintScaledL2Diagnostic(
+         "Direct BlockLoop production body DeviceBatchN vs LegacyConfig",
+         y_direct_production,
+         y_legacy,
+         tolerance );
+      PrintScaledL2Diagnostic(
+         "Direct BlockLoop production body DeviceBatchN vs DeviceBatch1",
+         y_direct_production,
+         y_batch1,
+         tolerance );
+      PrintScaledL2Diagnostic(
+         "Direct debug write-true DeviceBatchN vs LegacyConfig",
+         y_direct_debug,
+         y_legacy,
+         tolerance );
+      PrintScaledL2Diagnostic(
+         "Direct debug write-true DeviceBatchN vs DeviceBatch1",
+         y_direct_debug,
+         y_batch1,
+         tolerance );
+
+      PrintStageComparison(
+         "direct_debug_write_true vs DeviceBatch1",
+         stages_direct_debug,
+         stages_batch1,
+         tolerance );
+   }
+   else
+   {
+      std::cout
+         << "Direct no-guard BlockLoop variants skipped for num_cells = "
+         << NumCells
+         << " because the final batch contains inactive candidates.\n";
+   }
+
+   PrintStageComparison(
+      "runtime_active_guarded_write vs DeviceBatch1",
+      stages_runtime_active,
+      stages_batch1,
+      tolerance );
+   PrintStageComparison(
+      "early_return vs DeviceBatch1",
+      stages_early_return,
+      stages_batch1,
+      tolerance );
+   PrintStageComparison(
+      "all_candidate_guarded_write vs DeviceBatch1",
+      stages_all_candidate,
+      stages_batch1,
+      tolerance );
+
+   auto run_barrier_variant =
+      [&] ( auto barrier_constant )
       {
-         std::cout
-            << "FAILED: filtered production-style GradGrad mismatched for "
-            << "a full batch with no inactive candidates.\n";
-         success = false;
-      }
-      if ( !early_return_matches_legacy || !early_return_matches_batch1 )
-      {
-         std::cout
-            << "FAILED: early-return GradGrad mismatched for a full batch "
-            << "with no inactive candidates.\n";
-         success = false;
-      }
+         using BarrierConstant = decltype( barrier_constant );
+         constexpr BarrierMode barrier = BarrierConstant::value;
+         StageDiagnostics stages( NumCells );
+         auto y =
+            ApplyDebugVariantGradGradWithInitial<
+               InvocationMode::runtime_active_guarded_write,
+               barrier,
+               DeviceBatchN >(
+                  fe_space,
+                  integration_rule,
+                  input,
+                  zero,
+                  stages );
+         PrintScaledL2Diagnostic(
+            BarrierName( barrier ),
+            y,
+            y_batch1,
+            tolerance );
+      };
+
+   run_barrier_variant(
+      std::integral_constant<
+         BarrierMode,
+         BarrierMode::sync_after_read_dofs >{} );
+   run_barrier_variant(
+      std::integral_constant<
+         BarrierMode,
+         BarrierMode::sync_after_interpolate_gradient >{} );
+   run_barrier_variant(
+      std::integral_constant<
+         BarrierMode,
+         BarrierMode::sync_after_apply_gradient_test >{} );
+   run_barrier_variant(
+      std::integral_constant<
+         BarrierMode,
+         BarrierMode::sync_before_write_dofs >{} );
+   run_barrier_variant(
+      std::integral_constant<
+         BarrierMode,
+         BarrierMode::sync_after_allocator_reset >{} );
+
+   if constexpr ( NumCells % BatchSize == 0 )
+   {
+      std::cout
+         << "DIAGNOSTIC: num_cells = " << NumCells
+         << " is a full-batch case. Any filtered, early-return, or "
+         << "runtime-active mismatch here is not caused by inactive final "
+         << "batch lanes.\n";
    }
    else if ( !filtered_matches_legacy || !filtered_matches_batch1 )
    {
       std::cout
-         << "DIAGNOSTIC: filtered production-style GradGrad mismatched only "
-         << "in the final partial batch, while the test-only all-candidate "
-         << "guarded-write variant matched. This supports the filtered "
-         << "CellIterator plus block-wide Sync() hypothesis.\n";
+         << "DIAGNOSTIC: filtered production-style GradGrad mismatched in "
+         << "a final-partial-batch case. Because the full-batch diagnostic "
+         << "also mismatches on this layout, do not attribute this solely to "
+         << "inactive lanes.\n";
       if ( early_return_matches_legacy && early_return_matches_batch1 )
       {
          std::cout
@@ -457,8 +1220,7 @@ bool RunDebugVariantCase()
    {
       std::cout
          << "DIAGNOSTIC: filtered production-style GradGrad matched in the "
-         << "final partial batch; the filtered-sync hazard was not "
-         << "reproduced in this run.\n";
+         << "final partial batch for this run.\n";
    }
 
    return success;
