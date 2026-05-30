@@ -68,7 +68,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void SerialWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -160,7 +160,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteScalarDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -184,7 +184,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofsSerial(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -228,7 +228,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofsThreaded(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & local_dofs,
@@ -263,7 +263,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -345,7 +345,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void SerialWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
@@ -398,7 +398,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void ThreadedWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
@@ -460,7 +460,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
@@ -484,7 +484,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteAddDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
