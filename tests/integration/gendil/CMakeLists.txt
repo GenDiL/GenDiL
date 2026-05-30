@@ -19,6 +19,14 @@ if(USE_CUDA OR USE_HIP)
     test-batched-grad-grad-operator
     test-batched-grad-grad-operator.cpp
   )
+  add_my_test(
+    test-batched-grad-grad-write-coverage
+    test-batched-grad-grad-write-coverage.cpp
+  )
+  add_my_test(
+    test-batched-grad-grad-debug-variants
+    test-batched-grad-grad-debug-variants.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
     test-batched-l2-projection-operator
@@ -26,6 +34,8 @@ if(USE_CUDA OR USE_HIP)
     test-batched-mass-inverse-operator
     test-batched-linear-form-operator
     test-batched-grad-grad-operator
+    test-batched-grad-grad-write-coverage
+    test-batched-grad-grad-debug-variants
     PROPERTIES
     TIMEOUT 30
   )

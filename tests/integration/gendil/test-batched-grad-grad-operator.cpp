@@ -562,7 +562,9 @@ bool TestIrregularGradGradDiagnostic()
    std::cout
       << "Running diagnostic irregular ThreadBlockLayout<3,5> "
       << "GradGrad cases. For this 1D operator, extra logical thread "
-      << "dimensions are expected to be idle.\n";
+      << "dimensions are expected to be idle. The "
+      << "BatchSize=device_warp_size case is isolated in the GradGrad "
+      << "debug diagnostics.\n";
 
    bool success = true;
    success =
@@ -574,14 +576,6 @@ bool TestIrregularGradGradDiagnostic()
    success =
       RunGradGradBatchCases< Layout, MaxSharedDimensions, 4, true >(
          "ThreadBlockLayout<3,5>, BatchSize=4 diagnostic" ) && success;
-   success =
-      RunGradGradBatchCases<
-         Layout,
-         MaxSharedDimensions,
-         device_warp_size,
-         true >(
-            "ThreadBlockLayout<3,5>, BatchSize=device_warp_size diagnostic" )
-      && success;
    return success;
 }
 
