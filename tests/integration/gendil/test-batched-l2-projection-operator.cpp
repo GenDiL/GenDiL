@@ -4,8 +4,9 @@
 
 #include <gendil/gendil.hpp>
 
+#include "batched-cell-test-helpers.hpp"
+
 #include <array>
-#include <cmath>
 #include <iostream>
 
 #if !defined(GENDIL_USE_DEVICE)
@@ -21,119 +22,10 @@ int main()
 #else
 
 using namespace gendil;
+using namespace gendil::test;
 
 namespace
 {
-constexpr long long sentinel = -987654321;
-
-template < typename T >
-struct DeviceBuffer
-{
-   HostDevicePointer< T > data;
-   GlobalIndex size;
-
-   DeviceBuffer( const GlobalIndex n, const T value )
-      : size( n )
-   {
-      AllocateHostPointer( size, data );
-      AllocateDevicePointer( size, data );
-      Fill( value );
-   }
-
-   DeviceBuffer( const DeviceBuffer & ) = delete;
-   DeviceBuffer & operator=( const DeviceBuffer & ) = delete;
-
-   ~DeviceBuffer()
-   {
-      FreeDevicePointer( data );
-      FreeHostPointer( data );
-   }
-
-   void Fill( const T value )
-   {
-      for ( GlobalIndex i = 0; i < size; ++i )
-      {
-         data.host_pointer[ i ] = value;
-      }
-      ToDevice( size, data );
-   }
-
-   void CopyToHost() const
-   {
-      ToHost( size, data );
-   }
-};
-
-Integer GetDeviceMaxThreadsPerBlock()
-{
-#if defined( GENDIL_USE_CUDA )
-   int device = 0;
-   cudaDeviceProp properties;
-   GENDIL_GPU_CHECK( cudaGetDevice( &device ) );
-   GENDIL_GPU_CHECK( cudaGetDeviceProperties( &properties, device ) );
-   return static_cast< Integer >( properties.maxThreadsPerBlock );
-#elif defined( GENDIL_USE_HIP )
-   int device = 0;
-   hipDeviceProp_t properties;
-   GENDIL_GPU_CHECK( hipGetDevice( &device ) );
-   GENDIL_GPU_CHECK( hipGetDeviceProperties( &properties, device ) );
-   return static_cast< Integer >( properties.maxThreadsPerBlock );
-#else
-   return 1;
-#endif
-}
-
-template < typename Layout, Integer BatchSize >
-bool LaunchConfigurationFits( const char * label )
-{
-   const Integer requested_threads =
-      Layout::GetNumberOfThreads() * BatchSize;
-   const Integer max_threads = GetDeviceMaxThreadsPerBlock();
-
-   if ( requested_threads > max_threads )
-   {
-      std::cout << "Skipping " << label
-                << ": requested " << requested_threads
-                << " threads per block, device limit is "
-                << max_threads << ".\n";
-      return false;
-   }
-   return true;
-}
-
-template < typename VectorType >
-Real AbsoluteL2Error( const VectorType & a, const VectorType & b )
-{
-   GENDIL_VERIFY( a.Size() == b.Size(), "Vector sizes do not match." );
-
-   Real err_sq = 0.0;
-   for ( Integer i = 0; i < a.Size(); ++i )
-   {
-      const Real d = a[ i ] - b[ i ];
-      err_sq += d * d;
-   }
-   return std::sqrt( err_sq );
-}
-
-template < typename VectorType >
-Real RelativeL2Error( const VectorType & a, const VectorType & b )
-{
-   const Real abs_err = AbsoluteL2Error( a, b );
-
-   Real norm_b_sq = 0.0;
-   for ( Integer i = 0; i < b.Size(); ++i )
-   {
-      norm_b_sq += b[ i ] * b[ i ];
-   }
-
-   const Real norm_b = std::sqrt( norm_b_sq );
-   if ( norm_b == 0.0 )
-   {
-      return abs_err;
-   }
-   return abs_err / norm_b;
-}
-
 template <
    typename TrialKernelPolicy,
    typename TestKernelPolicy,
@@ -159,49 +51,6 @@ Vector ApplyL2Projection(
    GENDIL_DEVICE_SYNC;
 
    return y;
-}
-
-template < typename A, typename B >
-bool CheckClose(
-   const char * label,
-   const A & observed,
-   const B & expected,
-   const Real tolerance )
-{
-   const Real rel_error = RelativeL2Error( observed, expected );
-   std::cout << label << " relative L2 error = " << rel_error << '\n';
-   if ( rel_error > tolerance )
-   {
-      std::cout << "FAILED: " << label << " exceeded tolerance "
-                << tolerance << ".\n";
-      return false;
-   }
-   return true;
-}
-
-template < typename Config >
-bool CheckZeroWorkItems( const char * label )
-{
-   DeviceBuffer< long long > marker( 1, sentinel );
-   auto marker_data = marker.data;
-
-   Config::BlockLoop(
-      0,
-      [=] GENDIL_HOST_DEVICE ( Config ) mutable
-      {
-         marker_data[ 0 ] = 1;
-      } );
-   GENDIL_DEVICE_SYNC;
-
-   marker.CopyToHost();
-
-   const bool success = marker.data.host_pointer[ 0 ] == sentinel;
-   if ( !success )
-   {
-      std::cout << "FAILED: zero-work-item launch wrote in "
-                << label << ".\n";
-   }
-   return success;
 }
 
 Vector MakeInputVector( const Integer size )
@@ -239,9 +88,18 @@ bool RunL2ProjectionCaseForCellCount(
    if ( num_cells == 0 )
    {
       bool success = true;
-      success = CheckZeroWorkItems< LegacyConfig >( label ) && success;
-      success = CheckZeroWorkItems< DeviceBatch1 >( label ) && success;
-      success = CheckZeroWorkItems< DeviceBatchN >( label ) && success;
+      success =
+         CheckZeroWorkItems< LegacyConfig >(
+            label,
+            integer_sentinel ) && success;
+      success =
+         CheckZeroWorkItems< DeviceBatch1 >(
+            label,
+            integer_sentinel ) && success;
+      success =
+         CheckZeroWorkItems< DeviceBatchN >(
+            label,
+            integer_sentinel ) && success;
       return success;
    }
 
@@ -286,19 +144,19 @@ bool RunL2ProjectionCaseForCellCount(
    bool success = true;
    std::cout << label << ", num_cells = " << num_cells << '\n';
    success =
-      CheckClose(
+      CheckRelativeL2Close(
          "DeviceBatchN vs LegacyConfig",
          y_batchn,
          y_legacy,
          tolerance ) && success;
    success =
-      CheckClose(
+      CheckRelativeL2Close(
          "DeviceBatchN vs DeviceBatch1",
          y_batchn,
          y_batch1,
          tolerance ) && success;
    success =
-      CheckClose(
+      CheckRelativeL2Close(
          "DeviceBatch1 vs LegacyConfig",
          y_batch1,
          y_legacy,
@@ -327,8 +185,14 @@ bool RunRegisterOnlyL2ProjectionCaseForCellCount(
    if ( num_cells == 0 )
    {
       bool success = true;
-      success = CheckZeroWorkItems< DeviceBatch1 >( label ) && success;
-      success = CheckZeroWorkItems< DeviceBatchN >( label ) && success;
+      success =
+         CheckZeroWorkItems< DeviceBatch1 >(
+            label,
+            integer_sentinel ) && success;
+      success =
+         CheckZeroWorkItems< DeviceBatchN >(
+            label,
+            integer_sentinel ) && success;
       return success;
    }
 
@@ -365,55 +229,11 @@ bool RunRegisterOnlyL2ProjectionCaseForCellCount(
 
    constexpr Real tolerance = 1e-10;
    std::cout << label << ", num_cells = " << num_cells << '\n';
-   return CheckClose(
+   return CheckRelativeL2Close(
       "Register-only DeviceBatchN vs DeviceBatch1",
       y_batchn,
       y_batch1,
       tolerance );
-}
-
-template < Integer BatchSize, typename Lambda >
-bool RunConservativeCellCases( Lambda && run_case )
-{
-   bool success = true;
-   success = run_case( GlobalIndex{ 1 } ) && success;
-   success = run_case( GlobalIndex{ BatchSize + 1 } ) && success;
-   return success;
-}
-
-template < Integer BatchSize, typename Lambda >
-bool RunNormalizedCellCases( Lambda && run_case )
-{
-   const std::array< GlobalIndex, 6 > candidates{
-      0,
-      1,
-      BatchSize - 1,
-      BatchSize,
-      BatchSize + 1,
-      10
-   };
-   std::array< GlobalIndex, 6 > cases{};
-   Integer num_cases = 0;
-
-   for ( const GlobalIndex candidate : candidates )
-   {
-      bool found = false;
-      for ( Integer i = 0; i < num_cases; ++i )
-      {
-         found = found || cases[ i ] == candidate;
-      }
-      if ( !found )
-      {
-         cases[ num_cases++ ] = candidate;
-      }
-   }
-
-   bool success = true;
-   for ( Integer i = 0; i < num_cases; ++i )
-   {
-      success = run_case( cases[ i ] ) && success;
-   }
-   return success;
 }
 
 template <
