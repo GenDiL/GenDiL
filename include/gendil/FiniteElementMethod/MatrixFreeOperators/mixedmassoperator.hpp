@@ -38,7 +38,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MixedMassElementOperator(
-   const KernelPolicy & kernel_conf,
+   KernelPolicy & kernel_conf,
    const TrialFiniteElementSpace & trial_fe_space,
    const TestFiniteElementSpace & test_fe_space,
    const GlobalIndex element_index,
