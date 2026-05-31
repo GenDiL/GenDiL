@@ -1226,6 +1226,181 @@ bool RunDebugVariantCase()
    return success;
 }
 
+template <
+   typename Layout,
+   Integer MaxSharedDimensions,
+   GlobalIndex NumCells >
+bool RunThreadDimHypothesisCase( const char * label )
+{
+   static constexpr Integer BatchSize = device_warp_size;
+   static constexpr Integer space_dim = 1;
+
+   if ( !LaunchConfigurationFits< Layout, BatchSize >( label ) )
+   {
+      return true;
+   }
+
+   using LegacyConfig =
+      ThreadFirstKernelConfiguration< Layout, MaxSharedDimensions >;
+   using DeviceBatch1 =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, 1 >;
+   using DeviceBatchN =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, BatchSize >;
+
+   static constexpr Integer order = 3;
+   static constexpr Integer num_quad_1d = order + 2;
+
+   const Real h = 1.0 / static_cast< Real >( NumCells );
+   Cartesian1DMesh mesh( h, NumCells );
+
+   FiniteElementOrders< order > orders;
+   auto finite_element = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
+
+   IntegrationRuleNumPoints< num_quad_1d > num_quads;
+   auto integration_rule = MakeIntegrationRule( num_quads );
+
+   Vector input = MakeInputVector(
+      fe_space.GetNumberOfFiniteElementDofs() );
+   auto zero =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         0.0 );
+
+   auto y_legacy =
+      ApplyFilteredGradGradWithInitial< LegacyConfig >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batch1 =
+      ApplyFilteredGradGradWithInitial< DeviceBatch1 >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_filtered =
+      ApplyFilteredGradGradWithInitial< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_early_return =
+      ApplyEarlyReturnGradGradWithInitial< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_all_candidate =
+      ApplyAllCandidateGradGradWithInitial< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+
+   constexpr Real tolerance = 1.0e-10;
+   bool success = true;
+
+   std::cout
+      << "Thread-dim hypothesis case: " << label
+      << ", num_cells = " << NumCells
+      << ", thread_block_dim = " << Layout::thread_block_dim
+      << ", space_dim = " << space_dim
+      << ", thread_dim_gt_space_dim = "
+      << ( Layout::thread_block_dim > space_dim )
+      << ", logical_threads_per_work_item = "
+      << Layout::GetNumberOfThreads() << '\n';
+
+   success =
+      CheckScaledL2Close(
+         "  DeviceBatch1 vs LegacyConfig",
+         y_batch1,
+         y_legacy,
+         tolerance ) && success;
+   const bool filtered_ok =
+      PrintScaledL2Diagnostic(
+         "  Filtered DeviceBatchN vs DeviceBatch1",
+         y_filtered,
+         y_batch1,
+         tolerance );
+   const bool early_return_ok =
+      PrintScaledL2Diagnostic(
+         "  Early-return DeviceBatchN vs DeviceBatch1",
+         y_early_return,
+         y_batch1,
+         tolerance );
+   success =
+      CheckScaledL2Close(
+         "  All-candidate DeviceBatchN vs DeviceBatch1",
+         y_all_candidate,
+         y_batch1,
+         tolerance ) && success;
+
+   std::cout
+      << "  SUMMARY " << label
+      << ": filtered_ok=" << filtered_ok
+      << ", early_return_ok=" << early_return_ok
+      << ", all_candidate_required_ok=" << success
+      << ". Extra logical dimensions are diagnostic-only evidence here.\n";
+
+   return success;
+}
+
+template < GlobalIndex NumCells >
+bool RunThreadDimHypothesisSweepForCellCount()
+{
+   bool success = true;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 1 >,
+         1,
+         NumCells >(
+            "ThreadBlockLayout<1>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 4 >,
+         1,
+         NumCells >(
+            "ThreadBlockLayout<4>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 1, 1 >,
+         2,
+         NumCells >(
+            "ThreadBlockLayout<1,1>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 4, 1 >,
+         2,
+         NumCells >(
+            "ThreadBlockLayout<4,1>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 1, 4 >,
+         2,
+         NumCells >(
+            "ThreadBlockLayout<1,4>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 2, 2 >,
+         2,
+         NumCells >(
+            "ThreadBlockLayout<2,2>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 3, 5 >,
+         2,
+         NumCells >(
+            "ThreadBlockLayout<3,5>" ) && success;
+   success =
+      RunThreadDimHypothesisCase<
+         ThreadBlockLayout< 2, 2, 2 >,
+         3,
+         NumCells >(
+            "ThreadBlockLayout<2,2,2>" ) && success;
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -1233,6 +1408,10 @@ int main()
    bool success = true;
    success = RunDebugVariantCase< 64 >() && success;
    success = RunDebugVariantCase< 65 >() && success;
+   std::cout
+      << "Running compact thread_dim > space_dim hypothesis sweep.\n";
+   success = RunThreadDimHypothesisSweepForCellCount< 64 >() && success;
+   success = RunThreadDimHypothesisSweepForCellCount< 65 >() && success;
    return success ? 0 : 1;
 }
 
