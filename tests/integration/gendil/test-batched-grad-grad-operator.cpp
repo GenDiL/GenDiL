@@ -168,8 +168,24 @@ bool PrintScaledL2Diagnostic(
    return ok;
 }
 
+template < Integer BatchSize >
+bool IsFinalPartialBatch( const GlobalIndex num_cells )
+{
+   return BatchSize > 1 && num_cells > 0 && num_cells % BatchSize != 0;
+}
+
+template < Integer BatchSize >
+const char * BatchClassification( const GlobalIndex num_cells )
+{
+   return IsFinalPartialBatch< BatchSize >( num_cells )
+      ? "partial-batch"
+      : "full-batch";
+}
+
 void PrintFirstMismatches(
    const char * label,
+   const char * output_view_mode,
+   const char * batch_classification,
    const Vector & final,
    const Vector & initial,
    const Vector & oracle,
@@ -187,7 +203,10 @@ void PrintFirstMismatches(
       const Real scale = std::max( Real{ 1.0 }, std::abs( oracle_data[ i ] ) );
       if ( std::abs( final_data[ i ] - oracle_data[ i ] ) > tolerance * scale )
       {
-         std::cout << label << " first mismatch: index=" << i
+         std::cout << label << " first mismatch: output-view="
+                   << output_view_mode
+                   << ", batch=" << batch_classification
+                   << ", index=" << i
                    << ", oracle value=" << oracle_data[ i ]
                    << ", initialized value=" << initial_data[ i ]
                    << ", final value=" << final_data[ i ]
@@ -200,6 +219,35 @@ void PrintFirstMismatches(
          }
       }
    }
+}
+
+bool CheckScaledL2CloseWithMismatches(
+   const char * label,
+   const char * output_view_mode,
+   const char * batch_classification,
+   const Vector & final,
+   const Vector & initial,
+   const Vector & oracle,
+   const Real tolerance )
+{
+   const bool ok =
+      CheckScaledL2Close(
+         label,
+         final,
+         oracle,
+         tolerance );
+   if ( !ok )
+   {
+      PrintFirstMismatches(
+         label,
+         output_view_mode,
+         batch_classification,
+         final,
+         initial,
+         oracle,
+         tolerance );
+   }
+   return ok;
 }
 
 void FillH1LineRestriction(
@@ -310,7 +358,13 @@ bool RunL2CaseForCellCount(
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
-   std::cout << label << " L2, num_cells = " << num_cells << '\n';
+   const char * output_view_mode =
+      OutputViewModeName( OutputViewMode::production_write_only_output_view );
+   const char * batch_classification =
+      BatchClassification< BatchSize >( num_cells );
+   std::cout << label << " L2, num_cells = " << num_cells
+             << ", output-view=" << output_view_mode
+             << ", batch=" << batch_classification << '\n';
 
    if constexpr ( CompareLegacy )
    {
@@ -323,23 +377,32 @@ bool RunL2CaseForCellCount(
                input,
                zero );
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatchN vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batchn,
+            zero,
             y_legacy,
             tolerance ) && success;
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatch1 vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batch1,
+            zero,
             y_legacy,
             tolerance ) && success;
    }
 
    success =
-      CheckScaledL2Close(
+      CheckScaledL2CloseWithMismatches(
          "DeviceBatchN vs DeviceBatch1",
+         output_view_mode,
+         batch_classification,
          y_batchn,
+         zero,
          y_batch1,
          tolerance ) && success;
 
@@ -357,20 +420,14 @@ bool RunL2CaseForCellCount(
             sentinel_initial );
 
    const bool sentinel_overwrite_ok =
-      CheckScaledL2Close(
+      CheckScaledL2CloseWithMismatches(
          "DeviceBatchN L2 overwrite from sentinel",
-         direct_sentinel,
-         y_batchn,
-         tolerance );
-   if ( !sentinel_overwrite_ok )
-   {
-      PrintFirstMismatches(
-         "DeviceBatchN L2 overwrite from sentinel",
+         output_view_mode,
+         batch_classification,
          direct_sentinel,
          sentinel_initial,
          y_batchn,
          tolerance );
-   }
    success = sentinel_overwrite_ok && success;
    success =
       CheckNoValue(
@@ -382,7 +439,9 @@ bool RunL2CaseForCellCount(
 }
 
 template < OutputViewMode Mode >
-bool RunFocusedL2OutputViewDiagnostic()
+bool RunFocusedL2OutputViewDiagnostic(
+   const GlobalIndex num_cells,
+   const bool production_write_only_passed = false )
 {
    using Layout = ThreadBlockLayout< 5 >;
    static constexpr Integer MaxSharedDimensions = 1;
@@ -393,6 +452,8 @@ bool RunFocusedL2OutputViewDiagnostic()
       DeviceKernelConfiguration< Layout, MaxSharedDimensions, BatchSize >;
 
    const char * mode_label = OutputViewModeName( Mode );
+   const char * batch_classification =
+      BatchClassification< BatchSize >( num_cells );
    if ( !LaunchConfigurationFits< Layout, BatchSize >( mode_label ) )
    {
       return true;
@@ -400,8 +461,6 @@ bool RunFocusedL2OutputViewDiagnostic()
 
    static constexpr Integer order = 3;
    static constexpr Integer num_quad_1d = order + 2;
-   static constexpr GlobalIndex num_cells = 64;
-
    const Real h = 1.0 / static_cast< Real >( num_cells );
    Cartesian1DMesh mesh( h, num_cells );
 
@@ -464,13 +523,22 @@ bool RunFocusedL2OutputViewDiagnostic()
 
    std::cout
       << "Focused GradGrad L2 output-view diagnostic: " << mode_label
-      << ", ThreadBlockLayout<5>, BatchSize=device_warp_size, num_cells=64.\n";
+      << ", ThreadBlockLayout<5>, BatchSize=device_warp_size, num_cells="
+      << num_cells << ", batch=" << batch_classification << ".\n";
    std::cout
       << "  Audit: production GradGrad operator()/Mult() uses a write-only "
       << "output view; diagnostic_read_write_output_view is diagnostic only. "
       << "Scalar L2 ThreadedWriteDofs<Add=false> should assign, while H1 "
       << "shared DOFs accumulate. No GradGrad local staging buffer is expected "
       << "to initialize from global y.\n";
+   if ( IsFinalPartialBatch< BatchSize >( num_cells ) )
+   {
+      std::cout
+         << "  Audit: this is a final partial batch. "
+         << "production_write_only_output_view is a gating production "
+         << "validation path; diagnostic_read_write_output_view is "
+         << "non-gating classification only.\n";
+   }
 
    const bool zero_ok =
       PrintScaledL2Diagnostic(
@@ -512,6 +580,8 @@ bool RunFocusedL2OutputViewDiagnostic()
    {
       PrintFirstMismatches(
          "focused y_zero vs oracle",
+         mode_label,
+         batch_classification,
          y_zero,
          zero,
          oracle,
@@ -521,6 +591,8 @@ bool RunFocusedL2OutputViewDiagnostic()
    {
       PrintFirstMismatches(
          "focused y_sentinel vs oracle",
+         mode_label,
+         batch_classification,
          y_sentinel,
          sentinel_initial,
          oracle,
@@ -530,6 +602,8 @@ bool RunFocusedL2OutputViewDiagnostic()
    {
       PrintFirstMismatches(
          "focused y_baseline vs oracle",
+         mode_label,
+         batch_classification,
          y_baseline,
          baseline_initial,
          oracle,
@@ -551,22 +625,74 @@ bool RunFocusedL2OutputViewDiagnostic()
       }
       else
       {
-         std::cout
-            << "  CLASSIFICATION: diagnostic_read_write_additive_artifact; "
-            << "subtracting the initial output recovers the oracle.\n";
+         if ( production_write_only_passed )
+         {
+            std::cout
+               << "  CLASSIFICATION: diagnostic_output_view_artifact "
+               << "(diagnostic_read_write_additive_artifact); "
+               << "production_write_only_output_view passed for this "
+               << batch_classification
+               << ", so the read-write diagnostic does not narrow the "
+               << "production GradGrad validation contract.\n";
+         }
+         else
+         {
+            std::cout
+               << "  CLASSIFICATION: diagnostic_read_write_additive_artifact; "
+               << "subtracting the initial output recovers the oracle.\n";
+         }
       }
    }
    else if ( zero_ok )
    {
-      std::cout
-         << "  CLASSIFICATION: output-state dependent mismatch; subtracting "
-         << "the initial output does not fully recover the oracle.\n";
+      if constexpr ( production_mode )
+      {
+         std::cout
+            << "  CLASSIFICATION: output-state dependent mismatch; "
+            << "subtracting the initial output does not fully recover the "
+            << "oracle.\n";
+      }
+      else if ( production_write_only_passed )
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic_output_view_artifact; "
+            << "production_write_only_output_view passed for this "
+            << batch_classification
+            << ", so the read-write diagnostic does not narrow the "
+            << "production GradGrad validation contract.\n";
+      }
+      else
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic read-write output-state "
+            << "dependent mismatch; subtracting the initial output does not "
+            << "fully recover the oracle.\n";
+      }
    }
    else
    {
-      std::cout
-         << "  CLASSIFICATION: zero-initialized output also mismatches the "
-         << "oracle, suggesting a full GradGrad staging or batching issue.\n";
+      if constexpr ( production_mode )
+      {
+         std::cout
+            << "  CLASSIFICATION: zero-initialized production output also "
+            << "mismatches the oracle, suggesting a full GradGrad staging or "
+            << "batching issue.\n";
+      }
+      else if ( production_write_only_passed )
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic_output_view_artifact; "
+            << "production_write_only_output_view passed for this "
+            << batch_classification
+            << ", so the read-write diagnostic does not narrow the "
+            << "production GradGrad validation contract.\n";
+      }
+      else
+      {
+         std::cout
+            << "  CLASSIFICATION: zero-initialized diagnostic read-write "
+            << "output also mismatches the oracle.\n";
+      }
    }
 
    if constexpr ( production_mode )
@@ -663,7 +789,12 @@ bool RunH1CaseForCellCount(
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
-   std::cout << label << " H1, num_cells = " << num_cells << '\n';
+   const char * output_view_mode = "production_h1_accumulation_output_view";
+   const char * batch_classification =
+      BatchClassification< BatchSize >( num_cells );
+   std::cout << label << " H1, num_cells = " << num_cells
+             << ", output-view=" << output_view_mode
+             << ", batch=" << batch_classification << '\n';
 
    if constexpr ( CompareLegacy )
    {
@@ -674,23 +805,32 @@ bool RunH1CaseForCellCount(
             input,
             zero );
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatchN vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batchn,
+            zero,
             y_legacy,
             tolerance ) && success;
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatch1 vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batch1,
+            zero,
             y_legacy,
             tolerance ) && success;
    }
 
    success =
-      CheckScaledL2Close(
+      CheckScaledL2CloseWithMismatches(
          "DeviceBatchN vs DeviceBatch1",
+         output_view_mode,
+         batch_classification,
          y_batchn,
+         zero,
          y_batch1,
          tolerance ) && success;
 
@@ -702,9 +842,12 @@ bool RunH1CaseForCellCount(
          baseline );
    auto expected_accumulated = AddVectors( baseline, y_batchn );
    success =
-      CheckScaledL2Close(
+      CheckScaledL2CloseWithMismatches(
          "DeviceBatchN H1 accumulation from baseline",
+         output_view_mode,
+         batch_classification,
          direct_baseline,
+         baseline,
          expected_accumulated,
          tolerance ) && success;
 
@@ -740,6 +883,7 @@ bool Run2DL2GradientSensitivityCase( const char * label )
 
    const GlobalIndex num_cells_x = 3;
    const GlobalIndex num_cells_y = 5;
+   const GlobalIndex num_cells = num_cells_x * num_cells_y;
    Cartesian1DMesh mesh_x(
       1.0 / static_cast< Real >( num_cells_x ),
       num_cells_x );
@@ -763,48 +907,71 @@ bool Run2DL2GradientSensitivityCase( const char * label )
          0.0 );
 
    auto y_batch1 =
-      ApplyGradGradWithInitial< DeviceBatch1 >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
-   auto y_batchn =
-      ApplyGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
-
-   constexpr Real tolerance = 1.0e-10;
-   bool success = true;
-   std::cout << label << " 2D L2 gradient sensitivity\n";
-
-   if constexpr ( CompareLegacy )
-   {
-      auto y_legacy =
-         ApplyGradGradWithInitial< LegacyConfig >(
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatch1 >(
             fe_space,
             integration_rule,
             input,
             zero );
+   auto y_batchn =
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
+
+   constexpr Real tolerance = 1.0e-10;
+   bool success = true;
+   const char * output_view_mode =
+      OutputViewModeName( OutputViewMode::production_write_only_output_view );
+   const char * batch_classification =
+      BatchClassification< BatchSize >( num_cells );
+   std::cout
+      << label
+      << " 2D L2 gradient-component sensitivity, output-view="
+      << output_view_mode << ", batch=" << batch_classification
+      << "; this is not a 2D logical-thread-layout coverage test.\n";
+
+   if constexpr ( CompareLegacy )
+   {
+      auto y_legacy =
+         ApplyGradGradWithInitialView<
+            OutputViewMode::production_write_only_output_view,
+            LegacyConfig >(
+               fe_space,
+               integration_rule,
+               input,
+               zero );
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatchN vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batchn,
+            zero,
             y_legacy,
             tolerance ) && success;
       success =
-         CheckScaledL2Close(
+         CheckScaledL2CloseWithMismatches(
             "DeviceBatch1 vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
             y_batch1,
+            zero,
             y_legacy,
             tolerance ) && success;
    }
 
    success =
-      CheckScaledL2Close(
+      CheckScaledL2CloseWithMismatches(
          "DeviceBatchN vs DeviceBatch1",
+         output_view_mode,
+         batch_classification,
          y_batchn,
+         zero,
          y_batch1,
          tolerance ) && success;
    return success;
@@ -843,6 +1010,11 @@ bool TestThreadedGradGrad()
    static constexpr Integer MaxSharedDimensions = 1;
    static_assert( Layout::GetNumberOfThreads() == 5 );
 
+   std::cout
+      << "Threaded GradGrad validation scope: production validation covers "
+      << "full and final partial batches. Diagnostic read-write output-view "
+      << "experiments are non-gating classification tools only.\n";
+
    bool success = true;
    success =
       RunGradGradBatchCases< Layout, MaxSharedDimensions, 1, true >(
@@ -867,13 +1039,25 @@ bool TestThreadedGradGrad()
 bool TestFocusedL2OutputViewDiagnostic()
 {
    bool success = true;
+   const bool production_64_success =
+      RunFocusedL2OutputViewDiagnostic<
+         OutputViewMode::production_write_only_output_view >( 64 );
+   success = production_64_success && success;
    success =
       RunFocusedL2OutputViewDiagnostic<
-         OutputViewMode::production_write_only_output_view >() &&
+         OutputViewMode::diagnostic_read_write_output_view >(
+            64,
+            production_64_success ) &&
       success;
+   const bool production_65_success =
+      RunFocusedL2OutputViewDiagnostic<
+         OutputViewMode::production_write_only_output_view >( 65 );
+   success = production_65_success && success;
    success =
       RunFocusedL2OutputViewDiagnostic<
-         OutputViewMode::diagnostic_read_write_output_view >() &&
+         OutputViewMode::diagnostic_read_write_output_view >(
+            65,
+            production_65_success ) &&
       success;
    return success;
 }

@@ -398,13 +398,20 @@ bool TestFocusedThreadedLayout()
    using Layout = ThreadBlockLayout< 5 >;
    static constexpr Integer MaxSharedDimensions = 1;
 
+   bool success = true;
    std::cout
       << "Focused write-coverage diagnostic: scalar L2 "
       << "ThreadedWriteDofs<Add=false> should assign the synthetic local "
       << "value over the nonzero per-entry baseline, not add to it.\n";
-   return RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
-      "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
-      64 );
+   success =
+      RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
+         "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
+         64 ) && success;
+   success =
+      RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
+         "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
+         65 ) && success;
+   return success;
 }
 
 bool TestIrregularDiagnosticLayout()
