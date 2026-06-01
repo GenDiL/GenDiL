@@ -27,6 +27,10 @@ if(USE_CUDA OR USE_HIP)
     test-batched-grad-grad-debug-variants
     test-batched-grad-grad-debug-variants.cpp
   )
+  add_my_test(
+    test-threaded-helper-undercoverage
+    test-threaded-helper-undercoverage.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
     test-batched-l2-projection-operator
@@ -36,6 +40,7 @@ if(USE_CUDA OR USE_HIP)
     test-batched-grad-grad-operator
     test-batched-grad-grad-write-coverage
     test-batched-grad-grad-debug-variants
+    test-threaded-helper-undercoverage
     PROPERTIES
     TIMEOUT 30
   )
