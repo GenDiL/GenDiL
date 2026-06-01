@@ -258,7 +258,7 @@ void CountThreadLoopVisits(
       [&] GENDIL_HOST_DEVICE ( auto... indices )
       {
          const GlobalIndex index = FlatIndex( Shape{}, indices... );
-         AtomicAdd( output[ base + index ], Real{ 1.0 } );
+         gendil::AtomicAdd( output[ base + index ], Real{ 1.0 } );
       } );
 }
 
@@ -290,7 +290,7 @@ void CountQuadratureLoopVisits(
                   index = index * dim + quad_index[ I ];
                }
             } );
-         AtomicAdd( output[ base + index ], Real{ 1.0 } );
+         gendil::AtomicAdd( output[ base + index ], Real{ 1.0 } );
       } );
 }
 
@@ -665,13 +665,16 @@ void RunHelperCoverageKernel(
             item,
             gradient_input );
 
+         auto gradient_test_q =
+            ApplyGradientTestFunctionsAtQPoints(
+               kernel_conf,
+               element_quad_data,
+               gradient_input );
          auto applied_gradient =
-            MakeStaticFIFOView< Real >( RegisterDofShape{} );
-         ApplyGradientTestFunctions< false >(
-            kernel_conf,
-            element_quad_data,
-            gradient_input,
-            applied_gradient );
+            ApplyTestFunctions(
+               kernel_conf,
+               element_quad_data,
+               gradient_test_q );
          StoreDofSlice<
             KernelContext< Config, required_shared_mem >,
             FiniteElementSpace >(
@@ -681,14 +684,17 @@ void RunHelperCoverageKernel(
                output,
                segment_offsets[ apply_gradient_test_functions_segment ] );
 
+         auto values_and_gradient_test_q =
+            ApplyGradientTestFunctionsAtQPoints(
+               kernel_conf,
+               element_quad_data,
+               gradient_input );
+         values_and_gradient_test_q += quad_input;
          auto applied_values_and_gradient =
-            MakeStaticFIFOView< Real >( RegisterDofShape{} );
-         ApplyValuesAndGradientTestFunctions< false >(
-            kernel_conf,
-            element_quad_data,
-            quad_input,
-            gradient_input,
-            applied_values_and_gradient );
+            ApplyTestFunctions(
+               kernel_conf,
+               element_quad_data,
+               values_and_gradient_test_q );
          StoreDofSlice<
             KernelContext< Config, required_shared_mem >,
             FiniteElementSpace >(
