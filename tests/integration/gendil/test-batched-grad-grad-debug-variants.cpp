@@ -1338,11 +1338,6 @@ template <
    GlobalIndex NumCells >
 void RunLayoutBatchSweepCase( const char * label )
 {
-   if ( !LaunchConfigurationFits< Layout, BatchSize >( label ) )
-   {
-      return;
-   }
-
    using LegacyConfig =
       ThreadFirstKernelConfiguration< Layout, MaxSharedDimensions >;
    using DeviceBatch1 =
@@ -1352,64 +1347,97 @@ void RunLayoutBatchSweepCase( const char * label )
 
    static constexpr Integer order = 3;
    static constexpr Integer num_quad_1d = order + 2;
+   using DofShape = orders_to_num_dofs< FiniteElementOrders< order > >;
+   using QuadShape = std::index_sequence< num_quad_1d >;
+   using HelperShape = max_sequence_t< DofShape, QuadShape >;
 
-   const Real h = 1.0 / static_cast< Real >( NumCells );
-   Cartesian1DMesh mesh( h, NumCells );
+   if constexpr (
+      !threaded_shape_covered_v< LegacyConfig, HelperShape > ||
+      !threaded_shape_covered_v< DeviceBatch1, HelperShape > ||
+      !threaded_shape_covered_v< DeviceBatchN, HelperShape > )
+   {
+      const bool divides_wavefront =
+         device_warp_size % Layout::GetNumberOfThreads() == 0;
+      const char * batch_classification =
+         NumCells % BatchSize == 0 ? "full-batch" : "partial-batch";
+      std::cout
+         << "NON-GATING layout/batch sweep skipped: " << label
+         << ", BatchSize=" << BatchSize
+         << ", num_cells=" << NumCells
+         << ", batch=" << batch_classification
+         << ", threads_per_work_item=" << Layout::GetNumberOfThreads()
+         << ", divides_wavefront=" << divides_wavefront
+         << ". The current threaded helper guard requires coverage of "
+         << "max(dof extent 4, quadrature extent 5), so this layout is "
+         << "unsupported for the order-3/q=5 GradGrad L2/DG path.\n";
+   }
+   else
+   {
+      if ( !LaunchConfigurationFits< Layout, BatchSize >( label ) )
+      {
+         return;
+      }
 
-   FiniteElementOrders< order > orders;
-   auto finite_element = MakeLegendreFiniteElement( orders );
-   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
+      const Real h = 1.0 / static_cast< Real >( NumCells );
+      Cartesian1DMesh mesh( h, NumCells );
 
-   IntegrationRuleNumPoints< num_quad_1d > num_quads;
-   auto integration_rule = MakeIntegrationRule( num_quads );
+      FiniteElementOrders< order > orders;
+      auto finite_element = MakeLegendreFiniteElement( orders );
+      auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
 
-   Vector input = MakeInputVector(
-      fe_space.GetNumberOfFiniteElementDofs() );
-   auto zero =
-      MakeConstantVector(
-         fe_space.GetNumberOfFiniteElementDofs(),
-         0.0 );
+      IntegrationRuleNumPoints< num_quad_1d > num_quads;
+      auto integration_rule = MakeIntegrationRule( num_quads );
 
-   auto y_legacy =
-      ApplyProductionWriteOnlyGradGradWithInitial< LegacyConfig >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
-   auto y_batch1 =
-      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatch1 >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
-   auto y_batchn =
-      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
+      Vector input = MakeInputVector(
+         fe_space.GetNumberOfFiniteElementDofs() );
+      auto zero =
+         MakeConstantVector(
+            fe_space.GetNumberOfFiniteElementDofs(),
+            0.0 );
 
-   constexpr Real tolerance = 1.0e-10;
-   const Real err_batch1 = ScaledL2Error( y_batchn, y_batch1 );
-   const Real err_legacy = ScaledL2Error( y_batchn, y_legacy );
-   const bool batch1_ok = std::isfinite( err_batch1 ) && err_batch1 <= tolerance;
-   const bool legacy_ok = std::isfinite( err_legacy ) && err_legacy <= tolerance;
-   const bool divides_wavefront =
-      device_warp_size % Layout::GetNumberOfThreads() == 0;
-   const char * batch_classification =
-      NumCells % BatchSize == 0 ? "full-batch" : "partial-batch";
+      auto y_legacy =
+         ApplyProductionWriteOnlyGradGradWithInitial< LegacyConfig >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
+      auto y_batch1 =
+         ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatch1 >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
+      auto y_batchn =
+         ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
 
-   std::cout
-      << "NON-GATING layout/batch sweep: " << label
-      << ", BatchSize=" << BatchSize
-      << ", num_cells=" << NumCells
-      << ", batch=" << batch_classification
-      << ", threads_per_work_item=" << Layout::GetNumberOfThreads()
-      << ", divides_wavefront=" << divides_wavefront
-      << ", vs same-layout DeviceBatch1 error=" << err_batch1
-      << " (" << ( batch1_ok ? "PASS" : "FAIL" ) << ")"
-      << ", vs LegacyConfig error=" << err_legacy
-      << " (" << ( legacy_ok ? "PASS" : "FAIL" ) << ").\n";
+      constexpr Real tolerance = 1.0e-10;
+      const Real err_batch1 = ScaledL2Error( y_batchn, y_batch1 );
+      const Real err_legacy = ScaledL2Error( y_batchn, y_legacy );
+      const bool batch1_ok =
+         std::isfinite( err_batch1 ) && err_batch1 <= tolerance;
+      const bool legacy_ok =
+         std::isfinite( err_legacy ) && err_legacy <= tolerance;
+      const bool divides_wavefront =
+         device_warp_size % Layout::GetNumberOfThreads() == 0;
+      const char * batch_classification =
+         NumCells % BatchSize == 0 ? "full-batch" : "partial-batch";
+
+      std::cout
+         << "NON-GATING layout/batch sweep: " << label
+         << ", BatchSize=" << BatchSize
+         << ", num_cells=" << NumCells
+         << ", batch=" << batch_classification
+         << ", threads_per_work_item=" << Layout::GetNumberOfThreads()
+         << ", divides_wavefront=" << divides_wavefront
+         << ", vs same-layout DeviceBatch1 error=" << err_batch1
+         << " (" << ( batch1_ok ? "PASS" : "FAIL" ) << ")"
+         << ", vs LegacyConfig error=" << err_legacy
+         << " (" << ( legacy_ok ? "PASS" : "FAIL" ) << ").\n";
+   }
 }
 
 template < typename Layout, Integer MaxSharedDimensions, GlobalIndex NumCells >
