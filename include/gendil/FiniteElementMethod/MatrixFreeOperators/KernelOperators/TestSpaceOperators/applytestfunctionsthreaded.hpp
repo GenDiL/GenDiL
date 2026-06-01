@@ -309,6 +309,7 @@ auto ApplyTestFunctionsThreaded(
       });
    });
 
+   thread.Synchronize();
    thread.SharedAllocator.reset();
 
    // return y;

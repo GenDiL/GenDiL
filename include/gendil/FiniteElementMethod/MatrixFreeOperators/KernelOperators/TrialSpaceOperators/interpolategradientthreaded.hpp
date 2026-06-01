@@ -177,6 +177,7 @@ void InterpolateGradientAtQPointsThreaded(
       });
    });
 
+   thread.Synchronize();
    thread.SharedAllocator.reset();
 }
 

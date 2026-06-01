@@ -292,6 +292,7 @@ auto InterpolateValuesThreaded(
       Swap( register_buffer1, register_buffer2 );
    });
 
+   thread.Synchronize();
    thread.SharedAllocator.reset();
 
    // return MakeFixedFIFOView( register_buffer1, reg_output_shape{} );

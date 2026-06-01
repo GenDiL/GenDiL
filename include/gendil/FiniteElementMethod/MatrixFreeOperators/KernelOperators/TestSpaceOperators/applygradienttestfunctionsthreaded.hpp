@@ -249,6 +249,7 @@ void ApplyGradientTestFunctionsAtQPoints(
       });
    });
 
+   thread.Synchronize();
    thread.SharedAllocator.reset();
 }
 
