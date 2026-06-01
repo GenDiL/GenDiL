@@ -11,6 +11,7 @@
 #include "gendil/Utilities/IndexSequenceHelperFunctions/indexsequencehelperfunctions.hpp"
 #include "gendil/Utilities/VariadicHelperFunctions/variadichelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 
 namespace gendil
 {
@@ -175,6 +176,11 @@ void ApplyGradientTestFunctionsAtQPoints(
    constexpr Integer RegisterBlockDim = Dim - ThreadBlockDim;
 
    using quad_shape = make_contraction_output_shape< ProductOperator >;
+   using dof_shape = make_contraction_input_shape< ProductOperator >;
+   using helper_shape = max_sequence_t< dof_shape, quad_shape >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, helper_shape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
 
 // Threading Strategy
    using ThreadedDimensions = typename KernelContext::template threaded_dimensions< Dim >;

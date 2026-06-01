@@ -338,23 +338,11 @@ bool TestThreadedReferenceLayout()
 
 bool TestIrregularDiagnosticLayout()
 {
-   using Layout = ThreadBlockLayout< 3, 5 >;
-   static constexpr Integer MaxSharedDimensions = 2;
-
    std::cout
-      << "Hypothesis under test: for a 1D path, logical dimension 0 "
-      << "maps to the 1D DOF loop while logical dimension 1 is idle or "
-      << "gating-only. This test verifies whether that extra dimension "
-      << "causes missing, duplicate, or unexpected writers.\n";
-
-   bool success = true;
-   success =
-      RunWriteCoverageCases< Layout, MaxSharedDimensions, 4 >(
-         "ThreadBlockLayout<3,5>, BatchSize=4" ) && success;
-   success =
-      RunWriteCoverageCases< Layout, MaxSharedDimensions, device_warp_size >(
-         "ThreadBlockLayout<3,5>, BatchSize=device_warp_size" ) && success;
-   return success;
+      << "Skipping ThreadBlockLayout<3,5> write-coverage diagnostic: "
+      << "ThreadedWriteDofs now statically rejects under-threaded mapped "
+      << "DOF dimensions.\n";
+   return true;
 }
 
 } // namespace

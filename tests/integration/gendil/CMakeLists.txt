@@ -31,6 +31,10 @@ if(USE_CUDA OR USE_HIP)
     test-threaded-helper-undercoverage
     test-threaded-helper-undercoverage.cpp
   )
+  add_my_test(
+    test-threaded-aggregate-dimensions-diagnostic
+    test-threaded-aggregate-dimensions-diagnostic.cpp
+  )
   set_tests_properties(
     test-batched-mass-operator
     test-batched-l2-projection-operator
@@ -41,6 +45,7 @@ if(USE_CUDA OR USE_HIP)
     test-batched-grad-grad-write-coverage
     test-batched-grad-grad-debug-variants
     test-threaded-helper-undercoverage
+    test-threaded-aggregate-dimensions-diagnostic
     PROPERTIES
     TIMEOUT 30
   )

@@ -42,7 +42,6 @@ enum SegmentId : Integer
    apply_test_functions_segment,
    apply_gradient_test_functions_segment,
    apply_values_and_gradient_test_functions_segment,
-   aggregate_dimensions_segment,
    num_segments
 };
 
@@ -197,8 +196,8 @@ void PrintAuditNote()
       << "  InterpolateValuesAndGradients: diagnostic stores the paired "
       << "value and gradient stages explicitly, without changing production "
       << "wrapper behavior.\n"
-      << "  AggregateDimensions: diagnostic covers the threaded shared "
-         << "aggregation path; facet/global/generic paths remain out of scope.\n";
+      << "  AggregateDimensions: split into a separate diagnostic because it "
+      << "has a distinct shared-accumulator initialization issue.\n";
 }
 
 Integer GetDeviceSharedMemoryPerBlockBytes()
@@ -533,13 +532,15 @@ void RunHelperCoverageKernel(
    using DofShape = orders_to_num_dofs<
       typename ShapeFunctions::orders >;
    using QuadShape = typename IntegrationRule::points::num_points_tensor;
-   using AggregateRule =
-      decltype( GetSubIntegrationRule< 0, 1 >( IntegrationRule{} ) );
-   using AggregateShape = typename AggregateRule::points::num_points_tensor;
+   using HelperShape = max_sequence_t< DofShape, QuadShape >;
 
    constexpr size_t required_shared_mem =
-      required_shared_memory_v< Config, IntegrationRule > +
-      required_shared_memory_v< Config, AggregateRule >;
+      required_shared_memory_v< Config, IntegrationRule >;
+   using Context = KernelContext< Config, required_shared_mem >;
+   static constexpr bool dof_supported =
+      threaded_shape_covered_v< Config, DofShape >;
+   static constexpr bool helper_supported =
+      threaded_shape_covered_v< Config, HelperShape >;
 
    const auto element_quad_data =
       MakeDofToQuad< ShapeFunctions, IntegrationRule >();
@@ -554,11 +555,8 @@ void RunHelperCoverageKernel(
          }
 
          GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               Config,
-               required_shared_mem >::shared_memory_block_size ];
-         KernelContext< Config, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            Context::shared_memory_block_size ];
+         Context kernel_conf( _shared_mem, kernel );
 
          const GlobalIndex item = kernel.WorkItemIndex();
          Real * output = output_data;
@@ -570,8 +568,7 @@ void RunHelperCoverageKernel(
                DofShape{},
                num_items );
 
-         CountThreadLoopVisits< KernelContext< Config, required_shared_mem >,
-                                QuadShape >(
+         CountThreadLoopVisits< Context, QuadShape >(
             kernel_conf,
             output,
             segment_offsets[ thread_loop_segment ] +
@@ -582,61 +579,10 @@ void RunHelperCoverageKernel(
             segment_offsets[ quadrature_loop_segment ] +
                item * sequence_product_v< QuadShape > );
 
-         auto local_read =
-            ReadDofs( kernel_conf, fe_space, item, input_view );
-         StoreDofSlice<
-            KernelContext< Config, required_shared_mem >,
-            FiniteElementSpace >(
-               kernel_conf,
-               item,
-               local_read,
-               output,
-               segment_offsets[ read_dofs_segment ] );
-
          using RegisterDofShape = subsequence_t<
             DofShape,
             typename Config::template register_dimensions<
                DofShape::size() > >;
-         auto local_write = MakeStaticFIFOView< Real >( RegisterDofShape{} );
-         FillDofValues<
-            KernelContext< Config, required_shared_mem >,
-            FiniteElementSpace >(
-               kernel_conf,
-               item,
-               local_write );
-         WriteDofs( kernel_conf, fe_space, item, local_write, write_view );
-
-         auto interpolated_values =
-            InterpolateValues( kernel_conf, element_quad_data, local_read );
-         StoreQuadSlice< IntegrationRule >(
-            kernel_conf,
-            item,
-            interpolated_values,
-            output,
-            segment_offsets[ interpolate_values_segment ] );
-
-         auto interpolated_gradient =
-            InterpolateGradient( kernel_conf, element_quad_data, local_read );
-         StoreGradientSlice< IntegrationRule >(
-            kernel_conf,
-            item,
-            interpolated_gradient,
-            output,
-            segment_offsets[ interpolate_gradient_segment ] );
-
-         StoreQuadSlice< IntegrationRule >(
-            kernel_conf,
-            item,
-            interpolated_values,
-            output,
-            segment_offsets[ values_and_gradients_values_segment ] );
-         StoreGradientSlice< IntegrationRule >(
-            kernel_conf,
-            item,
-            interpolated_gradient,
-            output,
-            segment_offsets[ values_and_gradients_gradient_segment ] );
-
          using RegisterQuadShape = subsequence_t<
             QuadShape,
             typename Config::template register_dimensions<
@@ -644,81 +590,126 @@ void RunHelperCoverageKernel(
          using RegisterGradientShape =
             cat_t< RegisterQuadShape, std::index_sequence< QuadShape::size() > >;
 
-         auto quad_input = MakeStaticFIFOView< Real >( RegisterQuadShape{} );
-         FillQuadValues< IntegrationRule >( kernel_conf, item, quad_input );
+         if constexpr ( dof_supported )
+         {
+            auto local_read =
+               ReadDofs( kernel_conf, fe_space, item, input_view );
+            StoreDofSlice< Context, FiniteElementSpace >(
+                  kernel_conf,
+                  item,
+                  local_read,
+                  output,
+                  segment_offsets[ read_dofs_segment ] );
 
-         auto applied_test =
-            ApplyTestFunctions( kernel_conf, element_quad_data, quad_input );
-         StoreDofSlice<
-            KernelContext< Config, required_shared_mem >,
-            FiniteElementSpace >(
+            auto local_write =
+               MakeStaticFIFOView< Real >( RegisterDofShape{} );
+            FillDofValues< Context, FiniteElementSpace >(
+                  kernel_conf,
+                  item,
+                  local_write );
+            WriteDofs( kernel_conf, fe_space, item, local_write, write_view );
+
+            if constexpr ( helper_supported )
+            {
+               auto interpolated_values =
+                  InterpolateValues(
+                     kernel_conf,
+                     element_quad_data,
+                     local_read );
+               StoreQuadSlice< IntegrationRule >(
+                  kernel_conf,
+                  item,
+                  interpolated_values,
+                  output,
+                  segment_offsets[ interpolate_values_segment ] );
+
+               auto interpolated_gradient =
+                  InterpolateGradient(
+                     kernel_conf,
+                     element_quad_data,
+                     local_read );
+               StoreGradientSlice< IntegrationRule >(
+                  kernel_conf,
+                  item,
+                  interpolated_gradient,
+                  output,
+                  segment_offsets[ interpolate_gradient_segment ] );
+
+               StoreQuadSlice< IntegrationRule >(
+                  kernel_conf,
+                  item,
+                  interpolated_values,
+                  output,
+                  segment_offsets[ values_and_gradients_values_segment ] );
+               StoreGradientSlice< IntegrationRule >(
+                  kernel_conf,
+                  item,
+                  interpolated_gradient,
+                  output,
+                  segment_offsets[ values_and_gradients_gradient_segment ] );
+            }
+         }
+
+         if constexpr ( helper_supported )
+         {
+            auto quad_input = MakeStaticFIFOView< Real >( RegisterQuadShape{} );
+            FillQuadValues< IntegrationRule >( kernel_conf, item, quad_input );
+
+            auto applied_test =
+               ApplyTestFunctions(
+                  kernel_conf,
+                  element_quad_data,
+                  quad_input );
+            StoreDofSlice< Context, FiniteElementSpace >(
+                  kernel_conf,
+                  item,
+                  applied_test,
+                  output,
+                  segment_offsets[ apply_test_functions_segment ] );
+
+            auto gradient_input =
+               MakeStaticFIFOView< Real >( RegisterGradientShape{} );
+            FillGradientValues< IntegrationRule >(
                kernel_conf,
                item,
-               applied_test,
-               output,
-               segment_offsets[ apply_test_functions_segment ] );
-
-         auto gradient_input =
-            MakeStaticFIFOView< Real >( RegisterGradientShape{} );
-         FillGradientValues< IntegrationRule >(
-            kernel_conf,
-            item,
-            gradient_input );
-
-         auto gradient_test_q =
-            ApplyGradientTestFunctionsAtQPoints(
-               kernel_conf,
-               element_quad_data,
                gradient_input );
-         auto applied_gradient =
-            ApplyTestFunctions(
-               kernel_conf,
-               element_quad_data,
-               gradient_test_q );
-         StoreDofSlice<
-            KernelContext< Config, required_shared_mem >,
-            FiniteElementSpace >(
-               kernel_conf,
-               item,
-               applied_gradient,
-               output,
-               segment_offsets[ apply_gradient_test_functions_segment ] );
 
-         auto values_and_gradient_test_q =
-            ApplyGradientTestFunctionsAtQPoints(
-               kernel_conf,
-               element_quad_data,
-               gradient_input );
-         values_and_gradient_test_q += quad_input;
-         auto applied_values_and_gradient =
-            ApplyTestFunctions(
-               kernel_conf,
-               element_quad_data,
-               values_and_gradient_test_q );
-         StoreDofSlice<
-            KernelContext< Config, required_shared_mem >,
-            FiniteElementSpace >(
-               kernel_conf,
-               item,
-               applied_values_and_gradient,
-               output,
-               segment_offsets[
-                  apply_values_and_gradient_test_functions_segment ] );
+            auto gradient_test_q =
+               ApplyGradientTestFunctionsAtQPoints(
+                  kernel_conf,
+                  element_quad_data,
+                  gradient_input );
+            auto applied_gradient =
+               ApplyTestFunctions(
+                  kernel_conf,
+                  element_quad_data,
+                  gradient_test_q );
+            StoreDofSlice< Context, FiniteElementSpace >(
+                  kernel_conf,
+                  item,
+                  applied_gradient,
+                  output,
+                  segment_offsets[ apply_gradient_test_functions_segment ] );
 
-         auto aggregate_input =
-            MakeStaticFIFOView< Real >( RegisterQuadShape{} );
-         FillQuadValues< IntegrationRule >( kernel_conf, item, aggregate_input );
-         auto aggregate_result =
-            AggregateDimensions< IntegrationRule, AggregateRule >(
-               kernel_conf,
-               aggregate_input,
-               std::index_sequence< 0 >{} );
-         StoreQuadSlice< AggregateRule >(
-            kernel_conf,
-            item,
-            aggregate_result,
-            output,
-            segment_offsets[ aggregate_dimensions_segment ] );
+            auto values_and_gradient_test_q =
+               ApplyGradientTestFunctionsAtQPoints(
+                  kernel_conf,
+                  element_quad_data,
+                  gradient_input );
+            values_and_gradient_test_q += quad_input;
+            auto applied_values_and_gradient =
+               ApplyTestFunctions(
+                  kernel_conf,
+                  element_quad_data,
+                  values_and_gradient_test_q );
+            StoreDofSlice< Context, FiniteElementSpace >(
+                  kernel_conf,
+                  item,
+                  applied_values_and_gradient,
+                  output,
+                  segment_offsets[
+                     apply_values_and_gradient_test_functions_segment ] );
+         }
       } );
    GENDIL_DEVICE_SYNC;
 }
@@ -731,13 +722,9 @@ std::array< SegmentInfo, num_segments > MakeSegmentInfo(
       typename FiniteElementSpace::finite_element_type::
          shape_functions::orders >;
    using QuadShape = typename IntegrationRule::points::num_points_tensor;
-   using AggregateRule =
-      decltype( GetSubIntegrationRule< 0, 1 >( IntegrationRule{} ) );
-   using AggregateShape = typename AggregateRule::points::num_points_tensor;
 
    constexpr GlobalIndex dof_size = sequence_product_v< DofShape >;
    constexpr GlobalIndex quad_size = sequence_product_v< QuadShape >;
-   constexpr GlobalIndex aggregate_size = sequence_product_v< AggregateShape >;
    constexpr Integer dim = QuadShape::size();
 
    std::array< SegmentInfo, num_segments > segments{ {
@@ -751,8 +738,7 @@ std::array< SegmentInfo, num_segments > MakeSegmentInfo(
       { "InterpolateValuesAndGradients gradients", 0, quad_size * dim, dim },
       { "ApplyTestFunctions", 0, dof_size, 1 },
       { "ApplyGradientTestFunctions", 0, dof_size, 1 },
-      { "ApplyValuesAndGradientTestFunctions", 0, dof_size, 1 },
-      { "AggregateDimensions", 0, aggregate_size, 1 }
+      { "ApplyValuesAndGradientTestFunctions", 0, dof_size, 1 }
    } };
 
    GlobalIndex offset = 0;
@@ -800,6 +786,36 @@ void InitializeInput(
       }
    }
    ToDevice( input.size, input.data );
+}
+
+template <
+   typename Config,
+   typename FiniteElementSpace,
+   typename IntegrationRule >
+bool IsSegmentSupported( const SegmentId segment )
+{
+   using DofShape = orders_to_num_dofs<
+      typename FiniteElementSpace::finite_element_type::
+         shape_functions::orders >;
+   using QuadShape = typename IntegrationRule::points::num_points_tensor;
+   using HelperShape = max_sequence_t< DofShape, QuadShape >;
+
+   static constexpr bool dof_supported =
+      threaded_shape_covered_v< Config, DofShape >;
+   static constexpr bool helper_supported =
+      threaded_shape_covered_v< Config, HelperShape >;
+
+   switch ( segment )
+   {
+      case thread_loop_segment:
+      case quadrature_loop_segment:
+         return true;
+      case read_dofs_segment:
+      case write_dofs_segment:
+         return dof_supported;
+      default:
+         return helper_supported;
+   }
 }
 
 bool CheckSegment(
@@ -986,8 +1002,20 @@ bool RunConfigurationCase(
       observed );
 
    bool success = true;
-   for ( const auto & segment : segments )
+   for ( Integer i = 0; i < num_segments; ++i )
    {
+      const SegmentId segment_id = static_cast< SegmentId >( i );
+      const auto & segment = segments[ i ];
+      if ( !IsSegmentSupported< Config, FiniteElementSpace, IntegrationRule >(
+              segment_id ) )
+      {
+         std::cout
+            << label << " " << segment.name
+            << ": EXPECTED_UNSUPPORTED - Under-threaded strided coverage "
+            << "is not supported by this threaded helper yet.\n";
+         continue;
+      }
+
       success =
          CheckSegment(
             label,
@@ -1151,10 +1179,10 @@ int main()
    if ( success )
    {
       std::cout
-         << "SUMMARY: under-threaded helper diagnostics matched the "
-         << "register-only oracle. These results do not explain the "
-         << "ThreadBlockLayout<3,5> GradGrad diagnostic by simple "
-         << "num_threads_1D < num_quad_1D coverage alone.\n";
+         << "SUMMARY: supported threaded helper diagnostics matched the "
+         << "register-only oracle, and under-threaded helper cases were "
+         << "classified as EXPECTED_UNSUPPORTED before invoking guarded "
+         << "helper paths.\n";
    }
    else
    {

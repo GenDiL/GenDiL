@@ -12,6 +12,7 @@
 #include "gendil/Utilities/VariadicHelperFunctions/variadichelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Utilities/swap.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 
 #include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
 
@@ -173,6 +174,10 @@ auto ApplyTestFunctionsThreaded(
 
    using dof_shape  = make_contraction_input_shape< ProductOperator >;
    using quad_shape = make_contraction_output_shape< ProductOperator >;
+   using helper_shape = max_sequence_t< quad_shape, dof_shape >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, helper_shape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
 
 // Since the dimension of the shared block is assumed greater than (or equal to)
 // the dimension of the thread block, when we copy values into shared memory,
@@ -190,7 +195,7 @@ auto ApplyTestFunctionsThreaded(
    // Real * register_buffer1 = quad_point_values.data.data;
    // Real * register_buffer2 = thread.RegisterAllocator.allocate();
    // constexpr Integer buffer_size = KernelContext::RegisterBlockSize;
-   using max_shape = max_sequence_t< quad_shape, dof_shape >;
+   using max_shape = helper_shape;
    constexpr Integer register_buffer_size = register_block_size_v< KernelContext, max_shape >;
    Real buffer1 [ register_buffer_size ];
    Real buffer2 [ register_buffer_size ];

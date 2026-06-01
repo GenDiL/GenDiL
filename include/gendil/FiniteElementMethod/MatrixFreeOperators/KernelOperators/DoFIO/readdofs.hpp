@@ -10,6 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
@@ -220,6 +221,9 @@ auto ThreadedReadDofs(
    const GlobalTensor & global_dofs )
 {
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
@@ -507,6 +511,9 @@ auto ThreadedReadDofs(
       "Mismatching dimensions in ReadDofs."
    );
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 

@@ -9,3 +9,4 @@
 #include "gendil/Utilities/KernelContext/isserial.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"

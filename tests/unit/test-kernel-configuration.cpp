@@ -36,6 +36,31 @@ int main( int, char ** )
    static_assert( LogicalLayout::template GetThreadIndex< 1 >( 23 ) == 2 );
    static_assert( LogicalLayout::template GetThreadIndex< 2 >( 23 ) == 3 );
 
+   using Shape5 = std::index_sequence< 5 >;
+   using Shape57 = std::index_sequence< 5, 7 >;
+   static_assert(
+      threaded_shape_covered_v< HostKernelConfiguration< 1 >, Shape57 > );
+   static_assert(
+      threaded_shape_covered_v<
+         DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 1 >,
+         Shape57 > );
+   static_assert(
+      !threaded_shape_covered_v<
+         DeviceKernelConfiguration< ThreadBlockLayout< 3, 5 >, 2, 1 >,
+         Shape5 > );
+   static_assert(
+      threaded_shape_covered_v<
+         DeviceKernelConfiguration< ThreadBlockLayout< 5, 7 >, 2, 1 >,
+         Shape57 > );
+   static_assert(
+      threaded_shape_covered_v<
+         DeviceKernelConfiguration< ThreadBlockLayout< 5, 7, 2 >, 3, 1 >,
+         Shape57 > );
+   static_assert(
+      !threaded_shape_covered_v<
+         DeviceKernelConfiguration< ThreadBlockLayout< 5, 3 >, 2, 1 >,
+         Shape57 > );
+
    static_assert( is_host_configuration_v< SerialKernelConfiguration > );
    static_assert( is_host_configuration_v< HostKernelConfiguration<> > );
    static_assert( is_host_configuration_v< HostKernelConfiguration< 1 > > );
