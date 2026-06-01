@@ -541,6 +541,9 @@ void RunHelperCoverageKernel(
       required_shared_memory_v< Config, IntegrationRule > +
       required_shared_memory_v< Config, AggregateRule >;
 
+   const auto element_quad_data =
+      MakeDofToQuad< ShapeFunctions, IntegrationRule >();
+
    Config::BlockLoop(
       num_items,
       [=] GENDIL_HOST_DEVICE ( const Config & kernel ) mutable
@@ -578,9 +581,6 @@ void RunHelperCoverageKernel(
             output,
             segment_offsets[ quadrature_loop_segment ] +
                item * sequence_product_v< QuadShape > );
-
-         auto element_quad_data =
-            MakeDofToQuad< ShapeFunctions, IntegrationRule >();
 
          auto local_read =
             ReadDofs( kernel_conf, fe_space, item, input_view );
