@@ -28,8 +28,15 @@ namespace
 {
 constexpr Integer order = 3;
 constexpr Integer dof_count = order + 1;
-constexpr Real value_sentinel = -777777.25;
 constexpr Real tolerance = 1.0e-12;
+
+GENDIL_HOST_DEVICE
+Real InitialBaselineValue( const GlobalIndex element_index, const GlobalIndex dof )
+{
+   return -777777.25 -
+      3.0 * static_cast< Real >( element_index ) -
+      0.25 * static_cast< Real >( dof );
+}
 
 GENDIL_HOST_DEVICE
 Real ExpectedWriteValue( const GlobalIndex element_index, const int writer_id )
@@ -99,6 +106,22 @@ struct CountingL2OutputView
    }
 };
 
+void FillBaselineValues(
+   const GlobalIndex candidate_cells,
+   DeviceBuffer< Real > & values )
+{
+   for ( GlobalIndex element = 0; element < candidate_cells; ++element )
+   {
+      for ( GlobalIndex dof = 0; dof < dof_count; ++dof )
+      {
+         const GlobalIndex index = element * dof_count + dof;
+         values.data.host_pointer[ index ] =
+            InitialBaselineValue( element, dof );
+      }
+   }
+   ToDevice( values.size, values.data );
+}
+
 template <
    typename Config,
    typename FiniteElementSpace >
@@ -162,9 +185,10 @@ bool CheckCoverage(
    bool success = true;
    Integer printed = 0;
    Integer missing = 0;
-   Integer duplicate = 0;
+   Integer assigned_correctly = 0;
+   Integer added_to_baseline = 0;
+   Integer duplicate_or_incorrect = 0;
    Integer unexpected_inactive = 0;
-   Integer wrong_value = 0;
 
    for ( GlobalIndex element = 0; element < candidate_cells; ++element )
    {
@@ -176,10 +200,11 @@ bool CheckCoverage(
          const int first_writer = first_writers.data.host_pointer[ index ];
          const int duplicate_marker = duplicates.data.host_pointer[ index ];
          const Real value = values.data.host_pointer[ index ];
+         const Real baseline = InitialBaselineValue( element, dof );
 
          if ( active )
          {
-            if ( count == 0 || std::abs( value - value_sentinel ) < tolerance )
+            if ( count == 0 || std::abs( value - baseline ) < tolerance )
             {
                ++missing;
                success = false;
@@ -188,40 +213,67 @@ bool CheckCoverage(
                   std::cout << "FAILED: expected write missing in "
                             << label << " at element " << element
                             << ", dof " << dof << ". count=" << count
-                            << ", value=" << value << ".\n";
+                            << ", baseline=" << baseline
+                            << ", final value=" << value << ".\n";
                   ++printed;
                }
             }
-            else if ( count > 1 || duplicate_marker != 0 )
+            else if ( count > 1 || duplicate_marker != 0 || first_writer < 0 )
             {
-               ++duplicate;
+               ++duplicate_or_incorrect;
                success = false;
                if ( printed < 16 )
                {
-                  std::cout << "FAILED: duplicate write in " << label
+                  std::cout << "FAILED: duplicate/incorrect write in " << label
                             << " at element " << element << ", dof "
                             << dof << ". count=" << count
                             << ", first_writer=" << first_writer
-                            << ", value=" << value << ".\n";
+                            << ", baseline=" << baseline
+                            << ", final value=" << value << ".\n";
                   ++printed;
                }
             }
-            else if (
-               std::abs(
-                  value - ExpectedWriteValue( element, first_writer ) ) >
-               tolerance )
+            else
             {
-               ++wrong_value;
-               success = false;
-               if ( printed < 16 )
+               const Real assigned =
+                  ExpectedWriteValue( element, first_writer );
+               const Real added = baseline + assigned;
+               if ( std::abs( value - assigned ) <= tolerance )
                {
-                  std::cout << "FAILED: correct write count but wrong value in "
-                            << label << " at element " << element
-                            << ", dof " << dof << ". observed=" << value
-                            << ", expected="
-                            << ExpectedWriteValue( element, first_writer )
-                            << ", writer=" << first_writer << ".\n";
-                  ++printed;
+                  ++assigned_correctly;
+               }
+               else if ( std::abs( value - added ) <= tolerance )
+               {
+                  ++added_to_baseline;
+                  success = false;
+                  if ( printed < 16 )
+                  {
+                     std::cout << "FAILED: write added to baseline in "
+                               << label << " at element " << element
+                               << ", dof " << dof << ". count=" << count
+                               << ", writer=" << first_writer
+                               << ", baseline=" << baseline
+                               << ", synthetic local value=" << assigned
+                               << ", final value=" << value << ".\n";
+                     ++printed;
+                  }
+               }
+               else
+               {
+                  ++duplicate_or_incorrect;
+                  success = false;
+                  if ( printed < 16 )
+                  {
+                     std::cout << "FAILED: correct write count but wrong value in "
+                               << label << " at element " << element
+                               << ", dof " << dof << ". count=" << count
+                               << ", writer=" << first_writer
+                               << ", baseline=" << baseline
+                               << ", observed final value=" << value
+                               << ", assigned expected=" << assigned
+                               << ", additive expected=" << added << ".\n";
+                     ++printed;
+                  }
                }
             }
          }
@@ -229,7 +281,7 @@ bool CheckCoverage(
             count != 0 ||
             first_writer != -1 ||
             duplicate_marker != 0 ||
-            std::abs( value - value_sentinel ) > tolerance )
+            std::abs( value - baseline ) > tolerance )
          {
             ++unexpected_inactive;
             success = false;
@@ -240,17 +292,21 @@ bool CheckCoverage(
                          << ", dof " << dof << ". count=" << count
                          << ", first_writer=" << first_writer
                          << ", duplicate=" << duplicate_marker
-                         << ", value=" << value << ".\n";
+                         << ", baseline=" << baseline
+                         << ", final value=" << value << ".\n";
                ++printed;
             }
          }
       }
    }
 
-   std::cout << label << " coverage summary: missing=" << missing
-             << ", duplicate=" << duplicate
+   std::cout << label << " coverage summary: assigned_correctly="
+             << assigned_correctly
+             << ", added_to_baseline=" << added_to_baseline
+             << ", missing=" << missing
+             << ", duplicate_or_incorrect=" << duplicate_or_incorrect
              << ", unexpected_inactive=" << unexpected_inactive
-             << ", wrong_value=" << wrong_value << ".\n";
+             << ".\n";
    return success;
 }
 
@@ -272,10 +328,11 @@ bool RunWriteCoverageCase( const char * label, const GlobalIndex num_cells )
       ( ( num_cells + BatchSize - 1 ) / BatchSize ) * BatchSize;
    const GlobalIndex output_size = candidate_cells * dof_count;
 
-   DeviceBuffer< Real > values( output_size, value_sentinel );
+   DeviceBuffer< Real > values( output_size, Real{ 0.0 } );
    DeviceBuffer< int > counts( output_size, 0 );
    DeviceBuffer< int > first_writers( output_size, -1 );
    DeviceBuffer< int > duplicates( output_size, 0 );
+   FillBaselineValues( candidate_cells, values );
 
    const Real h = 1.0 / static_cast< Real >( num_cells );
    Cartesian1DMesh mesh( h, num_cells );
@@ -336,6 +393,20 @@ bool TestThreadedReferenceLayout()
    return success;
 }
 
+bool TestFocusedThreadedLayout()
+{
+   using Layout = ThreadBlockLayout< 5 >;
+   static constexpr Integer MaxSharedDimensions = 1;
+
+   std::cout
+      << "Focused write-coverage diagnostic: scalar L2 "
+      << "ThreadedWriteDofs<Add=false> should assign the synthetic local "
+      << "value over the nonzero per-entry baseline, not add to it.\n";
+   return RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
+      "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
+      64 );
+}
+
 bool TestIrregularDiagnosticLayout()
 {
    std::cout
@@ -351,6 +422,7 @@ int main()
 {
    bool success = true;
    success = TestThreadedReferenceLayout() && success;
+   success = TestFocusedThreadedLayout() && success;
    success = TestIrregularDiagnosticLayout() && success;
    return success ? 0 : 1;
 }

@@ -6,7 +6,9 @@
 
 #include "batched-cell-test-helpers.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
 
 #if !defined(GENDIL_USE_DEVICE)
@@ -27,6 +29,24 @@ using namespace gendil::test;
 namespace
 {
 constexpr Real output_sentinel = -123456.75;
+
+enum class OutputViewMode
+{
+   production_write_only_output_view,
+   diagnostic_read_write_output_view
+};
+
+const char * OutputViewModeName( const OutputViewMode mode )
+{
+   switch ( mode )
+   {
+      case OutputViewMode::production_write_only_output_view:
+         return "production_write_only_output_view";
+      case OutputViewMode::diagnostic_read_write_output_view:
+         return "diagnostic_read_write_output_view";
+   }
+   return "unknown_output_view";
+}
 
 Vector MakeInputVector( const Integer size )
 {
@@ -55,10 +75,11 @@ Vector Make2DInputVector( const Integer size )
 }
 
 template <
+   OutputViewMode Mode,
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename Rule >
-Vector ApplyGradGradWithInitial(
+Vector ApplyGradGradWithInitialView(
    const FiniteElementSpace & fe_space,
    const Rule & integration_rule,
    const Vector & input,
@@ -70,12 +91,113 @@ Vector ApplyGradGradWithInitial(
       MakeGradGradOperator< KernelPolicy >( fe_space, integration_rule );
    auto dofs_in =
       MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
-   auto dofs_out =
-      MakeReadWriteElementTensorView< KernelPolicy >( fe_space, output );
-   op.Apply( dofs_in, dofs_out );
+   if constexpr ( Mode == OutputViewMode::production_write_only_output_view )
+   {
+      auto dofs_out =
+         MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, output );
+      op.Apply( dofs_in, dofs_out );
+   }
+   else
+   {
+      auto dofs_out =
+         MakeReadWriteElementTensorView< KernelPolicy >( fe_space, output );
+      op.Apply( dofs_in, dofs_out );
+   }
    GENDIL_DEVICE_SYNC;
 
    return output;
+}
+
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
+Vector ApplyGradGradWithInitial(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Vector & initial )
+{
+   return ApplyGradGradWithInitialView<
+      OutputViewMode::diagnostic_read_write_output_view,
+      KernelPolicy >(
+         fe_space,
+         integration_rule,
+         input,
+         initial );
+}
+
+Vector SubtractVectors( const Vector & a, const Vector & b )
+{
+   GENDIL_VERIFY( a.Size() == b.Size(), "Vector sizes do not match." );
+
+   Vector result( a.Size() );
+   Real * result_data = result.WriteHostData();
+   const Real * a_data = a.ReadHostData();
+   const Real * b_data = b.ReadHostData();
+   for ( Integer i = 0; i < result.Size(); ++i )
+   {
+      result_data[ i ] = a_data[ i ] - b_data[ i ];
+   }
+   return result;
+}
+
+bool PrintScaledL2Diagnostic(
+   const char * label,
+   const Vector & observed,
+   const Vector & expected,
+   const Real tolerance,
+   const bool gating )
+{
+   const Real abs_error = AbsoluteL2Error( observed, expected );
+   const Real scale = std::max( Real{ 1.0 }, L2Norm( expected ) );
+   const Real scaled_error = abs_error / scale;
+   const bool ok =
+      std::isfinite( abs_error ) &&
+      std::isfinite( scaled_error ) &&
+      scaled_error <= tolerance;
+
+   std::cout << label << " scaled L2 error = " << scaled_error << '\n';
+   if ( gating && !ok )
+   {
+      std::cout << "FAILED: " << label << " exceeded tolerance "
+                << tolerance << ".\n";
+   }
+   return ok;
+}
+
+void PrintFirstMismatches(
+   const char * label,
+   const Vector & final,
+   const Vector & initial,
+   const Vector & oracle,
+   const Real tolerance )
+{
+   GENDIL_VERIFY( final.Size() == initial.Size(), "Vector sizes do not match." );
+   GENDIL_VERIFY( final.Size() == oracle.Size(), "Vector sizes do not match." );
+
+   const Real * final_data = final.ReadHostData();
+   const Real * initial_data = initial.ReadHostData();
+   const Real * oracle_data = oracle.ReadHostData();
+   Integer printed = 0;
+   for ( Integer i = 0; i < final.Size(); ++i )
+   {
+      const Real scale = std::max( Real{ 1.0 }, std::abs( oracle_data[ i ] ) );
+      if ( std::abs( final_data[ i ] - oracle_data[ i ] ) > tolerance * scale )
+      {
+         std::cout << label << " first mismatch: index=" << i
+                   << ", oracle value=" << oracle_data[ i ]
+                   << ", initialized value=" << initial_data[ i ]
+                   << ", final value=" << final_data[ i ]
+                   << ", final-minus-initial value="
+                   << final_data[ i ] - initial_data[ i ] << ".\n";
+         ++printed;
+         if ( printed == 8 )
+         {
+            return;
+         }
+      }
+   }
 }
 
 void FillH1LineRestriction(
@@ -168,17 +290,21 @@ bool RunL2CaseForCellCount(
          0.0 );
 
    auto y_batch1 =
-      ApplyGradGradWithInitial< DeviceBatch1 >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatch1 >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
    auto y_batchn =
-      ApplyGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         zero );
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
@@ -187,11 +313,13 @@ bool RunL2CaseForCellCount(
    if constexpr ( CompareLegacy )
    {
       auto y_legacy =
-         ApplyGradGradWithInitial< LegacyConfig >(
-            fe_space,
-            integration_rule,
-            input,
-            zero );
+         ApplyGradGradWithInitialView<
+            OutputViewMode::production_write_only_output_view,
+            LegacyConfig >(
+               fe_space,
+               integration_rule,
+               input,
+               zero );
       success =
          CheckScaledL2Close(
             "DeviceBatchN vs LegacyConfig",
@@ -218,11 +346,13 @@ bool RunL2CaseForCellCount(
          fe_space.GetNumberOfFiniteElementDofs(),
          output_sentinel );
    auto direct_sentinel =
-      ApplyGradGradWithInitial< DeviceBatchN >(
-         fe_space,
-         integration_rule,
-         input,
-         sentinel_initial );
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            sentinel_initial );
 
    success =
       CheckScaledL2Close(
@@ -236,6 +366,192 @@ bool RunL2CaseForCellCount(
          direct_sentinel,
          output_sentinel ) && success;
 
+   return success;
+}
+
+template < OutputViewMode Mode >
+bool RunFocusedL2OutputViewDiagnostic()
+{
+   using Layout = ThreadBlockLayout< 5 >;
+   static constexpr Integer MaxSharedDimensions = 1;
+   static constexpr Integer BatchSize = device_warp_size;
+   using DeviceBatch1 =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, 1 >;
+   using DeviceBatchN =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, BatchSize >;
+
+   const char * mode_label = OutputViewModeName( Mode );
+   if ( !LaunchConfigurationFits< Layout, BatchSize >( mode_label ) )
+   {
+      return true;
+   }
+
+   static constexpr Integer order = 3;
+   static constexpr Integer num_quad_1d = order + 2;
+   static constexpr GlobalIndex num_cells = 64;
+
+   const Real h = 1.0 / static_cast< Real >( num_cells );
+   Cartesian1DMesh mesh( h, num_cells );
+
+   FiniteElementOrders< order > orders;
+   auto finite_element = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
+
+   IntegrationRuleNumPoints< num_quad_1d > num_quads;
+   auto integration_rule = MakeIntegrationRule( num_quads );
+
+   Vector input = MakeInputVector(
+      fe_space.GetNumberOfFiniteElementDofs() );
+   auto zero =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         0.0 );
+   auto sentinel_initial =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         output_sentinel );
+   auto baseline_initial =
+      MakeBaselineVector( fe_space.GetNumberOfFiniteElementDofs() );
+
+   auto oracle =
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatch1 >(
+            fe_space,
+            integration_rule,
+            input,
+            zero );
+   auto y_zero =
+      ApplyGradGradWithInitialView< Mode, DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_sentinel =
+      ApplyGradGradWithInitialView< Mode, DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         sentinel_initial );
+   auto y_baseline =
+      ApplyGradGradWithInitialView< Mode, DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         baseline_initial );
+
+   auto y_sentinel_minus_initial =
+      SubtractVectors( y_sentinel, sentinel_initial );
+   auto y_baseline_minus_initial =
+      SubtractVectors( y_baseline, baseline_initial );
+
+   constexpr Real tolerance = 1.0e-10;
+   constexpr bool production_mode =
+      Mode == OutputViewMode::production_write_only_output_view;
+   bool success = true;
+
+   std::cout
+      << "Focused GradGrad L2 output-view diagnostic: " << mode_label
+      << ", ThreadBlockLayout<5>, BatchSize=device_warp_size, num_cells=64.\n";
+   std::cout
+      << "  Audit: production GradGrad operator()/Mult() uses a write-only "
+      << "output view; diagnostic_read_write_output_view is diagnostic only. "
+      << "Scalar L2 ThreadedWriteDofs<Add=false> should assign, while H1 "
+      << "shared DOFs accumulate. No GradGrad local staging buffer is expected "
+      << "to initialize from global y.\n";
+
+   const bool zero_ok =
+      PrintScaledL2Diagnostic(
+         "focused y_zero vs oracle",
+         y_zero,
+         oracle,
+         tolerance,
+         production_mode );
+   const bool sentinel_ok =
+      PrintScaledL2Diagnostic(
+         "focused y_sentinel vs oracle",
+         y_sentinel,
+         oracle,
+         tolerance,
+         production_mode );
+   const bool sentinel_delta_ok =
+      PrintScaledL2Diagnostic(
+         "focused y_sentinel - sentinel vs oracle",
+         y_sentinel_minus_initial,
+         oracle,
+         tolerance,
+         false );
+   const bool baseline_ok =
+      PrintScaledL2Diagnostic(
+         "focused y_baseline vs oracle",
+         y_baseline,
+         oracle,
+         tolerance,
+         production_mode );
+   const bool baseline_delta_ok =
+      PrintScaledL2Diagnostic(
+         "focused y_baseline - baseline vs oracle",
+         y_baseline_minus_initial,
+         oracle,
+         tolerance,
+         false );
+
+   if ( !sentinel_ok )
+   {
+      PrintFirstMismatches(
+         "focused y_sentinel vs oracle",
+         y_sentinel,
+         sentinel_initial,
+         oracle,
+         tolerance );
+   }
+   if ( !baseline_ok )
+   {
+      PrintFirstMismatches(
+         "focused y_baseline vs oracle",
+         y_baseline,
+         baseline_initial,
+         oracle,
+         tolerance );
+   }
+
+   if ( sentinel_ok && baseline_ok )
+   {
+      std::cout << "  CLASSIFICATION: " << mode_label
+                << " overwrites the initial output state for this case.\n";
+   }
+   else if ( sentinel_delta_ok && baseline_delta_ok )
+   {
+      if constexpr ( production_mode )
+      {
+         std::cout
+            << "  CLASSIFICATION: production output-view/write contract "
+            << "violation; subtracting the initial output recovers the oracle.\n";
+      }
+      else
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic_read_write_additive_artifact; "
+            << "subtracting the initial output recovers the oracle.\n";
+      }
+   }
+   else if ( zero_ok )
+   {
+      std::cout
+         << "  CLASSIFICATION: output-state dependent mismatch; subtracting "
+         << "the initial output does not fully recover the oracle.\n";
+   }
+   else
+   {
+      std::cout
+         << "  CLASSIFICATION: zero-initialized output also mismatches the "
+         << "oracle, suggesting a full GradGrad staging or batching issue.\n";
+   }
+
+   if constexpr ( production_mode )
+   {
+      success = zero_ok && sentinel_ok && baseline_ok;
+   }
    return success;
 }
 
@@ -527,6 +843,20 @@ bool TestThreadedGradGrad()
    return success;
 }
 
+bool TestFocusedL2OutputViewDiagnostic()
+{
+   bool success = true;
+   success =
+      RunFocusedL2OutputViewDiagnostic<
+         OutputViewMode::production_write_only_output_view >() &&
+      success;
+   success =
+      RunFocusedL2OutputViewDiagnostic<
+         OutputViewMode::diagnostic_read_write_output_view >() &&
+      success;
+   return success;
+}
+
 bool TestRegisterOnlyGradGrad()
 {
    using Layout = ThreadBlockLayout<>;
@@ -609,6 +939,7 @@ int main()
    bool success = true;
    success = TestRegisterOnlyGradGrad() && success;
    success = TestThreadedGradGrad() && success;
+   success = TestFocusedL2OutputViewDiagnostic() && success;
    success = TestIrregularGradGradDiagnostic() && success;
    success = Test2DL2GradientSensitivity() && success;
 
