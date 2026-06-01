@@ -29,6 +29,9 @@ namespace
 constexpr Integer order = 3;
 constexpr Integer dof_count = order + 1;
 constexpr Real tolerance = 1.0e-12;
+constexpr GlobalIndex focus_first_element = 50;
+constexpr GlobalIndex focus_last_element = 52;
+constexpr int writer_id_stride = 100000;
 
 GENDIL_HOST_DEVICE
 Real InitialBaselineValue( const GlobalIndex element_index, const GlobalIndex dof )
@@ -50,10 +53,152 @@ GENDIL_HOST_DEVICE
 int CurrentWriterId()
 {
 #ifdef GENDIL_DEVICE_CODE
-   return static_cast< int >( threadIdx.x + 100000 * threadIdx.y );
+   return static_cast< int >( threadIdx.x + writer_id_stride * threadIdx.y );
 #else
    return 0;
 #endif
+}
+
+int WriterThreadX( const int writer_id )
+{
+   return writer_id >= 0 ? writer_id % writer_id_stride : -1;
+}
+
+int WriterThreadY( const int writer_id )
+{
+   return writer_id >= 0 ? writer_id / writer_id_stride : -1;
+}
+
+const char * ClassifyWriteRecord(
+   const bool active,
+   const int count,
+   const int first_writer,
+   const int duplicate_marker,
+   const Real value,
+   const Real baseline,
+   const Real assigned )
+{
+   const Real added = baseline + assigned;
+   if ( active )
+   {
+      if ( count == 0 || std::abs( value - baseline ) < tolerance )
+      {
+         return "missing";
+      }
+      if ( count > 1 || duplicate_marker != 0 || first_writer < 0 )
+      {
+         return "duplicate_or_incorrect";
+      }
+      if ( std::abs( value - assigned ) <= tolerance )
+      {
+         return "assigned_correctly";
+      }
+      if ( std::abs( value - added ) <= tolerance )
+      {
+         return "added_to_baseline";
+      }
+      return "duplicate_or_incorrect";
+   }
+
+   if (
+      count == 0 &&
+      first_writer == -1 &&
+      duplicate_marker == 0 &&
+      std::abs( value - baseline ) <= tolerance )
+   {
+      return "inactive_untouched";
+   }
+   return "unexpected_inactive";
+}
+
+template < typename Layout >
+void PrintFocusedWriteRecords(
+   const char * label,
+   const GlobalIndex num_cells,
+   const GlobalIndex candidate_cells,
+   DeviceBuffer< Real > & values,
+   DeviceBuffer< int > & counts,
+   DeviceBuffer< int > & first_writers,
+   DeviceBuffer< int > & duplicates )
+{
+   std::cout
+      << label
+      << " focused write records for elements 50, 51, 52 "
+      << "(DOF ranges element*4 .. element*4+3).\n";
+
+   for ( GlobalIndex element = focus_first_element;
+         element <= focus_last_element;
+         ++element )
+   {
+      if ( element >= candidate_cells )
+      {
+         std::cout << "  element " << element
+                   << " is outside candidate_cells=" << candidate_cells
+                   << ".\n";
+         continue;
+      }
+
+      const GlobalIndex output_begin = element * dof_count;
+      const GlobalIndex output_end = output_begin + dof_count - 1;
+
+      std::cout << "  element " << element
+                << ", active=" << ( element < num_cells )
+                << ", output-index-range=" << output_begin
+                << ".." << output_end << ".\n";
+
+      for ( GlobalIndex dof = 0; dof < dof_count; ++dof )
+      {
+         const GlobalIndex index = output_begin + dof;
+         const bool active = element < num_cells;
+         const int count = counts.data.host_pointer[ index ];
+         const int first_writer = first_writers.data.host_pointer[ index ];
+         const int duplicate_marker = duplicates.data.host_pointer[ index ];
+         const Real value = values.data.host_pointer[ index ];
+         const Real baseline = InitialBaselineValue( element, dof );
+         const Real assigned =
+            first_writer >= 0
+               ? ExpectedWriteValue( element, first_writer )
+               : Real{ 0.0 };
+         const int writer_tx = WriterThreadX( first_writer );
+         const int writer_ty = WriterThreadY( first_writer );
+         const int linear_thread_id =
+            first_writer >= 0
+               ? writer_tx +
+                    static_cast< int >( Layout::GetNumberOfThreads() ) *
+                       writer_ty
+               : -1;
+         const int wavefront_id =
+            linear_thread_id >= 0
+               ? linear_thread_id /
+                    static_cast< int >( device_warp_size )
+               : -1;
+         const char * classification =
+            ClassifyWriteRecord(
+               active,
+               count,
+               first_writer,
+               duplicate_marker,
+               value,
+               baseline,
+               assigned );
+
+         std::cout
+            << "    dof " << dof
+            << ", output-index=" << index
+            << ", count=" << count
+            << ", first_writer=" << first_writer
+            << ", threadIdx.x=" << writer_tx
+            << ", threadIdx.y=" << writer_ty
+            << ", linear_thread_id=" << linear_thread_id
+            << ", wavefront_id=" << wavefront_id
+            << ", duplicate=" << duplicate_marker
+            << ", baseline=" << baseline
+            << ", final=" << value
+            << ", assigned_expected=" << assigned
+            << ", additive_expected=" << baseline + assigned
+            << ", classification=" << classification << ".\n";
+      }
+   }
 }
 
 struct CountingAssignmentProxy
@@ -168,6 +313,7 @@ void RunWriteCoverageKernel(
    GENDIL_DEVICE_SYNC;
 }
 
+template < typename Layout >
 bool CheckCoverage(
    const char * label,
    const GlobalIndex num_cells,
@@ -175,7 +321,8 @@ bool CheckCoverage(
    DeviceBuffer< Real > & values,
    DeviceBuffer< int > & counts,
    DeviceBuffer< int > & first_writers,
-   DeviceBuffer< int > & duplicates )
+   DeviceBuffer< int > & duplicates,
+   const bool print_focused_records )
 {
    values.CopyToHost();
    counts.CopyToHost();
@@ -307,6 +454,18 @@ bool CheckCoverage(
              << ", duplicate_or_incorrect=" << duplicate_or_incorrect
              << ", unexpected_inactive=" << unexpected_inactive
              << ".\n";
+
+   if ( print_focused_records )
+   {
+      PrintFocusedWriteRecords< Layout >(
+         label,
+         num_cells,
+         candidate_cells,
+         values,
+         counts,
+         first_writers,
+         duplicates );
+   }
    return success;
 }
 
@@ -314,7 +473,10 @@ template <
    typename Layout,
    Integer MaxSharedDimensions,
    Integer BatchSize >
-bool RunWriteCoverageCase( const char * label, const GlobalIndex num_cells )
+bool RunWriteCoverageCase(
+   const char * label,
+   const GlobalIndex num_cells,
+   const bool print_focused_records = false )
 {
    if ( !LaunchConfigurationFits< Layout, BatchSize >( label ) )
    {
@@ -350,14 +512,15 @@ bool RunWriteCoverageCase( const char * label, const GlobalIndex num_cells )
 
    std::cout << label << ", num_cells = " << num_cells << '\n';
    RunWriteCoverageKernel< Config >( fe_space, num_cells, output );
-   return CheckCoverage(
+   return CheckCoverage< Layout >(
       label,
       num_cells,
       candidate_cells,
       values,
       counts,
       first_writers,
-      duplicates );
+      duplicates,
+      print_focused_records );
 }
 
 template <
@@ -406,11 +569,18 @@ bool TestFocusedThreadedLayout()
    success =
       RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
          "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
-         64 ) && success;
+         63,
+         true ) && success;
    success =
       RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
          "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
-         65 ) && success;
+         64,
+         true ) && success;
+   success =
+      RunWriteCoverageCase< Layout, MaxSharedDimensions, device_warp_size >(
+         "ThreadBlockLayout<5>, BatchSize=device_warp_size focused write coverage",
+         65,
+         true ) && success;
    return success;
 }
 

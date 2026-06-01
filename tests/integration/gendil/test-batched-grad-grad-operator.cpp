@@ -355,6 +355,28 @@ bool RunL2CaseForCellCount(
             integration_rule,
             input,
             zero );
+   auto sentinel_initial =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         output_sentinel );
+   auto baseline_initial =
+      MakeBaselineVector( fe_space.GetNumberOfFiniteElementDofs() );
+   auto direct_sentinel =
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            sentinel_initial );
+   auto direct_baseline =
+      ApplyGradGradWithInitialView<
+         OutputViewMode::production_write_only_output_view,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            baseline_initial );
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
@@ -394,6 +416,24 @@ bool RunL2CaseForCellCount(
             zero,
             y_legacy,
             tolerance ) && success;
+      success =
+         CheckScaledL2CloseWithMismatches(
+            "DeviceBatchN L2 overwrite from sentinel vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
+            direct_sentinel,
+            sentinel_initial,
+            y_legacy,
+            tolerance ) && success;
+      success =
+         CheckScaledL2CloseWithMismatches(
+            "DeviceBatchN L2 overwrite from baseline vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
+            direct_baseline,
+            baseline_initial,
+            y_legacy,
+            tolerance ) && success;
    }
 
    success =
@@ -406,29 +446,24 @@ bool RunL2CaseForCellCount(
          y_batch1,
          tolerance ) && success;
 
-   auto sentinel_initial =
-      MakeConstantVector(
-         fe_space.GetNumberOfFiniteElementDofs(),
-         output_sentinel );
-   auto direct_sentinel =
-      ApplyGradGradWithInitialView<
-         OutputViewMode::production_write_only_output_view,
-         DeviceBatchN >(
-            fe_space,
-            integration_rule,
-            input,
-            sentinel_initial );
-
-   const bool sentinel_overwrite_ok =
+   success =
       CheckScaledL2CloseWithMismatches(
-         "DeviceBatchN L2 overwrite from sentinel",
+         "DeviceBatchN L2 overwrite from sentinel vs DeviceBatch1",
          output_view_mode,
          batch_classification,
          direct_sentinel,
          sentinel_initial,
-         y_batchn,
-         tolerance );
-   success = sentinel_overwrite_ok && success;
+         y_batch1,
+         tolerance ) && success;
+   success =
+      CheckScaledL2CloseWithMismatches(
+         "DeviceBatchN L2 overwrite from baseline vs DeviceBatch1",
+         output_view_mode,
+         batch_classification,
+         direct_baseline,
+         baseline_initial,
+         y_batch1,
+         tolerance ) && success;
    success =
       CheckNoValue(
          "DeviceBatchN L2 overwrite",

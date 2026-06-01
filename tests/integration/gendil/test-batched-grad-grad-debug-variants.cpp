@@ -79,6 +79,9 @@ constexpr Integer diagnostic_threads = 15;
 constexpr Integer diagnostic_components = 1;
 constexpr Integer diagnostic_dofs = 4;
 constexpr Real diagnostic_sentinel = -9.87654321e123;
+constexpr GlobalIndex focus_first_element = 50;
+constexpr GlobalIndex focus_last_element = 52;
+constexpr Integer focus_thread_slots = 5;
 
 const char * StageName( const StageId stage )
 {
@@ -413,6 +416,30 @@ Vector MakeInputVector( const Integer size )
             0.17 * static_cast< Real >( ( i * 7 ) % 13 ) +
             0.011 * static_cast< Real >( ( i * i ) % 19 );
       } );
+}
+
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
+Vector ApplyProductionWriteOnlyGradGradWithInitial(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Vector & initial )
+{
+   Vector output( initial );
+
+   auto op =
+      MakeGradGradOperator< KernelPolicy >( fe_space, integration_rule );
+   auto dofs_in =
+      MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
+   auto dofs_out =
+      MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, output );
+   op.Apply( dofs_in, dofs_out );
+   GENDIL_DEVICE_SYNC;
+
+   return output;
 }
 
 template <
@@ -842,6 +869,52 @@ Vector ApplyDebugVariantGradGradWithInitial(
 }
 
 template <
+   InvocationMode Invocation,
+   BarrierMode Barrier,
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
+Vector ApplyDebugVariantGradGradWithInitialWriteOnly(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Vector & initial,
+   StageDiagnostics & stages )
+{
+   Vector output( initial );
+
+   auto dofs_in =
+      MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
+   auto dofs_out =
+      MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, output );
+
+   using Mesh = typename FiniteElementSpace::mesh_type;
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+
+   typename Mesh::cell_type::template QuadData< Rule > mesh_quad_data{};
+   auto element_quad_data =
+      MakeDofToQuad< ShapeFunctions, Rule >();
+
+   (void) integration_rule;
+
+   DebugVariantGradGradExplicitOperator<
+      Invocation,
+      Barrier,
+      KernelPolicy,
+      Rule >(
+         fe_space,
+         mesh_quad_data,
+         element_quad_data,
+         dofs_in,
+         dofs_out,
+         stages.Recorder() );
+   GENDIL_DEVICE_SYNC;
+
+   return output;
+}
+
+template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename Rule >
@@ -909,6 +982,478 @@ bool RunDebugVariantCase()
       << ": the current threaded helper contract requires the mapped "
       << "1D thread dimension to cover the local DOF/quadrature extent.\n";
    return true;
+}
+
+template < typename KernelConfiguration, typename Rule >
+void PrintFocusedWavefrontMetadata( const char * label )
+{
+   using Context = KernelContext<
+      KernelConfiguration,
+      required_shared_memory_v< KernelConfiguration, Rule > >;
+
+   static constexpr GlobalIndex batch_size =
+      static_cast< GlobalIndex >( KernelConfiguration::batch_size );
+   static constexpr GlobalIndex threads_per_work_item =
+      static_cast< GlobalIndex >( KernelConfiguration::GetNumberOfThreads() );
+
+   std::cout
+      << label
+      << " wavefront-boundary metadata for elements 50, 51, 52.\n";
+   std::cout
+      << "  shared-memory: per_work_item="
+      << Context::per_work_item_shared_memory_size
+      << ", stride_per_work_item="
+      << Context::shared_memory_stride_per_work_item
+      << ", block_size=" << Context::shared_memory_block_size << ".\n";
+
+   for ( GlobalIndex element = focus_first_element;
+         element <= focus_last_element;
+         ++element )
+   {
+      const GlobalIndex work_item_index = element;
+      const GlobalIndex block_index = element / batch_size;
+      const GlobalIndex batch_index = element % batch_size;
+      const GlobalIndex arena_base_offset =
+         batch_index *
+         static_cast< GlobalIndex >(
+            Context::shared_memory_stride_per_work_item );
+
+      const GlobalIndex first_linear_thread =
+         threads_per_work_item * batch_index;
+      const GlobalIndex last_linear_thread =
+         first_linear_thread + focus_thread_slots - 1;
+      const GlobalIndex first_wavefront =
+         first_linear_thread / static_cast< GlobalIndex >( device_warp_size );
+      const GlobalIndex last_wavefront =
+         last_linear_thread / static_cast< GlobalIndex >( device_warp_size );
+
+      std::cout
+         << "  element " << element
+         << ": WorkItemIndex=" << work_item_index
+         << ", blockIdx.x=" << block_index
+         << ", BatchIndex=" << batch_index
+         << ", shared-memory arena base offset=" << arena_base_offset
+         << ", linear-thread range=" << first_linear_thread
+         << ".." << last_linear_thread
+         << ", wavefront range=" << first_wavefront
+         << ".." << last_wavefront
+         << ", crosses_wavefront_boundary="
+         << ( first_wavefront != last_wavefront ) << ".\n";
+
+      for ( GlobalIndex slot = 0; slot < focus_thread_slots; ++slot )
+      {
+         const GlobalIndex thread_x = slot;
+         const GlobalIndex thread_y = batch_index;
+         const GlobalIndex linear_thread_id =
+            thread_x + threads_per_work_item * thread_y;
+         const GlobalIndex wavefront_id =
+            linear_thread_id /
+            static_cast< GlobalIndex >( device_warp_size );
+
+         std::cout
+            << "    slot " << slot
+            << ": threadIdx.x=" << thread_x
+            << ", threadIdx.y=" << thread_y
+            << ", linear_thread_id=" << linear_thread_id
+            << ", wavefront_id=" << wavefront_id << ".\n";
+      }
+   }
+}
+
+bool PrintFocusedStageSnapshots(
+   const char * label,
+   const StageDiagnostics & observed,
+   const StageDiagnostics & expected,
+   const Real tolerance )
+{
+   observed.CopyToHost();
+   expected.CopyToHost();
+
+   bool matches = true;
+   std::cout
+      << label
+      << " focused stage snapshots for elements 50, 51, 52 and "
+      << "logical thread slots 0..4.\n";
+
+   for ( Integer stage_int = 0;
+         stage_int < static_cast< Integer >( StageId::count );
+         ++stage_int )
+   {
+      const StageId stage = static_cast< StageId >( stage_int );
+      std::cout << "  " << StageName( stage ) << '\n';
+
+      for ( GlobalIndex element = focus_first_element;
+            element <= focus_last_element;
+            ++element )
+      {
+         if ( element >= observed.num_cells ||
+              element >= expected.num_cells )
+         {
+            std::cout << "    element " << element
+                      << " is outside one of the recorded cell ranges.\n";
+            continue;
+         }
+
+         for ( GlobalIndex slot = 0; slot < focus_thread_slots; ++slot )
+         {
+            const GlobalIndex index =
+               observed.Index( stage, 0, element, slot );
+            const bool observed_written =
+               observed.writes.data.host_pointer[ index ] != 0;
+            const bool expected_written =
+               expected.writes.data.host_pointer[ index ] != 0;
+            const Real observed_value =
+               observed.values.data.host_pointer[ index ];
+            const Real expected_value =
+               expected.values.data.host_pointer[ index ];
+            const Real diff = observed_value - expected_value;
+            const bool value_mismatch =
+               observed_written &&
+               expected_written &&
+               std::abs( diff ) > tolerance;
+
+            if ( observed_written != expected_written || value_mismatch )
+            {
+               matches = false;
+            }
+
+            std::cout
+               << "    element " << element
+               << ", slot " << slot
+               << ": observed_written=" << observed_written
+               << ", expected_written=" << expected_written
+               << ", observed=" << observed_value
+               << ", expected=" << expected_value
+               << ", diff=" << diff
+               << ", mismatch="
+               << ( observed_written != expected_written ||
+                    value_mismatch ) << ".\n";
+         }
+      }
+   }
+
+   return matches;
+}
+
+void PrintFocusedOutputValues(
+   const char * label,
+   const Vector & observed,
+   const Vector & device_batch1,
+   const Vector & legacy )
+{
+   std::cout
+      << label
+      << " focused final output values for elements 50, 51, 52 "
+      << "(L2 DOF indices element*4 .. element*4+3).\n";
+
+   for ( GlobalIndex element = focus_first_element;
+         element <= focus_last_element;
+         ++element )
+   {
+      const GlobalIndex begin = element * diagnostic_dofs;
+      const GlobalIndex end = begin + diagnostic_dofs - 1;
+      std::cout << "  element " << element
+                << ", output-index-range=" << begin
+                << ".." << end << ".\n";
+
+      for ( GlobalIndex dof = 0; dof < diagnostic_dofs; ++dof )
+      {
+         const GlobalIndex index = begin + dof;
+         if ( index >= observed.Size() ||
+              index >= device_batch1.Size() ||
+              index >= legacy.Size() )
+         {
+            std::cout << "    dof " << dof
+                      << " index " << index
+                      << " is outside one of the output vectors.\n";
+            continue;
+         }
+
+         const Real observed_value = observed[ index ];
+         const Real batch1_value = device_batch1[ index ];
+         const Real legacy_value = legacy[ index ];
+         std::cout
+            << "    dof " << dof
+            << ", index=" << index
+            << ", DeviceBatchN=" << observed_value
+            << ", DeviceBatch1=" << batch1_value
+            << ", LegacyConfig=" << legacy_value
+            << ", BatchN-minus-Batch1="
+            << observed_value - batch1_value
+            << ", BatchN-minus-Legacy="
+            << observed_value - legacy_value << ".\n";
+      }
+   }
+}
+
+template < GlobalIndex NumCells >
+bool RunFocusedSupportedDebugCase()
+{
+   PrintAllocatorResetAudit();
+
+   using Layout = ThreadBlockLayout< 5 >;
+   static constexpr Integer MaxSharedDimensions = 1;
+   static constexpr Integer BatchSize = device_warp_size;
+
+   if ( !LaunchConfigurationFits< Layout, BatchSize >(
+           "ThreadBlockLayout<5>, BatchSize=device_warp_size focused GradGrad debug" ) )
+   {
+      return true;
+   }
+
+   using LegacyConfig =
+      ThreadFirstKernelConfiguration< Layout, MaxSharedDimensions >;
+   using DeviceBatch1 =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, 1 >;
+   using DeviceBatchN =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, BatchSize >;
+
+   static constexpr Integer order = 3;
+   static constexpr Integer num_quad_1d = order + 2;
+
+   const Real h = 1.0 / static_cast< Real >( NumCells );
+   Cartesian1DMesh mesh( h, NumCells );
+
+   FiniteElementOrders< order > orders;
+   auto finite_element = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
+
+   IntegrationRuleNumPoints< num_quad_1d > num_quads;
+   auto integration_rule = MakeIntegrationRule( num_quads );
+   using Rule = std::remove_cvref_t< decltype( integration_rule ) >;
+
+   Vector input = MakeInputVector(
+      fe_space.GetNumberOfFiniteElementDofs() );
+   auto zero =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         0.0 );
+
+   StageDiagnostics stages_batch1( NumCells );
+   StageDiagnostics stages_batchn( NumCells );
+
+   auto y_legacy =
+      ApplyProductionWriteOnlyGradGradWithInitial< LegacyConfig >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batch1 =
+      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatch1 >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batchn =
+      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batch1_debug =
+      ApplyDebugVariantGradGradWithInitialWriteOnly<
+         InvocationMode::runtime_active_guarded_write,
+         BarrierMode::none,
+         DeviceBatch1 >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_batch1 );
+   auto y_batchn_debug =
+      ApplyDebugVariantGradGradWithInitialWriteOnly<
+         InvocationMode::runtime_active_guarded_write,
+         BarrierMode::none,
+         DeviceBatchN >(
+            fe_space,
+            integration_rule,
+            input,
+            zero,
+            stages_batchn );
+
+   constexpr Real tolerance = 1.0e-10;
+   const char * batch_classification =
+      NumCells % BatchSize == 0 ? "full-batch" : "partial-batch";
+   bool success = true;
+
+   std::cout
+      << "Focused supported GradGrad L2/DG debug: ThreadBlockLayout<5>, "
+      << "BatchSize=device_warp_size, num_cells=" << NumCells
+      << ", batch=" << batch_classification
+      << ", output-view=production_write_only_output_view.\n";
+   std::cout
+      << "  DeviceBatch1 uses the same logical ThreadBlockLayout<5> with "
+      << "BatchSize=1, isolating the batching/wavefront effect.\n";
+
+   success =
+      CheckScaledL2Close(
+         "Focused DeviceBatch1 vs LegacyConfig",
+         y_batch1,
+         y_legacy,
+         tolerance ) && success;
+   success =
+      CheckScaledL2Close(
+         "Focused DeviceBatchN vs LegacyConfig",
+         y_batchn,
+         y_legacy,
+         tolerance ) && success;
+   success =
+      CheckScaledL2Close(
+         "Focused DeviceBatchN vs same-layout DeviceBatch1",
+         y_batchn,
+         y_batch1,
+         tolerance ) && success;
+
+   PrintScaledL2Diagnostic(
+      "Focused debug DeviceBatch1 body vs production DeviceBatch1",
+      y_batch1_debug,
+      y_batch1,
+      tolerance );
+   PrintScaledL2Diagnostic(
+      "Focused debug DeviceBatchN body vs production DeviceBatchN",
+      y_batchn_debug,
+      y_batchn,
+      tolerance );
+
+   PrintFocusedWavefrontMetadata< DeviceBatchN, Rule >(
+      "ThreadBlockLayout<5>, BatchSize=device_warp_size" );
+   PrintFocusedStageSnapshots(
+      "ThreadBlockLayout<5>, BatchSize=device_warp_size",
+      stages_batchn,
+      stages_batch1,
+      tolerance );
+   PrintFocusedOutputValues(
+      "ThreadBlockLayout<5>, BatchSize=device_warp_size",
+      y_batchn,
+      y_batch1,
+      y_legacy );
+
+   return success;
+}
+
+template <
+   typename Layout,
+   Integer MaxSharedDimensions,
+   Integer BatchSize,
+   GlobalIndex NumCells >
+void RunLayoutBatchSweepCase( const char * label )
+{
+   if ( !LaunchConfigurationFits< Layout, BatchSize >( label ) )
+   {
+      return;
+   }
+
+   using LegacyConfig =
+      ThreadFirstKernelConfiguration< Layout, MaxSharedDimensions >;
+   using DeviceBatch1 =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, 1 >;
+   using DeviceBatchN =
+      DeviceKernelConfiguration< Layout, MaxSharedDimensions, BatchSize >;
+
+   static constexpr Integer order = 3;
+   static constexpr Integer num_quad_1d = order + 2;
+
+   const Real h = 1.0 / static_cast< Real >( NumCells );
+   Cartesian1DMesh mesh( h, NumCells );
+
+   FiniteElementOrders< order > orders;
+   auto finite_element = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
+
+   IntegrationRuleNumPoints< num_quad_1d > num_quads;
+   auto integration_rule = MakeIntegrationRule( num_quads );
+
+   Vector input = MakeInputVector(
+      fe_space.GetNumberOfFiniteElementDofs() );
+   auto zero =
+      MakeConstantVector(
+         fe_space.GetNumberOfFiniteElementDofs(),
+         0.0 );
+
+   auto y_legacy =
+      ApplyProductionWriteOnlyGradGradWithInitial< LegacyConfig >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batch1 =
+      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatch1 >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+   auto y_batchn =
+      ApplyProductionWriteOnlyGradGradWithInitial< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         zero );
+
+   constexpr Real tolerance = 1.0e-10;
+   const Real err_batch1 = ScaledL2Error( y_batchn, y_batch1 );
+   const Real err_legacy = ScaledL2Error( y_batchn, y_legacy );
+   const bool batch1_ok = std::isfinite( err_batch1 ) && err_batch1 <= tolerance;
+   const bool legacy_ok = std::isfinite( err_legacy ) && err_legacy <= tolerance;
+   const bool divides_wavefront =
+      device_warp_size % Layout::GetNumberOfThreads() == 0;
+   const char * batch_classification =
+      NumCells % BatchSize == 0 ? "full-batch" : "partial-batch";
+
+   std::cout
+      << "NON-GATING layout/batch sweep: " << label
+      << ", BatchSize=" << BatchSize
+      << ", num_cells=" << NumCells
+      << ", batch=" << batch_classification
+      << ", threads_per_work_item=" << Layout::GetNumberOfThreads()
+      << ", divides_wavefront=" << divides_wavefront
+      << ", vs same-layout DeviceBatch1 error=" << err_batch1
+      << " (" << ( batch1_ok ? "PASS" : "FAIL" ) << ")"
+      << ", vs LegacyConfig error=" << err_legacy
+      << " (" << ( legacy_ok ? "PASS" : "FAIL" ) << ").\n";
+}
+
+template < typename Layout, Integer MaxSharedDimensions, GlobalIndex NumCells >
+void RunLayoutSweepForLayout( const char * label )
+{
+   RunLayoutBatchSweepCase< Layout, MaxSharedDimensions, 2, NumCells >(
+      label );
+   RunLayoutBatchSweepCase< Layout, MaxSharedDimensions, 4, NumCells >(
+      label );
+   RunLayoutBatchSweepCase< Layout, MaxSharedDimensions, 8, NumCells >(
+      label );
+   RunLayoutBatchSweepCase< Layout, MaxSharedDimensions, 16, NumCells >(
+      label );
+   RunLayoutBatchSweepCase< Layout, MaxSharedDimensions, 32, NumCells >(
+      label );
+   if constexpr ( device_warp_size != 32 )
+   {
+      RunLayoutBatchSweepCase<
+         Layout,
+         MaxSharedDimensions,
+         device_warp_size,
+         NumCells >( label );
+   }
+}
+
+void RunLayoutBatchSweep()
+{
+   std::cout
+      << "NON-GATING GradGrad L2/DG layout/batch sweep: compare layouts "
+      << "that divide the wavefront size against ThreadBlockLayout<5>, "
+      << "which does not divide 64 on HIP.\n";
+
+   RunLayoutSweepForLayout< ThreadBlockLayout< 4 >, 1, 64 >(
+      "ThreadBlockLayout<4>" );
+   RunLayoutSweepForLayout< ThreadBlockLayout< 4 >, 1, 65 >(
+      "ThreadBlockLayout<4>" );
+   RunLayoutSweepForLayout< ThreadBlockLayout< 5 >, 1, 64 >(
+      "ThreadBlockLayout<5>" );
+   RunLayoutSweepForLayout< ThreadBlockLayout< 5 >, 1, 65 >(
+      "ThreadBlockLayout<5>" );
+   RunLayoutSweepForLayout< ThreadBlockLayout< 8 >, 1, 64 >(
+      "ThreadBlockLayout<8>" );
+   RunLayoutSweepForLayout< ThreadBlockLayout< 8 >, 1, 65 >(
+      "ThreadBlockLayout<8>" );
 }
 
 #if 0
@@ -1376,8 +1921,12 @@ bool RunThreadDimHypothesisSweepForCellCount()
 int main()
 {
    bool success = true;
+   success = RunFocusedSupportedDebugCase< 63 >() && success;
+   success = RunFocusedSupportedDebugCase< 64 >() && success;
+   success = RunFocusedSupportedDebugCase< 65 >() && success;
    success = RunDebugVariantCase< 64 >() && success;
    success = RunDebugVariantCase< 65 >() && success;
+   RunLayoutBatchSweep();
    std::cout
       << "Classifying compact thread_dim > space_dim hypothesis sweep.\n";
    success = RunThreadDimHypothesisSweepForCellCount< 64 >() && success;
