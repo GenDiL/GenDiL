@@ -119,9 +119,8 @@ int main(int argc, char *argv[])
 #if defined(GENDIL_USE_DEVICE)
    constexpr Integer TrialDim = GetDim( fe_space_6D );
    constexpr Integer TestDim = GetDim( fe_space_3D );
-   using TrialThreadLayout = ThreadBlockLayout<num_quad,num_quad,num_quad,num_quad>;
-   // using TrialThreadLayout = ThreadBlockLayout<num_quad,num_quad,num_quad,num_quad,num_quad>;
-   // using TrialThreadLayout = ThreadBlockLayout<num_quad,num_quad,num_quad,num_quad,num_quad,num_quad>;
+   using TrialThreadLayout =
+      ThreadBlockLayout<num_quad_X,num_quad_Y,num_quad_Z,num_quad_U>;
    using TestThreadLayout = ThreadBlockLayout<num_quad,num_quad,num_quad>;
    constexpr size_t TrialNumSharedDimensions = TrialDim-1;
    constexpr size_t TestNumSharedDimensions = TestDim;
