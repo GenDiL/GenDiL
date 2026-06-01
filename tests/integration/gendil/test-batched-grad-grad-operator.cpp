@@ -114,6 +114,39 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename Rule >
+Vector ApplyGradGradWithDevicePoisonedOutput(
+   const FiniteElementSpace & fe_space,
+   const Rule & integration_rule,
+   const Vector & input,
+   const Real poison_value )
+{
+   Vector output( fe_space.GetNumberOfFiniteElementDofs() );
+   Real * output_data = output.WriteDeviceData();
+   const size_t output_size = output.Size();
+   DeviceLoop(
+      output_size,
+      [=] GENDIL_HOST_DEVICE ( Integer i )
+      {
+         output_data[ i ] = poison_value;
+      } );
+   GENDIL_DEVICE_SYNC;
+
+   auto op =
+      MakeGradGradOperator< KernelPolicy >( fe_space, integration_rule );
+   auto dofs_in =
+      MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, input );
+   auto dofs_out =
+      MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, output );
+   op.Apply( dofs_in, dofs_out );
+   GENDIL_DEVICE_SYNC;
+
+   return output;
+}
+
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename Rule >
 Vector ApplyGradGradWithInitial(
    const FiniteElementSpace & fe_space,
    const Rule & integration_rule,
@@ -377,6 +410,12 @@ bool RunL2CaseForCellCount(
             integration_rule,
             input,
             baseline_initial );
+   auto device_poisoned_output =
+      ApplyGradGradWithDevicePoisonedOutput< DeviceBatchN >(
+         fe_space,
+         integration_rule,
+         input,
+         output_sentinel );
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
@@ -416,22 +455,50 @@ bool RunL2CaseForCellCount(
             zero,
             y_legacy,
             tolerance ) && success;
-      success =
-         CheckScaledL2CloseWithMismatches(
-            "DeviceBatchN L2 overwrite from sentinel vs LegacyConfig",
+      const bool sentinel_vs_legacy_ok =
+         PrintScaledL2Diagnostic(
+            "NON-GATING write-only preinitialized sentinel vs LegacyConfig",
+            direct_sentinel,
+            y_legacy,
+            tolerance,
+            false );
+      if ( !sentinel_vs_legacy_ok )
+      {
+         PrintFirstMismatches(
+            "NON-GATING write-only preinitialized sentinel vs LegacyConfig",
             output_view_mode,
             batch_classification,
             direct_sentinel,
             sentinel_initial,
             y_legacy,
-            tolerance ) && success;
-      success =
-         CheckScaledL2CloseWithMismatches(
-            "DeviceBatchN L2 overwrite from baseline vs LegacyConfig",
+            tolerance );
+      }
+
+      const bool baseline_vs_legacy_ok =
+         PrintScaledL2Diagnostic(
+            "NON-GATING write-only preinitialized baseline vs LegacyConfig",
+            direct_baseline,
+            y_legacy,
+            tolerance,
+            false );
+      if ( !baseline_vs_legacy_ok )
+      {
+         PrintFirstMismatches(
+            "NON-GATING write-only preinitialized baseline vs LegacyConfig",
             output_view_mode,
             batch_classification,
             direct_baseline,
             baseline_initial,
+            y_legacy,
+            tolerance );
+      }
+      success =
+         CheckScaledL2CloseWithMismatches(
+            "DeviceBatchN L2 device-resident overwrite coverage vs LegacyConfig",
+            output_view_mode,
+            batch_classification,
+            device_poisoned_output,
+            sentinel_initial,
             y_legacy,
             tolerance ) && success;
    }
@@ -446,28 +513,57 @@ bool RunL2CaseForCellCount(
          y_batch1,
          tolerance ) && success;
 
-   success =
-      CheckScaledL2CloseWithMismatches(
-         "DeviceBatchN L2 overwrite from sentinel vs DeviceBatch1",
+   const bool sentinel_vs_batch1_ok =
+      PrintScaledL2Diagnostic(
+         "NON-GATING write-only preinitialized sentinel vs DeviceBatch1",
+         direct_sentinel,
+         y_batch1,
+         tolerance,
+         false );
+   if ( !sentinel_vs_batch1_ok )
+   {
+      PrintFirstMismatches(
+         "NON-GATING write-only preinitialized sentinel vs DeviceBatch1",
          output_view_mode,
          batch_classification,
          direct_sentinel,
          sentinel_initial,
          y_batch1,
-         tolerance ) && success;
-   success =
-      CheckScaledL2CloseWithMismatches(
-         "DeviceBatchN L2 overwrite from baseline vs DeviceBatch1",
+         tolerance );
+   }
+
+   const bool baseline_vs_batch1_ok =
+      PrintScaledL2Diagnostic(
+         "NON-GATING write-only preinitialized baseline vs DeviceBatch1",
+         direct_baseline,
+         y_batch1,
+         tolerance,
+         false );
+   if ( !baseline_vs_batch1_ok )
+   {
+      PrintFirstMismatches(
+         "NON-GATING write-only preinitialized baseline vs DeviceBatch1",
          output_view_mode,
          batch_classification,
          direct_baseline,
          baseline_initial,
          y_batch1,
+         tolerance );
+   }
+
+   success =
+      CheckScaledL2CloseWithMismatches(
+         "DeviceBatchN L2 device-resident overwrite coverage vs DeviceBatch1",
+         output_view_mode,
+         batch_classification,
+         device_poisoned_output,
+         sentinel_initial,
+         y_batch1,
          tolerance ) && success;
    success =
       CheckNoValue(
-         "DeviceBatchN L2 overwrite",
-         direct_sentinel,
+         "DeviceBatchN L2 device-resident overwrite coverage",
+         device_poisoned_output,
          output_sentinel ) && success;
 
    return success;
@@ -566,6 +662,14 @@ bool RunFocusedL2OutputViewDiagnostic(
       << "Scalar L2 ThreadedWriteDofs<Add=false> should assign, while H1 "
       << "shared DOFs accumulate. No GradGrad local staging buffer is expected "
       << "to initialize from global y.\n";
+   if constexpr ( production_mode )
+   {
+      std::cout
+         << "  Audit: write-only output views do not synchronize initial "
+         << "host/device contents. Sentinel and baseline initializations are "
+         << "therefore non-gating stale-content probes; y_zero is the "
+         << "production validation path.\n";
+   }
    if ( IsFinalPartialBatch< BatchSize >( num_cells ) )
    {
       std::cout
@@ -588,7 +692,7 @@ bool RunFocusedL2OutputViewDiagnostic(
          y_sentinel,
          oracle,
          tolerance,
-         production_mode );
+         false );
    const bool sentinel_delta_ok =
       PrintScaledL2Diagnostic(
          "focused y_sentinel - sentinel vs oracle",
@@ -602,7 +706,7 @@ bool RunFocusedL2OutputViewDiagnostic(
          y_baseline,
          oracle,
          tolerance,
-         production_mode );
+         false );
    const bool baseline_delta_ok =
       PrintScaledL2Diagnostic(
          "focused y_baseline - baseline vs oracle",
@@ -650,32 +754,42 @@ bool RunFocusedL2OutputViewDiagnostic(
       std::cout << "  CLASSIFICATION: " << mode_label
                 << " overwrites the initial output state for this case.\n";
    }
-   else if ( sentinel_delta_ok && baseline_delta_ok )
+   else if constexpr ( production_mode )
    {
-      if constexpr ( production_mode )
+      if ( zero_ok )
       {
          std::cout
-            << "  CLASSIFICATION: production output-view/write contract "
-            << "violation; subtracting the initial output recovers the oracle.\n";
+            << "  CLASSIFICATION: write_only_preinitialized_stale_content; "
+            << "the zero-initialized production path matches the oracle, "
+            << "while sentinel/baseline probes are non-gating because "
+            << "MakeWriteOnlyElementTensorView does not synchronize initial "
+            << "output contents.\n";
       }
       else
       {
-         if ( production_write_only_passed )
-         {
-            std::cout
-               << "  CLASSIFICATION: diagnostic_output_view_artifact "
-               << "(diagnostic_read_write_additive_artifact); "
-               << "production_write_only_output_view passed for this "
-               << batch_classification
-               << ", so the read-write diagnostic does not narrow the "
-               << "production GradGrad validation contract.\n";
-         }
-         else
-         {
-            std::cout
-               << "  CLASSIFICATION: diagnostic_read_write_additive_artifact; "
-               << "subtracting the initial output recovers the oracle.\n";
-         }
+         std::cout
+            << "  CLASSIFICATION: zero-initialized production output "
+            << "mismatches the oracle, suggesting a real GradGrad staging or "
+            << "batching issue.\n";
+      }
+   }
+   else if ( sentinel_delta_ok && baseline_delta_ok )
+   {
+      if ( production_write_only_passed )
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic_output_view_artifact "
+            << "(diagnostic_read_write_additive_artifact); "
+            << "production_write_only_output_view passed for this "
+            << batch_classification
+            << ", so the read-write diagnostic does not narrow the "
+            << "production GradGrad validation contract.\n";
+      }
+      else
+      {
+         std::cout
+            << "  CLASSIFICATION: diagnostic_read_write_additive_artifact; "
+            << "subtracting the initial output recovers the oracle.\n";
       }
    }
    else if ( zero_ok )
@@ -732,7 +846,7 @@ bool RunFocusedL2OutputViewDiagnostic(
 
    if constexpr ( production_mode )
    {
-      success = zero_ok && sentinel_ok && baseline_ok;
+      success = zero_ok;
    }
    return success;
 }
