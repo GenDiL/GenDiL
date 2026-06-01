@@ -85,7 +85,9 @@ Vector ApplyGradGradWithInitialView(
    const Vector & input,
    const Vector & initial )
 {
+   GENDIL_DEVICE_SYNC;
    Vector output( initial );
+   GENDIL_DEVICE_SYNC;
 
    auto op =
       MakeGradGradOperator< KernelPolicy >( fe_space, integration_rule );
@@ -354,12 +356,22 @@ bool RunL2CaseForCellCount(
             input,
             sentinel_initial );
 
-   success =
+   const bool sentinel_overwrite_ok =
       CheckScaledL2Close(
          "DeviceBatchN L2 overwrite from sentinel",
          direct_sentinel,
          y_batchn,
-         tolerance ) && success;
+         tolerance );
+   if ( !sentinel_overwrite_ok )
+   {
+      PrintFirstMismatches(
+         "DeviceBatchN L2 overwrite from sentinel",
+         direct_sentinel,
+         sentinel_initial,
+         y_batchn,
+         tolerance );
+   }
+   success = sentinel_overwrite_ok && success;
    success =
       CheckNoValue(
          "DeviceBatchN L2 overwrite",
@@ -496,6 +508,15 @@ bool RunFocusedL2OutputViewDiagnostic()
          tolerance,
          false );
 
+   if ( !zero_ok )
+   {
+      PrintFirstMismatches(
+         "focused y_zero vs oracle",
+         y_zero,
+         zero,
+         oracle,
+         tolerance );
+   }
    if ( !sentinel_ok )
    {
       PrintFirstMismatches(
@@ -515,7 +536,7 @@ bool RunFocusedL2OutputViewDiagnostic()
          tolerance );
    }
 
-   if ( sentinel_ok && baseline_ok )
+   if ( zero_ok && sentinel_ok && baseline_ok )
    {
       std::cout << "  CLASSIFICATION: " << mode_label
                 << " overwrites the initial output state for this case.\n";
