@@ -1066,14 +1066,7 @@ auto ReadDofs(
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-   {
-      return SerialReadDofs( thread, fe_space, face_info, global_dofs );
-   }
-   else
-   {
-      return ThreadedReadDofs( thread, fe_space, face_info, global_dofs );
-   }
+   return ReadScalarDofs( thread, fe_space, face_info, global_dofs );
 }
 
 template <
