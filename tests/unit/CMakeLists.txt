@@ -15,56 +15,57 @@ if(USE_CUDA OR USE_HIP)
   add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
   add_my_test(test-cell-iterator-device test-cell-iterator-device.cpp)
   add_my_test(test-threaded-dot-shared-arena test-threaded-dot-shared-arena.cpp)
-    test-cell-iterator-filtered-sync-experiment
-    test-cell-iterator-filtered-sync-experiment.cpp
-  )
-  set_tests_properties(
-    test-cell-iterator-filtered-sync-experiment
-    PROPERTIES
-    TIMEOUT 15
-  )
 
   add_executable(
-    test-device-kernel-configuration-one-index-fail
+    test-cell-iterator-filtered-sync-experiment
     EXCLUDE_FROM_ALL
-    test-device-kernel-configuration-one-index-fail.cpp
+    test-cell-iterator-filtered-sync-experiment.cpp
   )
   target_link_libraries(
-    test-device-kernel-configuration-one-index-fail
+    test-cell-iterator-filtered-sync-experiment
     PRIVATE
     GENDIL
   )
   if(USE_CUDA)
     set_source_files_properties(
-      test-device-kernel-configuration-one-index-fail.cpp
+      test-cell-iterator-filtered-sync-experiment.cpp
       PROPERTIES
       LANGUAGE CUDA
     )
   endif()
   if(USE_HIP)
     set_source_files_properties(
-      test-device-kernel-configuration-one-index-fail.cpp
+      test-cell-iterator-filtered-sync-experiment.cpp
       PROPERTIES
       LANGUAGE HIP
     )
   endif()
   target_include_directories(
-    test-device-kernel-configuration-one-index-fail
+    test-cell-iterator-filtered-sync-experiment
     PRIVATE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>
   )
+  option(
+    GENDIL_ENABLE_FILTERED_SYNC_EXPERIMENT_CTEST
+    "Register filtered CellIterator Sync experiment in CTest."
+    OFF
+  )
+  if(GENDIL_ENABLE_FILTERED_SYNC_EXPERIMENT_CTEST)
   add_test(
-    NAME test-device-kernel-configuration-one-index-fail
-    COMMAND
-      ${CMAKE_COMMAND}
-      --build ${CMAKE_BINARY_DIR}
-      --target test-device-kernel-configuration-one-index-fail
+      NAME test-cell-iterator-filtered-sync-experiment
+      COMMAND test-cell-iterator-filtered-sync-experiment
   )
   set_tests_properties(
-    test-device-kernel-configuration-one-index-fail
+      test-cell-iterator-filtered-sync-experiment
     PROPERTIES
-    WILL_FAIL TRUE
+      TIMEOUT 15
+    )
+  endif()
+
+  add_my_test(
+    test-device-kernel-configuration-one-index-batched
+    test-device-kernel-configuration-one-index-batched.cpp
   )
 endif()
 # add_my_test(test-gmres test-gmres.cpp)
