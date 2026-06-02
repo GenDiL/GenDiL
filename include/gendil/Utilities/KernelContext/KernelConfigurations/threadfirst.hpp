@@ -61,7 +61,6 @@ public:
    template < Integer space_dim >
    using shared_dimensions = cat_t< threaded_dimensions< space_dim >, shared_register_dimensions< space_dim > >;
 
-   GENDIL_HOST_DEVICE
    ThreadFirstKernelConfiguration() = default;
 
    GENDIL_HOST_DEVICE

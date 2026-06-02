@@ -437,6 +437,7 @@ void GenericAssembly(
          (void)wf_ctx;
          (void)op_ctx;
          (void)weak_form;
+         (void)sparse_matrix;
 
          GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem> kernel_ctx(_shared_mem);
