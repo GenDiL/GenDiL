@@ -26,7 +26,7 @@ constexpr Integer timed_iterations = 1;
 constexpr GlobalIndex target_dofs = 50'000;
 constexpr GlobalIndex min_cells = 64;
 #endif
-constexpr size_t static_shared_memory_compile_limit_bytes = 96 * 1024;
+constexpr size_t static_shared_memory_compile_limit_bytes = 64 * 1024;
 constexpr Real correctness_tolerance = 1e-10;
 
 template < typename BaseKernelPolicy, typename FaceReadPolicy >

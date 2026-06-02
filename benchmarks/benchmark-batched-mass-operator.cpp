@@ -25,7 +25,7 @@ constexpr Integer timed_iterations = 1;
 constexpr GlobalIndex target_dofs = 100'000;
 constexpr GlobalIndex min_cells = 512;
 #endif
-constexpr size_t static_shared_memory_compile_limit_bytes = 96 * 1024;
+constexpr size_t static_shared_memory_compile_limit_bytes = 64 * 1024;
 
 template < Integer Value, size_t... Is >
 auto MakeOrdersImpl( std::index_sequence< Is... > )
