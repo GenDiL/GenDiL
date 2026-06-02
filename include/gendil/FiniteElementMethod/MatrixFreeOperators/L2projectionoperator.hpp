@@ -131,6 +131,7 @@ void UnitMassElementOperator(
 
    // Application of the QFunction
    QuadraturePointLoop< IntegrationRule >(
+      kernel_conf,
    [&] ( auto const & quad_index )
    {
       PhysicalCoordinates X;

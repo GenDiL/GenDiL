@@ -71,10 +71,10 @@ void cuda_error(
    const char *file,
    int line )
 {
-   std::cout << "\n\nCUDA error: (" << cudaGetErrorString(error) << ") failed with message:\n"
+   std::cerr << "\n\nCUDA error: (" << cudaGetErrorString(error) << ") failed with message:\n"
              << message
              << "\n ... in file: " << file << ':' << line
-             << "\n ... in function: " << func << '\n';
+             << "\n ... in function: " << func << std::endl;
    std::abort();
 }
 
@@ -103,10 +103,10 @@ void hip_error(
    const char *file,
    int line )
 {
-   std::cout << "\n\nHIP error: (" << hipGetErrorString(error) << ") failed with message:\n"
+   std::cerr << "\n\nHIP error: (" << hipGetErrorString(error) << ") failed with message:\n"
              << message
              << "\n ... in file: " << file << ':' << line
-             << "\n ... in function: " << func << '\n';
+             << "\n ... in function: " << func << std::endl;
    std::abort();
 }
 
