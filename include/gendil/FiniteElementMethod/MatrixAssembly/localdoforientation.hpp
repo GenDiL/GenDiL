@@ -74,7 +74,7 @@ auto OrientReferenceDofToNative(
    Permutation< Space::Dim > orientation = orientation_;
    const auto dof_sizes = to_array( ComponentDofShape{} );
 
-   auto native_indices = [&] GENDIL_HOST_DEVICE
+   auto native_indices = [&]
    {
       if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
       {
