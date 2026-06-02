@@ -254,7 +254,7 @@ void CountThreadLoopVisits(
 {
    ThreadLoop< Shape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... indices )
+      [&] ( auto... indices )
       {
          const GlobalIndex index = FlatIndex( Shape{}, indices... );
          gendil::AtomicAdd( output[ base + index ], Real{ 1.0 } );
@@ -271,11 +271,11 @@ void CountQuadratureLoopVisits(
    using QuadShape = typename Rule::points::num_points_tensor;
    QuadraturePointLoop< Rule >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( const auto & quad_index )
+      [&] ( const auto & quad_index )
       {
          GlobalIndex index = 0;
          ConstexprLoop< QuadShape::size() >(
-            [&] GENDIL_HOST_DEVICE ( auto i )
+            [&] ( auto i )
             {
                constexpr Integer I = decltype( i )::value;
                if constexpr ( I == 0 )
@@ -320,10 +320,10 @@ void StoreDofSlice(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex local_index =
                   FlatIndex( DofShape{}, t..., k... );
@@ -354,10 +354,10 @@ void StoreQuadSlice(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex local_index =
                   FlatIndex( QuadShape{}, t..., k... );
@@ -389,15 +389,15 @@ void StoreGradientSlice(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex quad_index =
                   FlatIndex( QuadShape{}, t..., k... );
                ConstexprLoop< dim >(
-                  [&] GENDIL_HOST_DEVICE ( auto component )
+                  [&] ( auto component )
                   {
                      constexpr Integer c = decltype( component )::value;
                      output[
@@ -429,10 +429,10 @@ void FillQuadValues(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex quad_index =
                   FlatIndex( QuadShape{}, t..., k... );
@@ -461,15 +461,15 @@ void FillGradientValues(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex quad_index =
                   FlatIndex( QuadShape{}, t..., k... );
                ConstexprLoop< dim >(
-                  [&] GENDIL_HOST_DEVICE ( auto component )
+                  [&] ( auto component )
                   {
                      constexpr Integer c = decltype( component )::value;
                      local( k..., c ) =
@@ -503,10 +503,10 @@ void FillDofValues(
 
    ThreadLoop< ThreadShape >(
       kernel_conf,
-      [&] GENDIL_HOST_DEVICE ( auto... t )
+      [&] ( auto... t )
       {
          UnitLoop< RegisterShape >(
-            [&] GENDIL_HOST_DEVICE ( auto... k )
+            [&] ( auto... k )
             {
                const GlobalIndex dof_index =
                   FlatIndex( DofShape{}, t..., k... );
