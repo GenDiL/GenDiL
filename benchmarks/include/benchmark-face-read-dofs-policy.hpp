@@ -147,6 +147,21 @@ struct FaceReadCaseSupported
       threaded_shape_covered_v< KernelPolicy, dof_shape >;
 };
 
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace >
+struct FaceReadLocalMemoryEstimate
+{
+   using dof_shape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+
+   static constexpr size_t register_dofs =
+      register_block_size_v< KernelPolicy, dof_shape >;
+   static constexpr size_t value = 4 * register_dofs * sizeof( Real );
+};
+
 inline bool VectorsClose( const Vector & a, const Vector & b )
 {
    if ( a.Size() != b.Size() )
@@ -203,6 +218,10 @@ void RunFaceKernelPolicy(
       KernelContext<
          KernelPolicy,
          required_shared_mem >::shared_memory_block_size;
+   constexpr size_t local_memory_estimate =
+      FaceReadLocalMemoryEstimate<
+         KernelPolicy,
+         decltype( fe_space ) >::value;
 
    if constexpr (
       !FaceReadCaseSupported<
@@ -224,6 +243,26 @@ void RunFaceKernelPolicy(
          shared_memory_per_block,
          0.0,
          "skipped-helper-coverage" );
+      return;
+   }
+   else if constexpr (
+      local_memory_estimate > static_local_memory_compile_limit_bytes )
+   {
+      PrintFaceRow(
+         Dim,
+         Order,
+         num_quad_1d,
+         num_cells,
+         num_faces,
+         dofs_read_per_apply,
+         layout_name,
+         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+         batch_size,
+         FaceReadPolicyName< FaceReadPolicy >(),
+         required_shared_mem,
+         shared_memory_per_block,
+         0.0,
+         "skipped-local-memory" );
       return;
    }
    else
@@ -325,6 +364,10 @@ void RunFaceKernelPolicy(
                KernelContext<
                   ReferenceKernelPolicy,
                   reference_required_shared_mem >::shared_memory_block_size;
+            constexpr size_t reference_local_memory_estimate =
+               FaceReadLocalMemoryEstimate<
+                  ReferenceKernelPolicy,
+                  decltype( fe_space ) >::value;
 
             const auto reference_block_dims =
                BlockDimensions< ReferenceKernelPolicy >( num_cells );
@@ -350,8 +393,29 @@ void RunFaceKernelPolicy(
                   "skipped-correctness-reference-helper-coverage" );
                return;
             }
+            else if constexpr (
+               reference_local_memory_estimate >
+               static_local_memory_compile_limit_bytes )
+            {
+               PrintFaceRow(
+                  Dim,
+                  Order,
+                  num_quad_1d,
+                  num_cells,
+                  num_faces,
+                  dofs_read_per_apply,
+                  layout_name,
+                  KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+                  batch_size,
+                  FaceReadPolicyName< FaceReadPolicy >(),
+                  required_shared_mem,
+                  shared_memory_per_block,
+                  0.0,
+                  "skipped-correctness-reference-local-memory" );
+               return;
+            }
 
-            if constexpr (
+            else if constexpr (
                reference_shared_memory_per_block * sizeof( Real ) >
                static_shared_memory_compile_limit_bytes )
             {
