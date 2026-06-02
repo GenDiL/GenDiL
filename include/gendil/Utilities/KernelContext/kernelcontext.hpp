@@ -37,20 +37,7 @@ public:
    KernelContext( Real * shared_data )
       : KernelConfiguration(),
         SharedAllocator(
-           details::SharedMemoryForConfiguration(
-              static_cast< const KernelConfiguration & >( *this ),
-              shared_data,
-              RequiredSharedMemorySize ) )
-   {}
-
-   GENDIL_HOST_DEVICE
-   KernelContext(
-      Real * shared_data,
-      const KernelConfiguration & kernel_configuration )
-      : KernelConfiguration( kernel_configuration ),
-        SharedAllocator(
-           details::SharedMemoryForConfiguration(
-              kernel_configuration,
+           details::SharedMemoryForConfiguration< KernelConfiguration >(
               shared_data,
               RequiredSharedMemorySize ) )
    {}

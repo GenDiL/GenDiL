@@ -123,20 +123,19 @@ int main( int, char ** )
    static_assert( legacy_geometry.block_y == 3 );
    static_assert( legacy_geometry.block_z == 1 );
 
-   LegacyConfig legacy_config( 9, 5 );
    if ( !Check(
-           legacy_config.WorkItemIndex() == 9 &&
-           legacy_config.BatchIndex() == 0 &&
-           legacy_config.IsActive( 10 ) &&
-           !legacy_config.IsActive( 9 ),
-           "ThreadFirstKernelConfiguration work-item API failed." ) )
+           LegacyConfig::WorkItemIndex() == 0 &&
+           LegacyConfig::BatchIndex() == 0 &&
+           LegacyConfig::IsActive( 1 ) &&
+           !LegacyConfig::IsActive( 0 ),
+           "ThreadFirstKernelConfiguration static host fallback failed." ) )
    {
       return 1;
    }
    if ( !Check(
-           legacy_config.template GetThreadIndex< 0 >() == 1 &&
-           legacy_config.template GetThreadIndex< 1 >() == 2,
-           "ThreadFirstKernelConfiguration logical thread decoding failed." ) )
+           LegacyConfig::template GetThreadIndex< 0 >() == 0 &&
+           LegacyConfig::template GetThreadIndex< 1 >() == 0,
+           "ThreadFirstKernelConfiguration static thread-index fallback failed." ) )
    {
       return 1;
    }
@@ -165,32 +164,26 @@ int main( int, char ** )
    static_assert( batched_geometry.block_y == 4 );
    static_assert( batched_geometry.block_z == 1 );
 
-   BatchedConfig batched_config( 9, 1, 5 );
    if ( !Check(
-           batched_config.WorkItemIndex() == 9 &&
-           batched_config.BatchIndex() == 1 &&
-           batched_config.IsActive( 10 ) &&
-           !batched_config.IsActive( 9 ),
-           "DeviceKernelConfiguration work-item API failed." ) )
+           BatchedConfig::WorkItemIndex() == 0 &&
+           BatchedConfig::BatchIndex() == 0 &&
+           BatchedConfig::IsActive( 1 ) &&
+           !BatchedConfig::IsActive( 0 ),
+           "DeviceKernelConfiguration static host fallback failed." ) )
    {
       return 1;
    }
    if ( !Check(
-           batched_config.template GetThreadIndex< 0 >() == 1 &&
-           batched_config.template GetThreadIndex< 1 >() == 2,
-           "DeviceKernelConfiguration logical thread decoding failed." ) )
+           BatchedConfig::template GetThreadIndex< 0 >() == 0 &&
+           BatchedConfig::template GetThreadIndex< 1 >() == 0,
+           "DeviceKernelConfiguration static thread-index fallback failed." ) )
    {
       return 1;
    }
 
-   BatchedConfig batch_lane_0_leader( 8, 0, 0 );
-   BatchedConfig batch_lane_1_leader( 9, 1, 0 );
    if ( !Check(
-           batch_lane_0_leader.GetLinearThreadIndex() == 0 &&
-           batch_lane_1_leader.GetLinearThreadIndex() == 0 &&
-           batch_lane_0_leader.BatchIndex() == 0 &&
-           batch_lane_1_leader.BatchIndex() == 1,
-           "DeviceKernelConfiguration must expose one x-thread leader per batch lane." ) )
+           BatchedConfig::GetLinearThreadIndex() == 0,
+           "DeviceKernelConfiguration static linear thread fallback failed." ) )
    {
       return 1;
    }
@@ -227,21 +220,20 @@ int main( int, char ** )
    static_assert( batched_single_geometry.grid_x == 11 );
    static_assert( batched_single_geometry.block_x == 6 );
    static_assert( batched_single_geometry.block_y == 1 );
-   BatchedSingle batched_single( 9, 0, 5 );
    if ( !Check(
-           batched_single.WorkItemIndex() == legacy_config.WorkItemIndex() &&
-           batched_single.BatchIndex() == legacy_config.BatchIndex() &&
-           batched_single.IsActive( 10 ) == legacy_config.IsActive( 10 ),
-           "BatchSize == 1 semantic equivalence failed." ) )
+           BatchedSingle::WorkItemIndex() == LegacyConfig::WorkItemIndex() &&
+           BatchedSingle::BatchIndex() == LegacyConfig::BatchIndex() &&
+           BatchedSingle::IsActive( 1 ) == LegacyConfig::IsActive( 1 ),
+           "BatchSize == 1 static fallback equivalence failed." ) )
    {
       return 1;
    }
 
    Real shared[ BatchedConfig::SharedMemoryBlockSize( 7 ) ];
-   Real * batch_slice = batched_config.SharedMemoryForWorkItem( shared, 7 );
+   Real * batch_slice = BatchedConfig::SharedMemoryForWorkItem( shared, 7 );
    if ( !Check(
-           batch_slice == shared + 7,
-           "DeviceKernelConfiguration shared-memory slice offset failed." ) )
+           batch_slice == shared,
+           "DeviceKernelConfiguration host fallback should use batch lane 0." ) )
    {
       return 1;
    }
@@ -254,18 +246,16 @@ int main( int, char ** )
       return 1;
    }
 
-   KernelContext< BatchedConfig, 7 > batched_context(
-      shared,
-      batched_config );
+   KernelContext< BatchedConfig, 7 > batched_context( shared );
    Real * arena_slice = batched_context.SharedAllocator.allocate( 7 );
    if ( !Check(
            arena_slice == batch_slice,
-           "KernelContext did not use the device batch-local shared slice." ) )
+           "KernelContext did not use the static configuration shared slice." ) )
    {
       return 1;
    }
 
-   KernelContext< LegacyConfig, 7 > legacy_context( shared, legacy_config );
+   KernelContext< LegacyConfig, 7 > legacy_context( shared );
    Real * legacy_slice = legacy_context.SharedAllocator.allocate( 7 );
    if ( !Check(
            legacy_slice == shared,

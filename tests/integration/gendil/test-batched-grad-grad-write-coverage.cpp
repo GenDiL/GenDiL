@@ -275,11 +275,11 @@ void RunWriteCoverageKernel(
    const GlobalIndex num_cells,
    CountingL2OutputView output )
 {
-   Config::BlockLoop(
+   Config::CandidateBlockLoop(
       num_cells,
-      [=] GENDIL_HOST_DEVICE ( const Config & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE () mutable
       {
-         if ( !kernel.IsActive( num_cells ) )
+         if ( !Config::IsActive( num_cells ) )
          {
             return;
          }
@@ -290,7 +290,7 @@ void RunWriteCoverageKernel(
                Config,
                required_shared_mem >::shared_memory_block_size ];
          KernelContext< Config, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            kernel_conf( _shared_mem );
 
          using DofShape = orders_to_num_dofs<
             typename FiniteElementSpace::finite_element_type::
@@ -300,7 +300,7 @@ void RunWriteCoverageKernel(
             typename Config::template register_dimensions<
                DofShape::size() > >;
          auto local = MakeStaticFIFOView< Real >( RegisterShape{} );
-         const GlobalIndex element_index = kernel.WorkItemIndex();
+         const GlobalIndex element_index = Config::WorkItemIndex();
          const int writer_id = CurrentWriterId();
          UnitLoop< RegisterShape >(
             [&] ( auto... k )

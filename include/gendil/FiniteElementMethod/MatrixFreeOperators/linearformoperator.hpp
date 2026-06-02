@@ -114,65 +114,34 @@ template <
 void LinearFormOperator( const FiniteElementSpace & fe_space,
                          const MeshQuadData & mesh_quad_data,
                          const ElementQuadData & element_quad_data,
-                         Lambda && lambda,
-                         DofsOutView & dofs_out )
+   Lambda && lambda,
+   DofsOutView & dofs_out )
 {
-   if constexpr ( KernelConfiguration::batch_size > 1 )
-   {
-      // Temporary experimental batched path. CellIterator filters inactive
-      // final-batch lanes while Sync() is currently block-wide.
-      mesh::CellIterator< KernelConfiguration >(
-         fe_space,
-         [=] GENDIL_DEVICE ( const KernelConfiguration & kernel ) mutable
-         {
-            const GlobalIndex element_index = kernel.WorkItemIndex();
-            constexpr size_t required_shared_mem =
-               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-            GENDIL_SHARED Real _shared_mem[
-               KernelContext<
-                  KernelConfiguration,
-                  required_shared_mem >::shared_memory_block_size ];
+   mesh::CellIterator< KernelConfiguration >(
+      fe_space,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      {
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
-            KernelContext< KernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem, kernel );
+         KernelContext< KernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
 
-            LinearFormElementOperator(
-               kernel_conf,
-               fe_space,
-               IntegrationRule{},
-               element_index,
-               mesh_quad_data,
-               element_quad_data,
-               lambda,
-               dofs_out );
-         }
-      );
-   }
-   else
-   {
-      mesh::CellIterator< KernelConfiguration >(
-         fe_space,
-         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-         {
-            constexpr size_t required_shared_mem =
-               required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
-
-            KernelContext< KernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem );
-
-            LinearFormElementOperator(
-               kernel_conf,
-               fe_space,
-               IntegrationRule{},
-               element_index,
-               mesh_quad_data,
-               element_quad_data,
-               lambda,
-               dofs_out );
-         }
-      );
-   }
+         LinearFormElementOperator(
+            kernel_conf,
+            fe_space,
+            IntegrationRule{},
+            element_index,
+            mesh_quad_data,
+            element_quad_data,
+            lambda,
+            dofs_out );
+      }
+   );
 }
 
 /**

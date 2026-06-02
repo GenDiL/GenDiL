@@ -28,50 +28,32 @@ namespace details
       return divisor == 0 ? 0 : ( n + divisor - 1 ) / divisor;
    }
 
-   template < typename KernelConfiguration, typename Lambda >
-   GENDIL_HOST_DEVICE
-   inline void InvokeDeviceKernelBody(
-      const KernelConfiguration & kernel_configuration,
-      const GlobalIndex num_work_items,
-      Lambda & body )
-   {
-      if constexpr ( std::is_invocable_v< Lambda, KernelConfiguration > )
-      {
-         body( kernel_configuration );
-      }
-      else if constexpr ( std::is_invocable_v< Lambda, GlobalIndex > )
-      {
-         static_assert(
-            KernelConfiguration::batch_size == 1,
-            "One-index kernel bodies are only safe for BatchSize == 1. "
-            "Use a kernel-configuration body and guard reads, writes, and "
-            "atomics with IsActive(num_work_items) for batched execution." );
-
-         if ( kernel_configuration.IsActive( num_work_items ) )
-         {
-            body( kernel_configuration.WorkItemIndex() );
-         }
-      }
-      else
-      {
-         static_assert(
-            std::is_invocable_v< Lambda, KernelConfiguration > ||
-            std::is_invocable_v< Lambda, GlobalIndex >,
-            "Kernel body must be invocable with either a kernel configuration "
-            "object or a GlobalIndex work-item index." );
-      }
-   }
-
 #if defined( GENDIL_USE_DEVICE )
    template < typename KernelConfiguration, typename Lambda >
    __global__ static
-   void DeviceGridLoop( const GlobalIndex num_work_items, Lambda body )
+   void BlockLoopKernel( const GlobalIndex num_work_items, Lambda body )
    {
-      KernelConfiguration kernel_configuration;
-      InvokeDeviceKernelBody(
-         kernel_configuration,
-         num_work_items,
-         body );
+      if ( KernelConfiguration::IsActive( num_work_items ) )
+      {
+         body( KernelConfiguration::WorkItemIndex() );
+      }
+   }
+
+   /**
+    * @brief Diagnostic-only all-candidate kernel.
+    *
+    * @details CandidateBlockLoop users see every physical candidate lane,
+    * including inactive lanes in the final partial batch. The body takes no
+    * argument; diagnostics should query lane metadata through static
+    * KernelConfiguration accessors such as BatchIndex(), WorkItemIndex(), and
+    * IsActive(n). Production code must use BlockLoop instead.
+    */
+   template < typename KernelConfiguration, typename Lambda >
+   __global__ static
+   void CandidateBlockLoopKernel( const GlobalIndex num_work_items, Lambda body )
+   {
+      (void) num_work_items;
+      body();
    }
 #endif
 
@@ -116,17 +98,16 @@ namespace details
    template < typename KernelConfiguration >
    GENDIL_HOST_DEVICE
    inline Real * SharedMemoryForConfiguration(
-      const KernelConfiguration & kernel_configuration,
       Real * shared_data,
       const size_t per_work_item_reals )
    {
       if constexpr ( requires {
-         kernel_configuration.SharedMemoryForWorkItem(
+         KernelConfiguration::SharedMemoryForWorkItem(
             shared_data,
             per_work_item_reals );
       } )
       {
-         return kernel_configuration.SharedMemoryForWorkItem(
+         return KernelConfiguration::SharedMemoryForWorkItem(
             shared_data,
             per_work_item_reals );
       }

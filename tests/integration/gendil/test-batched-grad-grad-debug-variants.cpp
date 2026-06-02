@@ -581,13 +581,13 @@ void DebugAllCandidateGradGradExplicitOperator(
    DofsOutView & dofs_out )
 {
    const GlobalIndex num_cells = fe_space.GetNumberOfCells();
-   KernelConfiguration::BlockLoop(
+   KernelConfiguration::CandidateBlockLoop(
       num_cells,
-      [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE () mutable
       {
-         const bool active = kernel.IsActive( num_cells );
+         const bool active = KernelConfiguration::IsActive( num_cells );
          const GlobalIndex element_index =
-            active ? kernel.WorkItemIndex() : GlobalIndex( 0 );
+            active ? KernelConfiguration::WorkItemIndex() : GlobalIndex( 0 );
 
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelConfiguration, IntegrationRule >;
@@ -597,7 +597,7 @@ void DebugAllCandidateGradGradExplicitOperator(
                required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            kernel_conf( _shared_mem );
 
          DebugGradGradElementOperator< BarrierMode::none, IntegrationRule >(
             kernel_conf,
@@ -628,21 +628,21 @@ void DebugEarlyReturnGradGradExplicitOperator(
    DofsOutView & dofs_out )
 {
    const GlobalIndex num_cells = fe_space.GetNumberOfCells();
-   KernelConfiguration::BlockLoop(
+   KernelConfiguration::CandidateBlockLoop(
       num_cells,
-      [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE () mutable
       {
          // Test-only MFEM-style control-flow diagnostic. This differs from the
          // current CellIterator wrapper shape by making the inactive-candidate
          // branch an explicit early return inside the kernel body. A passing
          // result here is only a codegen/control-flow clue; it is not a
          // synchronization contract for bodies with block-wide Sync().
-         if ( !kernel.IsActive( num_cells ) )
+         if ( !KernelConfiguration::IsActive( num_cells ) )
          {
             return;
          }
 
-         const GlobalIndex element_index = kernel.WorkItemIndex();
+         const GlobalIndex element_index = KernelConfiguration::WorkItemIndex();
 
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelConfiguration, IntegrationRule >;
@@ -652,7 +652,7 @@ void DebugEarlyReturnGradGradExplicitOperator(
                required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            kernel_conf( _shared_mem );
 
          DebugGradGradElementOperator< BarrierMode::none, IntegrationRule >(
             kernel_conf,
@@ -686,13 +686,13 @@ void DebugVariantGradGradExplicitOperator(
    const StageRecorder & recorder )
 {
    const GlobalIndex num_cells = fe_space.GetNumberOfCells();
-   KernelConfiguration::BlockLoop(
+   KernelConfiguration::CandidateBlockLoop(
       num_cells,
-      [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE () mutable
       {
-         const bool active = kernel.IsActive( num_cells );
+         const bool active = KernelConfiguration::IsActive( num_cells );
          bool write_output = true;
-         GlobalIndex element_index = kernel.WorkItemIndex();
+         GlobalIndex element_index = KernelConfiguration::WorkItemIndex();
 
          if constexpr ( Invocation == InvocationMode::early_return )
          {
@@ -714,7 +714,7 @@ void DebugVariantGradGradExplicitOperator(
             Invocation == InvocationMode::all_candidate_guarded_write )
          {
             element_index =
-               active ? kernel.WorkItemIndex() : GlobalIndex( 0 );
+               active ? KernelConfiguration::WorkItemIndex() : GlobalIndex( 0 );
             write_output = active;
          }
          else
@@ -731,7 +731,7 @@ void DebugVariantGradGradExplicitOperator(
                required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            kernel_conf( _shared_mem );
 
          DebugGradGradElementOperator< Barrier, IntegrationRule >(
             kernel_conf,
@@ -944,10 +944,8 @@ Vector ApplyDirectProductionGradGradWithInitial(
 
    KernelPolicy::BlockLoop(
       num_cells,
-      [=] GENDIL_HOST_DEVICE ( const KernelPolicy & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         const GlobalIndex element_index = kernel.WorkItemIndex();
-
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelPolicy, Rule >;
          GENDIL_SHARED Real _shared_mem[
@@ -956,7 +954,7 @@ Vector ApplyDirectProductionGradGradWithInitial(
                required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelPolicy, required_shared_mem >
-            kernel_conf( _shared_mem, kernel );
+            kernel_conf( _shared_mem );
 
          GradGradElementOperator< Rule >(
             kernel_conf,

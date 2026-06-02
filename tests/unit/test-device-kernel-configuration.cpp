@@ -148,13 +148,24 @@ bool RunSmokeCase( const char * name )
 
    Config::BlockLoop(
       num_work_items,
-      [=] GENDIL_HOST_DEVICE ( const Config & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex work_item_index ) mutable
+      {
+         if ( Config::GetLinearThreadIndex() == 0 )
+         {
+            guarded_output_data[ work_item_index ] =
+               static_cast< long long >( 1000 + work_item_index );
+         }
+      } );
+
+   Config::CandidateBlockLoop(
+      num_work_items,
+      [=] GENDIL_HOST_DEVICE () mutable
       {
          constexpr GlobalIndex SharedSize = shared_size;
 
-         const GlobalIndex candidate = kernel.WorkItemIndex();
+         const GlobalIndex candidate = Config::WorkItemIndex();
          const GlobalIndex linear_thread_index =
-            kernel.GetLinearThreadIndex();
+            Config::GetLinearThreadIndex();
          const GlobalIndex thread_slot =
             candidate * threads_per_work_item + linear_thread_index;
 
@@ -162,32 +173,24 @@ bool RunSmokeCase( const char * name )
             static_cast< long long >( linear_thread_index );
          thread_index_0_data[ thread_slot ] =
             static_cast< long long >(
-               kernel.template GetThreadIndex< 0 >() );
+               Config::template GetThreadIndex< 0 >() );
          thread_index_1_data[ thread_slot ] =
             static_cast< long long >(
-               kernel.template GetThreadIndex< 1 >() );
+               Config::template GetThreadIndex< 1 >() );
 
          if ( linear_thread_index == 0 )
          {
             batch_index_data[ candidate ] =
-               static_cast< long long >( kernel.BatchIndex() );
+               static_cast< long long >( Config::BatchIndex() );
             work_item_index_data[ candidate ] =
                static_cast< long long >( candidate );
             active_flag_data[ candidate ] =
-               kernel.IsActive( num_work_items ) ? 1 : 0;
-
-            if ( kernel.IsActive( num_work_items ) )
-            {
-               guarded_output_data[ candidate ] =
-                  static_cast< long long >( 1000 + candidate );
-            }
+               Config::IsActive( num_work_items ) ? 1 : 0;
          }
 
          GENDIL_SHARED Real block_shared[
             Config::SharedMemoryBlockSize( SharedSize ) ];
-         KernelContext< Config, SharedSize > context(
-            block_shared,
-            kernel );
+         KernelContext< Config, SharedSize > context( block_shared );
          Real * local_shared =
             context.SharedAllocator.allocate( SharedSize );
 
@@ -195,11 +198,11 @@ bool RunSmokeCase( const char * name )
          {
             local_shared[ linear_thread_index ] = SharedValue(
                candidate,
-               kernel.BatchIndex(),
+               Config::BatchIndex(),
                linear_thread_index );
          }
 
-         kernel.Sync();
+         context.Sync();
 
          if ( linear_thread_index == 0 )
          {
@@ -210,7 +213,7 @@ bool RunSmokeCase( const char * name )
             {
                const Real expected = SharedValue(
                   candidate,
-                  kernel.BatchIndex(),
+                  Config::BatchIndex(),
                   i );
                const Real observed = local_shared[ i ];
                checksum += observed;
@@ -226,7 +229,7 @@ bool RunSmokeCase( const char * name )
             shared_checksum_data[ candidate ] = checksum;
          }
 
-         kernel.Sync();
+         context.Sync();
 
          if ( linear_thread_index == 0 )
          {

@@ -169,72 +169,37 @@ Real L2Error(
    *sum_ptr = 0.0;
    ToDevice( 1, sum_ptr );
 
-   if constexpr ( KernelConfiguration::batch_size > 1 )
-   {
-      mesh::CellIterator< KernelConfiguration >(
-         fe_space,
-         [=] GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
-         {
-            const GlobalIndex element_index = kernel.WorkItemIndex();
-            constexpr size_t required_shared_mem =
-               required_shared_memory_v<
-                  KernelConfiguration,
-                  IntegrationRule > +
-               required_l2_error_reduction_shared_memory_v<
-                  KernelConfiguration >;
-            GENDIL_SHARED Real _shared_mem[
-               KernelContext<
-                  KernelConfiguration,
-                  required_shared_mem >::shared_memory_block_size ];
-
+   mesh::CellIterator< KernelConfiguration >(
+      fe_space,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      {
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v<
+               KernelConfiguration,
+               IntegrationRule > +
+            required_l2_error_reduction_shared_memory_v<
+               KernelConfiguration >;
+         GENDIL_SHARED Real _shared_mem[
             KernelContext<
                KernelConfiguration,
-               required_shared_mem > kernel_conf( _shared_mem, kernel );
+               required_shared_mem >::shared_memory_block_size ];
 
-            L2ErrorElementOperator(
-               kernel_conf,
-               fe_space,
-               int_rule,
-               element_index,
-               mesh_quad_data,
-               element_quad_data,
-               sigma,
-               dofs_in,
-               sum_ptr );
-         }
-      );
-   }
-   else
-   {
-      mesh::CellIterator< KernelConfiguration >(
-         fe_space,
-         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-         {
-            constexpr size_t required_shared_mem =
-               required_shared_memory_v<
-                  KernelConfiguration,
-                  IntegrationRule > +
-               required_l2_error_reduction_shared_memory_v<
-                  KernelConfiguration >;
-            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         KernelContext<
+            KernelConfiguration,
+            required_shared_mem > kernel_conf( _shared_mem );
 
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem > kernel_conf( _shared_mem );
-
-            L2ErrorElementOperator(
-               kernel_conf,
-               fe_space,
-               int_rule,
-               element_index,
-               mesh_quad_data,
-               element_quad_data,
-               sigma,
-               dofs_in,
-               sum_ptr );
-         }
-      );
-   }
+         L2ErrorElementOperator(
+            kernel_conf,
+            fe_space,
+            int_rule,
+            element_index,
+            mesh_quad_data,
+            element_quad_data,
+            sigma,
+            dofs_in,
+            sum_ptr );
+      }
+   );
 
    ToHost( 1, sum_ptr );
    Real sum = Sqrt( *sum_ptr );

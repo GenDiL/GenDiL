@@ -8,8 +8,8 @@
 
 // Manual sanitizer diagnostic:
 // num_cells = 10 and BatchSize = 4 make the final block contain candidates
-// 8, 9, 10, and 11. CellIterator filters candidates 10 and 11 before invoking
-// the body below, while candidates 8 and 9 enter a body that calls Sync().
+// 8, 9, 10, and 11. Production BlockLoop filters candidates 10 and 11 before
+// invoking the body below, while candidates 8 and 9 enter a body that calls Sync().
 // DeviceKernelConfiguration::Sync() currently maps to block-wide
 // __syncthreads(), so this target is intentionally not a normal
 // pass/fail correctness test. Run it manually with CUDA compute-sanitizer
@@ -113,19 +113,25 @@ bool RunFilteredSyncExperiment( const char * name )
 
    mesh::CellIterator< Config >(
       mesh,
-      [=] GENDIL_DEVICE ( auto kernel ) mutable
+      [=] GENDIL_DEVICE ( GlobalIndex cell_index ) mutable
       {
-         const GlobalIndex cell_index = kernel.WorkItemIndex();
+         constexpr size_t required_shared_mem = 1;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               Config,
+               required_shared_mem >::shared_memory_block_size ];
+         KernelContext< Config, required_shared_mem > kernel_conf(
+            _shared_mem );
 
-         if ( kernel.GetLinearThreadIndex() == 0 )
+         if ( Config::GetLinearThreadIndex() == 0 )
          {
             before_sync_data[ cell_index ] =
                static_cast< long long >( 1000 + cell_index );
          }
 
-         kernel.Sync();
+         kernel_conf.Sync();
 
-         if ( kernel.GetLinearThreadIndex() == 0 )
+         if ( Config::GetLinearThreadIndex() == 0 )
          {
             after_sync_data[ cell_index ] =
                static_cast< long long >( 2000 + cell_index );

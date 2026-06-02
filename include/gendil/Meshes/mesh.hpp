@@ -58,55 +58,16 @@ auto GetLocalFaceInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID &
 /**
  * @brief Applies @a body to all cells using @a KernelConfiguration.
  *
- * @details For config-aware bodies, this overload invokes the body with the
- * kernel configuration object:
- *
- * @code
- * CellIterator< Config >( mesh, [] GENDIL_DEVICE ( auto kernel ) {
- *    auto cell_index = kernel.WorkItemIndex();
- *    ...
- * });
- * @endcode
- *
- * Batched device configurations currently use an experimental filtered model:
- * config-aware bodies are invoked only for active lanes in the final partial
- * batch. kernel.WorkItemIndex() is the active cell index. Sync() is currently
- * block-wide for device configurations, so bodies that synchronize after
- * CellIterator filtering are
- * intentionally experimental and must be validated per operator.
- *
- * One-index bodies remain the legacy path and are only valid for
- * KernelConfiguration::batch_size == 1.
+ * @details CellIterator is a mesh-level forwarding convenience. Production
+ * BlockLoop owns device launch details and inactive final-batch filtering, and
+ * invokes @a body only as body(GlobalIndex work_item_index).
  */
 template < typename KernelConfiguration, Mesh Mesh, typename Lambda >
 void CellIterator( const Mesh & mesh, Lambda && body )
 {
-   const GlobalIndex num_cells = mesh.GetNumberOfCells();
-
-   if constexpr ( KernelConfiguration::batch_size > 1 )
-   {
-      auto config_body =
-         [=]
-         GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
-         {
-         #ifdef GENDIL_DEVICE_CODE
-            if ( kernel.IsActive( num_cells ) )
-            {
-               body( kernel );
-            }
-         #else
-            (void) kernel;
-         #endif
-         };
-
-      KernelConfiguration::BlockLoop( num_cells, config_body );
-   }
-   else
-   {
-      KernelConfiguration::BlockLoop(
-         num_cells,
-         std::forward< Lambda >( body ) );
-   }
+   KernelConfiguration::BlockLoop(
+      mesh.GetNumberOfCells(),
+      std::forward< Lambda >( body ) );
 }
 
 } // namespace mesh

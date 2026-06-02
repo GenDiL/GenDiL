@@ -545,20 +545,15 @@ void RunHelperCoverageKernel(
    const auto element_quad_data =
       MakeDofToQuad< ShapeFunctions, IntegrationRule >();
 
-   Config::BlockLoop(
+   Config::CandidateBlockLoop(
       num_items,
-      [=] GENDIL_HOST_DEVICE ( const Config & kernel ) mutable
+      [=] GENDIL_HOST_DEVICE () mutable
       {
-         if ( !kernel.IsActive( num_items ) )
-         {
-            return;
-         }
-
          GENDIL_SHARED Real _shared_mem[
             Context::shared_memory_block_size ];
-         Context kernel_conf( _shared_mem, kernel );
+         Context kernel_conf( _shared_mem );
 
-         const GlobalIndex item = kernel.WorkItemIndex();
+         const GlobalIndex item = Config::WorkItemIndex();
          Real * output = output_data;
          auto input_view =
             MakeElementTensorView( input_data, DofShape{}, num_items );

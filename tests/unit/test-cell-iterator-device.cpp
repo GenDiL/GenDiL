@@ -113,11 +113,9 @@ bool RunCellIteratorDeviceCase( const char * name )
 
    mesh::CellIterator< Config >(
       mesh,
-      [=] GENDIL_DEVICE ( auto kernel ) mutable
+      [=] GENDIL_DEVICE ( GlobalIndex cell_index ) mutable
       {
-         const GlobalIndex cell_index = kernel.WorkItemIndex();
-
-         if ( kernel.GetLinearThreadIndex() == 0 )
+         if ( Config::GetLinearThreadIndex() == 0 )
          {
             active_flag_data[ cell_index ] = 1;
             work_item_index_data[ cell_index ] =

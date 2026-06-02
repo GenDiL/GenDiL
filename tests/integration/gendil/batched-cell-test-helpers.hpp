@@ -223,7 +223,7 @@ bool CheckZeroWorkItems(
 
    Config::BlockLoop(
       0,
-      [=] GENDIL_HOST_DEVICE ( Config ) mutable
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex ) mutable
       {
          marker_data[ 0 ] = write_value;
       } );

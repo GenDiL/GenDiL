@@ -7,6 +7,7 @@
 #include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
 #include "gendil/Utilities/KernelContext/KernelConfigurations/helpers.hpp"
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/debug.hpp"
 
 namespace gendil {
@@ -73,16 +74,6 @@ public:
    DeviceKernelConfiguration() = default;
 
    GENDIL_HOST_DEVICE
-   explicit DeviceKernelConfiguration(
-      const GlobalIndex work_item_index,
-      const GlobalIndex batch_index = 0,
-      const GlobalIndex linear_thread_index = 0 )
-      : work_item_index_( work_item_index ),
-        batch_index_( batch_index ),
-        linear_thread_index_( linear_thread_index )
-   {}
-
-   GENDIL_HOST_DEVICE
    static constexpr size_t GetNumberOfThreads()
    {
       return ThreadLayout::GetNumberOfThreads(); // FIXME this is per batch, not total threads
@@ -108,7 +99,7 @@ public:
 
    template < size_t Index >
    GENDIL_HOST_DEVICE
-   GlobalIndex GetThreadIndex() const
+   static GlobalIndex GetThreadIndex()
    {
       static_assert(
          Index < ThreadLayout::thread_block_dim,
@@ -117,43 +108,42 @@ public:
    #ifdef GENDIL_DEVICE_CODE
       return ThreadLayout::template GetThreadIndex< Index >( threadIdx.x );
    #else
-      return ThreadLayout::template GetThreadIndex< Index >(
-         linear_thread_index_ );
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex GetLinearThreadIndex() const
+   static GlobalIndex GetLinearThreadIndex()
    {
    #ifdef GENDIL_DEVICE_CODE
       return threadIdx.x;
    #else
-      return linear_thread_index_;
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex BatchIndex() const
+   static GlobalIndex BatchIndex()
    {
    #ifdef GENDIL_DEVICE_CODE
       return threadIdx.y;
    #else
-      return batch_index_;
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex WorkItemIndex() const
+   static GlobalIndex WorkItemIndex()
    {
    #ifdef GENDIL_DEVICE_CODE
       return blockIdx.x * BatchSize + BatchIndex();
    #else
-      return work_item_index_;
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   bool IsActive( const GlobalIndex num_work_items ) const
+   static bool IsActive( const GlobalIndex num_work_items )
    {
       return WorkItemIndex() < num_work_items;
    }
@@ -173,9 +163,9 @@ public:
    }
 
    GENDIL_HOST_DEVICE
-   Real * SharedMemoryForWorkItem(
+   static Real * SharedMemoryForWorkItem(
       Real * shared_data,
-      const size_t per_work_item_reals ) const
+      const size_t per_work_item_reals )
    {
       return shared_data + BatchIndex() * SharedMemoryStride(
          per_work_item_reals );
@@ -194,6 +184,10 @@ public:
    template < typename Lambda >
    static inline void BlockLoop( const GlobalIndex n, Lambda && body )
    {
+      static_assert(
+         std::is_invocable_v< Lambda, GlobalIndex >,
+         "DeviceKernelConfiguration::BlockLoop expects a one-index body." );
+
       if ( n == 0 )
       {
          return;
@@ -209,7 +203,7 @@ public:
       CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
          "DeviceKernelConfiguration::BlockLoop: before launch" );
-      details::DeviceGridLoop< DeviceKernelConfiguration ><<<
+      details::BlockLoopKernel< DeviceKernelConfiguration ><<<
          gridDim,
          blockDim,
          sharedMemSize,
@@ -218,8 +212,52 @@ public:
          "DeviceKernelConfiguration::BlockLoop" );
    #else
       static_assert(
-         sizeof( Lambda ) == 0,
+         dependent_false_v< Lambda >,
          "DeviceKernelConfiguration::BlockLoop() requires a device backend." );
+   #endif
+   }
+
+   /**
+    * @brief Diagnostic-only all-candidate device loop.
+    *
+    * @details This visits every physical candidate lane, including inactive
+    * lanes in the final partial batch. The body takes no argument and should
+    * query metadata via static accessors on DeviceKernelConfiguration. This is
+    * not a production execution API; production code must use BlockLoop.
+    */
+   template < typename Lambda >
+   static inline void CandidateBlockLoop( const GlobalIndex n, Lambda && body )
+   {
+      static_assert(
+         std::is_invocable_v< Lambda >,
+         "DeviceKernelConfiguration::CandidateBlockLoop expects a nullary body." );
+
+      if ( n == 0 )
+      {
+         return;
+      }
+
+   #if defined( GENDIL_USE_DEVICE )
+      const auto geometry = GetLaunchGeometry( n );
+      dim3 gridDim( geometry.grid_x );
+      dim3 blockDim( geometry.block_x, geometry.block_y, geometry.block_z );
+      size_t sharedMemSize = 0;
+      Stream_t stream = 0;
+
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
+         "DeviceKernelConfiguration::CandidateBlockLoop: before launch" );
+      details::CandidateBlockLoopKernel< DeviceKernelConfiguration ><<<
+         gridDim,
+         blockDim,
+         sharedMemSize,
+         stream >>>( n, std::forward< Lambda >( body ) );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH(
+         "DeviceKernelConfiguration::CandidateBlockLoop" );
+   #else
+      static_assert(
+         dependent_false_v< Lambda >,
+         "DeviceKernelConfiguration::CandidateBlockLoop() requires a device backend." );
    #endif
    }
 
@@ -241,10 +279,6 @@ public:
       Sync();
    }
 
-private:
-   GlobalIndex work_item_index_ = 0;
-   GlobalIndex batch_index_ = 0;
-   GlobalIndex linear_thread_index_ = 0;
 };
 
 } // namespace gendil

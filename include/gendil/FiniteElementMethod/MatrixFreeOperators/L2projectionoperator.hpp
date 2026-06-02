@@ -193,231 +193,104 @@ void L2ProjectionOperator(
    const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   if constexpr ( TrialKernelConfiguration::batch_size > 1 )
-   {
-      // Temporary experimental batched path. CellIterator filters inactive
-      // final-batch lanes while Sync() is currently block-wide.
-      mesh::CellIterator< TrialKernelConfiguration >(
-         trial_fe_space,
-         [=] GENDIL_DEVICE (
-            const TrialKernelConfiguration & kernel ) mutable
-         {
-            const GlobalIndex element_index = kernel.WorkItemIndex();
-            constexpr size_t required_shared_mem =
-               Max(
-                  required_shared_memory_v<
-                     TrialKernelConfiguration,
-                     TrialIntegrationRule >, // Interpolation
-                  required_shared_memory_v<
-                     TrialKernelConfiguration,
-                     TestIntegrationRule >, // Interpolation
-                  Product(
-                     typename TestIntegrationRule::points::
-                        num_points_tensor{} ) // Accumulation at quadrature point
-               );
-            GENDIL_SHARED Real _shared_mem[
-               KernelContext<
+   mesh::CellIterator< TrialKernelConfiguration >(
+      trial_fe_space,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      {
+         constexpr size_t required_shared_mem =
+            Max(
+               required_shared_memory_v<
                   TrialKernelConfiguration,
-                  required_shared_mem >::shared_memory_block_size ];
-
-            KernelContext< TrialKernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem, kernel );
-
-            L2ProjectionElementOperator<
-               TrialIntegrationRule,
-               TestIntegrationRule >(
-                  kernel_conf,
-                  trial_fe_space,
-                  test_fe_space,
-                  element_index,
-                  trial_mesh_quad_data,
-                  trial_element_quad_data,
-                  test_element_quad_data,
-                  dofs_in,
-                  dofs_out );
-         }
-      );
-   }
-   else
-   {
-      mesh::CellIterator< TrialKernelConfiguration >(
-         trial_fe_space,
-         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-         {
-            constexpr size_t required_shared_mem =
-               Max(
-                  required_shared_memory_v<
-                     TrialKernelConfiguration,
-                     TrialIntegrationRule >, // Interpolation
-                  required_shared_memory_v<
-                     TrialKernelConfiguration,
-                     TestIntegrationRule >, // Interpolation
-                  Product(
-                     typename TestIntegrationRule::points::
-                        num_points_tensor{} ) // Accumulation at quadrature point
-               );
-            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
-
-            KernelContext< TrialKernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem );
-
-            L2ProjectionElementOperator<
-               TrialIntegrationRule,
-               TestIntegrationRule >(
-                  kernel_conf,
-                  trial_fe_space,
-                  test_fe_space,
-                  element_index,
-                  trial_mesh_quad_data,
-                  trial_element_quad_data,
-                  test_element_quad_data,
-                  dofs_in,
-                  dofs_out );
-         }
-      );
-   }
-
-   if constexpr ( TestKernelConfiguration::batch_size > 1 )
-   {
-      // Temporary experimental batched path. Keep this branch local to L2
-      // until the BatchSize > 1 synchronization contract is settled.
-      mesh::CellIterator< TestKernelConfiguration >(
-         test_fe_space,
-         [=] GENDIL_DEVICE (
-            const TestKernelConfiguration & kernel ) mutable
-         {
-            const GlobalIndex element_index = kernel.WorkItemIndex();
-            constexpr size_t required_shared_mem =
+                  TrialIntegrationRule >, // Interpolation
                required_shared_memory_v<
-                  TestKernelConfiguration,
-                  TestIntegrationRule > +
-               required_threaded_dot_shared_memory_v<
-                  TestKernelConfiguration >;
-            GENDIL_SHARED Real _shared_mem[
-               KernelContext<
-                  TestKernelConfiguration,
-                  required_shared_mem >::shared_memory_block_size ];
+                  TrialKernelConfiguration,
+                  TestIntegrationRule >, // Interpolation
+               Product(
+                  typename TestIntegrationRule::points::
+                     num_points_tensor{} ) // Accumulation at quadrature point
+            );
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               TrialKernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
-            KernelContext< TestKernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem, kernel );
+         KernelContext< TrialKernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
 
-            auto op = [&]( const auto & in, auto & out )
-            {
-               UnitMassElementOperator< TestIntegrationRule >(
-                  kernel_conf,
-                  test_fe_space,
-                  element_index,
-                  test_mesh_quad_data,
-                  test_element_quad_data,
-                  in,
-                  out );
-            };
-
-            auto rhs =
-               MakeThreadedView(
-                  kernel_conf,
-                  test_fe_space,
-                  ReadDofs(
-                     kernel_conf,
-                     test_fe_space,
-                     element_index,
-                     dofs_out ) );
-            decltype(rhs) x{};
-
-            Integer max_iters = 1000;
-            Real tolerance = 1e-10;
-            ConjugateGradient(
+         L2ProjectionElementOperator<
+            TrialIntegrationRule,
+            TestIntegrationRule >(
                kernel_conf,
-               op,
-               rhs,
-               max_iters,
-               tolerance,
-               x );
+               trial_fe_space,
+               test_fe_space,
+               element_index,
+               trial_mesh_quad_data,
+               trial_element_quad_data,
+               test_element_quad_data,
+               dofs_in,
+               dofs_out );
+      }
+   );
 
-            WriteDofs(
+   mesh::CellIterator< TestKernelConfiguration >(
+      test_fe_space,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
+      {
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v<
+               TestKernelConfiguration,
+               TestIntegrationRule > +
+            required_threaded_dot_shared_memory_v<
+               TestKernelConfiguration >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               TestKernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
+
+         KernelContext< TestKernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
+
+         auto op = [&]( const auto & in, auto & out )
+         {
+            UnitMassElementOperator< TestIntegrationRule >(
                kernel_conf,
                test_fe_space,
                element_index,
-               x,
-               dofs_out );
-         }
-      );
-   }
-   else
-   {
-      mesh::CellIterator< TestKernelConfiguration >(
-         test_fe_space,
-         [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
-         {
-            constexpr size_t required_shared_mem =
-               required_shared_memory_v<
-                  TestKernelConfiguration,
-                  TestIntegrationRule > +
-               required_threaded_dot_shared_memory_v<
-                  TestKernelConfiguration >;
-            GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+               test_mesh_quad_data,
+               test_element_quad_data,
+               in,
+               out );
+         };
 
-            KernelContext< TestKernelConfiguration, required_shared_mem >
-               kernel_conf( _shared_mem );
-
-            auto op = [&]( const auto & in, auto & out )
-            {
-               UnitMassElementOperator< TestIntegrationRule >(
+         auto rhs =
+            MakeThreadedView(
+               kernel_conf,
+               test_fe_space,
+               ReadDofs(
                   kernel_conf,
                   test_fe_space,
                   element_index,
-                  test_mesh_quad_data,
-                  test_element_quad_data,
-                  in,
-                  out );
-            };
+                  dofs_out ) );
+         decltype(rhs) x{};
 
-            auto rhs =
-               MakeThreadedView(
-                  kernel_conf,
-                  test_fe_space,
-                  ReadDofs(
-                     kernel_conf,
-                     test_fe_space,
-                     element_index,
-                     dofs_out ) );
-            decltype(rhs) x{};
+         Integer max_iters = 1000;
+         Real tolerance = 1e-10;
+         ConjugateGradient(
+            kernel_conf,
+            op,
+            rhs,
+            max_iters,
+            tolerance,
+            x );
 
-            Integer max_iters = 1000;
-            Real tolerance = 1e-10;
-            ConjugateGradient(
-               kernel_conf,
-               op,
-               rhs,
-               max_iters,
-               tolerance,
-               x );
-            // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );
-            // std::cout << "Element " << element_index.linear_index << ": ";
-            // if ( std::get< 0 >( result ) )
-            // {
-            //    std::cout << " SUCCESS, " << std::get< 1 >( result ) << " iterations " << std::endl;
-            //    ElementDoF< TestFiniteElementSpace > y;
-            //    op( x, y );
-            //    Real norm = Norml2( y - rhs );
-            //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
-            //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
-            //    std:: cout << "norm diff=" << norm << std::endl;
-            // }
-            // else
-            // {
-            //    std::cout << " FAILED!!! " << std::get< 1 >( result ) << " iterations " << std::endl;
-            // }
-
-            WriteDofs(
-               kernel_conf,
-               test_fe_space,
-               element_index,
-               x,
-               dofs_out );
-         }
-      );
-   }
+         WriteDofs(
+            kernel_conf,
+            test_fe_space,
+            element_index,
+            x,
+            dofs_out );
+      }
+   );
 }
 
 /**

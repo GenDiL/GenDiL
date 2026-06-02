@@ -7,6 +7,7 @@
 #include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
 #include "gendil/Utilities/KernelContext/KernelConfigurations/helpers.hpp"
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/debug.hpp"
 
 #if defined( GENDIL_USE_MFEM )
@@ -62,14 +63,6 @@ public:
    using shared_dimensions = cat_t< threaded_dimensions< space_dim >, shared_register_dimensions< space_dim > >;
 
    ThreadFirstKernelConfiguration() = default;
-
-   GENDIL_HOST_DEVICE
-   explicit ThreadFirstKernelConfiguration(
-      const GlobalIndex work_item_index,
-      const GlobalIndex linear_thread_index = 0 )
-      : work_item_index_( work_item_index ),
-        linear_thread_index_( linear_thread_index )
-   {}
 
    GENDIL_HOST_DEVICE
    static constexpr size_t GetNumberOfThreads()
@@ -128,7 +121,7 @@ public:
 
    template < size_t Index >
    GENDIL_HOST_DEVICE
-   GlobalIndex GetThreadIndex() const
+   static GlobalIndex GetThreadIndex()
    {
       static_assert(
          Index < ThreadLayout::thread_block_dim,
@@ -156,13 +149,12 @@ public:
          return ThreadLayout::template GetThreadIndex< Index >( threadIdx.x );
       }
    #else
-      return ThreadLayout::template GetThreadIndex< Index >(
-         linear_thread_index_ );
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex GetLinearThreadIndex() const
+   static GlobalIndex GetLinearThreadIndex()
    {
    #ifdef GENDIL_DEVICE_CODE
       if constexpr ( ThreadLayout::thread_block_dim == 0 )
@@ -190,28 +182,28 @@ public:
          return threadIdx.x;
       }
    #else
-      return linear_thread_index_;
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex BatchIndex() const
+   static GlobalIndex BatchIndex()
    {
       return 0;
    }
 
    GENDIL_HOST_DEVICE
-   GlobalIndex WorkItemIndex() const
+   static GlobalIndex WorkItemIndex()
    {
    #ifdef GENDIL_DEVICE_CODE
       return blockIdx.x;
    #else
-      return work_item_index_;
+      return 0;
    #endif
    }
 
    GENDIL_HOST_DEVICE
-   bool IsActive( const GlobalIndex num_work_items ) const
+   static bool IsActive( const GlobalIndex num_work_items )
    {
       return WorkItemIndex() < num_work_items;
    }
@@ -228,9 +220,21 @@ public:
       return per_work_item_reals;
    }
 
+   GENDIL_HOST_DEVICE
+   static Real * SharedMemoryForWorkItem(
+      Real * shared_data,
+      const size_t )
+   {
+      return shared_data;
+   }
+
    template < typename Lambda >
    static inline void BlockLoop( const GlobalIndex n, Lambda && body )
    {
+      static_assert(
+         std::is_invocable_v< Lambda, GlobalIndex >,
+         "ThreadFirstKernelConfiguration::BlockLoop expects a one-index body." );
+
       if ( n == 0 )
       {
          return;
@@ -246,7 +250,7 @@ public:
       CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
          "ThreadFirstKernelConfiguration::BlockLoop: before launch" );
-      details::DeviceGridLoop< ThreadFirstKernelConfiguration ><<<
+      details::BlockLoopKernel< ThreadFirstKernelConfiguration ><<<
          gridDim,
          blockDim,
          sharedMemSize,
@@ -274,9 +278,53 @@ public:
       }
    #else
       static_assert(
-         sizeof( Lambda ) == 0,
+         dependent_false_v< Lambda >,
          "ThreadFirstKernelConfiguration::BlockLoop() requires a device or "
          "MFEM backend." );
+   #endif
+   }
+
+   /**
+    * @brief Diagnostic-only all-candidate device loop.
+    *
+    * @details This visits every physical candidate lane. For the legacy
+    * ThreadFirst configuration all candidates are active for positive n. The
+    * body takes no argument and should query metadata via static accessors.
+    * Production code must use BlockLoop.
+    */
+   template < typename Lambda >
+   static inline void CandidateBlockLoop( const GlobalIndex n, Lambda && body )
+   {
+      static_assert(
+         std::is_invocable_v< Lambda >,
+         "ThreadFirstKernelConfiguration::CandidateBlockLoop expects a nullary body." );
+
+      if ( n == 0 )
+      {
+         return;
+      }
+
+   #if defined( GENDIL_USE_DEVICE )
+      const auto geometry = GetLaunchGeometry( n );
+      dim3 gridDim( geometry.grid_x );
+      dim3 blockDim( geometry.block_x, geometry.block_y, geometry.block_z );
+      size_t sharedMemSize = 0;
+      Stream_t stream = 0;
+
+      CheckDeviceLaunchConfiguration( gridDim, blockDim, sharedMemSize );
+      GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
+         "ThreadFirstKernelConfiguration::CandidateBlockLoop: before launch" );
+      details::CandidateBlockLoopKernel< ThreadFirstKernelConfiguration ><<<
+         gridDim,
+         blockDim,
+         sharedMemSize,
+         stream >>>( n, std::forward< Lambda >( body ) );
+      GENDIL_CHECK_LAST_DEVICE_LAUNCH(
+         "ThreadFirstKernelConfiguration::CandidateBlockLoop" );
+   #else
+      static_assert(
+         dependent_false_v< Lambda >,
+         "ThreadFirstKernelConfiguration::CandidateBlockLoop() requires a device backend." );
    #endif
    }
 
@@ -298,9 +346,6 @@ public:
       Sync();
    }
 
-private:
-   GlobalIndex work_item_index_ = 0;
-   GlobalIndex linear_thread_index_ = 0;
 };
 
 } // namespace gendil

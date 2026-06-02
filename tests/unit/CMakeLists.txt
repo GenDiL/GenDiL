@@ -14,7 +14,7 @@ if(USE_CUDA OR USE_HIP)
   add_my_test(test-bsr-device-apply test-bsr-device-apply.cpp)
   add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
   add_my_test(test-cell-iterator-device test-cell-iterator-device.cpp)
-  add_my_test(
+  add_my_test(test-threaded-dot-shared-arena test-threaded-dot-shared-arena.cpp)
     test-cell-iterator-filtered-sync-experiment
     test-cell-iterator-filtered-sync-experiment.cpp
   )
