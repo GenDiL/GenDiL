@@ -590,6 +590,10 @@ void RunHelperCoverageKernel(
          using RegisterGradientShape =
             cat_t< RegisterQuadShape, std::index_sequence< QuadShape::size() > >;
 
+         // CUDA fix
+         (void)fe_space;
+         (void)element_quad_data;
+
          if constexpr ( dof_supported )
          {
             auto local_read =
