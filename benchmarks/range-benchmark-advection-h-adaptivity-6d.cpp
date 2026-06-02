@@ -108,8 +108,8 @@ void bench_face_components_once_6D(int nx_half, int nyL, int nzL, int nwL, int n
   };
 
 #if defined(GENDIL_USE_DEVICE)
-  using ThreadLayout  = ThreadBlockLayout<q1d,q1d,q1d,q1d,q1d>;
-  constexpr size_t NumSharedDimensions = 5;
+  using ThreadLayout  = ThreadBlockLayout<q1d,q1d,q1d,q1d,q1d,q1d>;
+  constexpr size_t NumSharedDimensions = Dim;
   using KernelPolicy = ThreadFirstKernelConfiguration<ThreadLayout, NumSharedDimensions>;
 #else
   using KernelPolicy = SerialKernelConfiguration;
@@ -202,7 +202,9 @@ int main(){
   // Representative settings (tweak as needed)
   sweep_h_adaptivity</*p=*/1, /*q_extra=*/2, /*ry=*/2, /*rz=*/1, /*rw=*/1, /*rv=*/1, /*ru=*/1>(outL,outR,outIF);
   sweep_h_adaptivity</*p=*/1, /*q_extra=*/2, /*ry=*/2, /*rz=*/2, /*rw=*/1, /*rv=*/1, /*ru=*/1>(outL,outR,outIF);
+#ifndef GENDIL_USE_DEVICE
   sweep_h_adaptivity</*p=*/2, /*q_extra=*/2, /*ry=*/2, /*rz=*/2, /*rw=*/2, /*rv=*/2, /*ru=*/2>(outL,outR,outIF);
+#endif
 
   std::cout
     << " \\begin{tikzpicture}[scale=0.9]\n"
