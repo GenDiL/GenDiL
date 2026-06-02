@@ -433,6 +433,11 @@ void GenericAssembly(
       trial_space,
       [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
       {
+         // CUDA fix
+         (void)wf_ctx;
+         (void)op_ctx;
+         (void)weak_form;
+
          GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem> kernel_ctx(_shared_mem);
 
