@@ -38,6 +38,12 @@ add_custom_target(
   COMMENT "Building all benchmarks"
 )
 
+macro(add_non_cuda_benchmark target_name source_file)
+  if(NOT USE_CUDA)
+    add_my_benchmark(${target_name} ${source_file})
+  endif()
+endmacro()
+
 # Speed-of-light benchmarks
 add_my_benchmark(range-benchmark-sol-3d range-benchmark-sol-3d.cpp)
 add_my_benchmark(range-benchmark-sol-6d range-benchmark-sol-6d.cpp)
@@ -57,12 +63,12 @@ add_my_benchmark(range-benchmark-advection-3d range-benchmark-advection-3d.cpp)
 add_my_benchmark(range-benchmark-advection-p-adaptivity-3d range-benchmark-advection-p-adaptivity-3d.cpp)
 add_my_benchmark(range-benchmark-advection-h-adaptivity-3d range-benchmark-advection-h-adaptivity-3d.cpp)
 add_my_benchmark(range-benchmark-advection-4d range-benchmark-advection-4d.cpp)
-add_my_benchmark(range-benchmark-advection-p-adaptivity-4d range-benchmark-advection-p-adaptivity-4d.cpp)
+add_non_cuda_benchmark(range-benchmark-advection-p-adaptivity-4d range-benchmark-advection-p-adaptivity-4d.cpp)
 add_my_benchmark(range-benchmark-advection-h-adaptivity-4d range-benchmark-advection-h-adaptivity-4d.cpp)
 add_my_benchmark(range-benchmark-advection-5d range-benchmark-advection-5d.cpp)
-add_my_benchmark(range-benchmark-advection-p-adaptivity-5d range-benchmark-advection-p-adaptivity-5d.cpp)
+add_non_cuda_benchmark(range-benchmark-advection-p-adaptivity-5d range-benchmark-advection-p-adaptivity-5d.cpp)
 add_my_benchmark(range-benchmark-advection-h-adaptivity-5d range-benchmark-advection-h-adaptivity-5d.cpp)
 add_my_benchmark(benchmark-advection-6d benchmark-advection-6d.cpp)
 add_my_benchmark(range-benchmark-advection-6d range-benchmark-advection-6d.cpp)
-add_my_benchmark(range-benchmark-advection-p-adaptivity-6d range-benchmark-advection-p-adaptivity-6d.cpp)
+add_non_cuda_benchmark(range-benchmark-advection-p-adaptivity-6d range-benchmark-advection-p-adaptivity-6d.cpp)
 add_my_benchmark(range-benchmark-advection-h-adaptivity-6d range-benchmark-advection-h-adaptivity-6d.cpp)
