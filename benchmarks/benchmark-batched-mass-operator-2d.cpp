@@ -7,8 +7,6 @@
 int main()
 {
    gendil::benchmarks::PrintMassHeader();
-   gendil::benchmarks::RunMassDimension< 1 >();
    gendil::benchmarks::RunMassDimension< 2 >();
-   gendil::benchmarks::RunMassDimension< 3 >();
    return 0;
 }

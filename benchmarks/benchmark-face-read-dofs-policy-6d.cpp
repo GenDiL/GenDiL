@@ -7,11 +7,6 @@
 int main()
 {
    gendil::benchmarks::PrintFaceHeader();
-   gendil::benchmarks::RunFaceDimension< 1 >();
-   gendil::benchmarks::RunFaceDimension< 2 >();
-   gendil::benchmarks::RunFaceDimension< 3 >();
-   gendil::benchmarks::RunFaceDimension< 4 >();
-   gendil::benchmarks::RunFaceDimension< 5 >();
    gendil::benchmarks::RunFaceDimension< 6 >();
    return 0;
 }
