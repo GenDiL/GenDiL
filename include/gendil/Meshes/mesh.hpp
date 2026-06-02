@@ -86,7 +86,7 @@ void CellIterator( const Mesh & mesh, Lambda && body )
    if constexpr ( KernelConfiguration::batch_size > 1 )
    {
       auto config_body =
-         [body = std::forward< Lambda >( body ), num_cells]
+         [=]
          GENDIL_HOST_DEVICE ( const KernelConfiguration & kernel ) mutable
          {
          #ifdef GENDIL_DEVICE_CODE
