@@ -97,7 +97,7 @@ void GenericCellIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             auto quad_pt_context = MakeQuadraturePointContext(
                kernel_context,
@@ -234,7 +234,7 @@ void GenericInteriorFacetIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          face_integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             // Use minus_side which satisfies CellFaceView concept
             // GetReferenceNormal() comes from minus_side
@@ -349,7 +349,7 @@ void GenericInteriorFacetOperator(
    InteriorFaceLoop(
       trial_space,
       element_context.element_index,
-      [&] GENDIL_HOST_DEVICE (auto const & face_info)
+      [&] (auto const & face_info)
       {
          // Read plus-side DOFs inside face loop (neighbor element)
          auto plus_dofs_in = ReadDofs(
@@ -431,7 +431,7 @@ void GenericBoundaryFacetIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          face_integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             // Create FACET context (NOT base QuadraturePointContext)
             auto facet_quad_pt_context = MakeFacetQuadraturePointContext(
@@ -538,7 +538,7 @@ void GenericBoundaryFacetOperator(
    BoundaryFaceLoop(
       trial_space,
       element_context.element_index,
-      [&] GENDIL_HOST_DEVICE (auto const & face_info)
+      [&] (auto const & face_info)
       {
          GenericBoundaryFacetIntegrandOperator(
             kernel_context,
