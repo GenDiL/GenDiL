@@ -12,6 +12,7 @@
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
+#include "gendil/Utilities/debug.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
@@ -587,23 +588,39 @@ auto DirectGlobalSerialReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   DofLoop< FiniteElementSpace >(
-      [&]( auto... indices )
-      {
-         const std::array< GlobalIndex, space_dim > reference_indices{
-            static_cast< GlobalIndex >( indices )... };
-         const auto native_indices =
-            DirectGlobalFaceReadNativeIndex(
-               reference_indices,
-               dof_sizes,
-               orientation );
-         local_dofs( indices... ) =
-            FaceReadDofsGlobalValueAt(
-               global_dofs,
-               native_indices,
-               element_index );
-      }
-   );
+   GENDIL_VERIFY(
+      FaceReadDofsOrientationIsShapeCompatible(
+         dof_sizes,
+         orientation ),
+      "DirectGlobal face ReadDofs supports only shape-compatible orientations." );
+
+   if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+   {
+      DofLoop< FiniteElementSpace >(
+         [&]( auto... indices )
+         {
+            local_dofs( indices... ) =
+               global_dofs( indices..., element_index );
+         }
+      );
+   }
+   else
+   {
+      const auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            global_dofs,
+            element_index,
+            dof_sizes,
+            orientation );
+
+      DofLoop< FiniteElementSpace >(
+         [&]( auto... indices )
+         {
+            local_dofs( indices... ) =
+               oriented_global_dofs( indices... );
+         }
+      );
+   }
 
    return local_dofs;
 }
@@ -642,25 +659,41 @@ auto DirectGlobalThreadedReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   GENDIL_VERIFY(
+      FaceReadDofsOrientationIsShapeCompatible(
+         dof_sizes,
+         orientation ),
+      "DirectGlobal face ReadDofs supports only shape-compatible orientations." );
+
+   if ( FaceReadDofsOrientationIsIdentity( orientation ) )
    {
-      UnitLoop< rshape >( [&] ( auto... k )
+      ThreadLoop< tshape >( thread, [&] ( auto... t )
       {
-         const std::array< GlobalIndex, space_dim > reference_indices{
-            static_cast< GlobalIndex >( t )...,
-            static_cast< GlobalIndex >( k )... };
-         const auto native_indices =
-            DirectGlobalFaceReadNativeIndex(
-               reference_indices,
-               dof_sizes,
-               orientation );
-         local_dofs( k... ) =
-            FaceReadDofsGlobalValueAt(
-               global_dofs,
-               native_indices,
-               element_index );
+         UnitLoop< rshape >( [&] ( auto... k )
+         {
+            local_dofs( k... ) =
+               global_dofs( t..., k..., element_index );
+         });
       });
-   });
+   }
+   else
+   {
+      const auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            global_dofs,
+            element_index,
+            dof_sizes,
+            orientation );
+
+      ThreadLoop< tshape >( thread, [&] ( auto... t )
+      {
+         UnitLoop< rshape >( [&] ( auto... k )
+         {
+            local_dofs( k... ) =
+               oriented_global_dofs( t..., k... );
+         });
+      });
+   }
 
    return local_dofs;
 }

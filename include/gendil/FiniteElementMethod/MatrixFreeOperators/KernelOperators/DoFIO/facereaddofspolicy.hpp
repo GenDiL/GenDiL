@@ -64,69 +64,118 @@ constexpr GlobalIndex FaceReadDofsFIFOOffset(
    return offset;
 }
 
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr bool FaceReadDofsOrientationIsIdentity(
+   const Permutation< Dim > & orientation )
+{
+   for ( Integer i = 0; i < Dim; ++i )
+   {
+      if ( orientation( i ) != static_cast< LocalIndex >( i + 1 ) )
+      {
+         return false;
+      }
+   }
+   return true;
+}
+
 /**
- * @brief Direct inverse of the current FullShared face-read orientation map.
+ * @brief Return whether an orientation can be represented as an affine view
+ * over the original reference shape.
  *
- * @details Current FullShared face ReadDofs stores native element values into
- * shared memory with OrientedLayout and reads them back with FIFO/reference
- * layout:
- *
- *   shared[OrientedLayout(sizes, orientation).Offset(native)] =
- *      global(native..., element)
- *   local(reference) = shared[FIFOOffset(reference)]
- *
- * DirectGlobal must therefore compute the native index whose oriented-layout
- * offset equals the FIFO/reference offset.  For native dimension j,
- * abs(orientation(j)) - 1 is the oriented axis index; a negative sign reverses
- * that native dimension.
- *
- * The input reference_indices are in the original DofShape coordinate order,
- * not in oriented-axis coordinates.  For anisotropic swapped axes, such as
- * sizes (3,4) with orientation (2,-1), the original reference extents are
- * (3,4) while the oriented-axis radices are (4,3).  The tempting direct formula
- * native[j] = reference_indices[abs(orientation(j)) - 1] is therefore not
- * equivalent to the FullShared path in these cases.
+ * @details For native dimension j, abs(orientation(j)) - 1 is the reference
+ * axis populated by that native dimension.  The optimized DirectGlobal face
+ * read path supports flips and swaps only when the native extent matches the
+ * target reference-axis extent.  This keeps each access to a signed/permuted
+ * affine stride instead of an inverse mixed-radix lookup.
  */
 template < Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr std::array< GlobalIndex, Dim >
-DirectGlobalFaceReadNativeIndex(
-   const std::array< GlobalIndex, Dim > & reference_indices,
+constexpr bool FaceReadDofsOrientationIsShapeCompatible(
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
-   std::array< GlobalIndex, Dim > native_indices{};
-   std::array< Integer, Dim > native_dim_for_oriented_axis{};
-   std::array< bool, Dim > reversed_for_oriented_axis{};
-
-   for ( Integer j = 0; j < Dim; ++j )
+   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
    {
-      const LocalIndex o = orientation( j );
-      const Integer oriented_axis =
+      const LocalIndex o = orientation( native_dim );
+      const Integer reference_axis =
          static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
-      native_dim_for_oriented_axis[ oriented_axis ] = j;
-      reversed_for_oriented_axis[ oriented_axis ] = o < 0;
+      if ( sizes[ native_dim ] != sizes[ reference_axis ] )
+      {
+         return false;
+      }
    }
+   return true;
+}
 
-   GlobalIndex offset =
-      FaceReadDofsFIFOOffset( reference_indices, sizes );
+using FaceReadDofsSignedIndex = std::make_signed_t< GlobalIndex >;
 
-   for ( Integer oriented_axis = 0; oriented_axis < Dim; ++oriented_axis )
+template < typename GlobalDofsView, Integer Dim >
+struct OrientedGlobalDofView
+{
+   GlobalDofsView global_dofs;
+   GlobalIndex element_index;
+   FaceReadDofsSignedIndex base_offset;
+   std::array< FaceReadDofsSignedIndex, Dim > strides;
+
+   template < typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   decltype(auto) operator()( Indices... indices ) const
    {
-      const Integer native_dim =
-         native_dim_for_oriented_axis[ oriented_axis ];
-      const bool reversed =
-         reversed_for_oriented_axis[ oriented_axis ];
-      const GlobalIndex radix =
-         static_cast< GlobalIndex >( sizes[ native_dim ] );
-      const GlobalIndex digit = offset % radix;
-      offset /= radix;
+      static_assert(
+         sizeof...( Indices ) == Dim,
+         "Wrong number of arguments." );
 
-      native_indices[ native_dim ] =
-         reversed ? radix - 1 - digit : digit;
+      FaceReadDofsSignedIndex offset = base_offset;
+      Integer axis = 0;
+      ( ( offset +=
+             static_cast< FaceReadDofsSignedIndex >( indices ) *
+             strides[ axis++ ] ), ... );
+
+      return global_dofs.data[ static_cast< GlobalIndex >( offset ) ];
+   }
+};
+
+template < typename GlobalDofsView, Integer Dim >
+GENDIL_HOST_DEVICE
+auto MakeOrientedGlobalDofView(
+   const GlobalDofsView & global_dofs,
+   const GlobalIndex element_index,
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
+{
+   OrientedGlobalDofView< GlobalDofsView, Dim > view{
+      global_dofs,
+      element_index,
+      static_cast< FaceReadDofsSignedIndex >( element_index ) *
+         static_cast< FaceReadDofsSignedIndex >(
+            global_dofs.layout.strides[ Dim ] ),
+      {} };
+
+   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
+   {
+      const LocalIndex o = orientation( native_dim );
+      const Integer reference_axis =
+         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
+      const FaceReadDofsSignedIndex native_stride =
+         static_cast< FaceReadDofsSignedIndex >(
+            global_dofs.layout.strides[ native_dim ] );
+
+      if ( o < 0 )
+      {
+         view.base_offset +=
+            static_cast< FaceReadDofsSignedIndex >(
+               sizes[ native_dim ] - 1 ) *
+            native_stride;
+         view.strides[ reference_axis ] = -native_stride;
+      }
+      else
+      {
+         view.strides[ reference_axis ] = native_stride;
+      }
    }
 
-   return native_indices;
+   return view;
 }
 
 template < typename View, Integer Dim, size_t... Is >
