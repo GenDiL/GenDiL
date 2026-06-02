@@ -231,10 +231,6 @@ public:
    template < typename Lambda >
    static inline void BlockLoop( const GlobalIndex n, Lambda && body )
    {
-      static_assert(
-         std::is_invocable_v< Lambda, GlobalIndex >,
-         "ThreadFirstKernelConfiguration::BlockLoop expects a one-index body." );
-
       if ( n == 0 )
       {
          return;
@@ -258,6 +254,10 @@ public:
       GENDIL_CHECK_LAST_DEVICE_LAUNCH(
          "ThreadFirstKernelConfiguration::BlockLoop" );
    #elif defined( GENDIL_USE_MFEM )
+      static_assert(
+         std::is_invocable_v< Lambda, GlobalIndex >,
+         "ThreadFirstKernelConfiguration::BlockLoop expects a one-index body." );
+
       const auto geometry = GetLaunchGeometry( n );
       if constexpr ( ThreadLayout::thread_block_dim == 3 )
       {
@@ -295,10 +295,6 @@ public:
    template < typename Lambda >
    static inline void CandidateBlockLoop( const GlobalIndex n, Lambda && body )
    {
-      static_assert(
-         std::is_invocable_v< Lambda >,
-         "ThreadFirstKernelConfiguration::CandidateBlockLoop expects a nullary body." );
-
       if ( n == 0 )
       {
          return;

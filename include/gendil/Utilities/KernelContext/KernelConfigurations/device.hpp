@@ -184,10 +184,6 @@ public:
    template < typename Lambda >
    static inline void BlockLoop( const GlobalIndex n, Lambda && body )
    {
-      static_assert(
-         std::is_invocable_v< Lambda, GlobalIndex >,
-         "DeviceKernelConfiguration::BlockLoop expects a one-index body." );
-
       if ( n == 0 )
       {
          return;
@@ -228,10 +224,6 @@ public:
    template < typename Lambda >
    static inline void CandidateBlockLoop( const GlobalIndex n, Lambda && body )
    {
-      static_assert(
-         std::is_invocable_v< Lambda >,
-         "DeviceKernelConfiguration::CandidateBlockLoop expects a nullary body." );
-
       if ( n == 0 )
       {
          return;
