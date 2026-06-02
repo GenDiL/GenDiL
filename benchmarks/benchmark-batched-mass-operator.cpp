@@ -415,87 +415,89 @@ void RunMassKernelPolicy(
          "skipped-helper-coverage" );
       return;
    }
-
-   if ( !DeviceThreadLimitsFit( block_dims ) )
-   {
-      PrintMassRow(
-         Dim,
-         Order,
-         num_quad_1d,
-         num_cells,
-         num_dofs,
-         num_qpts,
-         kernel_name,
-         layout_name,
-         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-         batch_size,
-         block_dims,
-         required_shared_mem,
-         shared_memory_per_block,
-         0.0,
-         "skipped-launch-limit" );
-      return;
-   }
-
-   if constexpr (
-      shared_memory_per_block * sizeof( Real ) >
-      static_shared_memory_compile_limit_bytes )
-   {
-      PrintMassRow(
-         Dim,
-         Order,
-         num_quad_1d,
-         num_cells,
-         num_dofs,
-         num_qpts,
-         kernel_name,
-         layout_name,
-         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-         batch_size,
-         block_dims,
-         required_shared_mem,
-         shared_memory_per_block,
-         0.0,
-         "skipped-shared-memory" );
-      return;
-   }
-   else if ( !DeviceSharedMemoryFits( shared_memory_per_block ) )
-   {
-      PrintMassRow(
-         Dim,
-         Order,
-         num_quad_1d,
-         num_cells,
-         num_dofs,
-         num_qpts,
-         kernel_name,
-         layout_name,
-         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-         batch_size,
-         block_dims,
-         required_shared_mem,
-         shared_memory_per_block,
-         0.0,
-         "skipped-shared-memory" );
-      return;
-   }
    else
    {
-      RunTimedMassRow<
-         Dim,
-         Order,
-         KernelPolicy >(
-         fe_space,
-         integration_rule,
-         kernel_name,
-         layout_name,
-         batch_size,
-         num_cells,
-         num_dofs,
-         num_qpts,
-         block_dims,
-         required_shared_mem,
-         shared_memory_per_block );
+      if ( !DeviceThreadLimitsFit( block_dims ) )
+      {
+         PrintMassRow(
+            Dim,
+            Order,
+            num_quad_1d,
+            num_cells,
+            num_dofs,
+            num_qpts,
+            kernel_name,
+            layout_name,
+            KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+            batch_size,
+            block_dims,
+            required_shared_mem,
+            shared_memory_per_block,
+            0.0,
+            "skipped-launch-limit" );
+         return;
+      }
+
+      if constexpr (
+         shared_memory_per_block * sizeof( Real ) >
+         static_shared_memory_compile_limit_bytes )
+      {
+         PrintMassRow(
+            Dim,
+            Order,
+            num_quad_1d,
+            num_cells,
+            num_dofs,
+            num_qpts,
+            kernel_name,
+            layout_name,
+            KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+            batch_size,
+            block_dims,
+            required_shared_mem,
+            shared_memory_per_block,
+            0.0,
+            "skipped-shared-memory" );
+         return;
+      }
+      else if ( !DeviceSharedMemoryFits( shared_memory_per_block ) )
+      {
+         PrintMassRow(
+            Dim,
+            Order,
+            num_quad_1d,
+            num_cells,
+            num_dofs,
+            num_qpts,
+            kernel_name,
+            layout_name,
+            KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+            batch_size,
+            block_dims,
+            required_shared_mem,
+            shared_memory_per_block,
+            0.0,
+            "skipped-shared-memory" );
+         return;
+      }
+      else
+      {
+         RunTimedMassRow<
+            Dim,
+            Order,
+            KernelPolicy >(
+            fe_space,
+            integration_rule,
+            kernel_name,
+            layout_name,
+            batch_size,
+            num_cells,
+            num_dofs,
+            num_qpts,
+            block_dims,
+            required_shared_mem,
+            shared_memory_per_block );
+      }
    }
 }
 

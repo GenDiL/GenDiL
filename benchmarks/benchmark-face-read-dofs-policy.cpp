@@ -411,52 +411,32 @@ void RunFaceKernelPolicy(
          "skipped-helper-coverage" );
       return;
    }
-
-   const auto block_dims = BlockDimensions< KernelPolicy >( num_cells );
-   if ( !DeviceThreadLimitsFit( block_dims ) )
-   {
-      PrintFaceRow(
-         Dim,
-         Order,
-         num_quad_1d,
-         num_cells,
-         num_faces,
-         dofs_read_per_apply,
-         layout_name,
-         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-         batch_size,
-         FaceReadPolicyName< FaceReadPolicy >(),
-         required_shared_mem,
-         shared_memory_per_block,
-         0.0,
-         "skipped-launch-limit" );
-      return;
-   }
-
-   if constexpr (
-      shared_memory_per_block * sizeof( Real ) >
-      static_shared_memory_compile_limit_bytes )
-   {
-      PrintFaceRow(
-         Dim,
-         Order,
-         num_quad_1d,
-         num_cells,
-         num_faces,
-         dofs_read_per_apply,
-         layout_name,
-         KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-         batch_size,
-         FaceReadPolicyName< FaceReadPolicy >(),
-         required_shared_mem,
-         shared_memory_per_block,
-         0.0,
-         "skipped-shared-memory" );
-      return;
-   }
    else
    {
-      if ( !DeviceSharedMemoryFits( shared_memory_per_block ) )
+      const auto block_dims = BlockDimensions< KernelPolicy >( num_cells );
+      if ( !DeviceThreadLimitsFit( block_dims ) )
+      {
+         PrintFaceRow(
+            Dim,
+            Order,
+            num_quad_1d,
+            num_cells,
+            num_faces,
+            dofs_read_per_apply,
+            layout_name,
+            KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+            batch_size,
+            FaceReadPolicyName< FaceReadPolicy >(),
+            required_shared_mem,
+            shared_memory_per_block,
+            0.0,
+            "skipped-launch-limit" );
+         return;
+      }
+
+      if constexpr (
+         shared_memory_per_block * sizeof( Real ) >
+         static_shared_memory_compile_limit_bytes )
       {
          PrintFaceRow(
             Dim,
@@ -475,47 +455,9 @@ void RunFaceKernelPolicy(
             "skipped-shared-memory" );
          return;
       }
-
-      Vector x(
-         static_cast< Integer >( fe_space.GetNumberOfFiniteElementDofs() ),
-         [] GENDIL_HOST_DEVICE ( Integer i )
-         {
-            return 0.125 + 0.0001 * static_cast< Real >( i % 1543 );
-         } );
-      Vector y( fe_space.GetNumberOfFiniteElementDofs() );
-      y = 0.0;
-
-      auto op =
-         MakeFaceSpeedOfLightOperator< KernelPolicy >(
-            fe_space,
-            integration_rule );
-
-      if constexpr (
-         std::is_same_v< FaceReadPolicy, DirectGlobalFaceReadDofsPolicy > )
+      else
       {
-         using ReferenceBaseKernel =
-            batch_one_reference_kernel_t< BaseKernelPolicy >;
-         using ReferenceKernelPolicy =
-            KernelPolicyWithFaceReadPolicy<
-               ReferenceBaseKernel,
-               FullSharedFaceReadDofsPolicy >;
-
-         constexpr size_t reference_required_shared_mem =
-            face_speed_of_light_required_shared_memory_v<
-               FaceSoLType::ReadCell,
-               ReferenceKernelPolicy,
-               decltype( fe_space ) >;
-         constexpr size_t reference_shared_memory_per_block =
-            KernelContext<
-               ReferenceKernelPolicy,
-               reference_required_shared_mem >::shared_memory_block_size;
-
-         const auto reference_block_dims =
-            BlockDimensions< ReferenceKernelPolicy >( num_cells );
-         if constexpr (
-            !FaceReadCaseSupported<
-               ReferenceKernelPolicy,
-               decltype( fe_space ) >::value )
+         if ( !DeviceSharedMemoryFits( shared_memory_per_block ) )
          {
             PrintFaceRow(
                Dim,
@@ -531,85 +473,147 @@ void RunFaceKernelPolicy(
                required_shared_mem,
                shared_memory_per_block,
                0.0,
-               "skipped-correctness-reference-helper-coverage" );
+               "skipped-shared-memory" );
             return;
          }
 
-         if constexpr (
-            reference_shared_memory_per_block * sizeof( Real ) >
-            static_shared_memory_compile_limit_bytes )
-         {
-            PrintFaceRow(
-               Dim,
-               Order,
-               num_quad_1d,
-               num_cells,
-               num_faces,
-               dofs_read_per_apply,
-               layout_name,
-               KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-               batch_size,
-               FaceReadPolicyName< FaceReadPolicy >(),
-               required_shared_mem,
-               shared_memory_per_block,
-               0.0,
-               "skipped-correctness-reference-shared-memory" );
-            return;
-         }
+         Vector x(
+            static_cast< Integer >( fe_space.GetNumberOfFiniteElementDofs() ),
+            [] GENDIL_HOST_DEVICE ( Integer i )
+            {
+               return 0.125 + 0.0001 * static_cast< Real >( i % 1543 );
+            } );
+         Vector y( fe_space.GetNumberOfFiniteElementDofs() );
+         y = 0.0;
 
-         if ( !DeviceThreadLimitsFit( reference_block_dims ) ||
-              !DeviceSharedMemoryFits( reference_shared_memory_per_block ) )
-         {
-            PrintFaceRow(
-               Dim,
-               Order,
-               num_quad_1d,
-               num_cells,
-               num_faces,
-               dofs_read_per_apply,
-               layout_name,
-               KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-               batch_size,
-               FaceReadPolicyName< FaceReadPolicy >(),
-               required_shared_mem,
-               shared_memory_per_block,
-               0.0,
-               "skipped-correctness-reference-launch" );
-            return;
-         }
-
-         Vector y_reference( fe_space.GetNumberOfFiniteElementDofs() );
-         Vector y_direct( fe_space.GetNumberOfFiniteElementDofs() );
-         y_reference = 0.0;
-         y_direct = 0.0;
-
-         auto reference_op =
-            MakeFaceSpeedOfLightOperator< ReferenceKernelPolicy >(
+         auto op =
+            MakeFaceSpeedOfLightOperator< KernelPolicy >(
                fe_space,
                integration_rule );
-         reference_op( x, y_reference );
-         op( x, y_direct );
-         GENDIL_DEVICE_SYNC;
 
-         if ( !VectorsClose( y_reference, y_direct ) )
+         if constexpr (
+            std::is_same_v< FaceReadPolicy, DirectGlobalFaceReadDofsPolicy > )
          {
-            PrintFaceRow(
-               Dim,
-               Order,
-               num_quad_1d,
-               num_cells,
-               num_faces,
-               dofs_read_per_apply,
-               layout_name,
-               KernelPolicy::thread_layout_type::GetNumberOfThreads(),
-               batch_size,
-               FaceReadPolicyName< FaceReadPolicy >(),
-               required_shared_mem,
-               shared_memory_per_block,
-               0.0,
-               "skipped-correctness" );
-            return;
-         }
+            using ReferenceBaseKernel =
+               batch_one_reference_kernel_t< BaseKernelPolicy >;
+            using ReferenceKernelPolicy =
+               KernelPolicyWithFaceReadPolicy<
+                  ReferenceBaseKernel,
+                  FullSharedFaceReadDofsPolicy >;
+
+            constexpr size_t reference_required_shared_mem =
+               face_speed_of_light_required_shared_memory_v<
+                  FaceSoLType::ReadCell,
+                  ReferenceKernelPolicy,
+                  decltype( fe_space ) >;
+            constexpr size_t reference_shared_memory_per_block =
+               KernelContext<
+                  ReferenceKernelPolicy,
+                  reference_required_shared_mem >::shared_memory_block_size;
+
+            const auto reference_block_dims =
+               BlockDimensions< ReferenceKernelPolicy >( num_cells );
+            if constexpr (
+               !FaceReadCaseSupported<
+                  ReferenceKernelPolicy,
+                  decltype( fe_space ) >::value )
+            {
+               PrintFaceRow(
+                  Dim,
+                  Order,
+                  num_quad_1d,
+                  num_cells,
+                  num_faces,
+                  dofs_read_per_apply,
+                  layout_name,
+                  KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+                  batch_size,
+                  FaceReadPolicyName< FaceReadPolicy >(),
+                  required_shared_mem,
+                  shared_memory_per_block,
+                  0.0,
+                  "skipped-correctness-reference-helper-coverage" );
+               return;
+            }
+
+            if constexpr (
+               reference_shared_memory_per_block * sizeof( Real ) >
+               static_shared_memory_compile_limit_bytes )
+            {
+               PrintFaceRow(
+                  Dim,
+                  Order,
+                  num_quad_1d,
+                  num_cells,
+                  num_faces,
+                  dofs_read_per_apply,
+                  layout_name,
+                  KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+                  batch_size,
+                  FaceReadPolicyName< FaceReadPolicy >(),
+                  required_shared_mem,
+                  shared_memory_per_block,
+                  0.0,
+                  "skipped-correctness-reference-shared-memory" );
+               return;
+            }
+
+            else
+            {
+               if ( !DeviceThreadLimitsFit( reference_block_dims ) ||
+                    !DeviceSharedMemoryFits( reference_shared_memory_per_block ) )
+               {
+                  PrintFaceRow(
+                     Dim,
+                     Order,
+                     num_quad_1d,
+                     num_cells,
+                     num_faces,
+                     dofs_read_per_apply,
+                     layout_name,
+                     KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+                     batch_size,
+                     FaceReadPolicyName< FaceReadPolicy >(),
+                     required_shared_mem,
+                     shared_memory_per_block,
+                     0.0,
+                     "skipped-correctness-reference-launch" );
+                  return;
+               }
+
+               Vector y_reference( fe_space.GetNumberOfFiniteElementDofs() );
+               Vector y_direct( fe_space.GetNumberOfFiniteElementDofs() );
+               y_reference = 0.0;
+               y_direct = 0.0;
+
+               auto reference_op =
+                  MakeFaceSpeedOfLightOperator< ReferenceKernelPolicy >(
+                     fe_space,
+                     integration_rule );
+               reference_op( x, y_reference );
+               op( x, y_direct );
+               GENDIL_DEVICE_SYNC;
+
+               if ( !VectorsClose( y_reference, y_direct ) )
+               {
+                  PrintFaceRow(
+                     Dim,
+                     Order,
+                     num_quad_1d,
+                     num_cells,
+                     num_faces,
+                     dofs_read_per_apply,
+                     layout_name,
+                     KernelPolicy::thread_layout_type::GetNumberOfThreads(),
+                     batch_size,
+                     FaceReadPolicyName< FaceReadPolicy >(),
+                     required_shared_mem,
+                     shared_memory_per_block,
+                     0.0,
+                     "skipped-correctness" );
+                  return;
+               }
+            }
       }
 
       y = 0.0;
@@ -629,6 +633,7 @@ void RunFaceKernelPolicy(
          shared_memory_per_block,
          time_per_apply,
          "ok" );
+      }
    }
 }
 
