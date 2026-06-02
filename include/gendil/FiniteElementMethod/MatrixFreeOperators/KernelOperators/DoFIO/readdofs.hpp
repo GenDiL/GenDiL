@@ -8,6 +8,7 @@
 #include "gendil/Utilities/toarray.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
@@ -558,6 +559,112 @@ auto ThreadedReadDofs(
    return local_dofs;
 }
 
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   Integer Dim,
+   typename T >
+GENDIL_HOST_DEVICE
+auto DirectGlobalSerialReadDofs(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const StridedView< Dim, T > & global_dofs )
+{
+   static_assert(
+      Dim == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in ReadDofs."
+   );
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+   auto local_dofs = MakeSerialRecursiveArray< Real >( DofShape{} );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   constexpr Integer space_dim = FiniteElementSpace::Dim;
+   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto dof_sizes = to_array( DofShape{} );
+
+   DofLoop< FiniteElementSpace >(
+      [&]( auto... indices )
+      {
+         const std::array< GlobalIndex, space_dim > reference_indices{
+            static_cast< GlobalIndex >( indices )... };
+         const auto native_indices =
+            DirectGlobalFaceReadNativeIndex(
+               reference_indices,
+               dof_sizes,
+               orientation );
+         local_dofs( indices... ) =
+            FaceReadDofsGlobalValueAt(
+               global_dofs,
+               native_indices,
+               element_index );
+      }
+   );
+
+   return local_dofs;
+}
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   Integer Dim,
+   typename T >
+GENDIL_HOST_DEVICE
+auto DirectGlobalThreadedReadDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const StridedView< Dim, T > & global_dofs )
+{
+   static_assert(
+      Dim == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in ReadDofs."
+   );
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
+   using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
+   using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+
+   auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   constexpr Integer space_dim = FiniteElementSpace::Dim;
+   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto dof_sizes = to_array( DofShape{} );
+
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   {
+      UnitLoop< rshape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, space_dim > reference_indices{
+            static_cast< GlobalIndex >( t )...,
+            static_cast< GlobalIndex >( k )... };
+         const auto native_indices =
+            DirectGlobalFaceReadNativeIndex(
+               reference_indices,
+               dof_sizes,
+               orientation );
+         local_dofs( k... ) =
+            FaceReadDofsGlobalValueAt(
+               global_dofs,
+               native_indices,
+               element_index );
+      });
+   });
+
+   return local_dofs;
+}
+
 /**
  * @brief Read the degrees-of-freedom of a neighboring element according to @a face_info.
  * The degrees-of-freedom are reordered to be in a reference configuration.
@@ -890,13 +997,45 @@ auto ReadScalarDofs(
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
+   using FaceReadPolicy =
+      face_read_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+
    if constexpr ( is_serial_v< KernelContext > )
    {
-      return SerialReadDofs( thread, fe_space, face_info, global_dofs );
+      if constexpr (
+         std::is_same_v<
+            FaceReadPolicy,
+            DirectGlobalFaceReadDofsPolicy > )
+      {
+         return DirectGlobalSerialReadDofs(
+            thread,
+            fe_space,
+            face_info,
+            global_dofs );
+      }
+      else
+      {
+         return SerialReadDofs( thread, fe_space, face_info, global_dofs );
+      }
    }
    else
    {
-      return ThreadedReadDofs( thread, fe_space, face_info, global_dofs );
+      if constexpr (
+         std::is_same_v<
+            FaceReadPolicy,
+            DirectGlobalFaceReadDofsPolicy > )
+      {
+         return DirectGlobalThreadedReadDofs(
+            thread,
+            fe_space,
+            face_info,
+            global_dofs );
+      }
+      else
+      {
+         return ThreadedReadDofs( thread, fe_space, face_info, global_dofs );
+      }
    }
 }
 
