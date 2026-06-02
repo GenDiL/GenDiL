@@ -194,7 +194,9 @@ int main()
   // Choose (pL,pR) combos to sweep
   sweep_face_components</*pL=*/1, /*pR=*/2>(curves_L, curves_R, curves_IF);
   sweep_face_components</*pL=*/1, /*pR=*/3>(curves_L, curves_R, curves_IF);
+#ifndef GENDIL_USE_CUDA
   sweep_face_components</*pL=*/2, /*pR=*/4>(curves_L, curves_R, curves_IF);
+#endif
 
   std::cout << std::fixed << std::setprecision(6);
   std::cout << " \\begin{tikzpicture}[scale=0.9]\n";

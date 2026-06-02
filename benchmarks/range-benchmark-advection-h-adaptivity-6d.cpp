@@ -202,7 +202,7 @@ int main(){
   // Representative settings (tweak as needed)
   sweep_h_adaptivity</*p=*/1, /*q_extra=*/2, /*ry=*/2, /*rz=*/1, /*rw=*/1, /*rv=*/1, /*ru=*/1>(outL,outR,outIF);
   sweep_h_adaptivity</*p=*/1, /*q_extra=*/2, /*ry=*/2, /*rz=*/2, /*rw=*/1, /*rv=*/1, /*ru=*/1>(outL,outR,outIF);
-#ifndef GENDIL_USE_DEVICE
+#ifndef GENDIL_USE_CUDA
   sweep_h_adaptivity</*p=*/2, /*q_extra=*/2, /*ry=*/2, /*rz=*/2, /*rw=*/2, /*rv=*/2, /*ru=*/2>(outL,outR,outIF);
 #endif
 
