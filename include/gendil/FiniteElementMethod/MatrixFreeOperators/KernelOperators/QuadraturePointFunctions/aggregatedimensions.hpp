@@ -7,6 +7,9 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writeaddquadraturelocalvalues.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writequadraturelocalvalues.hpp"
 
 namespace gendil
 {
@@ -35,7 +38,8 @@ auto SerialAggregateDimensions(
       // auto sub_quad_index = qud_index.template Sub< 0, TestDim >();
       auto sub_quad_index = GetSubIndex< Dims ... >( quad_index );
 
-      WriteAddQuadratureLocalValues( kernel_conf, sub_quad_index, u_q, v );
+      const Real v_q = ReadQuadratureLocalValues( kernel_conf, sub_quad_index, v );
+      WriteQuadratureLocalValues( kernel_conf, sub_quad_index, v_q + u_q, v );
    });
 
    return v;
