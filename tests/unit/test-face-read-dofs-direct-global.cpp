@@ -119,26 +119,6 @@ void PrintOrientation( const Permutation< Dim > & orientation )
    std::cout << ")";
 }
 
-template < typename Layout, Integer Dim, size_t... Is >
-GlobalIndex OffsetAt(
-   const Layout & layout,
-   const std::array< GlobalIndex, Dim > & index,
-   std::index_sequence< Is... > )
-{
-   return layout.Offset( index[ Is ]... );
-}
-
-template < typename Layout, Integer Dim >
-GlobalIndex OffsetAt(
-   const Layout & layout,
-   const std::array< GlobalIndex, Dim > & index )
-{
-   return OffsetAt(
-      layout,
-      index,
-      std::make_index_sequence< Dim >{} );
-}
-
 template < Integer Dim >
 Real IndexEncodedValue(
    const std::array< GlobalIndex, Dim > & native_indices,
@@ -154,178 +134,87 @@ Real IndexEncodedValue(
    return value;
 }
 
+template < Integer Dim >
+bool ExpectedShapeCompatible(
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
+{
+   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
+   {
+      const LocalIndex o = orientation( native_dim );
+      const Integer reference_axis =
+         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
+      if ( sizes[ native_dim ] != sizes[ reference_axis ] )
+      {
+         return false;
+      }
+   }
+   return true;
+}
+
+template < Integer Dim >
+std::array< GlobalIndex, Dim > ShapeCompatibleNativeIndex(
+   const std::array< GlobalIndex, Dim > & reference_indices,
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
+{
+   std::array< GlobalIndex, Dim > native_indices{};
+   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
+   {
+      const LocalIndex o = orientation( native_dim );
+      const Integer reference_axis =
+         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
+      native_indices[ native_dim ] =
+         o > 0
+            ? reference_indices[ reference_axis ]
+            : static_cast< GlobalIndex >(
+                 sizes[ native_dim ] - 1 -
+                 reference_indices[ reference_axis ] );
+   }
+   return native_indices;
+}
+
 template < typename DofShape >
-bool RunOrientationMapCase( const char * case_name )
+bool RunShapeCompatibilityClassificationCase( const char * case_name )
 {
    constexpr Integer dim = DofShape::size();
    const auto sizes = to_array( DofShape{} );
    const auto orientations = MakeAllSignedPermutations< dim >();
-   const auto identity = MakeReferencePermutation< dim >();
+
    bool success = true;
    Integer num_failures_reported = 0;
-
    for ( const auto & orientation : orientations )
    {
-      const auto oriented_layout = MakeOrientedLayout( sizes, orientation );
-
-      UnitLoop< DofShape >( [&] ( auto... k )
-      {
-         const std::array< GlobalIndex, dim > reference_indices{
-            static_cast< GlobalIndex >( k )... };
-         const auto native_indices =
-            DirectGlobalFaceReadNativeIndex(
-               reference_indices,
-               sizes,
-               orientation );
-
-         const GlobalIndex fifo_offset =
-            FaceReadDofsFIFOOffset( reference_indices, sizes );
-         const GlobalIndex oriented_offset =
-            OffsetAt( oriented_layout, native_indices );
-
-         const bool offsets_match = oriented_offset == fifo_offset;
-         const bool identity_match =
-            orientation != identity || native_indices == reference_indices;
-
-         if ( !offsets_match || !identity_match )
-         {
-            success = false;
-            if ( num_failures_reported < 8 )
-            {
-               ++num_failures_reported;
-               std::cout
-                  << "Orientation-map mismatch in " << case_name
-                  << ": orientation=";
-               PrintOrientation( orientation );
-               std::cout << ", reference=";
-               PrintIndex( reference_indices );
-               std::cout << ", native=";
-               PrintIndex( native_indices );
-               std::cout << ", fifo_offset=" << fifo_offset
-                         << ", oriented_offset=" << oriented_offset
-                         << ", identity_match=" << identity_match
-                         << "\n";
-            }
-         }
-      });
-   }
-
-   if ( success )
-   {
-      std::cout << "PASS orientation map: " << case_name << "\n";
-   }
-   return success;
-}
-
-template < Integer Dim >
-std::array< GlobalIndex, Dim > OrientedAxisRadices(
-   const std::array< size_t, Dim > & sizes,
-   const Permutation< Dim > & orientation )
-{
-   std::array< GlobalIndex, Dim > radices{};
-   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
-   {
-      const LocalIndex o = orientation( native_dim );
-      const Integer oriented_axis =
-         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
-      radices[ oriented_axis ] =
-         static_cast< GlobalIndex >( sizes[ native_dim ] );
-   }
-   return radices;
-}
-
-bool RunFocusedAnisotropicSwapCase()
-{
-   using DofShape = std::index_sequence< 3, 4 >;
-   constexpr Integer dim = DofShape::size();
-
-   const auto sizes = to_array( DofShape{} );
-   const std::array< GlobalIndex, dim > reference_extents{
-      static_cast< GlobalIndex >( sizes[ 0 ] ),
-      static_cast< GlobalIndex >( sizes[ 1 ] ) };
-   const std::array< GlobalIndex, dim > expected_reference_extents{ 3, 4 };
-
-   const Permutation< dim > orientation{ { 2, -1 } };
-   const auto oriented_radices =
-      OrientedAxisRadices( sizes, orientation );
-   const std::array< GlobalIndex, dim > expected_oriented_radices{ 4, 3 };
-   const auto oriented_layout = MakeOrientedLayout( sizes, orientation );
-
-   bool success =
-      reference_extents == expected_reference_extents &&
-      oriented_radices == expected_oriented_radices;
-   Integer num_failures_reported = 0;
-
-   UnitLoop< DofShape >( [&] ( auto... k )
-   {
-      const std::array< GlobalIndex, dim > reference_indices{
-         static_cast< GlobalIndex >( k )... };
-      const auto native_indices =
-         DirectGlobalFaceReadNativeIndex(
-            reference_indices,
+      const bool expected =
+         ExpectedShapeCompatible( sizes, orientation );
+      const bool actual =
+         FaceReadDofsOrientationIsShapeCompatible(
             sizes,
             orientation );
 
-      const GlobalIndex fifo_offset =
-         FaceReadDofsFIFOOffset( reference_indices, sizes );
-      const GlobalIndex oriented_offset =
-         OffsetAt( oriented_layout, native_indices );
-
-      if ( oriented_offset != fifo_offset )
+      if ( actual != expected )
       {
          success = false;
          if ( num_failures_reported < 8 )
          {
             ++num_failures_reported;
             std::cout
-               << "Focused anisotropic swap mismatch: reference=";
-            PrintIndex( reference_indices );
-            std::cout << ", native=";
-            PrintIndex( native_indices );
-            std::cout << ", fifo_offset=" << fifo_offset
-                      << ", oriented_offset=" << oriented_offset
+               << "Shape-compatibility mismatch in " << case_name
+               << ": orientation=";
+            PrintOrientation( orientation );
+            std::cout << ", expected=" << expected
+                      << ", actual=" << actual
                       << "\n";
          }
       }
-   });
-
-   const std::array< GlobalIndex, dim > trap_reference{ 0, 1 };
-   const std::array< GlobalIndex, dim > tempting_native{
-      trap_reference[ 1 ],
-      static_cast< GlobalIndex >( sizes[ 1 ] - 1 - trap_reference[ 0 ] ) };
-   const GlobalIndex trap_fifo_offset =
-      FaceReadDofsFIFOOffset( trap_reference, sizes );
-   const GlobalIndex tempting_offset =
-      OffsetAt( oriented_layout, tempting_native );
-
-   if ( tempting_offset == trap_fifo_offset )
-   {
-      success = false;
-      std::cout
-         << "Focused anisotropic swap failed to catch the tempting direct "
-         << "formula for reference=";
-      PrintIndex( trap_reference );
-      std::cout << ", tempting_native=";
-      PrintIndex( tempting_native );
-      std::cout << ", fifo_offset=" << trap_fifo_offset
-                << ", tempting_offset=" << tempting_offset
-                << "\n";
    }
 
    if ( success )
    {
       std::cout
-         << "PASS focused anisotropic swap: shape (3,4), orientation (2,-1), "
-         << "reference extents are original (3,4), oriented-axis radices are "
-         << "(4,3).\n";
+         << "PASS shape-compatible orientation classification: "
+         << case_name << "\n";
    }
-   else
-   {
-      std::cout
-         << "FAILED focused anisotropic swap: expected original reference "
-         << "extents (3,4) and oriented-axis radices (4,3).\n";
-   }
-
    return success;
 }
 
@@ -347,6 +236,113 @@ auto MakeGlobalDofView(
       data,
       sizes,
       std::make_index_sequence< Space::Dim + 1 >{} );
+}
+
+template < typename Space >
+bool RunOrientedGlobalViewCase(
+   const char * case_name,
+   const std::vector< Permutation< Space::Dim > > & orientations )
+{
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using DofShape = orders_to_num_dofs< typename ShapeFunctions::orders >;
+   constexpr Integer dim = Space::Dim;
+   constexpr GlobalIndex num_elements = 2;
+   constexpr GlobalIndex element_index = 1;
+
+   const auto dof_sizes = to_array( DofShape{} );
+   std::array< GlobalIndex, dim + 1 > global_sizes{};
+   GlobalIndex num_values = num_elements;
+   for ( Integer i = 0; i < dim; ++i )
+   {
+      global_sizes[ i ] = static_cast< GlobalIndex >( dof_sizes[ i ] );
+      num_values *= global_sizes[ i ];
+   }
+   global_sizes[ dim ] = num_elements;
+
+   std::vector< Real > global_data( num_values );
+   auto global_dofs = MakeGlobalDofView< Space >( global_data, global_sizes );
+
+   for ( GlobalIndex element = 0; element < num_elements; ++element )
+   {
+      UnitLoop< DofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, dim > native_indices{
+            static_cast< GlobalIndex >( k )... };
+         global_dofs( k..., element ) =
+            IndexEncodedValue( native_indices, element );
+      });
+   }
+
+   const auto identity = MakeReferencePermutation< dim >();
+   bool success = true;
+   Integer num_failures_reported = 0;
+
+   for ( const auto & orientation : orientations )
+   {
+      if ( !FaceReadDofsOrientationIsShapeCompatible(
+              dof_sizes,
+              orientation ) )
+      {
+         success = false;
+         std::cout
+            << "Oriented view case was given unsupported orientation in "
+            << case_name << ": orientation=";
+         PrintOrientation( orientation );
+         continue;
+      }
+
+      const auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            global_dofs,
+            element_index,
+            dof_sizes,
+            orientation );
+
+      UnitLoop< DofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, dim > reference_indices{
+            static_cast< GlobalIndex >( k )... };
+         const auto native_indices =
+            ShapeCompatibleNativeIndex(
+               reference_indices,
+               dof_sizes,
+               orientation );
+         const Real expected =
+            IndexEncodedValue( native_indices, element_index );
+         const Real actual = oriented_global_dofs( k... );
+         const bool identity_match =
+            orientation != identity || native_indices == reference_indices;
+
+         if ( std::abs( expected - actual ) > 1e-12 ||
+              !identity_match )
+         {
+            success = false;
+            if ( num_failures_reported < 8 )
+            {
+               ++num_failures_reported;
+               std::cout
+                  << "Oriented global view mismatch in " << case_name
+                  << ": orientation=";
+               PrintOrientation( orientation );
+               std::cout << ", reference=";
+               PrintIndex( reference_indices );
+               std::cout << ", native=";
+               PrintIndex( native_indices );
+               std::cout << ", expected=" << expected
+                         << ", actual=" << actual
+                         << ", identity_match=" << identity_match
+                         << "\n";
+            }
+         }
+      });
+   }
+
+   if ( success )
+   {
+      std::cout << "PASS oriented global view: " << case_name << "\n";
+   }
+   return success;
 }
 
 template < typename LocalDofs, typename DofShape >
@@ -389,7 +385,9 @@ bool CompareLocalDofs(
 }
 
 template < typename Space >
-bool RunScalarReadDofsPolicyCase( const char * case_name )
+bool RunScalarReadDofsPolicyCase(
+   const char * case_name,
+   const std::vector< Permutation< Space::Dim > > & orientations )
 {
    using ShapeFunctions =
       typename Space::finite_element_type::shape_functions;
@@ -430,9 +428,20 @@ bool RunScalarReadDofsPolicyCase( const char * case_name )
       direct_global_context( no_shared_memory );
 
    bool success = true;
-   const auto orientations = MakeAllSignedPermutations< dim >();
    for ( const auto & orientation : orientations )
    {
+      if ( !FaceReadDofsOrientationIsShapeCompatible(
+              dof_sizes,
+              orientation ) )
+      {
+         success = false;
+         std::cout
+            << "Scalar policy case was given unsupported orientation in "
+            << case_name << ": orientation=";
+         PrintOrientation( orientation );
+         continue;
+      }
+
       const TestFaceView< dim > face{ element_index, orientation };
       const auto full_shared =
          ReadDofs(
@@ -464,6 +473,40 @@ bool RunScalarReadDofsPolicyCase( const char * case_name )
    return success;
 }
 
+template < typename DofShape >
+bool RunUnsupportedOrientationCase(
+   const char * case_name,
+   const std::vector< Permutation< DofShape::size() > > & orientations )
+{
+   const auto dof_sizes = to_array( DofShape{} );
+   bool success = true;
+
+   for ( const auto & orientation : orientations )
+   {
+      const bool supported =
+         FaceReadDofsOrientationIsShapeCompatible(
+            dof_sizes,
+            orientation );
+      if ( supported )
+      {
+         success = false;
+         std::cout
+            << "Unsupported orientation classified as supported in "
+            << case_name << ": orientation=";
+         PrintOrientation( orientation );
+      }
+   }
+
+   if ( success )
+   {
+      std::cout
+         << "PASS unsupported DirectGlobal orientation classification: "
+         << case_name << "\n";
+   }
+
+   return success;
+}
+
 bool RunVectorFaceReadAudit()
 {
    std::cout
@@ -491,43 +534,121 @@ int main()
          GaussLegendreShapeFunctions< 1 >,
          GaussLegendreShapeFunctions< 2 >,
          GaussLegendreShapeFunctions< 3 > >;
+   using Shape2DEqual =
+      TensorShapeFunctions<
+         GaussLegendreShapeFunctions< 3 >,
+         GaussLegendreShapeFunctions< 3 > >;
 
    using Space1D = TestFiniteElementSpace< 1, Shape1D >;
    using Space2D = TestFiniteElementSpace< 2, Shape2D >;
    using Space3D = TestFiniteElementSpace< 3, Shape3D >;
+   using Space2DEqual = TestFiniteElementSpace< 2, Shape2DEqual >;
+
+   const std::vector< Permutation< 1 > > orientations_1d{
+      Permutation< 1 >{ { 1 } },
+      Permutation< 1 >{ { -1 } } };
+   const std::vector< Permutation< 2 > > anisotropic_2d_identity_flips{
+      Permutation< 2 >{ { 1, 2 } },
+      Permutation< 2 >{ { -1, 2 } },
+      Permutation< 2 >{ { 1, -2 } },
+      Permutation< 2 >{ { -1, -2 } } };
+   const std::vector< Permutation< 3 > > anisotropic_3d_identity_flips{
+      Permutation< 3 >{ { 1, 2, 3 } },
+      Permutation< 3 >{ { -1, 2, 3 } },
+      Permutation< 3 >{ { 1, -2, 3 } },
+      Permutation< 3 >{ { 1, 2, -3 } },
+      Permutation< 3 >{ { -1, -2, -3 } } };
+   const std::vector< Permutation< 2 > > equal_extent_swaps{
+      Permutation< 2 >{ { 2, 1 } },
+      Permutation< 2 >{ { 2, -1 } },
+      Permutation< 2 >{ { -2, 1 } },
+      Permutation< 2 >{ { -2, -1 } } };
+   const std::vector< Permutation< 2 > > anisotropic_2d_swaps{
+      Permutation< 2 >{ { 2, 1 } },
+      Permutation< 2 >{ { 2, -1 } },
+      Permutation< 2 >{ { -2, 1 } },
+      Permutation< 2 >{ { -2, -1 } } };
+   const std::vector< Permutation< 3 > > anisotropic_3d_swaps{
+      Permutation< 3 >{ { 2, 1, 3 } },
+      Permutation< 3 >{ { 1, 3, 2 } },
+      Permutation< 3 >{ { -3, 2, 1 } } };
 
    bool success = true;
 
    success =
-      RunOrientationMapCase<
+      RunShapeCompatibilityClassificationCase<
          orders_to_num_dofs< typename Shape1D::orders > >(
             "1D shape (4)" ) &&
       success;
    success =
-      RunOrientationMapCase<
+      RunShapeCompatibilityClassificationCase<
          orders_to_num_dofs< typename Shape2D::orders > >(
             "2D anisotropic shape (3,4)" ) &&
       success;
    success =
-      RunOrientationMapCase<
+      RunShapeCompatibilityClassificationCase<
          orders_to_num_dofs< typename Shape3D::orders > >(
             "3D anisotropic shape (2,3,4)" ) &&
       success;
    success =
-      RunFocusedAnisotropicSwapCase() &&
+      RunShapeCompatibilityClassificationCase<
+         orders_to_num_dofs< typename Shape2DEqual::orders > >(
+            "2D equal shape (4,4)" ) &&
+      success;
+
+   success =
+      RunOrientedGlobalViewCase< Space1D >(
+         "1D identity and flip shape (4)",
+         orientations_1d ) &&
+      success;
+   success =
+      RunOrientedGlobalViewCase< Space2D >(
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_identity_flips ) &&
+      success;
+   success =
+      RunOrientedGlobalViewCase< Space3D >(
+         "3D anisotropic identity/flips shape (2,3,4)",
+         anisotropic_3d_identity_flips ) &&
+      success;
+   success =
+      RunOrientedGlobalViewCase< Space2DEqual >(
+         "2D equal-extent swaps shape (4,4)",
+         equal_extent_swaps ) &&
       success;
 
    success =
       RunScalarReadDofsPolicyCase< Space1D >(
-         "1D shape (4)" ) &&
+         "1D identity and flip shape (4)",
+         orientations_1d ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space2D >(
-         "2D anisotropic shape (3,4)" ) &&
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_identity_flips ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space3D >(
-         "3D anisotropic shape (2,3,4)" ) &&
+         "3D anisotropic identity/flips shape (2,3,4)",
+         anisotropic_3d_identity_flips ) &&
+      success;
+   success =
+      RunScalarReadDofsPolicyCase< Space2DEqual >(
+         "2D equal-extent swaps shape (4,4)",
+         equal_extent_swaps ) &&
+      success;
+
+   success =
+      RunUnsupportedOrientationCase<
+         orders_to_num_dofs< typename Shape2D::orders > >(
+            "2D anisotropic swapped axes shape (3,4)",
+            anisotropic_2d_swaps ) &&
+      success;
+   success =
+      RunUnsupportedOrientationCase<
+         orders_to_num_dofs< typename Shape3D::orders > >(
+            "3D anisotropic swapped axes shape (2,3,4)",
+            anisotropic_3d_swaps ) &&
       success;
 
    success = RunVectorFaceReadAudit() && success;
