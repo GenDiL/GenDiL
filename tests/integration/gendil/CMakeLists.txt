@@ -16,6 +16,10 @@ if(USE_CUDA OR USE_HIP)
     test-batched-linear-form-operator.cpp
   )
   add_my_test(
+    test-batched-face-speed-of-light-read-cell
+    test-batched-face-speed-of-light-read-cell.cpp
+  )
+  add_my_test(
     test-batched-grad-grad-operator
     test-batched-grad-grad-operator.cpp
   )
@@ -41,6 +45,7 @@ if(USE_CUDA OR USE_HIP)
     test-batched-l2-error
     test-batched-mass-inverse-operator
     test-batched-linear-form-operator
+    test-batched-face-speed-of-light-read-cell
     test-batched-grad-grad-operator
     test-batched-grad-grad-write-coverage
     test-batched-grad-grad-debug-variants
