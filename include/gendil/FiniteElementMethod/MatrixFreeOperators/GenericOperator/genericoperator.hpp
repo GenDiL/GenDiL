@@ -575,9 +575,7 @@ void GenericExplicitOperator(
   const DofsInView& dofs_in,
   DofsOutView& dofs_out)
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelPolicy,
-      "GenericExplicitOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
 
    using I = std::remove_cvref_t<WeakForm>;
 

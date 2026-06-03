@@ -143,9 +143,7 @@ void LinfProjectionOperator(
    const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "LinfProjectionOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::CellIterator< KernelConfiguration >(
       trial_fe_space,

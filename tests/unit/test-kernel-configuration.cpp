@@ -45,7 +45,7 @@ int main( int, char ** )
    using Shape5 = std::index_sequence< 5 >;
    using Shape57 = std::index_sequence< 5, 7 >;
    static_assert(
-      threaded_shape_covered_v< HostKernelConfiguration< 1 >, Shape57 > );
+      threaded_shape_covered_v< HostKernelConfiguration, Shape57 > );
    static_assert(
       threaded_shape_covered_v<
          DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 1 >,
@@ -70,22 +70,25 @@ int main( int, char ** )
    static_assert( is_host_configuration_v< SerialKernelConfiguration > );
    static_assert( !is_device_configuration_v< SerialKernelConfiguration > );
    static_assert( !is_threaded_v< SerialKernelConfiguration > );
-   static_assert( is_host_configuration_v< HostKernelConfiguration<> > );
-   static_assert( is_host_configuration_v< HostKernelConfiguration< 1 > > );
-   static_assert( is_host_configuration_v< const HostKernelConfiguration< 1 > & > );
-   static_assert( !is_device_configuration_v< HostKernelConfiguration< 1 > > );
-   static_assert( !is_device_configuration_v< const HostKernelConfiguration< 1 > & > );
-   static_assert( !is_threaded_v< HostKernelConfiguration< 1 > > );
-   static_assert( !is_threaded_v< const HostKernelConfiguration< 1 > & > );
+   static_assert( is_host_configuration_v< HostKernelConfiguration > );
+   static_assert( is_host_configuration_v< const HostKernelConfiguration & > );
+   static_assert( !is_device_configuration_v< HostKernelConfiguration > );
+   static_assert( !is_device_configuration_v< const HostKernelConfiguration & > );
+   static_assert( !is_threaded_v< HostKernelConfiguration > );
+   static_assert( !is_threaded_v< const HostKernelConfiguration & > );
    static_assert(
       !is_batched_device_configuration_v< SerialKernelConfiguration > );
    static_assert( SerialKernelConfiguration::batch_size == 1 );
-   static_assert( HostKernelConfiguration< 4 >::batch_size == 4 );
-   static_assert( HostKernelConfiguration< 4 >::GetNumberOfThreads() == 1 );
+   static_assert( HostKernelConfiguration::batch_size == 1 );
+   static_assert( HostKernelConfiguration::GetNumberOfThreads() == 1 );
    static_assert(
-      !is_batched_device_configuration_v< HostKernelConfiguration< 4 > > );
+      !is_batched_device_configuration_v< HostKernelConfiguration > );
+   static_assert(
+      is_unbatched_operator_configuration_allowed_v<
+         HostKernelConfiguration > );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( HostKernelConfiguration );
 
-   using HostContext = KernelContext< HostKernelConfiguration< 1 >, 0 >;
+   using HostContext = KernelContext< HostKernelConfiguration, 0 >;
    static_assert( is_host_configuration_v< HostContext > );
    static_assert( is_host_configuration_v< const HostContext & > );
    static_assert( !is_device_configuration_v< HostContext > );
@@ -94,7 +97,7 @@ int main( int, char ** )
    static_assert( !is_threaded_v< const HostContext & > );
 
    std::array< int, 8 > host_visits{};
-   HostKernelConfiguration< 4 >::BlockLoop(
+   HostKernelConfiguration::BlockLoop(
       host_visits.size(),
       [&] ( GlobalIndex work_item_index )
       {
@@ -116,6 +119,9 @@ int main( int, char ** )
    static_assert( is_device_configuration_v< LegacyConfig > );
    static_assert( !is_host_configuration_v< LegacyConfig > );
    static_assert( !is_batched_device_configuration_v< LegacyConfig > );
+   static_assert(
+      is_unbatched_operator_configuration_allowed_v< LegacyConfig > );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( LegacyConfig );
    static_assert( is_threaded_v< LegacyConfig > );
    static_assert( LegacyConfig::batch_size == 1 );
    static_assert( LegacyConfig::GetNumberOfThreads() == 6 );
@@ -150,6 +156,8 @@ int main( int, char ** )
    static_assert( is_device_configuration_v< BatchedConfig > );
    static_assert( !is_host_configuration_v< BatchedConfig > );
    static_assert( is_batched_device_configuration_v< BatchedConfig > );
+   static_assert(
+      !is_unbatched_operator_configuration_allowed_v< BatchedConfig > );
    static_assert( is_threaded_v< BatchedConfig > );
    static_assert(
       is_batched_device_configuration_v<
@@ -201,6 +209,9 @@ int main( int, char ** )
    static_assert( !is_host_configuration_v< RegisterOnlyBatchedConfig > );
    static_assert(
       is_batched_device_configuration_v< RegisterOnlyBatchedConfig > );
+   static_assert(
+      !is_unbatched_operator_configuration_allowed_v<
+         RegisterOnlyBatchedConfig > );
    static_assert( !is_threaded_v< RegisterOnlyBatchedConfig > );
    static_assert( !is_threaded_v< RegisterOnlyBatchedContext > );
    static_assert( !is_threaded_v< const RegisterOnlyBatchedContext & > );
@@ -260,6 +271,9 @@ int main( int, char ** )
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;
    static_assert( !is_batched_device_configuration_v< BatchedSingle > );
+   static_assert(
+      is_unbatched_operator_configuration_allowed_v< BatchedSingle > );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( BatchedSingle );
    constexpr auto batched_single_geometry =
       BatchedSingle::GetLaunchGeometry( 11 );
    static_assert( batched_single_geometry.grid_x == 11 );

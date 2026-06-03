@@ -37,22 +37,19 @@ struct FaceSpeedOfLightRequiredSharedMemory<
    FiniteElementSpace >
 {
 private:
-   using shape_functions =
-      typename FiniteElementSpace::finite_element_type::shape_functions;
    using FaceReadPolicy =
       face_read_dofs_policy_t< KernelConfiguration >;
-   static constexpr bool is_vector_space =
-      is_vector_shape_functions_v< shape_functions >;
-   static constexpr bool uses_full_shared_scalar_threaded_read =
-      !is_vector_space &&
-      !std::is_same_v<
+   static constexpr bool uses_direct_global_read =
+      std::is_same_v<
          FaceReadPolicy,
-         DirectGlobalFaceReadDofsPolicy > &&
+         DirectGlobalFaceReadDofsPolicy >;
+   static constexpr bool uses_full_shared_threaded_read =
+      !uses_direct_global_read &&
       is_threaded_v< KernelConfiguration >;
 
 public:
    static constexpr size_t value =
-      !is_vector_space && !uses_full_shared_scalar_threaded_read
+      !uses_full_shared_threaded_read
          ? 0
          : FiniteElementSpace::finite_element_type::GetNumDofs();
 };
@@ -175,9 +172,7 @@ void FaceSpeedOfLightExplicitFaceOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "FaceSpeedOfLightExplicitFaceOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
@@ -220,6 +215,8 @@ void FaceSpeedOfLightExplicitOperator(
 {
    if constexpr ( KernelType == FaceSoLType::ReadCell )
    {
+      GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
       mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -250,9 +247,7 @@ void FaceSpeedOfLightExplicitOperator(
    }
    else if constexpr ( KernelType == FaceSoLType::WriteCell )
    {
-      GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-         KernelConfiguration,
-         "FaceSpeedOfLightExplicitOperator<WriteCell>" );
+      GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
       mesh::CellIterator<KernelConfiguration>(
       fe_space,
@@ -294,9 +289,7 @@ void GlobalFaceSpeedOfLightExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "GlobalFaceSpeedOfLightExplicitOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::ForEachFaceMesh(
       face_meshes,

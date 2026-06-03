@@ -999,6 +999,145 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE
+auto DirectGlobalReadVectorDofsSerial(
+   const KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const GlobalTensor & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   auto local_dofs =
+      MakeVectorDofs( dof_shape{}, std::make_index_sequence<v_dim>{});
+
+   const GlobalIndex element_index = face_info.cell_index;
+   constexpr Integer space_dim = FiniteElementSpace::Dim;
+   Permutation<space_dim> orientation = face_info.orientation;
+
+   ConstexprLoop<v_dim>([&](auto i)
+   {
+      using component_dof_shape = std::tuple_element_t<i, dof_shape>;
+      const auto dof_sizes = to_array(component_dof_shape{});
+
+      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
+         orientation );
+
+      if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+      {
+         UnitLoop<component_dof_shape>([&](auto... indices)
+         {
+            std::get<i>(local_dofs)(indices...) =
+               std::get<i>(global_dofs)(indices..., element_index);
+         });
+      }
+      else
+      {
+         const auto oriented_global_dofs =
+            MakeOrientedGlobalDofView(
+               std::get<i>(global_dofs),
+               element_index,
+               dof_sizes,
+               orientation );
+
+         UnitLoop<component_dof_shape>([&](auto... indices)
+         {
+            std::get<i>(local_dofs)(indices...) =
+               oriented_global_dofs(indices...);
+         });
+      }
+   });
+
+   return local_dofs;
+}
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename GlobalTensor >
+GENDIL_HOST_DEVICE
+auto DirectGlobalReadVectorDofsThreaded(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const GlobalTensor & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   auto local_dofs =
+      MakeVectorDofs( thread, dof_shape{}, std::make_index_sequence<v_dim>{});
+
+   const GlobalIndex element_index = face_info.cell_index;
+   constexpr Integer space_dim = FiniteElementSpace::Dim;
+   Permutation<space_dim> orientation = face_info.orientation;
+
+   ConstexprLoop<v_dim>([&](auto i)
+   {
+      using component_dof_shape = std::tuple_element_t<i, dof_shape>;
+
+      using tshape = subsequence_t<
+         component_dof_shape,
+         typename KernelContext::template threaded_dimensions<
+            component_dof_shape::size() > >;
+
+      using rshape = subsequence_t<
+         component_dof_shape,
+         typename KernelContext::template register_dimensions<
+            component_dof_shape::size() > >;
+
+      const auto dof_sizes = to_array(component_dof_shape{});
+
+      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
+         orientation );
+
+      if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+      {
+         ThreadLoop<tshape>(thread, [&](auto... t)
+         {
+            UnitLoop<rshape>([&](auto... k)
+            {
+               std::get<i>(local_dofs)(k...) =
+                  std::get<i>(global_dofs)(t..., k..., element_index);
+            });
+         });
+      }
+      else
+      {
+         const auto oriented_global_dofs =
+            MakeOrientedGlobalDofView(
+               std::get<i>(global_dofs),
+               element_index,
+               dof_sizes,
+               orientation );
+
+         ThreadLoop<tshape>(thread, [&](auto... t)
+         {
+            UnitLoop<rshape>([&](auto... k)
+            {
+               std::get<i>(local_dofs)(k...) =
+                  oriented_global_dofs(t..., k...);
+            });
+         });
+      }
+   });
+
+   return local_dofs;
+}
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
    Integer Dim,
    typename T >
 GENDIL_HOST_DEVICE
@@ -1127,13 +1266,45 @@ auto ReadVectorDofs(
    const Face & face_info,
    const GlobalDofs & global_dofs )
 {
+   using FaceReadPolicy =
+      face_read_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      return ReadVectorDofsSerial( thread, fe_space, face_info, global_dofs );
+      if constexpr (
+         std::is_same_v<
+            FaceReadPolicy,
+            DirectGlobalFaceReadDofsPolicy > )
+      {
+         return DirectGlobalReadVectorDofsSerial(
+            thread,
+            fe_space,
+            face_info,
+            global_dofs );
+      }
+      else
+      {
+         return ReadVectorDofsSerial( thread, fe_space, face_info, global_dofs );
+      }
    }
    else
    {
-      return ReadVectorDofsThreaded( thread, fe_space, face_info, global_dofs );
+      if constexpr (
+         std::is_same_v<
+            FaceReadPolicy,
+            DirectGlobalFaceReadDofsPolicy > )
+      {
+         return DirectGlobalReadVectorDofsThreaded(
+            thread,
+            fe_space,
+            face_info,
+            global_dofs );
+      }
+      else
+      {
+         return ReadVectorDofsThreaded( thread, fe_space, face_info, global_dofs );
+      }
    }
 }
 

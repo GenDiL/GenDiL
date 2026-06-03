@@ -375,9 +375,7 @@ void DiffusionExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "DiffusionExplicitOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::CellIterator< KernelConfiguration >(
       fe_space,

@@ -272,9 +272,7 @@ void MassAdvectionExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "MassAdvectionExplicitOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::CellIterator< KernelConfiguration >(
       fe_space,

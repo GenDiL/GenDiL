@@ -76,9 +76,7 @@ void SoLExplicitOperator(
    const DofsIn & dofs_in,
    DofsOut & dofs_out )
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelConfiguration,
-      "SoLExplicitOperator" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
    mesh::CellIterator<KernelConfiguration>(
       fe_space,

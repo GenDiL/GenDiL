@@ -10,7 +10,7 @@
 // Logical-threading traits select register-only helpers vs threaded helpers.
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 
-// Batching/audit traits guard unaudited BatchSize > 1 device paths.
+// Batching/audit traits guard unsupported BatchSize > 1 device paths.
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 
 /**
@@ -26,10 +26,10 @@
  *   whether a work item has a non-empty logical thread layout and should use
  *   threaded/shared helper implementations.
  * - Batching/audit traits (`is_batched_device_configuration_v`,
- *   `is_unaudited_operator_configuration_allowed_v`, and
- *   `GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR`) answer whether a
- *   device configuration has multiple batch lanes and whether a path is
- *   allowed to instantiate for it.
+ *   `is_unbatched_operator_configuration_allowed_v`, and
+ *   `GENDIL_REQUIRE_UNBATCHED_OPERATOR`) answer whether a device
+ *   configuration has multiple batch lanes and whether a path is allowed to
+ *   instantiate for it.
  *
  * In particular,
  * `DeviceKernelConfiguration<ThreadBlockLayout<>, ..., BatchSize>` is device

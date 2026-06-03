@@ -11,17 +11,14 @@
 namespace gendil
 {
 
-template < size_t BatchSize = 1 >
 class HostKernelConfiguration
 {
 public:
-   static_assert( BatchSize >= 1, "BatchSize must be at least one." );
-
    using thread_layout_type = ThreadBlockLayout<>;
 
    static constexpr bool is_host_configuration = true;
    static constexpr bool is_device_configuration = false;
-   static constexpr size_t batch_size = BatchSize;
+   static constexpr size_t batch_size = 1;
    static constexpr size_t thread_block_dim = 0;
    static constexpr size_t shared_block_max_dim = 0;
 

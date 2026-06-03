@@ -9,6 +9,6 @@
 namespace gendil
 {
 
-using SerialKernelConfiguration = HostKernelConfiguration< 1 >;
+using SerialKernelConfiguration = HostKernelConfiguration;
 
 } // namespace gendil

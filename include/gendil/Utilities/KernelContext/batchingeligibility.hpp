@@ -36,18 +36,15 @@ static constexpr bool is_batched_device_configuration_v =
       std::remove_cvref_t< KernelConfiguration > >::value;
 
 template < typename KernelConfiguration >
-static constexpr bool is_unaudited_operator_configuration_allowed_v =
+static constexpr bool is_unbatched_operator_configuration_allowed_v =
    !is_batched_device_configuration_v< KernelConfiguration >;
 
 } // namespace gendil
 
-#define GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(                 \
-   KernelConfiguration,                                                       \
-   OperatorName )                                                             \
+#define GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration )              \
    static_assert(                                                             \
-      ::gendil::is_unaudited_operator_configuration_allowed_v<                \
+      ::gendil::is_unbatched_operator_configuration_allowed_v<                \
          KernelConfiguration >,                                               \
-      OperatorName                                                            \
-      " has not been audited for BatchSize > 1 with "                        \
-      "DeviceKernelConfiguration. Use BatchSize == 1 or add an explicit "     \
-      "audited batched implementation." )
+      "This operator has not been audited for batched device execution. "      \
+      "Use BatchSize == 1 or audit this operator before enabling "            \
+      "BatchSize > 1." )

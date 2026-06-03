@@ -332,9 +332,7 @@ void GenericBlockDiagonalAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelPolicy,
-      "GenericBlockDiagonalAssembly" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
 
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
       
@@ -408,9 +406,7 @@ void GenericAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
-   GENDIL_REQUIRE_BATCH_SIZE_ONE_FOR_UNAUDITED_OPERATOR(
-      KernelPolicy,
-      "GenericAssembly" );
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
 
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
