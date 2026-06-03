@@ -1201,7 +1201,7 @@ template < Integer Order >
 bool TestFullSharedRepresentativePolicy()
 {
    static constexpr Integer num_dofs_1d = Order + 1;
-   const char * policy_label = "explicit FullShared scalar face ReadDofs";
+   const char * policy_label = "FullSharedOverride";
    bool success = true;
 
    auto make_label =
@@ -1281,7 +1281,7 @@ int main()
 #if defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST )
    success =
       TestBroadReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
-         "default DirectGlobal scalar face ReadDofs" ) && success;
+         "DirectGlobalDefault" ) && success;
 #elif defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
    success =
       TestFullSharedRepresentativePolicy< order >() && success;
