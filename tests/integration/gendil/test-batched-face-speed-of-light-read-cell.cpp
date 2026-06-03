@@ -1271,23 +1271,28 @@ bool TestFullSharedRepresentativePolicy()
    return success;
 }
 
+#if defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST )
+bool RunSelectedReadCellTest()
+{
+   static constexpr Integer order = 3;
+   const char * policy_label = "DirectGlobalDefault";
+   return
+      TestBroadReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
+         policy_label );
+}
+#elif defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
+bool RunSelectedReadCellTest()
+{
+   static constexpr Integer order = 3;
+   return TestFullSharedRepresentativePolicy< order >();
+}
+#endif
+
 } // namespace
 
 int main()
 {
-   static constexpr Integer order = 3;
-   bool success = true;
-
-#if defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST )
-   success =
-      TestBroadReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
-         "DirectGlobalDefault" ) && success;
-#elif defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
-   success =
-      TestFullSharedRepresentativePolicy< order >() && success;
-#endif
-
-   return success ? 0 : 1;
+   return RunSelectedReadCellTest() ? 0 : 1;
 }
 
 #endif
