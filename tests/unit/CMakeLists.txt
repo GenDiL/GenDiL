@@ -24,13 +24,23 @@ if(USE_CUDA OR USE_HIP)
     )
 
     function(gendil_probe_cuda_static_tile_size tile_size)
-      set(
-        probe_source
-        "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-${tile_size}.cu"
+      set(probe_source_dir
+          "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-${tile_size}-source")
+      set(probe_binary_dir
+          "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-${tile_size}-probe")
+      file(MAKE_DIRECTORY "${probe_source_dir}")
+      file(
+        WRITE
+        "${probe_source_dir}/CMakeLists.txt"
+        "cmake_minimum_required(VERSION 3.25.2)\n"
+        "project(cuda_static_tile_probe LANGUAGES CUDA)\n"
+        "set(CMAKE_CUDA_STANDARD 20)\n"
+        "set(CMAKE_CUDA_STANDARD_REQUIRED ON)\n"
+        "add_library(cuda_static_tile_${tile_size} STATIC probe.cu)\n"
       )
       file(
         WRITE
-        "${probe_source}"
+        "${probe_source_dir}/probe.cu"
         "#include <cooperative_groups.h>\n"
         "namespace cg = cooperative_groups;\n"
         "__global__ void kernel()\n"
@@ -47,10 +57,30 @@ if(USE_CUDA OR USE_HIP)
 
       set(
         probe_cmake_flags
-        "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"
         "-DCMAKE_CUDA_STANDARD=20"
         "-DCMAKE_CUDA_STANDARD_REQUIRED=ON"
       )
+      if(CMAKE_CUDA_COMPILER)
+        list(
+          APPEND
+          probe_cmake_flags
+          "-DCMAKE_CUDA_COMPILER=${CMAKE_CUDA_COMPILER}"
+        )
+      endif()
+      if(CMAKE_CUDA_HOST_COMPILER)
+        list(
+          APPEND
+          probe_cmake_flags
+          "-DCMAKE_CUDA_HOST_COMPILER=${CMAKE_CUDA_HOST_COMPILER}"
+        )
+      endif()
+      if(CMAKE_CXX_COMPILER)
+        list(
+          APPEND
+          probe_cmake_flags
+          "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        )
+      endif()
       if(CMAKE_CUDA_ARCHITECTURES)
         list(
           APPEND
@@ -58,17 +88,35 @@ if(USE_CUDA OR USE_HIP)
           "-DCMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}"
         )
       endif()
+      if(CMAKE_BUILD_TYPE)
+        list(
+          APPEND
+          probe_cmake_flags
+          "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+        )
+      endif()
+      if(CMAKE_CUDA_FLAGS)
+        list(
+          APPEND
+          probe_cmake_flags
+          "-DCMAKE_CUDA_FLAGS=${CMAKE_CUDA_FLAGS}"
+        )
+      endif()
 
       try_compile(
         probe_result
-        "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-${tile_size}-probe"
-        SOURCES
-        "${probe_source}"
+        "${probe_binary_dir}"
+        "${probe_source_dir}"
+        cuda_static_tile_probe
+        cuda_static_tile_${tile_size}
         CMAKE_FLAGS
         ${probe_cmake_flags}
         OUTPUT_VARIABLE
         probe_output
       )
+      set(probe_log
+          "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-${tile_size}.log")
+      file(WRITE "${probe_log}" "${probe_output}")
 
       if(probe_result)
         set(
@@ -88,25 +136,41 @@ if(USE_CUDA OR USE_HIP)
         )
         message(
           STATUS
-          "CUDA cooperative_groups::tiled_partition<${tile_size}> unsupported"
+          "CUDA cooperative_groups::tiled_partition<${tile_size}> unsupported; see ${probe_log}"
         )
       endif()
     endfunction()
 
     add_my_test(test-cuda-work-item-sync test-cuda-work-item-sync.cpp)
 
+    set(GENDIL_CUDA_WORK_ITEM_SYNC_SUPPORTED_TILE_SIZES)
     foreach(tile_size IN LISTS GENDIL_CUDA_WORK_ITEM_SYNC_TILE_SIZES)
       gendil_probe_cuda_static_tile_size(${tile_size})
       set(
         support_variable
         "GENDIL_CUDA_STATIC_TILE_${tile_size}_SUPPORTED"
       )
+      if(${support_variable})
+        list(
+          APPEND
+          GENDIL_CUDA_WORK_ITEM_SYNC_SUPPORTED_TILE_SIZES
+          ${tile_size}
+        )
+      endif()
       target_compile_definitions(
         test-cuda-work-item-sync
         PRIVATE
         "GENDIL_CUDA_STATIC_TILE_${tile_size}_SUPPORTED=${${support_variable}}"
       )
     endforeach()
+    if(NOT GENDIL_CUDA_WORK_ITEM_SYNC_SUPPORTED_TILE_SIZES)
+      message(
+        WARNING
+        "No CUDA cooperative_groups::tiled_partition<N> sizes were detected. "
+        "The probe likely failed before testing tile-size support; inspect "
+        "${CMAKE_CURRENT_BINARY_DIR}/cuda-static-tile-*.log."
+      )
+    endif()
   endif()
 
   add_executable(

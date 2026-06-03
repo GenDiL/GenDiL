@@ -459,6 +459,27 @@ void PrintSupportSummary()
       << rejected << '\n';
 }
 
+constexpr bool AnyStaticTileSizeSupported()
+{
+   return
+      static_tile_supported< 1 >::value ||
+      static_tile_supported< 2 >::value ||
+      static_tile_supported< 3 >::value ||
+      static_tile_supported< 4 >::value ||
+      static_tile_supported< 5 >::value ||
+      static_tile_supported< 7 >::value ||
+      static_tile_supported< 8 >::value ||
+      static_tile_supported< 9 >::value ||
+      static_tile_supported< 16 >::value ||
+      static_tile_supported< 25 >::value ||
+      static_tile_supported< 27 >::value ||
+      static_tile_supported< 32 >::value ||
+      static_tile_supported< 49 >::value ||
+      static_tile_supported< 64 >::value ||
+      static_tile_supported< 81 >::value ||
+      static_tile_supported< 125 >::value;
+}
+
 } // namespace
 
 int main()
@@ -486,6 +507,13 @@ int main()
    success = RunStaticTileCase< 125 >() && success;
 
    PrintSupportSummary();
+
+   if constexpr ( !AnyStaticTileSizeSupported() )
+   {
+      std::cout
+         << "detail,no_static_tiled_partition_sizes_supported=1\n";
+      success = false;
+   }
 
    return success ? 0 : 1;
 }
