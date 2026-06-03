@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
@@ -40,11 +41,18 @@ private:
       typename FiniteElementSpace::finite_element_type::shape_functions;
    using FaceReadPolicy =
       face_read_dofs_policy_t< KernelConfiguration >;
+   static constexpr bool is_vector_space =
+      is_vector_shape_functions_v< shape_functions >;
+   static constexpr bool uses_full_shared_scalar_threaded_read =
+      !is_vector_space &&
+      !std::is_same_v<
+         FaceReadPolicy,
+         DirectGlobalFaceReadDofsPolicy > &&
+      is_threaded_v< KernelConfiguration >;
 
 public:
    static constexpr size_t value =
-      std::is_same_v< FaceReadPolicy, DirectGlobalFaceReadDofsPolicy > &&
-      !is_vector_shape_functions_v< shape_functions >
+      !is_vector_space && !uses_full_shared_scalar_threaded_read
          ? 0
          : FiniteElementSpace::finite_element_type::GetNumDofs();
 };

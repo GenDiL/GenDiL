@@ -479,7 +479,7 @@ void WriteDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
@@ -503,7 +503,7 @@ void WriteAddDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
    }
@@ -527,7 +527,7 @@ void WriteSubDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
    }

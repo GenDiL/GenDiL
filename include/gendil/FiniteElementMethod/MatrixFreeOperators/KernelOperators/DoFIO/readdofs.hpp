@@ -1008,7 +1008,7 @@ auto ReadVectorDofs(
    const Face & face_info,
    const StridedView< Dim, T > & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return ReadVectorDofsSerial( thread, fe_space, face_info, global_dofs );
    }
@@ -1047,7 +1047,7 @@ auto ReadScalarDofs(
       face_read_dofs_policy_t<
          typename KernelContext::kernel_configuration_type >;
 
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       if constexpr (
          std::is_same_v<
@@ -1127,7 +1127,7 @@ auto ReadVectorDofs(
    const Face & face_info,
    const GlobalDofs & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return ReadVectorDofsSerial( thread, fe_space, face_info, global_dofs );
    }
