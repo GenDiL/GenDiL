@@ -103,6 +103,11 @@ bool RunFaceReadCellComparison(
    using DeviceBatchNPolicy =
       FaceReadKernelPolicy< DeviceBatchNBase, FaceReadPolicy >;
 
+   std::cout << "Running " << label
+             << ", num_cells=" << fe_space.GetNumberOfCells()
+             << '\n'
+             << std::flush;
+
    Vector x = MakeFaceInputVector( fe_space.GetNumberOfFiniteElementDofs() );
 
    const Vector y_legacy =
@@ -123,9 +128,6 @@ bool RunFaceReadCellComparison(
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
-   std::cout << label
-             << ", num_cells=" << fe_space.GetNumberOfCells()
-             << '\n';
    success =
       CheckNoValue( "LegacyConfig output", y_legacy, real_sentinel ) &&
       success;
@@ -184,6 +186,11 @@ bool RunRegisterOnlyFaceReadCellComparison(
    using DeviceBatchNPolicy =
       FaceReadKernelPolicy< DeviceBatchNBase, FaceReadPolicy >;
 
+   std::cout << "Running " << label
+             << ", num_cells=" << fe_space.GetNumberOfCells()
+             << '\n'
+             << std::flush;
+
    Vector x = MakeFaceInputVector( fe_space.GetNumberOfFiniteElementDofs() );
 
    const Vector y_batch1 =
@@ -199,9 +206,6 @@ bool RunRegisterOnlyFaceReadCellComparison(
 
    constexpr Real tolerance = 1.0e-10;
    bool success = true;
-   std::cout << label
-             << ", num_cells=" << fe_space.GetNumberOfCells()
-             << '\n';
    success =
       CheckNoValue( "DeviceBatch1 output", y_batch1, real_sentinel ) &&
       success;

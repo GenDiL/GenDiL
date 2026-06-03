@@ -54,6 +54,11 @@ if(USE_CUDA OR USE_HIP)
     PROPERTIES
     TIMEOUT 30
   )
+  set_tests_properties(
+    test-batched-face-speed-of-light-read-cell
+    PROPERTIES
+    TIMEOUT 120
+  )
 endif()
 add_non_cuda_test(test-coefficient-field-inputs-cell test-coefficient-field-inputs-cell.cpp)
 add_non_cuda_test(test-boundary-coefficient-field-inputs test-boundary-coefficient-field-inputs.cpp)
