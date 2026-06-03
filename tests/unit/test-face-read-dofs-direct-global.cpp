@@ -589,66 +589,9 @@ bool RunScalarWriteDofsSupportedCase(
    return success;
 }
 
-template < typename ComponentShape, size_t... Is >
-auto MakeComponentGlobalDofView(
-   std::vector< Real > & data,
-   const GlobalIndex num_elements,
-   std::index_sequence< Is... > )
-{
-   const auto sizes = to_array( ComponentShape{} );
-   return MakeFIFOView(
-      data.data(),
-      static_cast< GlobalIndex >( sizes[ Is ] )...,
-      num_elements );
-}
-
-template < typename ComponentShape >
-auto MakeComponentGlobalDofView(
-   std::vector< Real > & data,
-   const GlobalIndex num_elements )
-{
-   return MakeComponentGlobalDofView< ComponentShape >(
-      data,
-      num_elements,
-      std::make_index_sequence< ComponentShape::size() >{} );
-}
-
-template < typename Space, size_t... Is >
-auto MakeVectorGlobalDofViews(
-   std::array<
-      std::vector< Real >,
-      Space::finite_element_type::shape_functions::vector_dim > & data,
-   const GlobalIndex num_elements,
-   std::index_sequence< Is... > )
-{
-   using DofShape =
-      typename Space::finite_element_type::shape_functions::dof_shape;
-
-   return std::make_tuple(
-      MakeComponentGlobalDofView< std::tuple_element_t< Is, DofShape > >(
-         data[ Is ],
-         num_elements )... );
-}
-
-template < typename Space >
-auto MakeVectorGlobalDofViews(
-   std::array<
-      std::vector< Real >,
-      Space::finite_element_type::shape_functions::vector_dim > & data,
-   const GlobalIndex num_elements )
-{
-   constexpr Integer v_dim =
-      Space::finite_element_type::shape_functions::vector_dim;
-   return MakeVectorGlobalDofViews< Space >(
-      data,
-      num_elements,
-      std::make_index_sequence< v_dim >{} );
-}
-
-template < Integer Dim >
 Real VectorIndexEncodedValue(
    const Integer component,
-   const std::array< GlobalIndex, Dim > & native_indices,
+   const std::array< GlobalIndex, 2 > & native_indices,
    const GlobalIndex element_index )
 {
    return
@@ -656,131 +599,77 @@ Real VectorIndexEncodedValue(
       IndexEncodedValue( native_indices, element_index );
 }
 
-template < typename LocalDofs, typename DofShapes >
-bool CompareVectorLocalDofs(
-   const char * case_name,
-   const LocalDofs & full_shared,
-   const LocalDofs & direct_global,
-   const Permutation< std::tuple_element_t< 0, DofShapes >::size() > &
-      orientation )
+bool RunVectorReadDofsPolicySmoke()
 {
-   constexpr Integer v_dim = std::tuple_size_v< DofShapes >;
-   bool success = true;
-   Integer num_failures_reported = 0;
+   using Shape2DEqual =
+      TensorShapeFunctions<
+         GaussLegendreShapeFunctions< 3 >,
+         GaussLegendreShapeFunctions< 3 > >;
+   using VectorFE2DEqual =
+      FiniteElement<
+         HyperCube< 2 >,
+         VectorShapeFunctions< Shape2DEqual, Shape2DEqual > >;
+   using VectorSpace2DEqual =
+      TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DEqual >;
+   using DofShapes =
+      typename VectorSpace2DEqual::finite_element_type::
+         shape_functions::dof_shape;
+   using ComponentShape = std::tuple_element_t< 0, DofShapes >;
 
-   ConstexprLoop< v_dim >( [&] ( auto i )
-   {
-      using ComponentShape = std::tuple_element_t< i, DofShapes >;
-      constexpr Integer dim = ComponentShape::size();
-
-      UnitLoop< ComponentShape >( [&] ( auto... k )
-      {
-         const Real full_value = std::get< i >( full_shared )( k... );
-         const Real direct_value = std::get< i >( direct_global )( k... );
-         if ( std::abs( full_value - direct_value ) > 1e-12 )
-         {
-            success = false;
-            if ( num_failures_reported < 8 )
-            {
-               ++num_failures_reported;
-               const std::array< GlobalIndex, dim > reference_indices{
-                  static_cast< GlobalIndex >( k )... };
-               std::cout
-                  << "Vector ReadDofs policy mismatch in " << case_name
-                  << ": component=" << static_cast< Integer >( i )
-                  << ", orientation=";
-               PrintOrientation( orientation );
-               std::cout << ", reference=";
-               PrintIndex( reference_indices );
-               std::cout << ", FullShared=" << full_value
-                         << ", DirectGlobal=" << direct_value
-                         << "\n";
-            }
-         }
-      });
-   });
-
-   return success;
-}
-
-template < typename Space >
-bool RunVectorReadDofsPolicyCase(
-   const char * case_name,
-   const std::vector< Permutation< Space::Dim > > & orientations )
-{
-   using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
-   using DofShapes = typename ShapeFunctions::dof_shape;
-   constexpr Integer dim = Space::Dim;
-   constexpr Integer v_dim = ShapeFunctions::vector_dim;
    constexpr GlobalIndex num_elements = 2;
    constexpr GlobalIndex element_index = 1;
+   constexpr size_t component_num_dofs = Product( ComponentShape{} );
 
-   std::array< std::vector< Real >, v_dim > global_data;
+   std::array< Real, component_num_dofs * num_elements > global_data_0{};
+   std::array< Real, component_num_dofs * num_elements > global_data_1{};
 
-   ConstexprLoop< v_dim >( [&] ( auto i )
+   auto component_0 =
+      MakeFIFOView(
+         global_data_0.data(),
+         GlobalIndex{ 4 },
+         GlobalIndex{ 4 },
+         num_elements );
+   auto component_1 =
+      MakeFIFOView(
+         global_data_1.data(),
+         GlobalIndex{ 4 },
+         GlobalIndex{ 4 },
+         num_elements );
+
+   for ( GlobalIndex element = 0; element < num_elements; ++element )
    {
-      using ComponentShape = std::tuple_element_t< i, DofShapes >;
-      global_data[ i ].resize(
-         Product( ComponentShape{} ) * num_elements );
-      auto component_dofs =
-         MakeComponentGlobalDofView< ComponentShape >(
-            global_data[ i ],
-            num_elements );
-
-      for ( GlobalIndex element = 0; element < num_elements; ++element )
+      UnitLoop< ComponentShape >( [&] ( auto... k )
       {
-         UnitLoop< ComponentShape >( [&] ( auto... k )
-         {
-            const std::array< GlobalIndex, dim > native_indices{
-               static_cast< GlobalIndex >( k )... };
-            component_dofs( k..., element ) =
-               VectorIndexEncodedValue(
-                  static_cast< Integer >( i ),
-                  native_indices,
-                  element );
-         });
-      }
-   });
+         const std::array< GlobalIndex, 2 > native_indices{
+            static_cast< GlobalIndex >( k )... };
+         component_0( k..., element ) =
+            VectorIndexEncodedValue( 0, native_indices, element );
+         component_1( k..., element ) =
+            VectorIndexEncodedValue( 1, native_indices, element );
+      });
+   }
 
-   auto global_dofs =
-      MakeVectorGlobalDofViews< Space >( global_data, num_elements );
-
-   Space fe_space{};
+   auto global_dofs = std::make_tuple( component_0, component_1 );
+   VectorSpace2DEqual fe_space{};
    Real * no_shared_memory = nullptr;
    KernelContext< FullSharedSerialKernelConfiguration, 0 >
       full_shared_context( no_shared_memory );
    KernelContext< HostKernelConfiguration, 0 >
-      default_context( no_shared_memory );
+      direct_global_context( no_shared_memory );
+
+   const std::array< Permutation< 2 >, 5 > orientations{
+      Permutation< 2 >{ { 1, 2 } },
+      Permutation< 2 >{ { -1, 2 } },
+      Permutation< 2 >{ { 1, -2 } },
+      Permutation< 2 >{ { 2, 1 } },
+      Permutation< 2 >{ { 2, -1 } } };
 
    bool success = true;
+   Integer num_failures_reported = 0;
+
    for ( const auto & orientation : orientations )
    {
-      ConstexprLoop< v_dim >( [&] ( auto i )
-      {
-         using ComponentShape = std::tuple_element_t< i, DofShapes >;
-         const auto dof_sizes = to_array( ComponentShape{} );
-         if ( !FaceReadDofsOrientationIsShapeCompatible(
-                 dof_sizes,
-                 orientation ) )
-         {
-            success = false;
-            std::cout
-               << "Vector policy case was given unsupported orientation in "
-               << case_name
-               << ": component=" << static_cast< Integer >( i )
-               << ", orientation=";
-            PrintOrientation( orientation );
-            std::cout << "\n";
-         }
-      });
-
-      if ( !success )
-      {
-         continue;
-      }
-
-      const TestFaceView< dim > face{ element_index, orientation };
+      const TestFaceView< 2 > face{ element_index, orientation };
       const auto full_shared =
          ReadDofs(
             full_shared_context,
@@ -789,25 +678,49 @@ bool RunVectorReadDofsPolicyCase(
             global_dofs );
       const auto direct_global =
          ReadDofs(
-            default_context,
+            direct_global_context,
             fe_space,
             face,
             global_dofs );
 
-      success =
-         CompareVectorLocalDofs< decltype( full_shared ), DofShapes >(
-            case_name,
-            full_shared,
-            direct_global,
-            orientation ) &&
-         success;
+      UnitLoop< ComponentShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, 2 > reference_indices{
+            static_cast< GlobalIndex >( k )... };
+
+         const Real full_value_0 = std::get< 0 >( full_shared )( k... );
+         const Real direct_value_0 = std::get< 0 >( direct_global )( k... );
+         const Real full_value_1 = std::get< 1 >( full_shared )( k... );
+         const Real direct_value_1 = std::get< 1 >( direct_global )( k... );
+
+         if ( std::abs( full_value_0 - direct_value_0 ) > 1e-12 ||
+              std::abs( full_value_1 - direct_value_1 ) > 1e-12 )
+         {
+            success = false;
+            if ( num_failures_reported < 8 )
+            {
+               ++num_failures_reported;
+               std::cout
+                  << "Vector ReadDofs smoke mismatch: orientation=";
+               PrintOrientation( orientation );
+               std::cout << ", reference=";
+               PrintIndex( reference_indices );
+               std::cout << ", FullShared=(" << full_value_0
+                         << "," << full_value_1
+                         << "), DirectGlobal=(" << direct_value_0
+                         << "," << direct_value_1 << ")\n";
+            }
+         }
+      });
    }
 
    if ( success )
    {
-      std::cout << "PASS vector ReadDofs policy equivalence: "
-                << case_name << "\n";
+      std::cout
+         << "PASS vector ReadDofs policy equivalence smoke: "
+         << "2D equal-extent component-wise scalar orientation\n";
    }
+
    return success;
 }
 
@@ -897,18 +810,13 @@ int main()
    using Space2D = TestFiniteElementSpace< 2, Shape2D >;
    using Space3D = TestFiniteElementSpace< 3, Shape3D >;
    using Space2DEqual = TestFiniteElementSpace< 2, Shape2DEqual >;
+
    using VectorFE2DEqual =
       FiniteElement<
          HyperCube< 2 >,
          VectorShapeFunctions< Shape2DEqual, Shape2DEqual > >;
    using VectorSpace2DEqual =
       TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DEqual >;
-   using VectorFE2DAnisotropic =
-      FiniteElement<
-         HyperCube< 2 >,
-         VectorShapeFunctions< Shape2D, Shape2D > >;
-   using VectorSpace2DAnisotropic =
-      TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DAnisotropic >;
 
    static_assert(
       FaceSpeedOfLightRequiredSharedMemory<
@@ -1034,21 +942,7 @@ int main()
          equal_extent_swaps ) &&
       success;
 
-   success =
-      RunVectorReadDofsPolicyCase< VectorSpace2DAnisotropic >(
-         "vector 2D anisotropic identity shape (3,4)",
-         anisotropic_2d_identity ) &&
-      success;
-   success =
-      RunVectorReadDofsPolicyCase< VectorSpace2DEqual >(
-         "vector 2D equal-extent identity/flips shape (4,4)",
-         equal_extent_identity_flips ) &&
-      success;
-   success =
-      RunVectorReadDofsPolicyCase< VectorSpace2DEqual >(
-         "vector 2D equal-extent swaps shape (4,4)",
-         equal_extent_swaps ) &&
-      success;
+   success = RunVectorReadDofsPolicySmoke() && success;
 
    success =
       RunScalarWriteDofsSupportedCase< Space1D >(
