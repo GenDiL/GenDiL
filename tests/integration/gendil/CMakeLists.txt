@@ -16,8 +16,22 @@ if(USE_CUDA OR USE_HIP)
     test-batched-linear-form-operator.cpp
   )
   add_my_test(
-    test-batched-face-speed-of-light-read-cell
+    test-batched-face-speed-of-light-read-cell-direct-global
     test-batched-face-speed-of-light-read-cell.cpp
+  )
+  target_compile_definitions(
+    test-batched-face-speed-of-light-read-cell-direct-global
+    PRIVATE
+    GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST
+  )
+  add_my_test(
+    test-batched-face-speed-of-light-read-cell-full-shared
+    test-batched-face-speed-of-light-read-cell.cpp
+  )
+  target_compile_definitions(
+    test-batched-face-speed-of-light-read-cell-full-shared
+    PRIVATE
+    GENDIL_FACE_READ_CELL_FULL_SHARED_TEST
   )
   add_my_test(
     test-batched-grad-grad-operator
@@ -45,7 +59,8 @@ if(USE_CUDA OR USE_HIP)
     test-batched-l2-error
     test-batched-mass-inverse-operator
     test-batched-linear-form-operator
-    test-batched-face-speed-of-light-read-cell
+    test-batched-face-speed-of-light-read-cell-direct-global
+    test-batched-face-speed-of-light-read-cell-full-shared
     test-batched-grad-grad-operator
     test-batched-grad-grad-write-coverage
     test-batched-grad-grad-debug-variants
@@ -55,9 +70,14 @@ if(USE_CUDA OR USE_HIP)
     TIMEOUT 30
   )
   set_tests_properties(
-    test-batched-face-speed-of-light-read-cell
+    test-batched-face-speed-of-light-read-cell-direct-global
     PROPERTIES
     TIMEOUT 120
+  )
+  set_tests_properties(
+    test-batched-face-speed-of-light-read-cell-full-shared
+    PROPERTIES
+    TIMEOUT 60
   )
 endif()
 add_non_cuda_test(test-coefficient-field-inputs-cell test-coefficient-field-inputs-cell.cpp)

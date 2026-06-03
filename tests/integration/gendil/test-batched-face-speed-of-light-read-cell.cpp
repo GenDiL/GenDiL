@@ -23,6 +23,11 @@ int main()
 
 #else
 
+#if !defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST ) && \
+   !defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
+#error "Select the DirectGlobal or FullShared batched FaceSpeedOfLight ReadCell test matrix."
+#endif
+
 using namespace gendil;
 using namespace gendil::test;
 
@@ -70,6 +75,45 @@ Vector MakeFaceInputVector( const Integer size )
             0.0625 * static_cast< Real >( i ) +
             0.03125 * static_cast< Real >( ( i * 11 ) % 17 );
       } );
+}
+
+std::string Make1DCaseLabel(
+   const char * label,
+   const Integer num_cells,
+   const char * cell_case_kind )
+{
+   return std::string( label ) +
+      ", dim=1" +
+      ", mesh_extents={" +
+      std::to_string( num_cells ) +
+      "}" +
+      ", cell_case=" +
+      cell_case_kind;
+}
+
+std::string Make2DCaseLabel(
+   const char * label,
+   const Integer num_cells_x,
+   const Integer num_cells_y,
+   const char * cell_case_kind )
+{
+   return std::string( label ) +
+      ", dim=2" +
+      ", mesh_extents={" +
+      std::to_string( num_cells_x ) +
+      "," +
+      std::to_string( num_cells_y ) +
+      "}" +
+      ", cell_case=" +
+      cell_case_kind;
+}
+
+std::string MakeZeroWorkItemCaseLabel( const char * label )
+{
+   return std::string( label ) +
+      ", dim=none" +
+      ", mesh_extents={}" +
+      ", cell_case=zero-work-items";
 }
 
 template <
@@ -332,15 +376,19 @@ template <
    typename FaceReadPolicy,
    Integer Order,
    Integer NumCells >
-bool Run1DFaceReadCellCase( const char * label )
+bool Run1DFaceReadCellCase(
+   const char * label,
+   const char * cell_case_kind )
 {
    auto fe_space = Make1DFaceSpace< Order, NumCells >();
    auto integration_rule = MakeFaceIntegrationRule< 1, Order >();
+   const std::string case_label =
+      Make1DCaseLabel( label, NumCells, cell_case_kind );
    return RunFaceReadCellComparison<
       Layout,
       MaxSharedDimensions,
       BatchSize,
-      FaceReadPolicy >( label, fe_space, integration_rule );
+      FaceReadPolicy >( case_label.c_str(), fe_space, integration_rule );
 }
 
 template <
@@ -348,13 +396,17 @@ template <
    typename FaceReadPolicy,
    Integer Order,
    Integer NumCells >
-bool RunRegisterOnly1DFaceReadCellCase( const char * label )
+bool RunRegisterOnly1DFaceReadCellCase(
+   const char * label,
+   const char * cell_case_kind )
 {
    auto fe_space = Make1DFaceSpace< Order, NumCells >();
    auto integration_rule = MakeFaceIntegrationRule< 1, Order >();
+   const std::string case_label =
+      Make1DCaseLabel( label, NumCells, cell_case_kind );
    return RunRegisterOnlyFaceReadCellComparison<
       BatchSize,
-      FaceReadPolicy >( label, fe_space, integration_rule );
+      FaceReadPolicy >( case_label.c_str(), fe_space, integration_rule );
 }
 
 template <
@@ -365,15 +417,23 @@ template <
    Integer Order,
    Integer NumCellsX,
    Integer NumCellsY >
-bool Run2DFaceReadCellCase( const char * label )
+bool Run2DFaceReadCellCase(
+   const char * label,
+   const char * cell_case_kind )
 {
    auto fe_space = Make2DFaceSpace< Order, NumCellsX, NumCellsY >();
    auto integration_rule = MakeFaceIntegrationRule< 2, Order >();
+   const std::string case_label =
+      Make2DCaseLabel(
+         label,
+         NumCellsX,
+         NumCellsY,
+         cell_case_kind );
    return RunFaceReadCellComparison<
       Layout,
       MaxSharedDimensions,
       BatchSize,
-      FaceReadPolicy >( label, fe_space, integration_rule );
+      FaceReadPolicy >( case_label.c_str(), fe_space, integration_rule );
 }
 
 template <
@@ -382,13 +442,21 @@ template <
    Integer Order,
    Integer NumCellsX,
    Integer NumCellsY >
-bool RunRegisterOnly2DFaceReadCellCase( const char * label )
+bool RunRegisterOnly2DFaceReadCellCase(
+   const char * label,
+   const char * cell_case_kind )
 {
    auto fe_space = Make2DFaceSpace< Order, NumCellsX, NumCellsY >();
    auto integration_rule = MakeFaceIntegrationRule< 2, Order >();
+   const std::string case_label =
+      Make2DCaseLabel(
+         label,
+         NumCellsX,
+         NumCellsY,
+         cell_case_kind );
    return RunRegisterOnlyFaceReadCellComparison<
       BatchSize,
-      FaceReadPolicy >( label, fe_space, integration_rule );
+      FaceReadPolicy >( case_label.c_str(), fe_space, integration_rule );
 }
 
 template <
@@ -399,13 +467,14 @@ template <
    Integer Order >
 bool Run1DExactFaceReadCellCases( const char * label )
 {
+   const std::string zero_label = MakeZeroWorkItemCaseLabel( label );
    bool success = true;
    success =
       CheckZeroWorkItemsForPolicies<
          Layout,
          MaxSharedDimensions,
          BatchSize,
-         FaceReadPolicy >( label ) && success;
+         FaceReadPolicy >( zero_label.c_str() ) && success;
    success =
       Run1DFaceReadCellCase<
          Layout,
@@ -413,7 +482,7 @@ bool Run1DExactFaceReadCellCases( const char * label )
          BatchSize,
          FaceReadPolicy,
          Order,
-         1 >( label ) && success;
+         1 >( label, "single-cell" ) && success;
    if constexpr ( BatchSize > 1 )
    {
       success =
@@ -423,7 +492,16 @@ bool Run1DExactFaceReadCellCases( const char * label )
             BatchSize,
             FaceReadPolicy,
             Order,
-            BatchSize - 1 >( label ) && success;
+            BatchSize - 1 >( label, "final-partial-batch-minus-one" ) &&
+         success;
+      success =
+         Run1DFaceReadCellCase<
+            Layout,
+            MaxSharedDimensions,
+            BatchSize,
+            FaceReadPolicy,
+            Order,
+            BatchSize >( label, "full-batch" ) && success;
    }
    success =
       Run1DFaceReadCellCase<
@@ -432,7 +510,8 @@ bool Run1DExactFaceReadCellCases( const char * label )
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize >( label ) && success;
+         BatchSize + 1 >( label, "final-partial-batch-plus-one" ) &&
+      success;
    success =
       Run1DFaceReadCellCase<
          Layout,
@@ -440,31 +519,24 @@ bool Run1DExactFaceReadCellCases( const char * label )
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize + 1 >( label ) && success;
-   success =
-      Run1DFaceReadCellCase<
-         Layout,
-         MaxSharedDimensions,
-         BatchSize,
-         FaceReadPolicy,
-         Order,
-         10 >( label ) && success;
+         10 >( label, "fixed-ten-cells" ) && success;
    return success;
 }
 
 template < Integer BatchSize, typename FaceReadPolicy, Integer Order >
 bool RunRegisterOnly1DExactFaceReadCellCases( const char * label )
 {
+   const std::string zero_label = MakeZeroWorkItemCaseLabel( label );
    bool success = true;
    success =
-      CheckRegisterOnlyZeroWorkItems< BatchSize, FaceReadPolicy >( label ) &&
-      success;
+      CheckRegisterOnlyZeroWorkItems< BatchSize, FaceReadPolicy >(
+         zero_label.c_str() ) && success;
    success =
       RunRegisterOnly1DFaceReadCellCase<
          BatchSize,
          FaceReadPolicy,
          Order,
-         1 >( label ) && success;
+         1 >( label, "single-cell" ) && success;
    if constexpr ( BatchSize > 1 )
    {
       success =
@@ -472,26 +544,28 @@ bool RunRegisterOnly1DExactFaceReadCellCases( const char * label )
             BatchSize,
             FaceReadPolicy,
             Order,
-            BatchSize - 1 >( label ) && success;
+            BatchSize - 1 >( label, "final-partial-batch-minus-one" ) &&
+         success;
+      success =
+         RunRegisterOnly1DFaceReadCellCase<
+            BatchSize,
+            FaceReadPolicy,
+            Order,
+            BatchSize >( label, "full-batch" ) && success;
    }
    success =
       RunRegisterOnly1DFaceReadCellCase<
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize >( label ) && success;
+         BatchSize + 1 >( label, "final-partial-batch-plus-one" ) &&
+      success;
    success =
       RunRegisterOnly1DFaceReadCellCase<
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize + 1 >( label ) && success;
-   success =
-      RunRegisterOnly1DFaceReadCellCase<
-         BatchSize,
-         FaceReadPolicy,
-         Order,
-         10 >( label ) && success;
+         10 >( label, "fixed-ten-cells" ) && success;
    return success;
 }
 
@@ -512,7 +586,7 @@ bool Run2DSkinnyFaceReadCellCases( const char * label )
          FaceReadPolicy,
          Order,
          1,
-         1 >( label ) && success;
+         1 >( label, "skinny-single-cell" ) && success;
    if constexpr ( BatchSize > 1 )
    {
       success =
@@ -523,7 +597,17 @@ bool Run2DSkinnyFaceReadCellCases( const char * label )
             FaceReadPolicy,
             Order,
             BatchSize - 1,
-            1 >( label ) && success;
+            1 >( label, "skinny-final-partial-batch-minus-one" ) &&
+         success;
+      success =
+         Run2DFaceReadCellCase<
+            Layout,
+            MaxSharedDimensions,
+            BatchSize,
+            FaceReadPolicy,
+            Order,
+            BatchSize,
+            1 >( label, "skinny-full-batch" ) && success;
    }
    success =
       Run2DFaceReadCellCase<
@@ -532,17 +616,8 @@ bool Run2DSkinnyFaceReadCellCases( const char * label )
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize,
-         1 >( label ) && success;
-   success =
-      Run2DFaceReadCellCase<
-         Layout,
-         MaxSharedDimensions,
-         BatchSize,
-         FaceReadPolicy,
-         Order,
          BatchSize + 1,
-         1 >( label ) && success;
+         1 >( label, "skinny-final-partial-batch-plus-one" ) && success;
    success =
       Run2DFaceReadCellCase<
          Layout,
@@ -551,7 +626,7 @@ bool Run2DSkinnyFaceReadCellCases( const char * label )
          FaceReadPolicy,
          Order,
          10,
-         1 >( label ) && success;
+         1 >( label, "skinny-fixed-ten-cells" ) && success;
    return success;
 }
 
@@ -565,7 +640,7 @@ bool RunRegisterOnly2DSkinnyFaceReadCellCases( const char * label )
          FaceReadPolicy,
          Order,
          1,
-         1 >( label ) && success;
+         1 >( label, "skinny-single-cell" ) && success;
    if constexpr ( BatchSize > 1 )
    {
       success =
@@ -574,29 +649,30 @@ bool RunRegisterOnly2DSkinnyFaceReadCellCases( const char * label )
             FaceReadPolicy,
             Order,
             BatchSize - 1,
-            1 >( label ) && success;
+            1 >( label, "skinny-final-partial-batch-minus-one" ) &&
+         success;
+      success =
+         RunRegisterOnly2DFaceReadCellCase<
+            BatchSize,
+            FaceReadPolicy,
+            Order,
+            BatchSize,
+            1 >( label, "skinny-full-batch" ) && success;
    }
    success =
       RunRegisterOnly2DFaceReadCellCase<
          BatchSize,
          FaceReadPolicy,
          Order,
-         BatchSize,
-         1 >( label ) && success;
-   success =
-      RunRegisterOnly2DFaceReadCellCase<
-         BatchSize,
-         FaceReadPolicy,
-         Order,
          BatchSize + 1,
-         1 >( label ) && success;
+         1 >( label, "skinny-final-partial-batch-plus-one" ) && success;
    success =
       RunRegisterOnly2DFaceReadCellCase<
          BatchSize,
          FaceReadPolicy,
          Order,
          10,
-         1 >( label ) && success;
+         1 >( label, "skinny-fixed-ten-cells" ) && success;
    return success;
 }
 
@@ -615,7 +691,7 @@ bool Run2DNondegenerateFaceReadCellCase( const char * label )
       FaceReadPolicy,
       Order,
       3,
-      4 >( label );
+      4 >( label, "nondegenerate-2d" );
 }
 
 template < Integer BatchSize, typename FaceReadPolicy, Integer Order >
@@ -626,7 +702,7 @@ bool RunRegisterOnly2DNondegenerateFaceReadCellCase( const char * label )
       FaceReadPolicy,
       Order,
       3,
-      4 >( label );
+      4 >( label, "nondegenerate-2d" );
 }
 
 template <
@@ -710,8 +786,149 @@ bool RunRegisterOnlyLayoutCases( const char * label )
    return success;
 }
 
+template < Integer BatchSize, typename FaceReadPolicy, Integer Order >
+bool RunRegisterOnlyRepresentativeLayoutCases( const char * label )
+{
+   static_assert( BatchSize > 1 );
+   bool success = true;
+   success =
+      RunRegisterOnly1DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize - 1 >(
+            label,
+            "final-partial-batch-minus-one" ) && success;
+   success =
+      RunRegisterOnly1DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize >( label, "full-batch" ) && success;
+   success =
+      RunRegisterOnly1DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize + 1 >(
+            label,
+            "final-partial-batch-plus-one" ) && success;
+
+   success =
+      RunRegisterOnly2DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize - 1,
+         1 >(
+            label,
+            "skinny-final-partial-batch-minus-one" ) && success;
+   success =
+      RunRegisterOnly2DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize,
+         1 >( label, "skinny-full-batch" ) && success;
+   success =
+      RunRegisterOnly2DFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize + 1,
+         1 >(
+            label,
+            "skinny-final-partial-batch-plus-one" ) && success;
+   success =
+      RunRegisterOnly2DNondegenerateFaceReadCellCase<
+         BatchSize,
+         FaceReadPolicy,
+         Order >( label ) && success;
+   return success;
+}
+
+template <
+   typename Layout,
+   Integer MaxSharedDimensions,
+   Integer BatchSize,
+   typename FaceReadPolicy,
+   Integer Order >
+bool RunThreadedRepresentativeLayoutCases( const char * label )
+{
+   static_assert( BatchSize > 1 );
+   bool success = true;
+   success =
+      Run1DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize - 1 >(
+            label,
+            "final-partial-batch-minus-one" ) && success;
+   success =
+      Run1DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize >( label, "full-batch" ) && success;
+   success =
+      Run1DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize + 1 >(
+            label,
+            "final-partial-batch-plus-one" ) && success;
+
+   success =
+      Run2DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize - 1,
+         1 >(
+            label,
+            "skinny-final-partial-batch-minus-one" ) && success;
+   success =
+      Run2DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize,
+         1 >( label, "skinny-full-batch" ) && success;
+   success =
+      Run2DFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order,
+         BatchSize + 1,
+         1 >(
+            label,
+            "skinny-final-partial-batch-plus-one" ) && success;
+   success =
+      Run2DNondegenerateFaceReadCellCase<
+         Layout,
+         MaxSharedDimensions,
+         BatchSize,
+         FaceReadPolicy,
+         Order >( label ) && success;
+   return success;
+}
+
 template < Integer Order, typename FaceReadPolicy >
-bool TestReadPolicy( const char * policy_label )
+bool TestBroadReadPolicy( const char * policy_label )
 {
    static constexpr Integer num_dofs_1d = Order + 1;
    static constexpr Integer num_quad_1d = Order + 2;
@@ -720,34 +937,41 @@ bool TestReadPolicy( const char * policy_label )
    auto make_label =
       [policy_label](
          const char * layout_label,
-         const Integer batch_size )
+         const Integer batch_size,
+         const char * oracle_label )
       {
-         return std::string( policy_label ) +
+         return std::string( "policy=" ) +
+            policy_label +
             ", order=" +
             std::to_string( Order ) +
             ", " +
             layout_label +
             ", BatchSize=" +
-            std::to_string( batch_size );
+            std::to_string( batch_size ) +
+            ", oracle=" +
+            oracle_label;
       };
 
    auto label_register_batch1 =
-      make_label( "ThreadBlockLayout<>", 1 );
+      make_label( "layout=ThreadBlockLayout<>", 1, "DeviceBatch1" );
    success =
       RunRegisterOnlyLayoutCases< 1, FaceReadPolicy, Order >(
          label_register_batch1.c_str() ) && success;
    auto label_register_batch2 =
-      make_label( "ThreadBlockLayout<>", 2 );
+      make_label( "layout=ThreadBlockLayout<>", 2, "DeviceBatch1" );
    success =
       RunRegisterOnlyLayoutCases< 2, FaceReadPolicy, Order >(
          label_register_batch2.c_str() ) && success;
    auto label_register_batch4 =
-      make_label( "ThreadBlockLayout<>", 4 );
+      make_label( "layout=ThreadBlockLayout<>", 4, "DeviceBatch1" );
    success =
       RunRegisterOnlyLayoutCases< 4, FaceReadPolicy, Order >(
          label_register_batch4.c_str() ) && success;
    auto label_register_batch_warp =
-      make_label( "ThreadBlockLayout<>", device_warp_size );
+      make_label(
+         "layout=ThreadBlockLayout<>",
+         device_warp_size,
+         "DeviceBatch1" );
    success =
       RunRegisterOnlyLayoutCases<
          device_warp_size,
@@ -759,7 +983,10 @@ bool TestReadPolicy( const char * policy_label )
    static constexpr Integer OneThreadedMaxSharedDimensions = 1;
 
    auto label_one_dof_threaded_batch1 =
-      make_label( "ThreadBlockLayout<num_dofs_1d>", 1 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         1,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneDofThreadedDim,
@@ -768,7 +995,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_dof_threaded_batch1.c_str() ) && success;
    auto label_one_dof_threaded_batch2 =
-      make_label( "ThreadBlockLayout<num_dofs_1d>", 2 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         2,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneDofThreadedDim,
@@ -777,7 +1007,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_dof_threaded_batch2.c_str() ) && success;
    auto label_one_dof_threaded_batch4 =
-      make_label( "ThreadBlockLayout<num_dofs_1d>", 4 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         4,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneDofThreadedDim,
@@ -786,7 +1019,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_dof_threaded_batch4.c_str() ) && success;
    auto label_one_dof_threaded_batch_warp =
-      make_label( "ThreadBlockLayout<num_dofs_1d>", device_warp_size );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         device_warp_size,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneDofThreadedDim,
@@ -799,7 +1035,10 @@ bool TestReadPolicy( const char * policy_label )
    using OneQuadThreadedDim = ThreadBlockLayout< num_quad_1d >;
 
    auto label_one_quad_threaded_batch1 =
-      make_label( "ThreadBlockLayout<num_quad_1d>", 1 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d>",
+         1,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneQuadThreadedDim,
@@ -808,7 +1047,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_quad_threaded_batch1.c_str() ) && success;
    auto label_one_quad_threaded_batch2 =
-      make_label( "ThreadBlockLayout<num_quad_1d>", 2 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d>",
+         2,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneQuadThreadedDim,
@@ -817,7 +1059,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_quad_threaded_batch2.c_str() ) && success;
    auto label_one_quad_threaded_batch4 =
-      make_label( "ThreadBlockLayout<num_quad_1d>", 4 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d>",
+         4,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneQuadThreadedDim,
@@ -826,7 +1071,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_one_quad_threaded_batch4.c_str() ) && success;
    auto label_one_quad_threaded_batch_warp =
-      make_label( "ThreadBlockLayout<num_quad_1d>", device_warp_size );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d>",
+         device_warp_size,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreadedLayoutCases<
          OneQuadThreadedDim,
@@ -841,7 +1089,10 @@ bool TestReadPolicy( const char * policy_label )
    static constexpr Integer TwoThreadedMaxSharedDimensions = 2;
 
    auto label_two_dof_threaded_batch1 =
-      make_label( "ThreadBlockLayout<num_dofs_1d,num_dofs_1d>", 1 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d,num_dofs_1d>",
+         1,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoDofThreadedDims,
@@ -850,7 +1101,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_two_dof_threaded_batch1.c_str() ) && success;
    auto label_two_dof_threaded_batch2 =
-      make_label( "ThreadBlockLayout<num_dofs_1d,num_dofs_1d>", 2 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d,num_dofs_1d>",
+         2,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoDofThreadedDims,
@@ -859,7 +1113,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_two_dof_threaded_batch2.c_str() ) && success;
    auto label_two_dof_threaded_batch4 =
-      make_label( "ThreadBlockLayout<num_dofs_1d,num_dofs_1d>", 4 );
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d,num_dofs_1d>",
+         4,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoDofThreadedDims,
@@ -869,8 +1126,9 @@ bool TestReadPolicy( const char * policy_label )
          Order >( label_two_dof_threaded_batch4.c_str() ) && success;
    auto label_two_dof_threaded_batch_warp =
       make_label(
-         "ThreadBlockLayout<num_dofs_1d,num_dofs_1d>",
-         device_warp_size );
+         "layout=ThreadBlockLayout<num_dofs_1d,num_dofs_1d>",
+         device_warp_size,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoDofThreadedDims,
@@ -884,7 +1142,10 @@ bool TestReadPolicy( const char * policy_label )
       ThreadBlockLayout< num_quad_1d, num_quad_1d >;
 
    auto label_two_quad_threaded_batch1 =
-      make_label( "ThreadBlockLayout<num_quad_1d,num_quad_1d>", 1 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+         1,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoQuadThreadedDims,
@@ -893,7 +1154,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_two_quad_threaded_batch1.c_str() ) && success;
    auto label_two_quad_threaded_batch2 =
-      make_label( "ThreadBlockLayout<num_quad_1d,num_quad_1d>", 2 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+         2,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoQuadThreadedDims,
@@ -902,7 +1166,10 @@ bool TestReadPolicy( const char * policy_label )
          FaceReadPolicy,
          Order >( label_two_quad_threaded_batch2.c_str() ) && success;
    auto label_two_quad_threaded_batch4 =
-      make_label( "ThreadBlockLayout<num_quad_1d,num_quad_1d>", 4 );
+      make_label(
+         "layout=ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+         4,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoQuadThreadedDims,
@@ -912,8 +1179,9 @@ bool TestReadPolicy( const char * policy_label )
          Order >( label_two_quad_threaded_batch4.c_str() ) && success;
    auto label_two_quad_threaded_batch_warp =
       make_label(
-         "ThreadBlockLayout<num_quad_1d,num_quad_1d>",
-         device_warp_size );
+         "layout=ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+         device_warp_size,
+         "LegacyConfig+DeviceBatch1" );
    success =
       RunThreaded2DLayoutCases<
          TwoQuadThreadedDims,
@@ -926,18 +1194,97 @@ bool TestReadPolicy( const char * policy_label )
    return success;
 }
 
+template < Integer Order >
+bool TestFullSharedRepresentativePolicy()
+{
+   static constexpr Integer num_dofs_1d = Order + 1;
+   const char * policy_label = "explicit FullShared scalar face ReadDofs";
+   bool success = true;
+
+   auto make_label =
+      [policy_label](
+         const char * layout_label,
+         const Integer batch_size,
+         const char * oracle_label )
+      {
+         return std::string( "policy=" ) +
+            policy_label +
+            ", order=" +
+            std::to_string( Order ) +
+            ", " +
+            layout_label +
+            ", BatchSize=" +
+            std::to_string( batch_size ) +
+            ", oracle=" +
+            oracle_label;
+      };
+
+   auto register_batch2_label =
+      make_label( "layout=ThreadBlockLayout<>", 2, "DeviceBatch1" );
+   success =
+      RunRegisterOnlyRepresentativeLayoutCases<
+         2,
+         FullSharedFaceReadDofsPolicy,
+         Order >( register_batch2_label.c_str() ) && success;
+   auto register_batch_warp_label =
+      make_label(
+         "layout=ThreadBlockLayout<>",
+         device_warp_size,
+         "DeviceBatch1" );
+   success =
+      RunRegisterOnlyRepresentativeLayoutCases<
+         device_warp_size,
+         FullSharedFaceReadDofsPolicy,
+         Order >( register_batch_warp_label.c_str() ) && success;
+
+   using OneThreadedDim = ThreadBlockLayout< num_dofs_1d >;
+   static constexpr Integer OneThreadedMaxSharedDimensions = 1;
+
+   auto threaded_batch2_label =
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         2,
+         "LegacyConfig+DeviceBatch1" );
+   success =
+      RunThreadedRepresentativeLayoutCases<
+         OneThreadedDim,
+         OneThreadedMaxSharedDimensions,
+         2,
+         FullSharedFaceReadDofsPolicy,
+         Order >( threaded_batch2_label.c_str() ) && success;
+   auto threaded_batch_warp_label =
+      make_label(
+         "layout=ThreadBlockLayout<num_dofs_1d>",
+         device_warp_size,
+         "LegacyConfig+DeviceBatch1" );
+   success =
+      RunThreadedRepresentativeLayoutCases<
+         OneThreadedDim,
+         OneThreadedMaxSharedDimensions,
+         device_warp_size,
+         FullSharedFaceReadDofsPolicy,
+         Order >( threaded_batch_warp_label.c_str() ) && success;
+
+   return success;
+}
+
 } // namespace
 
 int main()
 {
    static constexpr Integer order = 3;
    bool success = true;
+
+#if defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST )
    success =
-      TestReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
+      TestBroadReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
          "default DirectGlobal scalar face ReadDofs" ) && success;
+#endif
+
+#if defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
    success =
-      TestReadPolicy< order, FullSharedFaceReadDofsPolicy >(
-         "explicit FullShared scalar face ReadDofs" ) && success;
+      TestFullSharedRepresentativePolicy< order >() && success;
+#endif
 
    return success ? 0 : 1;
 }
