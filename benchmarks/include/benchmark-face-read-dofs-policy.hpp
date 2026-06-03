@@ -80,7 +80,8 @@ inline void PrintFaceHeader()
 {
    std::cout
       << "benchmark,dimension,order,num_quad_1d,num_cells,num_faces,"
-      << "layout,threads_per_work_item,batch_size,total_threads_per_block,"
+      << "layout,threaded_dimensions,target_threads_per_block,"
+      << "threads_per_work_item,batch_size,total_threads_per_block,"
       << "face_read_policy,shared_memory_per_work_item,"
       << "shared_memory_per_block,time_per_apply,faces_per_s,"
       << "dofs_read_per_s,status\n";
@@ -94,6 +95,8 @@ inline void PrintFaceRow(
    const GlobalIndex num_faces,
    const GlobalIndex dofs_read_per_apply,
    const char * layout,
+   const size_t threaded_dimensions,
+   const size_t target_threads_per_block,
    const size_t threads_per_work_item,
    const size_t batch_size,
    const char * face_read_policy,
@@ -121,6 +124,8 @@ inline void PrintFaceRow(
       << num_cells << ','
       << num_faces << ','
       << layout << ','
+      << threaded_dimensions << ','
+      << target_threads_per_block << ','
       << threads_per_work_item << ','
       << batch_size << ','
       << total_threads_per_block << ','
@@ -189,6 +194,8 @@ template <
    typename FaceReadPolicy >
 void RunFaceKernelPolicy(
    const char * layout_name,
+   const size_t threaded_dimensions,
+   const size_t target_threads_per_block,
    const size_t batch_size )
 {
    static constexpr Integer num_quad_1d = Order + 2;
@@ -236,6 +243,8 @@ void RunFaceKernelPolicy(
          num_faces,
          dofs_read_per_apply,
          layout_name,
+         threaded_dimensions,
+         target_threads_per_block,
          KernelPolicy::thread_layout_type::GetNumberOfThreads(),
          batch_size,
          FaceReadPolicyName< FaceReadPolicy >(),
@@ -256,6 +265,8 @@ void RunFaceKernelPolicy(
          num_faces,
          dofs_read_per_apply,
          layout_name,
+         threaded_dimensions,
+         target_threads_per_block,
          KernelPolicy::thread_layout_type::GetNumberOfThreads(),
          batch_size,
          FaceReadPolicyName< FaceReadPolicy >(),
@@ -278,6 +289,8 @@ void RunFaceKernelPolicy(
             num_faces,
             dofs_read_per_apply,
             layout_name,
+            threaded_dimensions,
+            target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
             FaceReadPolicyName< FaceReadPolicy >(),
@@ -300,6 +313,8 @@ void RunFaceKernelPolicy(
             num_faces,
             dofs_read_per_apply,
             layout_name,
+            threaded_dimensions,
+            target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
             FaceReadPolicyName< FaceReadPolicy >(),
@@ -321,6 +336,8 @@ void RunFaceKernelPolicy(
                num_faces,
                dofs_read_per_apply,
                layout_name,
+               threaded_dimensions,
+               target_threads_per_block,
                KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                batch_size,
                FaceReadPolicyName< FaceReadPolicy >(),
@@ -384,6 +401,8 @@ void RunFaceKernelPolicy(
                   num_faces,
                   dofs_read_per_apply,
                   layout_name,
+                  threaded_dimensions,
+                  target_threads_per_block,
                   KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                   batch_size,
                   FaceReadPolicyName< FaceReadPolicy >(),
@@ -405,6 +424,8 @@ void RunFaceKernelPolicy(
                   num_faces,
                   dofs_read_per_apply,
                   layout_name,
+                  threaded_dimensions,
+                  target_threads_per_block,
                   KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                   batch_size,
                   FaceReadPolicyName< FaceReadPolicy >(),
@@ -427,6 +448,8 @@ void RunFaceKernelPolicy(
                   num_faces,
                   dofs_read_per_apply,
                   layout_name,
+                  threaded_dimensions,
+                  target_threads_per_block,
                   KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                   batch_size,
                   FaceReadPolicyName< FaceReadPolicy >(),
@@ -449,6 +472,8 @@ void RunFaceKernelPolicy(
                      num_faces,
                      dofs_read_per_apply,
                      layout_name,
+                     threaded_dimensions,
+                     target_threads_per_block,
                      KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                      batch_size,
                      FaceReadPolicyName< FaceReadPolicy >(),
@@ -482,6 +507,8 @@ void RunFaceKernelPolicy(
                      num_faces,
                      dofs_read_per_apply,
                      layout_name,
+                     threaded_dimensions,
+                     target_threads_per_block,
                      KernelPolicy::thread_layout_type::GetNumberOfThreads(),
                      batch_size,
                      FaceReadPolicyName< FaceReadPolicy >(),
@@ -504,6 +531,8 @@ void RunFaceKernelPolicy(
             num_faces,
             dofs_read_per_apply,
             layout_name,
+            threaded_dimensions,
+            target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
             FaceReadPolicyName< FaceReadPolicy >(),
@@ -526,6 +555,8 @@ void RunSerialFaceCases()
       SerialKernelConfiguration,
       FullSharedFaceReadDofsPolicy >(
          "ThreadBlockLayout<>",
+         0,
+         1,
          1 );
    RunFaceKernelPolicy<
       Dim,
@@ -533,28 +564,126 @@ void RunSerialFaceCases()
       SerialKernelConfiguration,
       DirectGlobalFaceReadDofsPolicy >(
          "ThreadBlockLayout<>",
+         0,
+         1,
          1 );
 }
 
 #if defined( GENDIL_USE_DEVICE )
+template < typename ThreadLayout, size_t TargetThreads >
+constexpr size_t FaceBatchSizeForTarget()
+{
+   constexpr size_t threads_per_work_item =
+      ThreadLayout::GetNumberOfThreads();
+   constexpr size_t quotient =
+      TargetThreads / threads_per_work_item;
+   return quotient > 0 ? quotient : 1;
+}
+
 template <
    Integer Dim,
    Integer Order,
    typename ThreadLayout,
    typename FaceReadPolicy,
-   size_t BatchSize >
-void RunDeviceFaceCase( const char * layout_name )
+   size_t BatchSize,
+   size_t TargetThreads >
+void PrintSkippedDeviceFaceCase(
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const char * status )
 {
-   using BaseKernelPolicy =
-      DeviceKernelConfiguration< ThreadLayout, Dim, BatchSize >;
+   static constexpr Integer num_quad_1d = Order + 2;
 
-   RunFaceKernelPolicy<
+   const auto extents = FaceBenchmarkExtents< Dim, Order >();
+   const GlobalIndex num_cells = Product( extents );
+   const GlobalIndex num_faces =
+      num_cells * static_cast< GlobalIndex >( 2 * Dim );
+   const GlobalIndex dofs_read_per_apply =
+      num_faces * DofsPerElement< Dim, Order >();
+
+   PrintFaceRow(
       Dim,
       Order,
-      BaseKernelPolicy,
-      FaceReadPolicy >(
+      num_quad_1d,
+      num_cells,
+      num_faces,
+      dofs_read_per_apply,
+      layout_name,
+      threaded_dimensions,
+      TargetThreads,
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      FaceReadPolicyName< FaceReadPolicy >(),
+      0,
+      0,
+      0.0,
+      status );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   typename FaceReadPolicy,
+   size_t BatchSize,
+   size_t TargetThreads >
+void RunDeviceFaceCase(
+   const char * layout_name,
+   const size_t threaded_dimensions )
+{
+   constexpr size_t total_threads_per_block =
+      ThreadLayout::GetNumberOfThreads() * BatchSize;
+
+   if constexpr (
+      total_threads_per_block > static_threads_per_block_compile_limit )
+   {
+      PrintSkippedDeviceFaceCase<
+         Dim,
+         Order,
+         ThreadLayout,
+         FaceReadPolicy,
+         BatchSize,
+         TargetThreads >(
+            layout_name,
+            threaded_dimensions,
+            "skipped-launch-limit" );
+   }
+   else
+   {
+      using BaseKernelPolicy =
+         DeviceKernelConfiguration< ThreadLayout, Dim, BatchSize >;
+
+      RunFaceKernelPolicy<
+         Dim,
+         Order,
+         BaseKernelPolicy,
+         FaceReadPolicy >(
+            layout_name,
+            threaded_dimensions,
+            TargetThreads,
+            BatchSize );
+   }
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   typename FaceReadPolicy,
+   size_t TargetThreads >
+void RunDeviceFaceTarget(
+   const char * layout_name,
+   const size_t threaded_dimensions )
+{
+   RunDeviceFaceCase<
+      Dim,
+      Order,
+      ThreadLayout,
+      FaceReadPolicy,
+      FaceBatchSizeForTarget< ThreadLayout, TargetThreads >(),
+      TargetThreads >(
          layout_name,
-         BatchSize );
+         threaded_dimensions );
 }
 
 template <
@@ -562,89 +691,162 @@ template <
    Integer Order,
    typename ThreadLayout,
    typename FaceReadPolicy >
-void RunDeviceFaceBatchSweepForPolicy( const char * layout_name )
+void RunDeviceFaceTargetSweepForPolicy(
+   const char * layout_name,
+   const size_t threaded_dimensions )
 {
-   RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 1 >(
-      layout_name );
-   RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 2 >(
-      layout_name );
-   RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 4 >(
-      layout_name );
-   RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 8 >(
-      layout_name );
-   RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 16 >(
-      layout_name );
-   if constexpr ( device_warp_size != 32 )
+#if defined( GENDIL_USE_CUDA )
+   RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 32 >(
+      layout_name,
+      threaded_dimensions );
+   if constexpr (
+      FaceBatchSizeForTarget< ThreadLayout, 64 >() !=
+      FaceBatchSizeForTarget< ThreadLayout, 32 >() )
    {
-      RunDeviceFaceCase< Dim, Order, ThreadLayout, FaceReadPolicy, 32 >(
-         layout_name );
+      RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 64 >(
+         layout_name,
+         threaded_dimensions );
    }
-   RunDeviceFaceCase<
-      Dim,
-      Order,
-      ThreadLayout,
-      FaceReadPolicy,
-      device_warp_size >( layout_name );
+#else
+   RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 64 >(
+      layout_name,
+      threaded_dimensions );
+#endif
+
+   if constexpr (
+      FaceBatchSizeForTarget< ThreadLayout, 128 >() !=
+      FaceBatchSizeForTarget< ThreadLayout, 64 >() )
+   {
+      RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 128 >(
+         layout_name,
+         threaded_dimensions );
+   }
+   if constexpr (
+      FaceBatchSizeForTarget< ThreadLayout, 256 >() !=
+      FaceBatchSizeForTarget< ThreadLayout, 128 >() )
+   {
+      RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 256 >(
+         layout_name,
+         threaded_dimensions );
+   }
+   if constexpr (
+      FaceBatchSizeForTarget< ThreadLayout, 512 >() !=
+      FaceBatchSizeForTarget< ThreadLayout, 256 >() )
+   {
+      RunDeviceFaceTarget< Dim, Order, ThreadLayout, FaceReadPolicy, 512 >(
+         layout_name,
+         threaded_dimensions );
+   }
 }
 
 template <
    Integer Dim,
    Integer Order,
    typename ThreadLayout >
-void RunDeviceFaceLayout( const char * layout_name )
+void RunDeviceFaceLayout(
+   const char * layout_name,
+   const size_t threaded_dimensions )
 {
-   RunDeviceFaceBatchSweepForPolicy<
+   RunDeviceFaceTargetSweepForPolicy<
       Dim,
       Order,
       ThreadLayout,
-      FullSharedFaceReadDofsPolicy >( layout_name );
-   RunDeviceFaceBatchSweepForPolicy<
+      FullSharedFaceReadDofsPolicy >(
+         layout_name,
+         threaded_dimensions );
+   RunDeviceFaceTargetSweepForPolicy<
       Dim,
       Order,
       ThreadLayout,
-      DirectGlobalFaceReadDofsPolicy >( layout_name );
+      DirectGlobalFaceReadDofsPolicy >(
+         layout_name,
+         threaded_dimensions );
 }
 #endif
+
+template < Integer Dim, Integer Order >
+void RunFaceTensorProductLayouts()
+{
+#if defined( GENDIL_USE_DEVICE )
+   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout<> >(
+      "ThreadBlockLayout<>",
+      0 );
+   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< Order + 2 > >(
+      "ThreadBlockLayout<num_quad_1d>",
+      1 );
+
+   if constexpr ( Dim >= 2 )
+   {
+      RunDeviceFaceLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout< Order + 2, Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+            2 );
+   }
+
+   if constexpr ( Dim >= 3 )
+   {
+      RunDeviceFaceLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>",
+            3 );
+   }
+
+   if constexpr ( Dim >= 4 )
+   {
+      RunDeviceFaceLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+               "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+               4 );
+   }
+
+   if constexpr ( Dim >= 5 )
+   {
+      RunDeviceFaceLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+               "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+               5 );
+   }
+
+   if constexpr ( Dim >= 6 )
+   {
+      RunDeviceFaceLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+               "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+               6 );
+   }
+#endif
+}
 
 template < Integer Dim, Integer Order >
 void RunFaceOrder()
 {
    RunSerialFaceCases< Dim, Order >();
-
-#if defined( GENDIL_USE_DEVICE )
-   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout<> >(
-      "ThreadBlockLayout<>" );
-   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< Order + 2 > >(
-      "ThreadBlockLayout<num_quad_1d>" );
-   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< 4 > >(
-      "ThreadBlockLayout<4>" );
-   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< 5 > >(
-      "ThreadBlockLayout<5>" );
-   RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< 8 > >(
-      "ThreadBlockLayout<8>" );
-
-   if constexpr ( Dim >= 2 )
-   {
-      RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< 2, 2 > >(
-         "ThreadBlockLayout<2,2>" );
-      RunDeviceFaceLayout<
-         Dim,
-         Order,
-         ThreadBlockLayout< Order + 2, Order + 2 > >(
-            "ThreadBlockLayout<num_quad_1d,num_quad_1d>" );
-   }
-
-   if constexpr ( Dim >= 3 )
-   {
-      RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout< 2, 2, 2 > >(
-         "ThreadBlockLayout<2,2,2>" );
-      RunDeviceFaceLayout<
-         Dim,
-         Order,
-         ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
-            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>" );
-   }
-#endif
+   RunFaceTensorProductLayouts< Dim, Order >();
 }
 
 template < Integer Dim >

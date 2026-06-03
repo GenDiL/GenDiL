@@ -23,12 +23,15 @@ constexpr Integer timed_iterations = 1;
 #if defined( GENDIL_USE_CUDA )
 constexpr size_t static_shared_memory_compile_limit_bytes = 48 * 1024;
 constexpr size_t static_local_memory_compile_limit_bytes = 96 * 1024;
+constexpr size_t static_threads_per_block_compile_limit = 1024;
 #elif defined( GENDIL_USE_HIP )
 constexpr size_t static_shared_memory_compile_limit_bytes = 64 * 1024;
 constexpr size_t static_local_memory_compile_limit_bytes = 120 * 1024;
+constexpr size_t static_threads_per_block_compile_limit = 1024;
 #else
 constexpr size_t static_shared_memory_compile_limit_bytes = 96 * 1024;
 constexpr size_t static_local_memory_compile_limit_bytes = 1024 * 1024;
+constexpr size_t static_threads_per_block_compile_limit = 1024 * 1024;
 #endif
 
 template < Integer Value, size_t... Is >
