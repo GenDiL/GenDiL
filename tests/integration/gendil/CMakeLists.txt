@@ -33,6 +33,16 @@ if(USE_CUDA OR USE_HIP)
     PRIVATE
     GENDIL_FACE_READ_CELL_FULL_SHARED_TEST
   )
+  if(USE_CUDA)
+    # Both split tests compile the same CUDA translation unit with different
+    # definitions.  NVCC can corrupt its intermediates when GNU Make launches
+    # both large compilations concurrently, producing nonsense syntax errors
+    # that quote fragments of the source file name as source text.
+    add_dependencies(
+      test-batched-face-speed-of-light-read-cell-full-shared
+      test-batched-face-speed-of-light-read-cell-direct-global
+    )
+  endif()
   add_my_test(
     test-batched-grad-grad-operator
     test-batched-grad-grad-operator.cpp
