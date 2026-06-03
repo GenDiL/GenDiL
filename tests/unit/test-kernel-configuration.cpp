@@ -12,6 +12,12 @@ using namespace gendil;
 
 namespace
 {
+template < typename BaseKernelPolicy, typename FaceReadPolicy >
+struct KernelPolicyWithFaceReadPolicy : public BaseKernelPolicy
+{
+   using face_read_dofs_policy = FaceReadPolicy;
+};
+
 bool Check( bool condition, const char * message )
 {
    if ( !condition )
@@ -62,13 +68,15 @@ int main( int, char ** )
          Shape57 > );
 
    static_assert( is_host_configuration_v< SerialKernelConfiguration > );
+   static_assert( !is_device_configuration_v< SerialKernelConfiguration > );
+   static_assert( !is_threaded_v< SerialKernelConfiguration > );
    static_assert( is_host_configuration_v< HostKernelConfiguration<> > );
    static_assert( is_host_configuration_v< HostKernelConfiguration< 1 > > );
    static_assert( is_host_configuration_v< const HostKernelConfiguration< 1 > & > );
-   static_assert( is_serial_v< SerialKernelConfiguration > );
-   static_assert( is_serial_v< HostKernelConfiguration< 1 > > );
-   static_assert( is_serial_v< const HostKernelConfiguration< 1 > & > );
-   static_assert( !is_device_configuration_v< SerialKernelConfiguration > );
+   static_assert( !is_device_configuration_v< HostKernelConfiguration< 1 > > );
+   static_assert( !is_device_configuration_v< const HostKernelConfiguration< 1 > & > );
+   static_assert( !is_threaded_v< HostKernelConfiguration< 1 > > );
+   static_assert( !is_threaded_v< const HostKernelConfiguration< 1 > & > );
    static_assert(
       !is_batched_device_configuration_v< SerialKernelConfiguration > );
    static_assert( SerialKernelConfiguration::batch_size == 1 );
@@ -80,11 +88,8 @@ int main( int, char ** )
    using HostContext = KernelContext< HostKernelConfiguration< 1 >, 0 >;
    static_assert( is_host_configuration_v< HostContext > );
    static_assert( is_host_configuration_v< const HostContext & > );
-   static_assert( is_serial_v< HostContext > );
-   static_assert( is_serial_v< const HostContext & > );
    static_assert( !is_device_configuration_v< HostContext > );
    static_assert( !is_device_configuration_v< const HostContext & > );
-   static_assert( !is_threaded_v< HostKernelConfiguration< 1 > > );
    static_assert( !is_threaded_v< HostContext > );
    static_assert( !is_threaded_v< const HostContext & > );
 
@@ -110,8 +115,8 @@ int main( int, char ** )
       ThreadFirstKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2 >;
    static_assert( is_device_configuration_v< LegacyConfig > );
    static_assert( !is_host_configuration_v< LegacyConfig > );
-   static_assert( !is_serial_v< LegacyConfig > );
    static_assert( !is_batched_device_configuration_v< LegacyConfig > );
+   static_assert( is_threaded_v< LegacyConfig > );
    static_assert( LegacyConfig::batch_size == 1 );
    static_assert( LegacyConfig::GetNumberOfThreads() == 6 );
    static_assert( LegacyConfig::SharedMemoryStride( 7 ) == 7 );
@@ -144,8 +149,8 @@ int main( int, char ** )
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 4 >;
    static_assert( is_device_configuration_v< BatchedConfig > );
    static_assert( !is_host_configuration_v< BatchedConfig > );
-   static_assert( !is_serial_v< BatchedConfig > );
    static_assert( is_batched_device_configuration_v< BatchedConfig > );
+   static_assert( is_threaded_v< BatchedConfig > );
    static_assert(
       is_batched_device_configuration_v<
          const KernelContext< BatchedConfig, 7 > & > );
@@ -192,6 +197,10 @@ int main( int, char ** )
       DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 4 >;
    using RegisterOnlyBatchedContext =
       KernelContext< RegisterOnlyBatchedConfig, 0 >;
+   static_assert( is_device_configuration_v< RegisterOnlyBatchedConfig > );
+   static_assert( !is_host_configuration_v< RegisterOnlyBatchedConfig > );
+   static_assert(
+      is_batched_device_configuration_v< RegisterOnlyBatchedConfig > );
    static_assert( !is_threaded_v< RegisterOnlyBatchedConfig > );
    static_assert( !is_threaded_v< RegisterOnlyBatchedContext > );
    static_assert( !is_threaded_v< const RegisterOnlyBatchedContext & > );
@@ -200,6 +209,10 @@ int main( int, char ** )
       DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 4 >;
    using OneDimThreadedBatchedContext =
       KernelContext< OneDimThreadedBatchedConfig, 0 >;
+   static_assert( is_device_configuration_v< OneDimThreadedBatchedConfig > );
+   static_assert( !is_host_configuration_v< OneDimThreadedBatchedConfig > );
+   static_assert(
+      is_batched_device_configuration_v< OneDimThreadedBatchedConfig > );
    static_assert( is_threaded_v< OneDimThreadedBatchedConfig > );
    static_assert( is_threaded_v< OneDimThreadedBatchedContext > );
    static_assert( is_threaded_v< const OneDimThreadedBatchedContext & > );
@@ -211,6 +224,38 @@ int main( int, char ** )
    using TwoDimThreadedBatchedConfig =
       DeviceKernelConfiguration< ThreadBlockLayout< 4, 8 >, 2, 4 >;
    static_assert( is_threaded_v< TwoDimThreadedBatchedConfig > );
+
+   using FaceSharedMemoryCheckSpace =
+      FiniteElementSpace<
+         Cartesian1DMesh,
+         GLLFiniteElement< 3 >,
+         L2Restriction >;
+   using DirectGlobalEmptyLayout =
+      DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 2 >;
+   using FullSharedEmptyLayout =
+      KernelPolicyWithFaceReadPolicy<
+         DirectGlobalEmptyLayout,
+         FullSharedFaceReadDofsPolicy >;
+   using FullSharedThreadedLayout =
+      KernelPolicyWithFaceReadPolicy<
+         DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 2 >,
+         FullSharedFaceReadDofsPolicy >;
+   static_assert(
+      face_speed_of_light_required_shared_memory_v<
+         FaceSoLType::ReadCell,
+         DirectGlobalEmptyLayout,
+         FaceSharedMemoryCheckSpace > == 0 );
+   static_assert(
+      face_speed_of_light_required_shared_memory_v<
+         FaceSoLType::ReadCell,
+         FullSharedEmptyLayout,
+         FaceSharedMemoryCheckSpace > == 0 );
+   static_assert(
+      face_speed_of_light_required_shared_memory_v<
+         FaceSoLType::ReadCell,
+         FullSharedThreadedLayout,
+         FaceSharedMemoryCheckSpace > ==
+      FaceSharedMemoryCheckSpace::finite_element_type::GetNumDofs() );
 
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;
