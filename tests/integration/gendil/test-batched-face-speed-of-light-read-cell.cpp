@@ -23,8 +23,11 @@ int main()
 
 #else
 
-#if !defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST ) && \
-   !defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
+#if defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST ) && defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
+#error "Select only one batched FaceSpeedOfLight ReadCell test matrix."
+#endif
+
+#if !defined( GENDIL_FACE_READ_CELL_DIRECT_GLOBAL_TEST ) && !defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
 #error "Select the DirectGlobal or FullShared batched FaceSpeedOfLight ReadCell test matrix."
 #endif
 
@@ -1279,9 +1282,7 @@ int main()
    success =
       TestBroadReadPolicy< order, DirectGlobalFaceReadDofsPolicy >(
          "default DirectGlobal scalar face ReadDofs" ) && success;
-#endif
-
-#if defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
+#elif defined( GENDIL_FACE_READ_CELL_FULL_SHARED_TEST )
    success =
       TestFullSharedRepresentativePolicy< order >() && success;
 #endif
