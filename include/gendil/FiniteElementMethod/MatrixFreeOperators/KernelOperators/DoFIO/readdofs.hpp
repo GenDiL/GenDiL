@@ -152,8 +152,13 @@ void ReadDofs(
    );
    const GlobalIndex element_index = face_info.cell_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
 
    Permutation< space_dim > orientation = face_info.orientation;
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
@@ -450,8 +455,13 @@ auto SerialReadDofs(
 
    const GlobalIndex element_index = face_info.GetCellIndex();
    constexpr Integer space_dim = FiniteElementSpace::Dim;
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
 
    Permutation< space_dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
@@ -523,6 +533,7 @@ auto ThreadedReadDofs(
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -588,11 +599,7 @@ auto DirectGlobalSerialReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   GENDIL_VERIFY(
-      FaceReadDofsOrientationIsShapeCompatible(
-         dof_sizes,
-         orientation ),
-      "DirectGlobal face ReadDofs supports only shape-compatible orientations." );
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    if ( FaceReadDofsOrientationIsIdentity( orientation ) )
    {
@@ -659,11 +666,7 @@ auto DirectGlobalThreadedReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   GENDIL_VERIFY(
-      FaceReadDofsOrientationIsShapeCompatible(
-         dof_sizes,
-         orientation ),
-      "DirectGlobal face ReadDofs supports only shape-compatible orientations." );
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    if ( FaceReadDofsOrientationIsIdentity( orientation ) )
    {
@@ -736,8 +739,13 @@ auto ReadVectorDofsSerial(
 
    const GlobalIndex element_index = face_info.cell_index;
    constexpr Integer space_dim = FiniteElementSpace::Dim;
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
 
    Permutation< space_dim > orientation = face_info.orientation;
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
@@ -807,6 +815,8 @@ auto ReadVectorDofsSerial(
       Real data[ data_size ];
 
       auto dofs_sizes = to_array( component_dof_shape{} );
+      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
+         orientation );
       auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
       auto reference_view = MakeFIFOView( data, dofs_sizes );
 
@@ -867,6 +877,7 @@ auto ReadVectorDofsThreaded(
    constexpr Integer space_dim = FiniteElementSpace::Dim;
 
    Permutation< space_dim > orientation = face_info.orientation;
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
@@ -947,6 +958,8 @@ auto ReadVectorDofsThreaded(
       // TODO: This shared-memory staging was added as a presumed optimization.
       // Direct reads through oriented indices may be faster and would avoid
       // this hidden shared-memory requirement.
+      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
+         orientation );
       GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
       Real * data = thread.SharedAllocator.allocate( data_size );
 

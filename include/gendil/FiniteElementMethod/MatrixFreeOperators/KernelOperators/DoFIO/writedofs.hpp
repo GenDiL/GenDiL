@@ -13,6 +13,7 @@
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
 
 namespace gendil {
 
@@ -362,6 +363,10 @@ void SerialWriteDofs(
    );
 
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   using DofShape = rshape;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
 
@@ -377,7 +382,6 @@ void SerialWriteDofs(
    );
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 
    const GlobalIndex element_index = face_info.GetCellIndex();
@@ -420,6 +424,8 @@ void ThreadedWriteDofs(
       "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
@@ -438,7 +444,6 @@ void ThreadedWriteDofs(
    thread.Synchronize();
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 

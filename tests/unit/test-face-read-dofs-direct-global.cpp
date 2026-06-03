@@ -61,6 +61,19 @@ struct DirectGlobalSerialKernelConfiguration :
    using face_read_dofs_policy = DirectGlobalFaceReadDofsPolicy;
 };
 
+struct FullSharedSerialKernelConfiguration :
+   public HostKernelConfiguration< 1 >
+{
+   using face_read_dofs_policy = FullSharedFaceReadDofsPolicy;
+};
+
+template < Integer SpaceDim, typename FiniteElement >
+struct TestFiniteElementSpaceFromFiniteElement
+{
+   static constexpr Integer Dim = SpaceDim;
+   using finite_element_type = FiniteElement;
+};
+
 template < Integer Dim >
 std::vector< Permutation< Dim > > MakeAllSignedPermutations()
 {
@@ -139,17 +152,7 @@ bool ExpectedShapeCompatible(
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
-   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
-   {
-      const LocalIndex o = orientation( native_dim );
-      const Integer reference_axis =
-         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
-      if ( sizes[ native_dim ] != sizes[ reference_axis ] )
-      {
-         return false;
-      }
-   }
-   return true;
+   return OrientedTensorDofShapeIsCompatible( sizes, orientation );
 }
 
 template < Integer Dim >
@@ -422,10 +425,10 @@ bool RunScalarReadDofsPolicyCase(
 
    Space fe_space{};
    Real * no_shared_memory = nullptr;
-   KernelContext< HostKernelConfiguration< 1 >, 0 >
+   KernelContext< FullSharedSerialKernelConfiguration, 0 >
       full_shared_context( no_shared_memory );
-   KernelContext< DirectGlobalSerialKernelConfiguration, 0 >
-      direct_global_context( no_shared_memory );
+   KernelContext< HostKernelConfiguration< 1 >, 0 >
+      default_context( no_shared_memory );
 
    bool success = true;
    for ( const auto & orientation : orientations )
@@ -451,7 +454,7 @@ bool RunScalarReadDofsPolicyCase(
             global_dofs );
       const auto direct_global =
          ReadDofs(
-            direct_global_context,
+            default_context,
             fe_space,
             face,
             global_dofs );
@@ -468,6 +471,117 @@ bool RunScalarReadDofsPolicyCase(
    if ( success )
    {
       std::cout << "PASS scalar ReadDofs policy equivalence: "
+                << case_name << "\n";
+   }
+   return success;
+}
+
+template < typename Space >
+bool RunScalarWriteDofsSupportedCase(
+   const char * case_name,
+   const std::vector< Permutation< Space::Dim > > & orientations )
+{
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using DofShape = orders_to_num_dofs< typename ShapeFunctions::orders >;
+   constexpr Integer dim = Space::Dim;
+   constexpr GlobalIndex num_elements = 2;
+   constexpr GlobalIndex element_index = 1;
+
+   const auto dof_sizes = to_array( DofShape{} );
+   std::array< GlobalIndex, dim + 1 > global_sizes{};
+   GlobalIndex num_values = num_elements;
+   for ( Integer i = 0; i < dim; ++i )
+   {
+      global_sizes[ i ] = static_cast< GlobalIndex >( dof_sizes[ i ] );
+      num_values *= global_sizes[ i ];
+   }
+   global_sizes[ dim ] = num_elements;
+
+   Space fe_space{};
+   Real * no_shared_memory = nullptr;
+   KernelContext< HostKernelConfiguration< 1 >, 0 >
+      context( no_shared_memory );
+
+   bool success = true;
+   Integer num_failures_reported = 0;
+   for ( const auto & orientation : orientations )
+   {
+      if ( !OrientedTensorDofShapeIsCompatible(
+              dof_sizes,
+              orientation ) )
+      {
+         success = false;
+         std::cout
+            << "Scalar write case was given unsupported orientation in "
+            << case_name << ": orientation=";
+         PrintOrientation( orientation );
+         std::cout << "\n";
+         continue;
+      }
+
+      std::vector< Real > global_data( num_values, -1.0 );
+      auto global_dofs = MakeGlobalDofView< Space >( global_data, global_sizes );
+      auto local_dofs = MakeSerialRecursiveArray< Real >( DofShape{} );
+
+      UnitLoop< DofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, dim > reference_indices{
+            static_cast< GlobalIndex >( k )... };
+         local_dofs( k... ) =
+            IndexEncodedValue( reference_indices, 0 );
+      });
+
+      const TestFaceView< dim > face{ element_index, orientation };
+      WriteDofs(
+         context,
+         fe_space,
+         face,
+         local_dofs,
+         global_dofs );
+
+      UnitLoop< DofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, dim > reference_indices{
+            static_cast< GlobalIndex >( k )... };
+         const auto native_indices =
+            ShapeCompatibleNativeIndex(
+               reference_indices,
+               dof_sizes,
+               orientation );
+         const Real expected =
+            IndexEncodedValue( reference_indices, 0 );
+         const Real actual =
+            FaceReadDofsGlobalValueAt(
+               global_dofs,
+               native_indices,
+               element_index );
+
+         if ( std::abs( expected - actual ) > 1e-12 )
+         {
+            success = false;
+            if ( num_failures_reported < 8 )
+            {
+               ++num_failures_reported;
+               std::cout
+                  << "WriteDofs orientation mismatch in " << case_name
+                  << ": orientation=";
+               PrintOrientation( orientation );
+               std::cout << ", reference=";
+               PrintIndex( reference_indices );
+               std::cout << ", native=";
+               PrintIndex( native_indices );
+               std::cout << ", expected=" << expected
+                         << ", actual=" << actual
+                         << "\n";
+            }
+         }
+      });
+   }
+
+   if ( success )
+   {
+      std::cout << "PASS scalar WriteDofs supported orientation smoke: "
                 << case_name << "\n";
    }
    return success;
@@ -500,7 +614,7 @@ bool RunUnsupportedOrientationCase(
    if ( success )
    {
       std::cout
-         << "PASS unsupported DirectGlobal orientation classification: "
+         << "PASS unsupported oriented tensor DOF orientation classification: "
          << case_name << "\n";
    }
 
@@ -522,6 +636,22 @@ bool RunVectorFaceReadAudit()
 
 int main()
 {
+   static_assert(
+      std::is_same_v<
+         face_read_dofs_policy_t< HostKernelConfiguration< 1 > >,
+         DirectGlobalFaceReadDofsPolicy >,
+      "Default scalar face ReadDofs policy should be DirectGlobal." );
+   static_assert(
+      std::is_same_v<
+         face_read_dofs_policy_t< FullSharedSerialKernelConfiguration >,
+         FullSharedFaceReadDofsPolicy >,
+      "Explicit FullShared face ReadDofs override should be preserved." );
+   static_assert(
+      std::is_same_v<
+         face_read_dofs_policy_t< DirectGlobalSerialKernelConfiguration >,
+         DirectGlobalFaceReadDofsPolicy >,
+      "Explicit DirectGlobal face ReadDofs override should be preserved." );
+
    using Shape1D =
       TensorShapeFunctions<
          GaussLegendreShapeFunctions< 3 > >;
@@ -543,21 +673,41 @@ int main()
    using Space2D = TestFiniteElementSpace< 2, Shape2D >;
    using Space3D = TestFiniteElementSpace< 3, Shape3D >;
    using Space2DEqual = TestFiniteElementSpace< 2, Shape2DEqual >;
+   using VectorFE2DEqual =
+      FiniteElement<
+         HyperCube< 2 >,
+         VectorShapeFunctions< Shape2DEqual, Shape2DEqual > >;
+   using VectorSpace2DEqual =
+      TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DEqual >;
+
+   static_assert(
+      FaceSpeedOfLightRequiredSharedMemory<
+         FaceSoLType::ReadCell,
+         HostKernelConfiguration< 1 >,
+         VectorSpace2DEqual >::value == VectorFE2DEqual::GetNumDofs(),
+      "Vector face reads should retain FullShared read-side storage under the default policy." );
 
    const std::vector< Permutation< 1 > > orientations_1d{
       Permutation< 1 >{ { 1 } },
       Permutation< 1 >{ { -1 } } };
-   const std::vector< Permutation< 2 > > anisotropic_2d_identity_flips{
-      Permutation< 2 >{ { 1, 2 } },
+   const std::vector< Permutation< 2 > > anisotropic_2d_identity{
+      Permutation< 2 >{ { 1, 2 } } };
+   const std::vector< Permutation< 3 > > anisotropic_3d_identity{
+      Permutation< 3 >{ { 1, 2, 3 } } };
+   const std::vector< Permutation< 2 > > anisotropic_2d_flips{
       Permutation< 2 >{ { -1, 2 } },
       Permutation< 2 >{ { 1, -2 } },
       Permutation< 2 >{ { -1, -2 } } };
-   const std::vector< Permutation< 3 > > anisotropic_3d_identity_flips{
-      Permutation< 3 >{ { 1, 2, 3 } },
+   const std::vector< Permutation< 3 > > anisotropic_3d_flips{
       Permutation< 3 >{ { -1, 2, 3 } },
       Permutation< 3 >{ { 1, -2, 3 } },
       Permutation< 3 >{ { 1, 2, -3 } },
       Permutation< 3 >{ { -1, -2, -3 } } };
+   const std::vector< Permutation< 2 > > equal_extent_identity_flips{
+      Permutation< 2 >{ { 1, 2 } },
+      Permutation< 2 >{ { -1, 2 } },
+      Permutation< 2 >{ { 1, -2 } },
+      Permutation< 2 >{ { -1, -2 } } };
    const std::vector< Permutation< 2 > > equal_extent_swaps{
       Permutation< 2 >{ { 2, 1 } },
       Permutation< 2 >{ { 2, -1 } },
@@ -603,13 +753,18 @@ int main()
       success;
    success =
       RunOrientedGlobalViewCase< Space2D >(
-         "2D anisotropic identity/flips shape (3,4)",
-         anisotropic_2d_identity_flips ) &&
+         "2D anisotropic identity shape (3,4)",
+         anisotropic_2d_identity ) &&
       success;
    success =
       RunOrientedGlobalViewCase< Space3D >(
-         "3D anisotropic identity/flips shape (2,3,4)",
-         anisotropic_3d_identity_flips ) &&
+         "3D anisotropic identity shape (2,3,4)",
+         anisotropic_3d_identity ) &&
+      success;
+   success =
+      RunOrientedGlobalViewCase< Space2DEqual >(
+         "2D equal-extent identity/flips shape (4,4)",
+         equal_extent_identity_flips ) &&
       success;
    success =
       RunOrientedGlobalViewCase< Space2DEqual >(
@@ -624,13 +779,18 @@ int main()
       success;
    success =
       RunScalarReadDofsPolicyCase< Space2D >(
-         "2D anisotropic identity/flips shape (3,4)",
-         anisotropic_2d_identity_flips ) &&
+         "2D anisotropic identity shape (3,4)",
+         anisotropic_2d_identity ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space3D >(
-         "3D anisotropic identity/flips shape (2,3,4)",
-         anisotropic_3d_identity_flips ) &&
+         "3D anisotropic identity shape (2,3,4)",
+         anisotropic_3d_identity ) &&
+      success;
+   success =
+      RunScalarReadDofsPolicyCase< Space2DEqual >(
+         "2D equal-extent identity/flips shape (4,4)",
+         equal_extent_identity_flips ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space2DEqual >(
@@ -638,6 +798,39 @@ int main()
          equal_extent_swaps ) &&
       success;
 
+   success =
+      RunScalarWriteDofsSupportedCase< Space1D >(
+         "1D identity and flip shape (4)",
+         orientations_1d ) &&
+      success;
+   success =
+      RunScalarWriteDofsSupportedCase< Space2D >(
+         "2D anisotropic identity shape (3,4)",
+         anisotropic_2d_identity ) &&
+      success;
+   success =
+      RunScalarWriteDofsSupportedCase< Space2DEqual >(
+         "2D equal-extent identity/flips shape (4,4)",
+         equal_extent_identity_flips ) &&
+      success;
+   success =
+      RunScalarWriteDofsSupportedCase< Space2DEqual >(
+         "2D equal-extent swaps shape (4,4)",
+         equal_extent_swaps ) &&
+      success;
+
+   success =
+      RunUnsupportedOrientationCase<
+         orders_to_num_dofs< typename Shape2D::orders > >(
+            "2D anisotropic flipped axes shape (3,4)",
+            anisotropic_2d_flips ) &&
+      success;
+   success =
+      RunUnsupportedOrientationCase<
+         orders_to_num_dofs< typename Shape3D::orders > >(
+            "3D anisotropic flipped axes shape (2,3,4)",
+            anisotropic_3d_flips ) &&
+      success;
    success =
       RunUnsupportedOrientationCase<
          orders_to_num_dofs< typename Shape2D::orders > >(

@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Utilities/debug.hpp"
 #include "gendil/Utilities/multiindex.hpp"
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
@@ -24,7 +25,7 @@ struct DirectGlobalFaceReadDofsPolicy
 template < typename KernelConfiguration, typename = void >
 struct face_read_dofs_policy
 {
-   using type = FullSharedFaceReadDofsPolicy;
+   using type = DirectGlobalFaceReadDofsPolicy;
 };
 
 template < typename KernelConfiguration >
@@ -79,15 +80,83 @@ constexpr bool FaceReadDofsOrientationIsIdentity(
    return true;
 }
 
+template < typename DofShape >
+struct is_isotropic_shape;
+
+template <>
+struct is_isotropic_shape< std::index_sequence<> >
+{
+   static constexpr bool value = true;
+};
+
+template < size_t First >
+struct is_isotropic_shape< std::index_sequence< First > >
+{
+   static constexpr bool value = true;
+};
+
+template < size_t First, size_t Second, size_t... Rest >
+struct is_isotropic_shape< std::index_sequence< First, Second, Rest... > >
+{
+   static constexpr bool value =
+      ( Second == First ) && ( ( Rest == First ) && ... );
+};
+
+template < typename DofShape >
+inline constexpr bool is_isotropic_shape_v =
+   is_isotropic_shape< DofShape >::value;
+
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr bool OrientedTensorDofShapeIsIsotropic(
+   const std::array< size_t, Dim > & sizes )
+{
+   for ( Integer i = 1; i < Dim; ++i )
+   {
+      if ( sizes[ i ] != sizes[ 0 ] )
+      {
+         return false;
+      }
+   }
+   return true;
+}
+
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr bool OrientedTensorDofShapeIsCompatible(
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
+{
+   return OrientedTensorDofShapeIsIsotropic( sizes ) ||
+      FaceReadDofsOrientationIsIdentity( orientation );
+}
+
+template < typename DofShape, Integer Dim >
+GENDIL_HOST_DEVICE
+void VerifyOrientedTensorDofShapeCompatibility(
+   const Permutation< Dim > & orientation )
+{
+   static_assert(
+      DofShape::size() == Dim,
+      "Mismatching oriented tensor-product DOF shape and orientation dimensions." );
+
+   if constexpr ( !is_isotropic_shape_v< DofShape > )
+   {
+      GENDIL_VERIFY(
+         FaceReadDofsOrientationIsIdentity( orientation ),
+         "anisotropic tensor-product DOF shapes currently support only identity face orientation; non-identity orientation requires future tensor-shape/basis-transform support." );
+   }
+}
+
 /**
- * @brief Return whether an orientation can be represented as an affine view
- * over the original reference shape.
+ * @brief Return whether the temporary oriented tensor-product DOF rule accepts
+ * the shape/orientation pair.
  *
- * @details For native dimension j, abs(orientation(j)) - 1 is the reference
- * axis populated by that native dimension.  The optimized DirectGlobal face
- * read path supports flips and swaps only when the native extent matches the
- * target reference-axis extent.  This keeps each access to a signed/permuted
- * affine stride instead of an inverse mixed-radix lookup.
+ * @details This conservative rule is policy-independent and applies to both
+ * face ReadDofs and WriteDofs: isotropic tensor-product DOF shapes support all
+ * orientations; anisotropic shapes currently support identity orientation only.
+ * Non-identity anisotropic orientation requires a future tensor-shape/basis
+ * transform abstraction.
  */
 template < Integer Dim >
 GENDIL_HOST_DEVICE
@@ -95,17 +164,7 @@ constexpr bool FaceReadDofsOrientationIsShapeCompatible(
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
-   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
-   {
-      const LocalIndex o = orientation( native_dim );
-      const Integer reference_axis =
-         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
-      if ( sizes[ native_dim ] != sizes[ reference_axis ] )
-      {
-         return false;
-      }
-   }
-   return true;
+   return OrientedTensorDofShapeIsCompatible( sizes, orientation );
 }
 
 using FaceReadDofsSignedIndex = std::make_signed_t< GlobalIndex >;
