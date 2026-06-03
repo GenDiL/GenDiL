@@ -8,7 +8,6 @@
 #include <array>
 #include <cmath>
 #include <iostream>
-#include <tuple>
 #include <vector>
 
 using namespace gendil;
@@ -589,141 +588,6 @@ bool RunScalarWriteDofsSupportedCase(
    return success;
 }
 
-Real VectorIndexEncodedValue(
-   const Integer component,
-   const std::array< GlobalIndex, 2 > & native_indices,
-   const GlobalIndex element_index )
-{
-   return
-      static_cast< Real >( 100000 * ( component + 1 ) ) +
-      IndexEncodedValue( native_indices, element_index );
-}
-
-bool RunVectorReadDofsPolicySmoke()
-{
-   using Shape2DEqual =
-      TensorShapeFunctions<
-         GaussLegendreShapeFunctions< 3 >,
-         GaussLegendreShapeFunctions< 3 > >;
-   using VectorFE2DEqual =
-      FiniteElement<
-         HyperCube< 2 >,
-         VectorShapeFunctions< Shape2DEqual, Shape2DEqual > >;
-   using VectorSpace2DEqual =
-      TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DEqual >;
-   using DofShapes =
-      typename VectorSpace2DEqual::finite_element_type::
-         shape_functions::dof_shape;
-   using ComponentShape = std::tuple_element_t< 0, DofShapes >;
-
-   constexpr GlobalIndex num_elements = 2;
-   constexpr GlobalIndex element_index = 1;
-   constexpr size_t component_num_dofs = Product( ComponentShape{} );
-
-   std::array< Real, component_num_dofs * num_elements > global_data_0{};
-   std::array< Real, component_num_dofs * num_elements > global_data_1{};
-
-   auto component_0 =
-      MakeFIFOView(
-         global_data_0.data(),
-         GlobalIndex{ 4 },
-         GlobalIndex{ 4 },
-         num_elements );
-   auto component_1 =
-      MakeFIFOView(
-         global_data_1.data(),
-         GlobalIndex{ 4 },
-         GlobalIndex{ 4 },
-         num_elements );
-
-   for ( GlobalIndex element = 0; element < num_elements; ++element )
-   {
-      UnitLoop< ComponentShape >( [&] ( auto... k )
-      {
-         const std::array< GlobalIndex, 2 > native_indices{
-            static_cast< GlobalIndex >( k )... };
-         component_0( k..., element ) =
-            VectorIndexEncodedValue( 0, native_indices, element );
-         component_1( k..., element ) =
-            VectorIndexEncodedValue( 1, native_indices, element );
-      });
-   }
-
-   auto global_dofs = std::make_tuple( component_0, component_1 );
-   VectorSpace2DEqual fe_space{};
-   Real * no_shared_memory = nullptr;
-   KernelContext< FullSharedSerialKernelConfiguration, 0 >
-      full_shared_context( no_shared_memory );
-   KernelContext< HostKernelConfiguration, 0 >
-      direct_global_context( no_shared_memory );
-
-   const std::array< Permutation< 2 >, 5 > orientations{
-      Permutation< 2 >{ { 1, 2 } },
-      Permutation< 2 >{ { -1, 2 } },
-      Permutation< 2 >{ { 1, -2 } },
-      Permutation< 2 >{ { 2, 1 } },
-      Permutation< 2 >{ { 2, -1 } } };
-
-   bool success = true;
-   Integer num_failures_reported = 0;
-
-   for ( const auto & orientation : orientations )
-   {
-      const TestFaceView< 2 > face{ element_index, orientation };
-      const auto full_shared =
-         ReadDofs(
-            full_shared_context,
-            fe_space,
-            face,
-            global_dofs );
-      const auto direct_global =
-         ReadDofs(
-            direct_global_context,
-            fe_space,
-            face,
-            global_dofs );
-
-      UnitLoop< ComponentShape >( [&] ( auto... k )
-      {
-         const std::array< GlobalIndex, 2 > reference_indices{
-            static_cast< GlobalIndex >( k )... };
-
-         const Real full_value_0 = std::get< 0 >( full_shared )( k... );
-         const Real direct_value_0 = std::get< 0 >( direct_global )( k... );
-         const Real full_value_1 = std::get< 1 >( full_shared )( k... );
-         const Real direct_value_1 = std::get< 1 >( direct_global )( k... );
-
-         if ( std::abs( full_value_0 - direct_value_0 ) > 1e-12 ||
-              std::abs( full_value_1 - direct_value_1 ) > 1e-12 )
-         {
-            success = false;
-            if ( num_failures_reported < 8 )
-            {
-               ++num_failures_reported;
-               std::cout
-                  << "Vector ReadDofs smoke mismatch: orientation=";
-               PrintOrientation( orientation );
-               std::cout << ", reference=";
-               PrintIndex( reference_indices );
-               std::cout << ", FullShared=(" << full_value_0
-                         << "," << full_value_1
-                         << "), DirectGlobal=(" << direct_value_0
-                         << "," << direct_value_1 << ")\n";
-            }
-         }
-      });
-   }
-
-   if ( success )
-   {
-      std::cout
-         << "PASS vector ReadDofs policy equivalence smoke: "
-         << "2D equal-extent component-wise scalar orientation\n";
-   }
-
-   return success;
-}
-
 template < typename DofShape >
 bool RunUnsupportedOrientationCase(
    const char * case_name,
@@ -756,17 +620,6 @@ bool RunUnsupportedOrientationCase(
    }
 
    return success;
-}
-
-bool RunVectorFaceReadAudit()
-{
-   std::cout
-      << "Vector face ReadDofs DirectGlobal audit: current vector face reads "
-      << "apply the scalar orientation independently per component; no "
-      << "component permutation/sign transform is implemented in the current "
-      << "FullShared read path. DirectGlobal vector reads are therefore "
-      << "validated as component-wise scalar reads in this test.\n";
-   return true;
 }
 
 } // namespace
@@ -810,26 +663,6 @@ int main()
    using Space2D = TestFiniteElementSpace< 2, Shape2D >;
    using Space3D = TestFiniteElementSpace< 3, Shape3D >;
    using Space2DEqual = TestFiniteElementSpace< 2, Shape2DEqual >;
-
-   using VectorFE2DEqual =
-      FiniteElement<
-         HyperCube< 2 >,
-         VectorShapeFunctions< Shape2DEqual, Shape2DEqual > >;
-   using VectorSpace2DEqual =
-      TestFiniteElementSpaceFromFiniteElement< 2, VectorFE2DEqual >;
-
-   static_assert(
-      FaceSpeedOfLightRequiredSharedMemory<
-         FaceSoLType::ReadCell,
-         HostKernelConfiguration,
-         VectorSpace2DEqual >::value == 0,
-      "Vector default DirectGlobal face reads should not require shared read-side storage." );
-   static_assert(
-      FaceSpeedOfLightRequiredSharedMemory<
-         FaceSoLType::ReadCell,
-         FullSharedSerialKernelConfiguration,
-         VectorSpace2DEqual >::value == 0,
-      "Register-only FullShared vector face reads should not require shared arena storage." );
 
    const std::vector< Permutation< 1 > > orientations_1d{
       Permutation< 1 >{ { 1 } },
@@ -942,8 +775,6 @@ int main()
          equal_extent_swaps ) &&
       success;
 
-   success = RunVectorReadDofsPolicySmoke() && success;
-
    success =
       RunScalarWriteDofsSupportedCase< Space1D >(
          "1D identity and flip shape (4)",
@@ -989,8 +820,6 @@ int main()
             "3D anisotropic swapped axes shape (2,3,4)",
             anisotropic_3d_swaps ) &&
       success;
-
-   success = RunVectorFaceReadAudit() && success;
 
    return success ? 0 : 1;
 }

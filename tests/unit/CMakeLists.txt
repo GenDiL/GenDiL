@@ -5,6 +5,10 @@ add_my_test(test-getpoint test-getpoint.cpp)
 add_my_test(test-garbage-collector test-garbage-collector.cpp)
 add_my_test(test-read-write test-read-write.cpp)
 add_my_test(test-face-read-dofs-direct-global test-face-read-dofs-direct-global.cpp)
+  add_my_test(
+    test-face-read-dofs-direct-global-vector
+    test-face-read-dofs-direct-global-vector.cpp
+  )
 add_non_cuda_test(test-bsr-block-layout test-bsr-block-layout.cpp)
 add_my_test(test-bsr-dof-layout test-bsr-dof-layout.cpp)
 add_my_test(test-sgbsr-matrix test-sgbsr-matrix.cpp)
