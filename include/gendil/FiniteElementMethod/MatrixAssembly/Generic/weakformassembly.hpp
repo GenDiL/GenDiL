@@ -16,8 +16,7 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
-#include "gendil/Utilities/KernelContext/isserial.hpp"
-#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
+#include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 
 #include <type_traits>
@@ -492,7 +491,7 @@ void SyncAssembledBSRValues(
       static_cast< GlobalIndex >( bsr_matrix.block_rows ) *
       static_cast< GlobalIndex >( bsr_matrix.block_cols );
 
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       ToDevice( value_count, bsr_matrix.values );
    }

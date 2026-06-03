@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include <type_traits>
 
 namespace gendil

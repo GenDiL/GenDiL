@@ -6,17 +6,143 @@
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
 
 template < typename KernelConfiguration >
 static constexpr size_t required_l2_error_reduction_shared_memory_v =
-   is_device_configuration_v< KernelConfiguration > ? 1 : 0;
+   is_threaded_v< KernelConfiguration > ? 1 : 0;
+
+namespace details
+{
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename IntegrationRule,
+   typename MeshQuadData,
+   typename ElementQuadData,
+   typename Sigma,
+   typename DofsInView >
+GENDIL_HOST_DEVICE
+void L2ErrorElementOperatorSerial(
+   KernelContext & kernel_conf,
+   const FiniteElementSpace & fe_space,
+   const IntegrationRule & int_rule,
+   const GlobalIndex element_index,
+   const MeshQuadData & mesh_quad_data,
+   const ElementQuadData & element_quad_data,
+   Sigma & sigma,
+   const DofsInView & dofs_in,
+   Real * sum_ptr )
+{
+   using Mesh = typename FiniteElementSpace::mesh_type;
+   using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
+   using Jacobian = typename Mesh::cell_type::jacobian;
+
+   auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
+   auto Bu = InterpolateValues( kernel_conf, element_quad_data, u );
+   const auto cell = fe_space.GetCell( element_index );
+
+   Real error = 0.0;
+   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   {
+      PhysicalCoordinates X;
+      Jacobian J_mesh;
+
+      const Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
+
+      cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
+
+      const Real detJ = Determinant( J_mesh );
+      const Real weight = GetWeight( quad_index, element_quad_data );
+      const Real analytical_sol = sigma( X );
+
+      const Real diff = Bu_q - analytical_sol;
+      const Real Du_q = weight * detJ * diff * diff;
+
+      error += Du_q;
+   } );
+
+   AtomicAdd( *sum_ptr, error );
+}
+
+template <
+   typename KernelContext,
+   typename FiniteElementSpace,
+   typename IntegrationRule,
+   typename MeshQuadData,
+   typename ElementQuadData,
+   typename Sigma,
+   typename DofsInView >
+GENDIL_HOST_DEVICE
+void L2ErrorElementOperatorThreaded(
+   KernelContext & kernel_conf,
+   const FiniteElementSpace & fe_space,
+   const IntegrationRule & int_rule,
+   const GlobalIndex element_index,
+   const MeshQuadData & mesh_quad_data,
+   const ElementQuadData & element_quad_data,
+   Sigma & sigma,
+   const DofsInView & dofs_in,
+   Real * sum_ptr )
+{
+   using Mesh = typename FiniteElementSpace::mesh_type;
+   using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
+   using Jacobian = typename Mesh::cell_type::jacobian;
+
+   auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
+   auto Bu = InterpolateValues( kernel_conf, element_quad_data, u );
+   const auto cell = fe_space.GetCell( element_index );
+
+   auto mark = kernel_conf.SharedAllocator.mark();
+   Real * error = kernel_conf.SharedAllocator.allocate( 1 );
+
+   // DeviceKernelConfiguration uses threadIdx.x as the per-work-item logical
+   // thread index, so this elects one leader per BatchIndex lane.
+   if ( kernel_conf.GetLinearThreadIndex() == 0 )
+   {
+      *error = 0.0;
+   }
+   kernel_conf.Sync();
+
+   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   {
+      PhysicalCoordinates X;
+      Jacobian J_mesh;
+
+      const Real Bu_q =
+         ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
+
+      cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
+
+      const Real detJ = Determinant( J_mesh );
+      const Real weight = GetWeight( quad_index, element_quad_data );
+      const Real analytical_sol = sigma( X );
+
+      const Real diff = Bu_q - analytical_sol;
+      const Real Du_q = weight * detJ * diff * diff;
+
+      AtomicAdd( *error, Du_q );
+   } );
+
+   kernel_conf.Sync();
+   if ( kernel_conf.GetLinearThreadIndex() == 0 )
+   {
+      AtomicAdd( *sum_ptr, *error );
+   }
+   kernel_conf.Sync();
+
+   kernel_conf.SharedAllocator.restore( mark );
+}
+
+} // namespace details
 
 /**
  * @brief Implementation of the L2Error operator at the element level.
- * 
+ *
  * @tparam KernelContext Contextual information for the kernel.
  * @tparam FiniteElementSpace The type of the finite element space associated to the operator.
  * @tparam IntegrationRule The type of the integration rule used by the element operator.
@@ -51,83 +177,32 @@ void L2ErrorElementOperator(
    const DofsInView & dofs_in,
    Real * sum_ptr )
 {
-   using Mesh = typename FiniteElementSpace::mesh_type;
-   using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
-   using Jacobian = typename Mesh::cell_type::jacobian;
-
-   auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
-
-   auto Bu = InterpolateValues( kernel_conf, element_quad_data, u );
-
-   const auto cell = fe_space.GetCell( element_index );
-
-#ifdef GENDIL_DEVICE_CODE
-   if constexpr ( !is_serial_v< KernelContext > )
+   if constexpr ( is_threaded_v< KernelContext > )
    {
-      auto mark = kernel_conf.SharedAllocator.mark();
-      Real * error = kernel_conf.SharedAllocator.allocate( 1 );
-
-      // DeviceKernelConfiguration uses threadIdx.x as the per-work-item
-      // logical thread index, so this elects one leader per BatchIndex lane.
-      if ( kernel_conf.GetLinearThreadIndex() == 0 )
-      {
-         *error = 0.0;
-      }
-      kernel_conf.Sync();
-
-      QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
-      {
-         PhysicalCoordinates X;
-         Jacobian J_mesh;
-
-         const Real Bu_q =
-            ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
-
-         cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
-
-         const Real detJ = Determinant( J_mesh );
-         const Real weight = GetWeight( quad_index, element_quad_data );
-         const Real analytical_sol = sigma( X );
-
-         const Real diff = Bu_q - analytical_sol;
-         const Real Du_q = weight * detJ * diff * diff;
-
-         AtomicAdd( *error, Du_q );
-      } );
-
-      kernel_conf.Sync();
-      if ( kernel_conf.GetLinearThreadIndex() == 0 )
-      {
-         AtomicAdd( *sum_ptr, *error );
-      }
-      kernel_conf.Sync();
-
-      kernel_conf.SharedAllocator.restore( mark );
-      return;
+      details::L2ErrorElementOperatorThreaded(
+         kernel_conf,
+         fe_space,
+         int_rule,
+         element_index,
+         mesh_quad_data,
+         element_quad_data,
+         sigma,
+         dofs_in,
+         sum_ptr );
    }
-#endif
-
-   Real error = 0.0;
-   QuadraturePointLoop< IntegrationRule >( kernel_conf, [&] ( auto const & quad_index )
+   else
    {
-      PhysicalCoordinates X;
-      Jacobian J_mesh;
-
-      const Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
-
-      cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
-
-      const Real detJ = Determinant( J_mesh );
-      const Real weight = GetWeight( quad_index, element_quad_data );
-      const Real analytical_sol = sigma( X );
-
-      const Real diff = Bu_q - analytical_sol;
-      const Real Du_q = weight * detJ * diff * diff;
-
-      error += Du_q;
-   } );
-
-   AtomicAdd( *sum_ptr, error );
+      details::L2ErrorElementOperatorSerial(
+         kernel_conf,
+         fe_space,
+         int_rule,
+         element_index,
+         mesh_quad_data,
+         element_quad_data,
+         sigma,
+         dofs_in,
+         sum_ptr );
+   }
 }
 
 /**

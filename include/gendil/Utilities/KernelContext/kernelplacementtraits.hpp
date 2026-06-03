@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/KernelContext/KernelConfigurations/kernelconfigurations.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
+
 #include <type_traits>
 
 namespace gendil
@@ -68,13 +69,5 @@ struct is_device_configuration<
 template < typename KernelConfig >
 static constexpr bool is_device_configuration_v =
    is_device_configuration< std::remove_cvref_t< KernelConfig > >::value;
-
-template < typename KernelConfig >
-struct is_serial : is_host_configuration< KernelConfig >
-{};
-
-template < typename KernelConfig >
-static constexpr bool is_serial_v =
-   is_serial< std::remove_cvref_t< KernelConfig > >::value;
 
 } // namespace gendil

@@ -8,7 +8,7 @@
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
-#include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
 #include "gendil/Algebra/vector.hpp"
 
