@@ -814,6 +814,8 @@ auto ReadVectorDofsSerial(
       constexpr size_t data_size = Product( component_dof_shape{} );
       Real data[ data_size ];
 
+      const auto & component_global_dofs = std::get< i >( global_dofs );
+      auto & component_local_dofs = std::get< i >( local_dofs );
       auto dofs_sizes = to_array( component_dof_shape{} );
       VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
          orientation );
@@ -823,13 +825,14 @@ auto ReadVectorDofsSerial(
       // Read with orientation
       UnitLoop< component_dof_shape >( [&]( auto... indices )
       {
-         oriented_view( indices... ) = std::get< i >( global_dofs )( indices..., element_index );
+         oriented_view( indices... ) =
+            component_global_dofs( indices..., element_index );
       });
 
       // Copy to local with reference orientation
       UnitLoop< component_dof_shape >( [&]( auto... indices )
       {
-         std::get< i >( local_dofs )( indices... ) = reference_view( indices... );
+         component_local_dofs( indices... ) = reference_view( indices... );
       });
    });
 
@@ -942,6 +945,8 @@ auto ReadVectorDofsThreaded(
    ConstexprLoop<v_dim>([&](auto i)
    {
       using component_dof_shape = std::tuple_element_t<i, dof_shape>;
+      const auto & component_global_dofs = std::get<i>(global_dofs);
+      auto & component_local_dofs = std::get<i>(local_dofs);
 
       using tshape = subsequence_t<
          component_dof_shape,
@@ -973,7 +978,7 @@ auto ReadVectorDofsThreaded(
          UnitLoop<rshape>([&](auto... k)
          {
             oriented_view(t..., k...) =
-               std::get<i>(global_dofs)(t..., k..., element_index);
+               component_global_dofs(t..., k..., element_index);
          });
       });
 
@@ -983,8 +988,7 @@ auto ReadVectorDofsThreaded(
       {
          UnitLoop<rshape>([&](auto... k)
          {
-            std::get<i>(local_dofs)(k...) =
-               reference_view(t..., k...);
+            component_local_dofs(k...) = reference_view(t..., k...);
          });
       });
 
@@ -1023,6 +1027,8 @@ auto DirectGlobalReadVectorDofsSerial(
    ConstexprLoop<v_dim>([&](auto i)
    {
       using component_dof_shape = std::tuple_element_t<i, dof_shape>;
+      const auto & component_global_dofs = std::get<i>(global_dofs);
+      auto & component_local_dofs = std::get<i>(local_dofs);
       const auto dof_sizes = to_array(component_dof_shape{});
 
       VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
@@ -1032,23 +1038,22 @@ auto DirectGlobalReadVectorDofsSerial(
       {
          UnitLoop<component_dof_shape>([&](auto... indices)
          {
-            std::get<i>(local_dofs)(indices...) =
-               std::get<i>(global_dofs)(indices..., element_index);
+            component_local_dofs(indices...) =
+               component_global_dofs(indices..., element_index);
          });
       }
       else
       {
          const auto oriented_global_dofs =
             MakeOrientedGlobalDofView(
-               std::get<i>(global_dofs),
+               component_global_dofs,
                element_index,
                dof_sizes,
                orientation );
 
          UnitLoop<component_dof_shape>([&](auto... indices)
          {
-            std::get<i>(local_dofs)(indices...) =
-               oriented_global_dofs(indices...);
+            component_local_dofs(indices...) = oriented_global_dofs(indices...);
          });
       }
    });
@@ -1084,6 +1089,8 @@ auto DirectGlobalReadVectorDofsThreaded(
    ConstexprLoop<v_dim>([&](auto i)
    {
       using component_dof_shape = std::tuple_element_t<i, dof_shape>;
+      const auto & component_global_dofs = std::get<i>(global_dofs);
+      auto & component_local_dofs = std::get<i>(local_dofs);
 
       using tshape = subsequence_t<
          component_dof_shape,
@@ -1106,8 +1113,8 @@ auto DirectGlobalReadVectorDofsThreaded(
          {
             UnitLoop<rshape>([&](auto... k)
             {
-               std::get<i>(local_dofs)(k...) =
-                  std::get<i>(global_dofs)(t..., k..., element_index);
+               component_local_dofs(k...) =
+                  component_global_dofs(t..., k..., element_index);
             });
          });
       }
@@ -1115,7 +1122,7 @@ auto DirectGlobalReadVectorDofsThreaded(
       {
          const auto oriented_global_dofs =
             MakeOrientedGlobalDofView(
-               std::get<i>(global_dofs),
+               component_global_dofs,
                element_index,
                dof_sizes,
                orientation );
@@ -1124,8 +1131,7 @@ auto DirectGlobalReadVectorDofsThreaded(
          {
             UnitLoop<rshape>([&](auto... k)
             {
-               std::get<i>(local_dofs)(k...) =
-                  oriented_global_dofs(t..., k...);
+               component_local_dofs(k...) = oriented_global_dofs(t..., k...);
             });
          });
       }
