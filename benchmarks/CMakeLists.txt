@@ -69,6 +69,16 @@ add_my_benchmark(benchmark-vector-mass-3d benchmark-vector-mass-3d.cpp)
 add_my_benchmark(benchmark-vector-grad-grad-3d benchmark-vector-grad-grad-3d.cpp)
 # Advection benchmarks
 add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-1d benchmark-batched-global-face-advection-operator-1d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-2d benchmark-batched-global-face-advection-operator-2d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-3d benchmark-batched-global-face-advection-operator-3d.cpp)
+add_custom_target(benchmark-batched-global-face-advection-operator)
+add_dependencies(
+  benchmark-batched-global-face-advection-operator
+  benchmark-batched-global-face-advection-operator-1d
+  benchmark-batched-global-face-advection-operator-2d
+  benchmark-batched-global-face-advection-operator-3d
+)
 # add_my_benchmark(benchmark-face-read-dofs-policy-1d benchmark-face-read-dofs-policy-1d.cpp)
 # add_my_benchmark(benchmark-face-read-dofs-policy-2d benchmark-face-read-dofs-policy-2d.cpp)
 # add_my_benchmark(benchmark-face-read-dofs-policy-3d benchmark-face-read-dofs-policy-3d.cpp)
