@@ -1381,11 +1381,7 @@ void RunFullSharedRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared",
-         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
-            Dim,
-            Order,
-            true >() );
+         "FullShared" );
 }
 
 template <
