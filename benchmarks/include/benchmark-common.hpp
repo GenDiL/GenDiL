@@ -8,6 +8,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 
 namespace gendil::benchmarks
 {
@@ -19,6 +20,21 @@ constexpr Integer timed_iterations = 5;
 constexpr Integer warmup_iterations = 1;
 constexpr Integer timed_iterations = 1;
 #endif
+
+constexpr size_t max_threads_per_work_item = 1024;
+
+inline GlobalIndex BenchmarkCeilDivideGlobalIndex(
+   const GlobalIndex numerator,
+   const GlobalIndex denominator )
+{
+   return numerator / denominator +
+      ( numerator % denominator == 0 ? 0 : 1 );
+}
+
+inline GlobalIndex BenchmarkClampCellExtent( const GlobalIndex extent )
+{
+   return extent == 0 ? 1 : extent;
+}
 
 #if defined( GENDIL_USE_CUDA )
 constexpr size_t static_shared_memory_compile_limit_bytes = 48 * 1024;
@@ -102,8 +118,8 @@ std::array< Integer, Dim > BalancedExtents( GlobalIndex target_cells )
    return extents;
 }
 
-template < Integer Dim >
-GlobalIndex Product( const std::array< Integer, Dim > & extents )
+template < typename Extent, Integer Dim >
+GlobalIndex Product( const std::array< Extent, Dim > & extents )
 {
    GlobalIndex product = 1;
    for ( Integer d = 0; d < Dim; ++d )
@@ -111,6 +127,59 @@ GlobalIndex Product( const std::array< Integer, Dim > & extents )
       product *= static_cast< GlobalIndex >( extents[ d ] );
    }
    return product;
+}
+
+template < Integer Dim >
+std::array< GlobalIndex, Dim > BalancedBenchmarkExtents(
+   const GlobalIndex target_cells )
+{
+   std::array< GlobalIndex, Dim > extents{};
+   GlobalIndex remaining_cells = BenchmarkClampCellExtent( target_cells );
+
+   for ( Integer d = 0; d + 1 < Dim; ++d )
+   {
+      const auto axes_left = static_cast< int >( Dim - d );
+      const long double root =
+         std::pow(
+            static_cast< long double >( remaining_cells ),
+            1.0L / static_cast< long double >( axes_left ) );
+      const GlobalIndex extent =
+         BenchmarkClampCellExtent(
+            static_cast< GlobalIndex >( std::llround( root ) ) );
+      extents[ d ] = extent;
+      remaining_cells =
+         BenchmarkClampCellExtent(
+            BenchmarkCeilDivideGlobalIndex(
+               remaining_cells,
+               extent ) );
+   }
+
+   extents[ Dim - 1 ] = remaining_cells;
+   return extents;
+}
+
+template < Integer Dim >
+std::array< Integer, Dim > ToIntegerExtents(
+   const std::array< GlobalIndex, Dim > & extents )
+{
+   std::array< Integer, Dim > integer_extents{};
+   for ( Integer d = 0; d < Dim; ++d )
+   {
+      integer_extents[ d ] = static_cast< Integer >( extents[ d ] );
+   }
+   return integer_extents;
+}
+
+template < Integer Dim >
+std::array< GlobalIndex, 6 > ExtentsAsSixColumns(
+   const std::array< GlobalIndex, Dim > & extents )
+{
+   std::array< GlobalIndex, 6 > columns{ 1, 1, 1, 1, 1, 1 };
+   for ( Integer d = 0; d < Dim; ++d )
+   {
+      columns[ d ] = extents[ d ];
+   }
+   return columns;
 }
 
 template < Integer Dim >

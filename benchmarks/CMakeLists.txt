@@ -52,12 +52,18 @@ add_my_benchmark(benchmark-mass-3d benchmark-mass-3d.cpp)
 add_my_benchmark(benchmark-batched-mass-operator-1d benchmark-batched-mass-operator-1d.cpp)
 add_my_benchmark(benchmark-batched-mass-operator-2d benchmark-batched-mass-operator-2d.cpp)
 add_my_benchmark(benchmark-batched-mass-operator-3d benchmark-batched-mass-operator-3d.cpp)
+add_my_benchmark(benchmark-batched-mass-operator-4d benchmark-batched-mass-operator-4d.cpp)
+add_my_benchmark(benchmark-batched-mass-operator-5d benchmark-batched-mass-operator-5d.cpp)
+add_my_benchmark(benchmark-batched-mass-operator-6d benchmark-batched-mass-operator-6d.cpp)
 add_custom_target(benchmark-batched-mass-operator)
 add_dependencies(
   benchmark-batched-mass-operator
   benchmark-batched-mass-operator-1d
   benchmark-batched-mass-operator-2d
   benchmark-batched-mass-operator-3d
+  benchmark-batched-mass-operator-4d
+  benchmark-batched-mass-operator-5d
+  benchmark-batched-mass-operator-6d
 )
 add_my_benchmark(range-benchmark-mass-3d range-benchmark-mass-3d.cpp)
 add_my_benchmark(range-benchmark-mass-4d range-benchmark-mass-4d.cpp)
@@ -72,12 +78,18 @@ add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
 add_my_benchmark(benchmark-batched-global-face-advection-operator-1d benchmark-batched-global-face-advection-operator-1d.cpp)
 add_my_benchmark(benchmark-batched-global-face-advection-operator-2d benchmark-batched-global-face-advection-operator-2d.cpp)
 add_my_benchmark(benchmark-batched-global-face-advection-operator-3d benchmark-batched-global-face-advection-operator-3d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-4d benchmark-batched-global-face-advection-operator-4d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-5d benchmark-batched-global-face-advection-operator-5d.cpp)
+add_my_benchmark(benchmark-batched-global-face-advection-operator-6d benchmark-batched-global-face-advection-operator-6d.cpp)
 add_custom_target(benchmark-batched-global-face-advection-operator)
 add_dependencies(
   benchmark-batched-global-face-advection-operator
   benchmark-batched-global-face-advection-operator-1d
   benchmark-batched-global-face-advection-operator-2d
   benchmark-batched-global-face-advection-operator-3d
+  benchmark-batched-global-face-advection-operator-4d
+  benchmark-batched-global-face-advection-operator-5d
+  benchmark-batched-global-face-advection-operator-6d
 )
 # add_my_benchmark(benchmark-face-read-dofs-policy-1d benchmark-face-read-dofs-policy-1d.cpp)
 # add_my_benchmark(benchmark-face-read-dofs-policy-2d benchmark-face-read-dofs-policy-2d.cpp)

@@ -139,91 +139,22 @@ using FullSharedFaceDofPolicies =
       FullSharedFaceReadDofsPolicy,
       FullSharedFaceWriteDofsPolicy >;
 
-inline GlobalIndex CeilDivideGlobalIndex(
-   const GlobalIndex numerator,
-   const GlobalIndex denominator )
-{
-   return numerator / denominator +
-      ( numerator % denominator == 0 ? 0 : 1 );
-}
-
-inline GlobalIndex ClampCellExtent( const GlobalIndex extent )
-{
-   return extent == 0 ? 1 : extent;
-}
-
 template < Integer Dim, Integer Order >
 std::array< GlobalIndex, Dim > GlobalFaceAdvectionBenchmarkExtents(
    const GlobalIndex target_num_dofs )
 {
    const GlobalIndex dofs_per_cell = DofsPerElement< Dim, Order >();
    const GlobalIndex target_cells =
-      ClampCellExtent(
-         CeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
-   std::array< GlobalIndex, Dim > extents{};
-
-   if constexpr ( Dim == 1 )
-   {
-      extents[ 0 ] = target_cells;
-   }
-   else if constexpr ( Dim == 2 )
-   {
-      const auto nx =
-         ClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::sqrt(
-                     static_cast< long double >( target_cells ) ) ) ) );
-      extents[ 0 ] = nx;
-      extents[ 1 ] =
-         ClampCellExtent( CeilDivideGlobalIndex( target_cells, nx ) );
-   }
-   else
-   {
-      static_assert( Dim == 3 );
-      const auto nx =
-         ClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::cbrt(
-                     static_cast< long double >( target_cells ) ) ) ) );
-      const GlobalIndex remaining_cells =
-         ClampCellExtent( CeilDivideGlobalIndex( target_cells, nx ) );
-      const auto ny =
-         ClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::sqrt(
-                     static_cast< long double >(
-                        remaining_cells ) ) ) ) );
-      extents[ 0 ] = nx;
-      extents[ 1 ] = ny;
-      extents[ 2 ] =
-         ClampCellExtent(
-            CeilDivideGlobalIndex( remaining_cells, ny ) );
-   }
-
-   return extents;
+      BenchmarkClampCellExtent(
+         BenchmarkCeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
+   return BalancedBenchmarkExtents< Dim >( target_cells );
 }
 
 template < Integer Dim >
 auto MakeCartesianBenchmarkMeshFromGlobalExtents(
    const std::array< GlobalIndex, Dim > & extents )
 {
-   constexpr Real h = 1.0;
-   if constexpr ( Dim == 1 )
-   {
-      return Cartesian1DMesh( h, extents[ 0 ] );
-   }
-   else if constexpr ( Dim == 2 )
-   {
-      return Cartesian2DMesh( h, extents[ 0 ], extents[ 1 ] );
-   }
-   else
-   {
-      static_assert( Dim == 3 );
-      return Cartesian3DMesh( h, extents[ 0 ], extents[ 1 ], extents[ 2 ] );
-   }
+   return MakeCartesianBenchmarkMesh< Dim >( ToIntegerExtents( extents ) );
 }
 
 template < Integer Dim >
@@ -249,26 +180,26 @@ GlobalIndex CountFacesInDirection(
 }
 
 template < Integer Dim >
-std::array< GlobalIndex, 3 > CountFacesByDirection(
+std::array< GlobalIndex, 6 > CountFacesByDirection(
    const std::array< GlobalIndex, Dim > & extents )
 {
-   return {
-      CountFacesInDirection( extents, 0 ),
-      CountFacesInDirection( extents, 1 ),
-      CountFacesInDirection( extents, 2 )
-   };
-}
-
-template < Integer Dim >
-std::array< GlobalIndex, 3 > ExtentsAsThreeColumns(
-   const std::array< GlobalIndex, Dim > & extents )
-{
-   std::array< GlobalIndex, 3 > columns{ 1, 1, 1 };
+   std::array< GlobalIndex, 6 > face_counts{ 0, 0, 0, 0, 0, 0 };
    for ( Integer d = 0; d < Dim; ++d )
    {
-      columns[ d ] = extents[ d ];
+      face_counts[ d ] = CountFacesInDirection( extents, d );
    }
-   return columns;
+   return face_counts;
+}
+
+inline GlobalIndex SumSixColumns(
+   const std::array< GlobalIndex, 6 > & values )
+{
+   GlobalIndex sum = 0;
+   for ( Integer d = 0; d < 6; ++d )
+   {
+      sum += values[ d ];
+   }
+   return sum;
 }
 
 template < typename FaceMeshes >
@@ -321,8 +252,10 @@ inline void PrintGlobalFaceAdvectionHeader()
 {
    std::cout
       << "benchmark,dimension,order,num_quad_1d,target_num_dofs,"
-      << "actual_num_dofs,num_cells,num_faces_total,num_faces_x,"
-      << "num_faces_y,num_faces_z,num_dofs,extent_x,extent_y,extent_z,"
+      << "actual_num_dofs,num_cells,num_faces_total,num_faces_0,"
+      << "num_faces_1,num_faces_2,num_faces_3,num_faces_4,"
+      << "num_faces_5,num_dofs,extent_0,extent_1,extent_2,"
+      << "extent_3,extent_4,extent_5,"
       << "layout,threaded_dimensions,kernel_family,kernel,face_policy,"
       << "target_threads_per_block,threads_per_work_item,batch_size,"
       << "total_threads_per_block,block_x,block_y,block_z,"
@@ -338,8 +271,8 @@ inline void PrintGlobalFaceAdvectionRow(
    const GlobalIndex target_num_dofs,
    const GlobalIndex actual_num_dofs,
    const GlobalIndex num_cells,
-   const std::array< GlobalIndex, 3 > & face_counts,
-   const std::array< GlobalIndex, 3 > & extents,
+   const std::array< GlobalIndex, 6 > & face_counts,
+   const std::array< GlobalIndex, 6 > & extents,
    const char * layout,
    const size_t threaded_dimensions,
    const char * kernel_family,
@@ -357,8 +290,7 @@ inline void PrintGlobalFaceAdvectionRow(
    const GlobalIndex qpts_per_apply,
    const char * status )
 {
-   const GlobalIndex num_faces_total =
-      face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
+   const GlobalIndex num_faces_total = SumSixColumns( face_counts );
    const size_t total_threads_per_block =
       threads_per_work_item * batch_size;
 
@@ -392,10 +324,16 @@ inline void PrintGlobalFaceAdvectionRow(
       << face_counts[ 0 ] << ','
       << face_counts[ 1 ] << ','
       << face_counts[ 2 ] << ','
+      << face_counts[ 3 ] << ','
+      << face_counts[ 4 ] << ','
+      << face_counts[ 5 ] << ','
       << actual_num_dofs << ','
       << extents[ 0 ] << ','
       << extents[ 1 ] << ','
       << extents[ 2 ] << ','
+      << extents[ 3 ] << ','
+      << extents[ 4 ] << ','
+      << extents[ 5 ] << ','
       << layout << ','
       << threaded_dimensions << ','
       << kernel_family << ','
@@ -439,11 +377,10 @@ void PrintSkippedDeviceGlobalFaceAdvectionRow(
    const auto extents =
       GlobalFaceAdvectionBenchmarkExtents< Dim, Order >(
          target_num_dofs );
-   const auto extent_columns = ExtentsAsThreeColumns( extents );
+   const auto extent_columns = ExtentsAsSixColumns( extents );
    const GlobalIndex num_cells = Product( extents );
    const auto face_counts = CountFacesByDirection( extents );
-   const GlobalIndex num_faces_total =
-      face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
+   const GlobalIndex num_faces_total = SumSixColumns( face_counts );
    const GlobalIndex element_num_dofs =
       DofsPerElement< Dim, Order >();
    const GlobalIndex actual_num_dofs =
@@ -703,11 +640,10 @@ void RunGlobalFaceAdvectionKernelPolicy(
    const auto extents =
       GlobalFaceAdvectionBenchmarkExtents< Dim, Order >(
          target_num_dofs );
-   const auto extent_columns = ExtentsAsThreeColumns( extents );
+   const auto extent_columns = ExtentsAsSixColumns( extents );
    const GlobalIndex num_cells = Product( extents );
    const auto face_counts = CountFacesByDirection( extents );
-   const GlobalIndex num_faces_total =
-      face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
+   const GlobalIndex num_faces_total = SumSixColumns( face_counts );
    const GlobalIndex element_num_dofs =
       DofsPerElement< Dim, Order >();
    const GlobalIndex actual_num_dofs =
@@ -1015,25 +951,48 @@ void RunLegacyGlobalFaceAdvectionCase(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
-   const char * face_policy )
+   const char * face_policy,
+   const size_t skipped_shared_memory_per_work_item )
 {
-   using KernelPolicy =
-      FacePolicyTransform<
-         ThreadFirstKernelConfiguration< ThreadLayout, Dim > >;
+   if constexpr (
+      ThreadLayout::GetNumberOfThreads() >
+      max_threads_per_work_item )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         1 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "ThreadFirstKernelConfiguration",
+            "ThreadFirstKernelConfiguration",
+            face_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            skipped_shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else
+   {
+      using KernelPolicy =
+         FacePolicyTransform<
+            ThreadFirstKernelConfiguration< ThreadLayout, Dim > >;
 
-   RunGlobalFaceAdvectionKernelPolicy<
-      Dim,
-      Order,
-      KernelPolicy,
-      KernelPolicy >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions,
-         "ThreadFirstKernelConfiguration",
-         "ThreadFirstKernelConfiguration",
-         face_policy,
-         ThreadLayout::GetNumberOfThreads(),
-         1 );
+      RunGlobalFaceAdvectionKernelPolicy<
+         Dim,
+         Order,
+         KernelPolicy,
+         KernelPolicy >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "ThreadFirstKernelConfiguration",
+            "ThreadFirstKernelConfiguration",
+            face_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            1 );
+   }
 }
 
 template <
@@ -1045,25 +1004,48 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
-   const char * face_policy )
+   const char * face_policy,
+   const size_t skipped_shared_memory_per_work_item )
 {
-   using KernelPolicy =
-      FacePolicyTransform<
-         DeviceKernelConfiguration< ThreadLayout, Dim, 1 > >;
+   if constexpr (
+      ThreadLayout::GetNumberOfThreads() >
+      max_threads_per_work_item )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         1 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatch1",
+            "DeviceKernelConfiguration",
+            face_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            skipped_shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else
+   {
+      using KernelPolicy =
+         FacePolicyTransform<
+            DeviceKernelConfiguration< ThreadLayout, Dim, 1 > >;
 
-   RunGlobalFaceAdvectionKernelPolicy<
-      Dim,
-      Order,
-      KernelPolicy,
-      KernelPolicy >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions,
-         "DeviceKernelConfigurationBatch1",
-         "DeviceKernelConfiguration",
-         face_policy,
-         ThreadLayout::GetNumberOfThreads(),
-         1 );
+      RunGlobalFaceAdvectionKernelPolicy<
+         Dim,
+         Order,
+         KernelPolicy,
+         KernelPolicy >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatch1",
+            "DeviceKernelConfiguration",
+            face_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            1 );
+   }
 }
 
 template <
@@ -1091,6 +1073,25 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
       ThreadLayout::GetNumberOfThreads() * BatchSize;
 
    if constexpr (
+      ThreadLayout::GetNumberOfThreads() >
+      max_threads_per_work_item )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         BatchSize >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatchN",
+            "DeviceKernelConfiguration",
+            face_policy,
+            TargetThreads,
+            shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else if constexpr (
       total_threads_per_block >
       static_threads_per_block_compile_limit )
    {
@@ -1274,7 +1275,11 @@ void RunDirectGlobalLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "DirectGlobal" );
+         "DirectGlobal",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
    RunDeviceBatch1GlobalFaceAdvectionCase<
       Dim,
       Order,
@@ -1283,7 +1288,11 @@ void RunDirectGlobalLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "DirectGlobal" );
+         "DirectGlobal",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
    RunDirectGlobalDeviceTargetSweep<
       Dim,
       Order,
@@ -1311,7 +1320,11 @@ void RunDirectGlobalRegisterOnlyLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "DirectGlobal" );
+         "DirectGlobal",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
    RunDirectGlobalDeviceTargetSweep<
       Dim,
       Order,
@@ -1339,7 +1352,11 @@ void RunFullSharedRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            true >() );
    RunDeviceBatch1GlobalFaceAdvectionCase<
       Dim,
       Order,
@@ -1348,7 +1365,11 @@ void RunFullSharedRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            true >() );
    RunDeviceBatchNGlobalFaceAdvectionCase<
       Dim,
       Order,
@@ -1360,7 +1381,11 @@ void RunFullSharedRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            true >() );
 }
 
 template <
@@ -1432,6 +1457,54 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
             3 );
    }
 
+   if constexpr ( Dim >= 4 )
+   {
+      RunDirectGlobalLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            4 );
+   }
+
+   if constexpr ( Dim >= 5 )
+   {
+      RunDirectGlobalLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            5 );
+   }
+
+   if constexpr ( Dim >= 6 )
+   {
+      RunDirectGlobalLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            6 );
+   }
+
    RunFullSharedRegisterOnlyRepresentativeLayout<
       Dim,
       Order,
@@ -1446,6 +1519,76 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
          target_num_dofs,
          "ThreadBlockLayout<num_quad_1d>",
          1 );
+
+   if constexpr ( Dim >= 2 )
+   {
+      RunFullSharedRepresentativeLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout< Order + 2, Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d>",
+            2 );
+   }
+
+   if constexpr ( Dim >= 3 )
+   {
+      RunFullSharedRepresentativeLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>",
+            3 );
+   }
+
+   if constexpr ( Dim >= 4 )
+   {
+      RunFullSharedRepresentativeLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            4 );
+   }
+
+   if constexpr ( Dim >= 5 )
+   {
+      RunFullSharedRepresentativeLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            5 );
+   }
+
+   if constexpr ( Dim >= 6 )
+   {
+      RunFullSharedRepresentativeLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            target_num_dofs,
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            6 );
+   }
 #endif
 }
 

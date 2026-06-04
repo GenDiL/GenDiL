@@ -7,7 +7,6 @@
 #include "benchmark-common.hpp"
 
 #include <cerrno>
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -110,82 +109,22 @@ inline MassBenchmarkOptionParseResult ParseMassBenchmarkOptions(
    return MassBenchmarkOptionParseResult::run;
 }
 
-inline GlobalIndex MassCeilDivideGlobalIndex(
-   const GlobalIndex numerator,
-   const GlobalIndex denominator )
-{
-   return numerator / denominator +
-      ( numerator % denominator == 0 ? 0 : 1 );
-}
-
-inline GlobalIndex MassClampCellExtent( const GlobalIndex extent )
-{
-   return extent == 0 ? 1 : extent;
-}
-
 template < Integer Dim, Integer Order >
 std::array< Integer, Dim > MassBenchmarkExtents(
    const GlobalIndex target_num_dofs )
 {
    const GlobalIndex dofs_per_cell = DofsPerElement< Dim, Order >();
    const GlobalIndex target_cells =
-      MassClampCellExtent(
-         MassCeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
-   std::array< Integer, Dim > extents{};
-
-   if constexpr ( Dim == 1 )
-   {
-      extents[ 0 ] = static_cast< Integer >( target_cells );
-   }
-   else if constexpr ( Dim == 2 )
-   {
-      const auto nx =
-         MassClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::sqrt(
-                     static_cast< long double >( target_cells ) ) ) ) );
-      extents[ 0 ] = static_cast< Integer >( nx );
-      extents[ 1 ] =
-         static_cast< Integer >(
-            MassClampCellExtent(
-               MassCeilDivideGlobalIndex( target_cells, nx ) ) );
-   }
-   else
-   {
-      static_assert( Dim == 3 );
-      const auto nx =
-         MassClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::cbrt(
-                     static_cast< long double >( target_cells ) ) ) ) );
-      const GlobalIndex remaining_cells =
-         MassClampCellExtent(
-            MassCeilDivideGlobalIndex( target_cells, nx ) );
-      const auto ny =
-         MassClampCellExtent(
-            static_cast< GlobalIndex >(
-               std::llround(
-                  std::sqrt(
-                     static_cast< long double >(
-                        remaining_cells ) ) ) ) );
-      extents[ 0 ] = static_cast< Integer >( nx );
-      extents[ 1 ] = static_cast< Integer >( ny );
-      extents[ 2 ] =
-         static_cast< Integer >(
-            MassClampCellExtent(
-               MassCeilDivideGlobalIndex( remaining_cells, ny ) ) );
-   }
-
-   return extents;
+      BenchmarkClampCellExtent(
+         BenchmarkCeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
+   return ToIntegerExtents( BalancedBenchmarkExtents< Dim >( target_cells ) );
 }
 
 template < Integer Dim >
-std::array< GlobalIndex, 3 > MassExtentsTo3(
+std::array< GlobalIndex, 6 > MassExtentsTo6(
    const std::array< Integer, Dim > & extents )
 {
-   std::array< GlobalIndex, 3 > padded{ 1, 1, 1 };
+   std::array< GlobalIndex, 6 > padded{ 1, 1, 1, 1, 1, 1 };
    for ( Integer d = 0; d < Dim; ++d )
    {
       padded[ d ] = static_cast< GlobalIndex >( extents[ d ] );
@@ -198,7 +137,8 @@ inline void PrintMassHeader()
    std::cout
       << "benchmark,dimension,order,num_quad_1d,num_cells,num_dofs,"
       << "num_qpts,target_num_dofs,actual_num_dofs,"
-      << "extent_x,extent_y,extent_z,kernel,layout,threaded_dimensions,"
+      << "extent_0,extent_1,extent_2,extent_3,extent_4,extent_5,"
+      << "kernel,layout,threaded_dimensions,"
       << "target_threads_per_block,threads_per_work_item,batch_size,"
       << "total_threads_per_block,block_x,block_y,block_z,"
       << "shared_memory_per_work_item,shared_memory_per_block,"
@@ -214,7 +154,7 @@ inline void PrintMassRow(
    const GlobalIndex num_qpts,
    const GlobalIndex target_num_dofs,
    const GlobalIndex actual_num_dofs,
-   const std::array< GlobalIndex, 3 > & extents,
+   const std::array< GlobalIndex, 6 > & extents,
    const char * kernel,
    const char * layout,
    const size_t threaded_dimensions,
@@ -255,6 +195,9 @@ inline void PrintMassRow(
       << extents[ 0 ] << ','
       << extents[ 1 ] << ','
       << extents[ 2 ] << ','
+      << extents[ 3 ] << ','
+      << extents[ 4 ] << ','
+      << extents[ 5 ] << ','
       << kernel << ','
       << layout << ','
       << threaded_dimensions << ','
@@ -312,7 +255,7 @@ void RunTimedMassRow(
    const GlobalIndex num_dofs,
    const GlobalIndex num_qpts,
    const GlobalIndex target_num_dofs,
-   const std::array< GlobalIndex, 3 > & extents,
+   const std::array< GlobalIndex, 6 > & extents,
    const std::array< GlobalIndex, 3 > & block_dims,
    const size_t required_shared_mem,
    const size_t shared_memory_per_block )
@@ -382,7 +325,7 @@ void RunMassKernelPolicy(
 
    const auto extents =
       MassBenchmarkExtents< Dim, Order >( target_num_dofs );
-   const auto padded_extents = MassExtentsTo3( extents );
+   const auto padded_extents = MassExtentsTo6( extents );
    const GlobalIndex num_cells = Product( extents );
    const GlobalIndex num_dofs =
       num_cells * DofsPerElement< Dim, Order >();
@@ -559,6 +502,84 @@ void RunSerialMassCase( const GlobalIndex target_num_dofs )
 }
 
 #if defined( GENDIL_USE_DEVICE )
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   size_t BatchSize >
+void PrintSkippedMassRow(
+   const GlobalIndex target_num_dofs,
+   const char * kernel_name,
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const size_t target_threads_per_block )
+{
+   static constexpr Integer num_quad_1d = Order + 2;
+
+   const auto extents =
+      MassBenchmarkExtents< Dim, Order >( target_num_dofs );
+   const auto padded_extents = MassExtentsTo6( extents );
+   const GlobalIndex num_cells = Product( extents );
+   const GlobalIndex num_dofs =
+      num_cells * DofsPerElement< Dim, Order >();
+   const GlobalIndex num_qpts =
+      num_cells * QuadraturePointsPerElement< Dim, num_quad_1d >();
+   constexpr size_t shared_memory_per_work_item =
+      Max(
+         static_cast< size_t >( DofsPerElement< Dim, Order >() ),
+         static_cast< size_t >(
+            QuadraturePointsPerElement< Dim, num_quad_1d >() )
+      );
+   const std::array< GlobalIndex, 3 > block_dims{
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      1
+   };
+
+   PrintMassRow(
+      Dim,
+      Order,
+      num_quad_1d,
+      num_cells,
+      num_dofs,
+      num_qpts,
+      target_num_dofs,
+      num_dofs,
+      padded_extents,
+      kernel_name,
+      layout_name,
+      threaded_dimensions,
+      target_threads_per_block,
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      block_dims,
+      shared_memory_per_work_item,
+      shared_memory_per_work_item * BatchSize,
+      0.0,
+      "skipped-launch-limit" );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout >
+void PrintSkippedLegacyMassCase(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name,
+   const size_t threaded_dimensions )
+{
+   PrintSkippedMassRow<
+      Dim,
+      Order,
+      ThreadLayout,
+      1 >(
+         target_num_dofs,
+         "ThreadFirstKernelConfiguration",
+         layout_name,
+         threaded_dimensions,
+         ThreadLayout::GetNumberOfThreads() );
+}
+
 template < typename ThreadLayout, size_t TargetThreads >
 constexpr size_t MassBatchSizeForTarget()
 {
@@ -567,6 +588,79 @@ constexpr size_t MassBatchSizeForTarget()
    constexpr size_t quotient =
       TargetThreads / threads_per_work_item;
    return quotient > 0 ? quotient : 1;
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   size_t TargetThreads >
+void PrintSkippedDeviceMassTarget(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name )
+{
+   PrintSkippedMassRow<
+      Dim,
+      Order,
+      ThreadLayout,
+      MassBatchSizeForTarget< ThreadLayout, TargetThreads >() >(
+         target_num_dofs,
+         "DeviceKernelConfiguration",
+         layout_name,
+         ThreadLayout::thread_block_dim,
+         TargetThreads );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout >
+void PrintSkippedDeviceMassTargetSweep(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name )
+{
+#if defined( GENDIL_USE_CUDA )
+   PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 32 >(
+      target_num_dofs,
+      layout_name );
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 64 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 32 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+         target_num_dofs,
+         layout_name );
+   }
+#else
+   PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+      target_num_dofs,
+      layout_name );
+#endif
+
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 128 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 64 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 128 >(
+         target_num_dofs,
+         layout_name );
+   }
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 256 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 128 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 256 >(
+         target_num_dofs,
+         layout_name );
+   }
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 512 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 256 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 512 >(
+         target_num_dofs,
+         layout_name );
+   }
 }
 
 template <
@@ -700,13 +794,28 @@ void RunMassLayout(
    const size_t threaded_dimensions,
    const GlobalIndex target_num_dofs )
 {
-   RunLegacyMassCase< Dim, Order, ThreadLayout >(
-      layout_name,
-      threaded_dimensions,
-      target_num_dofs );
-   RunDeviceMassTargetSweep< Dim, Order, ThreadLayout >(
-      layout_name,
-      target_num_dofs );
+   if constexpr (
+      ThreadLayout::GetNumberOfThreads() >
+      max_threads_per_work_item )
+   {
+      PrintSkippedLegacyMassCase< Dim, Order, ThreadLayout >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions );
+      PrintSkippedDeviceMassTargetSweep< Dim, Order, ThreadLayout >(
+         target_num_dofs,
+         layout_name );
+   }
+   else
+   {
+      RunLegacyMassCase< Dim, Order, ThreadLayout >(
+         layout_name,
+         threaded_dimensions,
+         target_num_dofs );
+      RunDeviceMassTargetSweep< Dim, Order, ThreadLayout >(
+         layout_name,
+         target_num_dofs );
+   }
 }
 #endif
 
@@ -739,6 +848,54 @@ void RunMassTensorProductLayouts( const GlobalIndex target_num_dofs )
          ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
             "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>",
             3,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 4 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            4,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 5 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            5,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 6 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            6,
             target_num_dofs );
    }
 #endif
