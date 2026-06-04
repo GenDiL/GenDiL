@@ -7,22 +7,117 @@
 #include "benchmark-common.hpp"
 
 #include <array>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <type_traits>
 
 namespace gendil::benchmarks
 {
 
-#if defined( GENDIL_USE_DEVICE )
-constexpr GlobalIndex global_face_advection_target_dofs = 500'000;
-constexpr GlobalIndex global_face_advection_min_cells = 4'096;
-#else
-constexpr GlobalIndex global_face_advection_target_dofs = 20'000;
-constexpr GlobalIndex global_face_advection_min_cells = 128;
-#endif
-
+constexpr GlobalIndex global_face_advection_smoke_target_dofs =
+   1 * 1024 * 1024;
+constexpr GlobalIndex global_face_advection_performance_target_dofs =
+   32 * 1024 * 1024;
 constexpr Real global_face_advection_correctness_tolerance = 1e-10;
+
+struct GlobalFaceAdvectionBenchmarkOptions
+{
+   GlobalIndex target_num_dofs =
+      global_face_advection_performance_target_dofs;
+};
+
+enum class BenchmarkOptionParseResult
+{
+   run,
+   exit_success,
+   exit_failure
+};
+
+inline void PrintGlobalFaceAdvectionUsage(
+   const char * executable,
+   std::ostream & os )
+{
+   os << "Usage: " << executable
+      << " [--performance] [--smoke] [--target-dofs N]\n"
+      << "  --performance    use the default 32M DoF target\n"
+      << "  --smoke          use a quick 1M DoF target\n"
+      << "  --target-dofs N  use an explicit positive DoF target\n";
+}
+
+inline bool ParsePositiveGlobalIndex(
+   const char * value,
+   GlobalIndex & parsed )
+{
+   if ( value == nullptr || value[ 0 ] == '\0' )
+   {
+      return false;
+   }
+
+   errno = 0;
+   char * end = nullptr;
+   const unsigned long long raw = std::strtoull( value, &end, 10 );
+   if ( errno != 0 || end == value || *end != '\0' || raw == 0 )
+   {
+      return false;
+   }
+   if ( raw > std::numeric_limits< GlobalIndex >::max() )
+   {
+      return false;
+   }
+
+   parsed = static_cast< GlobalIndex >( raw );
+   return true;
+}
+
+inline BenchmarkOptionParseResult ParseGlobalFaceAdvectionBenchmarkOptions(
+   const int argc,
+   char ** argv,
+   GlobalFaceAdvectionBenchmarkOptions & options,
+   std::ostream & os )
+{
+   for ( int i = 1; i < argc; ++i )
+   {
+      if ( std::strcmp( argv[ i ], "--performance" ) == 0 )
+      {
+         options.target_num_dofs =
+            global_face_advection_performance_target_dofs;
+      }
+      else if ( std::strcmp( argv[ i ], "--smoke" ) == 0 )
+      {
+         options.target_num_dofs =
+            global_face_advection_smoke_target_dofs;
+      }
+      else if ( std::strcmp( argv[ i ], "--target-dofs" ) == 0 )
+      {
+         if ( i + 1 >= argc ||
+              !ParsePositiveGlobalIndex(
+                 argv[ i + 1 ],
+                 options.target_num_dofs ) )
+         {
+            PrintGlobalFaceAdvectionUsage( argv[ 0 ], os );
+            return BenchmarkOptionParseResult::exit_failure;
+         }
+         ++i;
+      }
+      else if ( std::strcmp( argv[ i ], "--help" ) == 0 ||
+                std::strcmp( argv[ i ], "-h" ) == 0 )
+      {
+         PrintGlobalFaceAdvectionUsage( argv[ 0 ], os );
+         return BenchmarkOptionParseResult::exit_success;
+      }
+      else
+      {
+         PrintGlobalFaceAdvectionUsage( argv[ 0 ], os );
+         return BenchmarkOptionParseResult::exit_failure;
+      }
+   }
+
+   return BenchmarkOptionParseResult::run;
+}
 
 template <
    typename BaseKernelPolicy,
@@ -44,23 +139,70 @@ using FullSharedFaceDofPolicies =
       FullSharedFaceReadDofsPolicy,
       FullSharedFaceWriteDofsPolicy >;
 
-template < Integer Dim, Integer Order >
-std::array< GlobalIndex, Dim > GlobalFaceAdvectionBenchmarkExtents()
+inline GlobalIndex CeilDivideGlobalIndex(
+   const GlobalIndex numerator,
+   const GlobalIndex denominator )
 {
-   const GlobalIndex cells_from_dofs =
-      global_face_advection_target_dofs / DofsPerElement< Dim, Order >();
-   const GlobalIndex target_cells =
-      cells_from_dofs > global_face_advection_min_cells
-         ? cells_from_dofs
-         : global_face_advection_min_cells;
-   const auto integer_extents = BalancedExtents< Dim >( target_cells );
+   return numerator / denominator +
+      ( numerator % denominator == 0 ? 0 : 1 );
+}
 
+inline GlobalIndex ClampCellExtent( const GlobalIndex extent )
+{
+   return extent == 0 ? 1 : extent;
+}
+
+template < Integer Dim, Integer Order >
+std::array< GlobalIndex, Dim > GlobalFaceAdvectionBenchmarkExtents(
+   const GlobalIndex target_num_dofs )
+{
+   const GlobalIndex dofs_per_cell = DofsPerElement< Dim, Order >();
+   const GlobalIndex target_cells =
+      ClampCellExtent(
+         CeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
    std::array< GlobalIndex, Dim > extents{};
-   for ( Integer d = 0; d < Dim; ++d )
+
+   if constexpr ( Dim == 1 )
    {
-      extents[ d ] =
-         static_cast< GlobalIndex >( integer_extents[ d ] );
+      extents[ 0 ] = target_cells;
    }
+   else if constexpr ( Dim == 2 )
+   {
+      const auto nx =
+         ClampCellExtent(
+            static_cast< GlobalIndex >(
+               std::llround(
+                  std::sqrt(
+                     static_cast< long double >( target_cells ) ) ) ) );
+      extents[ 0 ] = nx;
+      extents[ 1 ] =
+         ClampCellExtent( CeilDivideGlobalIndex( target_cells, nx ) );
+   }
+   else
+   {
+      static_assert( Dim == 3 );
+      const auto nx =
+         ClampCellExtent(
+            static_cast< GlobalIndex >(
+               std::llround(
+                  std::cbrt(
+                     static_cast< long double >( target_cells ) ) ) ) );
+      const GlobalIndex remaining_cells =
+         ClampCellExtent( CeilDivideGlobalIndex( target_cells, nx ) );
+      const auto ny =
+         ClampCellExtent(
+            static_cast< GlobalIndex >(
+               std::llround(
+                  std::sqrt(
+                     static_cast< long double >(
+                        remaining_cells ) ) ) ) );
+      extents[ 0 ] = nx;
+      extents[ 1 ] = ny;
+      extents[ 2 ] =
+         ClampCellExtent(
+            CeilDivideGlobalIndex( remaining_cells, ny ) );
+   }
+
    return extents;
 }
 
@@ -117,6 +259,18 @@ std::array< GlobalIndex, 3 > CountFacesByDirection(
    };
 }
 
+template < Integer Dim >
+std::array< GlobalIndex, 3 > ExtentsAsThreeColumns(
+   const std::array< GlobalIndex, Dim > & extents )
+{
+   std::array< GlobalIndex, 3 > columns{ 1, 1, 1 };
+   for ( Integer d = 0; d < Dim; ++d )
+   {
+      columns[ d ] = extents[ d ];
+   }
+   return columns;
+}
+
 template < typename FaceMeshes >
 GlobalIndex CountGlobalFaces( const FaceMeshes & face_meshes )
 {
@@ -166,8 +320,9 @@ constexpr size_t GlobalFaceAdvectionRequiredSharedMemoryEstimate()
 inline void PrintGlobalFaceAdvectionHeader()
 {
    std::cout
-      << "benchmark,dimension,order,num_quad_1d,num_cells,"
-      << "num_faces_total,num_faces_x,num_faces_y,num_faces_z,num_dofs,"
+      << "benchmark,dimension,order,num_quad_1d,target_num_dofs,"
+      << "actual_num_dofs,num_cells,num_faces_total,num_faces_x,"
+      << "num_faces_y,num_faces_z,num_dofs,extent_x,extent_y,extent_z,"
       << "layout,threaded_dimensions,kernel_family,kernel,face_policy,"
       << "target_threads_per_block,threads_per_work_item,batch_size,"
       << "total_threads_per_block,block_x,block_y,block_z,"
@@ -180,9 +335,11 @@ inline void PrintGlobalFaceAdvectionRow(
    const Integer dim,
    const Integer order,
    const Integer num_quad_1d,
+   const GlobalIndex target_num_dofs,
+   const GlobalIndex actual_num_dofs,
    const GlobalIndex num_cells,
    const std::array< GlobalIndex, 3 > & face_counts,
-   const GlobalIndex num_dofs,
+   const std::array< GlobalIndex, 3 > & extents,
    const char * layout,
    const size_t threaded_dimensions,
    const char * kernel_family,
@@ -228,12 +385,17 @@ inline void PrintGlobalFaceAdvectionRow(
       << dim << ','
       << order << ','
       << num_quad_1d << ','
+      << target_num_dofs << ','
+      << actual_num_dofs << ','
       << num_cells << ','
       << num_faces_total << ','
       << face_counts[ 0 ] << ','
       << face_counts[ 1 ] << ','
       << face_counts[ 2 ] << ','
-      << num_dofs << ','
+      << actual_num_dofs << ','
+      << extents[ 0 ] << ','
+      << extents[ 1 ] << ','
+      << extents[ 2 ] << ','
       << layout << ','
       << threaded_dimensions << ','
       << kernel_family << ','
@@ -262,6 +424,7 @@ template <
    typename ThreadLayout,
    size_t BatchSize >
 void PrintSkippedDeviceGlobalFaceAdvectionRow(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * kernel_family,
@@ -274,14 +437,16 @@ void PrintSkippedDeviceGlobalFaceAdvectionRow(
    static constexpr Integer num_quad_1d = Order + 2;
 
    const auto extents =
-      GlobalFaceAdvectionBenchmarkExtents< Dim, Order >();
+      GlobalFaceAdvectionBenchmarkExtents< Dim, Order >(
+         target_num_dofs );
+   const auto extent_columns = ExtentsAsThreeColumns( extents );
    const GlobalIndex num_cells = Product( extents );
    const auto face_counts = CountFacesByDirection( extents );
    const GlobalIndex num_faces_total =
       face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
    const GlobalIndex element_num_dofs =
       DofsPerElement< Dim, Order >();
-   const GlobalIndex num_dofs =
+   const GlobalIndex actual_num_dofs =
       num_cells * element_num_dofs;
    const GlobalIndex dofs_read_per_apply =
       2 * num_faces_total * element_num_dofs;
@@ -300,9 +465,11 @@ void PrintSkippedDeviceGlobalFaceAdvectionRow(
       Dim,
       Order,
       num_quad_1d,
+      target_num_dofs,
+      actual_num_dofs,
       num_cells,
       face_counts,
-      num_dofs,
+      extent_columns,
       layout_name,
       threaded_dimensions,
       kernel_family,
@@ -522,6 +689,7 @@ template <
    typename KernelPolicy,
    typename ReferenceKernelPolicy >
 void RunGlobalFaceAdvectionKernelPolicy(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * kernel_family,
@@ -533,14 +701,16 @@ void RunGlobalFaceAdvectionKernelPolicy(
    static constexpr Integer num_quad_1d = Order + 2;
 
    const auto extents =
-      GlobalFaceAdvectionBenchmarkExtents< Dim, Order >();
+      GlobalFaceAdvectionBenchmarkExtents< Dim, Order >(
+         target_num_dofs );
+   const auto extent_columns = ExtentsAsThreeColumns( extents );
    const GlobalIndex num_cells = Product( extents );
    const auto face_counts = CountFacesByDirection( extents );
    const GlobalIndex num_faces_total =
       face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
    const GlobalIndex element_num_dofs =
       DofsPerElement< Dim, Order >();
-   const GlobalIndex num_dofs =
+   const GlobalIndex actual_num_dofs =
       num_cells * element_num_dofs;
    const GlobalIndex dofs_read_per_apply =
       2 * num_faces_total * element_num_dofs;
@@ -569,9 +739,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
          Dim,
          Order,
          num_quad_1d,
+         target_num_dofs,
+         actual_num_dofs,
          num_cells,
          face_counts,
-         num_dofs,
+         extent_columns,
          layout_name,
          threaded_dimensions,
          kernel_family,
@@ -611,9 +783,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
          Dim,
          Order,
          num_quad_1d,
+         target_num_dofs,
+         actual_num_dofs,
          num_cells,
          face_counts,
-         num_dofs,
+         extent_columns,
          layout_name,
          threaded_dimensions,
          kernel_family,
@@ -640,9 +814,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
             Dim,
             Order,
             num_quad_1d,
+            target_num_dofs,
+            actual_num_dofs,
             num_cells,
             face_counts,
-            num_dofs,
+            extent_columns,
             layout_name,
             threaded_dimensions,
             kernel_family,
@@ -670,9 +846,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
             Dim,
             Order,
             num_quad_1d,
+            target_num_dofs,
+            actual_num_dofs,
             num_cells,
             face_counts,
-            num_dofs,
+            extent_columns,
             layout_name,
             threaded_dimensions,
             kernel_family,
@@ -697,9 +875,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
             Dim,
             Order,
             num_quad_1d,
+            target_num_dofs,
+            actual_num_dofs,
             num_cells,
             face_counts,
-            num_dofs,
+            extent_columns,
             layout_name,
             threaded_dimensions,
             kernel_family,
@@ -728,7 +908,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
                fe_space,
                face_meshes,
                integration_rule,
-               num_dofs );
+               actual_num_dofs );
 
       if ( !correctness_ok )
       {
@@ -736,9 +916,11 @@ void RunGlobalFaceAdvectionKernelPolicy(
             Dim,
             Order,
             num_quad_1d,
+            target_num_dofs,
+            actual_num_dofs,
             num_cells,
             face_counts,
-            num_dofs,
+            extent_columns,
             layout_name,
             threaded_dimensions,
             kernel_family,
@@ -765,14 +947,16 @@ void RunGlobalFaceAdvectionKernelPolicy(
                fe_space,
                face_meshes,
                integration_rule,
-               num_dofs );
+               actual_num_dofs );
       PrintGlobalFaceAdvectionRow(
          Dim,
          Order,
          num_quad_1d,
+         target_num_dofs,
+         actual_num_dofs,
          num_cells,
          face_counts,
-         num_dofs,
+         extent_columns,
          layout_name,
          threaded_dimensions,
          kernel_family,
@@ -793,13 +977,15 @@ void RunGlobalFaceAdvectionKernelPolicy(
 }
 
 template < Integer Dim, Integer Order >
-void RunSerialGlobalFaceAdvectionCase()
+void RunSerialGlobalFaceAdvectionCase(
+   const GlobalIndex target_num_dofs )
 {
    RunGlobalFaceAdvectionKernelPolicy<
       Dim,
       Order,
       SerialKernelConfiguration,
       SerialKernelConfiguration >(
+         target_num_dofs,
          "ThreadBlockLayout<>",
          0,
          "SerialKernelConfiguration",
@@ -826,6 +1012,7 @@ template <
    typename ThreadLayout,
    template < typename > typename FacePolicyTransform >
 void RunLegacyGlobalFaceAdvectionCase(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy )
@@ -839,6 +1026,7 @@ void RunLegacyGlobalFaceAdvectionCase(
       Order,
       KernelPolicy,
       KernelPolicy >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "ThreadFirstKernelConfiguration",
@@ -854,6 +1042,7 @@ template <
    typename ThreadLayout,
    template < typename > typename FacePolicyTransform >
 void RunDeviceBatch1GlobalFaceAdvectionCase(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy )
@@ -867,6 +1056,7 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
       Order,
       KernelPolicy,
       KernelPolicy >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "DeviceKernelConfigurationBatch1",
@@ -885,6 +1075,7 @@ template <
    size_t TargetThreads,
    bool FullSharedFacePolicy >
 void RunDeviceBatchNGlobalFaceAdvectionCase(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy )
@@ -908,6 +1099,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
          Order,
          ThreadLayout,
          BatchSize >(
+            target_num_dofs,
             layout_name,
             threaded_dimensions,
             "DeviceKernelConfigurationBatchN",
@@ -926,6 +1118,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
          Order,
          ThreadLayout,
          BatchSize >(
+            target_num_dofs,
             layout_name,
             threaded_dimensions,
             "DeviceKernelConfigurationBatchN",
@@ -949,6 +1142,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
          Order,
          KernelPolicy,
          ReferenceKernelPolicy >(
+            target_num_dofs,
             layout_name,
             threaded_dimensions,
             "DeviceKernelConfigurationBatchN",
@@ -966,6 +1160,7 @@ template <
    template < typename > typename FacePolicyTransform,
    size_t TargetThreads >
 void RunDirectGlobalDeviceTarget(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -983,6 +1178,7 @@ void RunDirectGlobalDeviceTarget(
          batch_size,
          TargetThreads,
          false >(
+            target_num_dofs,
             layout_name,
             threaded_dimensions,
             "DirectGlobal" );
@@ -995,6 +1191,7 @@ template <
    typename ThreadLayout,
    template < typename > typename FacePolicyTransform >
 void RunDirectGlobalDeviceTargetSweep(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -1004,7 +1201,7 @@ void RunDirectGlobalDeviceTargetSweep(
       Order,
       ThreadLayout,
       FacePolicyTransform,
-      32 >( layout_name, threaded_dimensions );
+      32 >( target_num_dofs, layout_name, threaded_dimensions );
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 64 >() !=
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 32 >() )
@@ -1014,7 +1211,7 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         64 >( layout_name, threaded_dimensions );
+         64 >( target_num_dofs, layout_name, threaded_dimensions );
    }
 #else
    RunDirectGlobalDeviceTarget<
@@ -1022,7 +1219,7 @@ void RunDirectGlobalDeviceTargetSweep(
       Order,
       ThreadLayout,
       FacePolicyTransform,
-      64 >( layout_name, threaded_dimensions );
+      64 >( target_num_dofs, layout_name, threaded_dimensions );
 #endif
 
    if constexpr (
@@ -1034,7 +1231,7 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         128 >( layout_name, threaded_dimensions );
+         128 >( target_num_dofs, layout_name, threaded_dimensions );
    }
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 256 >() !=
@@ -1045,7 +1242,7 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         256 >( layout_name, threaded_dimensions );
+         256 >( target_num_dofs, layout_name, threaded_dimensions );
    }
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 512 >() !=
@@ -1056,7 +1253,7 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         512 >( layout_name, threaded_dimensions );
+         512 >( target_num_dofs, layout_name, threaded_dimensions );
    }
 }
 
@@ -1065,6 +1262,7 @@ template <
    Integer Order,
    typename ThreadLayout >
 void RunDirectGlobalLayout(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -1073,6 +1271,7 @@ void RunDirectGlobalLayout(
       Order,
       ThreadLayout,
       DefaultFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "DirectGlobal" );
@@ -1081,6 +1280,7 @@ void RunDirectGlobalLayout(
       Order,
       ThreadLayout,
       DefaultFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "DirectGlobal" );
@@ -1089,6 +1289,7 @@ void RunDirectGlobalLayout(
       Order,
       ThreadLayout,
       DefaultFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions );
 }
@@ -1098,6 +1299,7 @@ template <
    Integer Order,
    typename ThreadLayout >
 void RunDirectGlobalRegisterOnlyLayout(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -1106,6 +1308,7 @@ void RunDirectGlobalRegisterOnlyLayout(
       Order,
       ThreadLayout,
       DefaultFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "DirectGlobal" );
@@ -1114,6 +1317,7 @@ void RunDirectGlobalRegisterOnlyLayout(
       Order,
       ThreadLayout,
       DefaultFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions );
 }
@@ -1123,6 +1327,7 @@ template <
    Integer Order,
    typename ThreadLayout >
 void RunFullSharedRepresentativeLayout(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -1131,6 +1336,7 @@ void RunFullSharedRepresentativeLayout(
       Order,
       ThreadLayout,
       FullSharedFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1139,6 +1345,7 @@ void RunFullSharedRepresentativeLayout(
       Order,
       ThreadLayout,
       FullSharedFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1150,6 +1357,7 @@ void RunFullSharedRepresentativeLayout(
       device_warp_size,
       ThreadLayout::GetNumberOfThreads() * device_warp_size,
       true >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1160,6 +1368,7 @@ template <
    Integer Order,
    typename ThreadLayout >
 void RunFullSharedRegisterOnlyRepresentativeLayout(
+   const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
@@ -1168,6 +1377,7 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
       Order,
       ThreadLayout,
       FullSharedFaceDofPolicies >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1179,6 +1389,7 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
       device_warp_size,
       ThreadLayout::GetNumberOfThreads() * device_warp_size,
       true >(
+         target_num_dofs,
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1186,13 +1397,16 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
 #endif
 
 template < Integer Dim, Integer Order >
-void RunGlobalFaceAdvectionTensorProductLayouts()
+void RunGlobalFaceAdvectionTensorProductLayouts(
+   const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_DEVICE )
    RunDirectGlobalRegisterOnlyLayout< Dim, Order, ThreadBlockLayout<> >(
+      target_num_dofs,
       "ThreadBlockLayout<>",
       0 );
    RunDirectGlobalLayout< Dim, Order, ThreadBlockLayout< Order + 2 > >(
+      target_num_dofs,
       "ThreadBlockLayout<num_quad_1d>",
       1 );
 
@@ -1202,6 +1416,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts()
          Dim,
          Order,
          ThreadBlockLayout< Order + 2, Order + 2 > >(
+            target_num_dofs,
             "ThreadBlockLayout<num_quad_1d,num_quad_1d>",
             2 );
    }
@@ -1212,6 +1427,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts()
          Dim,
          Order,
          ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
+            target_num_dofs,
             "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>",
             3 );
    }
@@ -1220,31 +1436,36 @@ void RunGlobalFaceAdvectionTensorProductLayouts()
       Dim,
       Order,
       ThreadBlockLayout<> >(
+      target_num_dofs,
       "ThreadBlockLayout<>",
       0 );
    RunFullSharedRepresentativeLayout<
       Dim,
       Order,
       ThreadBlockLayout< Order + 2 > >(
+         target_num_dofs,
          "ThreadBlockLayout<num_quad_1d>",
          1 );
 #endif
 }
 
 template < Integer Dim, Integer Order >
-void RunGlobalFaceAdvectionOrder()
+void RunGlobalFaceAdvectionOrder(
+   const GlobalIndex target_num_dofs )
 {
-   RunSerialGlobalFaceAdvectionCase< Dim, Order >();
-   RunGlobalFaceAdvectionTensorProductLayouts< Dim, Order >();
+   RunSerialGlobalFaceAdvectionCase< Dim, Order >( target_num_dofs );
+   RunGlobalFaceAdvectionTensorProductLayouts< Dim, Order >(
+      target_num_dofs );
 }
 
 template < Integer Dim >
-void RunGlobalFaceAdvectionDimension()
+void RunGlobalFaceAdvectionDimension(
+   const GlobalIndex target_num_dofs )
 {
-   RunGlobalFaceAdvectionOrder< Dim, 0 >();
-   RunGlobalFaceAdvectionOrder< Dim, 1 >();
-   RunGlobalFaceAdvectionOrder< Dim, 2 >();
-   RunGlobalFaceAdvectionOrder< Dim, 3 >();
+   RunGlobalFaceAdvectionOrder< Dim, 0 >( target_num_dofs );
+   RunGlobalFaceAdvectionOrder< Dim, 1 >( target_num_dofs );
+   RunGlobalFaceAdvectionOrder< Dim, 2 >( target_num_dofs );
+   RunGlobalFaceAdvectionOrder< Dim, 3 >( target_num_dofs );
 }
 
 } // namespace gendil::benchmarks
