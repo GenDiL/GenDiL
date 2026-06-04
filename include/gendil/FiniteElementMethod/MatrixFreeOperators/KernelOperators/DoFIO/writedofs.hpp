@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
@@ -466,6 +468,143 @@ void ThreadedWriteDofs(
 }
 
 template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalSerialWriteDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   static_assert(
+      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in WriteDofs."
+   );
+
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   const auto dofs_sizes = to_array( DofShape{} );
+   auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dofs_sizes,
+         orientation );
+
+   DofLoop< FiniteElementSpace >(
+      [&]( auto... indices )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               local_dofs( indices... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               -local_dofs( indices... ) );
+         }
+         else
+         {
+            oriented_global_dofs( indices... ) = local_dofs( indices... );
+         }
+      }
+   );
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalThreadedWriteDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   static_assert(
+      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in WriteDofs."
+   );
+
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
+
+   using tshape =
+      subsequence_t<
+         DofShape,
+         typename KernelContext::template threaded_dimensions<
+            DofShape::size() > >;
+   using rshape =
+      subsequence_t<
+         DofShape,
+         typename KernelContext::template register_dimensions<
+            DofShape::size() > >;
+
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   const auto dofs_sizes = to_array( DofShape{} );
+   auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dofs_sizes,
+         orientation );
+
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   {
+      UnitLoop< rshape >( [&] ( auto... k )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               oriented_global_dofs( t..., k... ),
+               local_dofs( k... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               oriented_global_dofs( t..., k... ),
+               -local_dofs( k... ) );
+         }
+         else
+         {
+            oriented_global_dofs( t..., k... ) = local_dofs( k... );
+         }
+      });
+   });
+}
+
+template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
@@ -479,13 +618,58 @@ void WriteDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 
@@ -503,13 +687,58 @@ void WriteAddDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 
@@ -527,13 +756,58 @@ void WriteSubDofs(
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 

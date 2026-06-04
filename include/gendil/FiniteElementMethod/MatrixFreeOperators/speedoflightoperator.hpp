@@ -76,14 +76,19 @@ void SoLExplicitOperator(
    const DofsIn & dofs_in,
    DofsOut & dofs_out )
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
-
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem = 0;
+         constexpr size_t shared_memory_block_size =
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size;
+         GENDIL_SHARED Real _shared_mem[
+            shared_memory_block_size == 0
+               ? 1
+               : shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 

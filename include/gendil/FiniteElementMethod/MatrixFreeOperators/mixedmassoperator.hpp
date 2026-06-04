@@ -134,15 +134,23 @@ void MixedMassExplicitOperator(
    const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
-
    // Assumes same underlying mesh for trial_fe_space and test_fe_space
    mesh::CellIterator< KernelConfiguration >(
       trial_fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index )
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            Max(
+               required_shared_memory_v<
+                  KernelConfiguration,
+                  IntegrationRule >,
+               TrialFiniteElementSpace::finite_element_type::GetNumDofs(),
+               TestFiniteElementSpace::finite_element_type::GetNumDofs()
+            );
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 

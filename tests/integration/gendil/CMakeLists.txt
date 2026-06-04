@@ -3,6 +3,14 @@ add_non_cuda_test(test-mass-3d-generic test-mass-3d-generic.cpp)
 if(USE_CUDA OR USE_HIP)
   add_my_test(test-batched-mass-operator test-batched-mass-operator.cpp)
   add_my_test(
+    test-batched-speed-of-light-operator
+    test-batched-speed-of-light-operator.cpp
+  )
+  add_my_test(
+    test-batched-mixed-mass-operator
+    test-batched-mixed-mass-operator.cpp
+  )
+  add_my_test(
     test-batched-l2-projection-operator
     test-batched-l2-projection-operator.cpp
   )
@@ -37,6 +45,8 @@ if(USE_CUDA OR USE_HIP)
   )
   set_tests_properties(
     test-batched-mass-operator
+    test-batched-speed-of-light-operator
+    test-batched-mixed-mass-operator
     test-batched-l2-projection-operator
     test-batched-l2-error
     test-batched-mass-inverse-operator

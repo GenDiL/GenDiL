@@ -60,12 +60,14 @@ struct DirectGlobalSerialKernelConfiguration :
    public HostKernelConfiguration
 {
    using face_read_dofs_policy = DirectGlobalFaceReadDofsPolicy;
+   using face_write_dofs_policy = DirectGlobalFaceWriteDofsPolicy;
 };
 
 struct FullSharedSerialKernelConfiguration :
    public HostKernelConfiguration
 {
    using face_read_dofs_policy = FullSharedFaceReadDofsPolicy;
+   using face_write_dofs_policy = FullSharedFaceWriteDofsPolicy;
 };
 
 template < Integer SpaceDim, typename FiniteElement >
@@ -588,6 +590,205 @@ bool RunScalarWriteDofsSupportedCase(
    return success;
 }
 
+template < WriteOp Op,
+           typename KernelContext,
+           typename Space,
+           typename Face,
+           typename LocalDofs,
+           typename GlobalDofs >
+void ApplyFaceWriteOp(
+   KernelContext & context,
+   const Space & fe_space,
+   const Face & face,
+   const LocalDofs & local_dofs,
+   GlobalDofs & global_dofs )
+{
+   if constexpr ( Op == WriteAdd )
+   {
+      WriteAddDofs(
+         context,
+         fe_space,
+         face,
+         local_dofs,
+         global_dofs );
+   }
+   else if constexpr ( Op == WriteSub )
+   {
+      WriteSubDofs(
+         context,
+         fe_space,
+         face,
+         local_dofs,
+         global_dofs );
+   }
+   else
+   {
+      WriteDofs(
+         context,
+         fe_space,
+         face,
+         local_dofs,
+         global_dofs );
+   }
+}
+
+template < WriteOp Op >
+const char * WriteOpName()
+{
+   if constexpr ( Op == WriteAdd )
+   {
+      return "WriteAddDofs";
+   }
+   else if constexpr ( Op == WriteSub )
+   {
+      return "WriteSubDofs";
+   }
+   else
+   {
+      return "WriteDofs";
+   }
+}
+
+template < WriteOp Op, typename Space >
+bool RunScalarWriteDofsPolicyEquivalenceOpCase(
+   const char * case_name,
+   const std::vector< Permutation< Space::Dim > > & orientations )
+{
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using DofShape = orders_to_num_dofs< typename ShapeFunctions::orders >;
+   constexpr Integer dim = Space::Dim;
+   constexpr GlobalIndex num_elements = 2;
+   constexpr GlobalIndex element_index = 1;
+
+   const auto dof_sizes = to_array( DofShape{} );
+   std::array< GlobalIndex, dim + 1 > global_sizes{};
+   GlobalIndex num_values = num_elements;
+   for ( Integer i = 0; i < dim; ++i )
+   {
+      global_sizes[ i ] = static_cast< GlobalIndex >( dof_sizes[ i ] );
+      num_values *= global_sizes[ i ];
+   }
+   global_sizes[ dim ] = num_elements;
+
+   Space fe_space{};
+   Real * no_shared_memory = nullptr;
+   KernelContext< FullSharedSerialKernelConfiguration, 0 >
+      full_shared_context( no_shared_memory );
+   KernelContext< HostKernelConfiguration, 0 >
+      default_direct_context( no_shared_memory );
+
+   bool success = true;
+   Integer num_failures_reported = 0;
+   for ( const auto & orientation : orientations )
+   {
+      if ( !OrientedTensorDofShapeIsCompatible(
+              dof_sizes,
+              orientation ) )
+      {
+         success = false;
+         std::cout
+            << "Scalar write policy equivalence case was given unsupported "
+            << "orientation in " << case_name << ": orientation=";
+         PrintOrientation( orientation );
+         std::cout << "\n";
+         continue;
+      }
+
+      std::vector< Real > full_shared_data( num_values );
+      std::vector< Real > direct_global_data( num_values );
+      for ( GlobalIndex i = 0; i < num_values; ++i )
+      {
+         const Real baseline =
+            -1000.0 + 0.25 * static_cast< Real >( i + 1 );
+         full_shared_data[ i ] = baseline;
+         direct_global_data[ i ] = baseline;
+      }
+
+      auto full_shared_global_dofs =
+         MakeGlobalDofView< Space >( full_shared_data, global_sizes );
+      auto direct_global_dofs =
+         MakeGlobalDofView< Space >( direct_global_data, global_sizes );
+      auto local_dofs = MakeSerialRecursiveArray< Real >( DofShape{} );
+
+      UnitLoop< DofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, dim > reference_indices{
+            static_cast< GlobalIndex >( k )... };
+         local_dofs( k... ) =
+            IndexEncodedValue( reference_indices, 0 );
+      });
+
+      const TestFaceView< dim > face{ element_index, orientation };
+      ApplyFaceWriteOp< Op >(
+         full_shared_context,
+         fe_space,
+         face,
+         local_dofs,
+         full_shared_global_dofs );
+      ApplyFaceWriteOp< Op >(
+         default_direct_context,
+         fe_space,
+         face,
+         local_dofs,
+         direct_global_dofs );
+
+      for ( GlobalIndex i = 0; i < num_values; ++i )
+      {
+         const Real full_value = full_shared_data[ i ];
+         const Real direct_value = direct_global_data[ i ];
+         if ( std::abs( full_value - direct_value ) > 1e-12 )
+         {
+            success = false;
+            if ( num_failures_reported < 8 )
+            {
+               ++num_failures_reported;
+               std::cout
+                  << WriteOpName< Op >()
+                  << " policy mismatch in " << case_name
+                  << ": orientation=";
+               PrintOrientation( orientation );
+               std::cout << ", flat_index=" << i
+                         << ", FullShared=" << full_value
+                         << ", DirectGlobal=" << direct_value
+                         << "\n";
+            }
+         }
+      }
+   }
+
+   if ( success )
+   {
+      std::cout << "PASS scalar " << WriteOpName< Op >()
+                << " policy equivalence: " << case_name << "\n";
+   }
+   return success;
+}
+
+template < typename Space >
+bool RunScalarWriteDofsPolicyEquivalenceCase(
+   const char * case_name,
+   const std::vector< Permutation< Space::Dim > > & orientations )
+{
+   bool success = true;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceOpCase< Write, Space >(
+         case_name,
+         orientations ) &&
+      success;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceOpCase< WriteAdd, Space >(
+         case_name,
+         orientations ) &&
+      success;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceOpCase< WriteSub, Space >(
+         case_name,
+         orientations ) &&
+      success;
+   return success;
+}
+
 template < typename DofShape >
 bool RunUnsupportedOrientationCase(
    const char * case_name,
@@ -641,6 +842,21 @@ int main()
          face_read_dofs_policy_t< DirectGlobalSerialKernelConfiguration >,
          DirectGlobalFaceReadDofsPolicy >,
       "Explicit DirectGlobal face ReadDofs override should be preserved." );
+   static_assert(
+      std::is_same_v<
+         face_write_dofs_policy_t< HostKernelConfiguration >,
+         DirectGlobalFaceWriteDofsPolicy >,
+      "Default scalar face WriteDofs policy should be DirectGlobal." );
+   static_assert(
+      std::is_same_v<
+         face_write_dofs_policy_t< FullSharedSerialKernelConfiguration >,
+         FullSharedFaceWriteDofsPolicy >,
+      "Explicit FullShared face WriteDofs override should be preserved." );
+   static_assert(
+      std::is_same_v<
+         face_write_dofs_policy_t< DirectGlobalSerialKernelConfiguration >,
+         DirectGlobalFaceWriteDofsPolicy >,
+      "Explicit DirectGlobal face WriteDofs override should be preserved." );
 
    using Shape1D =
       TensorShapeFunctions<
@@ -792,6 +1008,27 @@ int main()
       success;
    success =
       RunScalarWriteDofsSupportedCase< Space2DEqual >(
+         "2D equal-extent swaps shape (4,4)",
+         equal_extent_swaps ) &&
+      success;
+
+   success =
+      RunScalarWriteDofsPolicyEquivalenceCase< Space1D >(
+         "1D identity and flip shape (4)",
+         orientations_1d ) &&
+      success;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceCase< Space2D >(
+         "2D anisotropic identity shape (3,4)",
+         anisotropic_2d_identity ) &&
+      success;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceCase< Space2DEqual >(
+         "2D equal-extent identity/flips shape (4,4)",
+         equal_extent_identity_flips ) &&
+      success;
+   success =
+      RunScalarWriteDofsPolicyEquivalenceCase< Space2DEqual >(
          "2D equal-extent swaps shape (4,4)",
          equal_extent_swaps ) &&
       success;

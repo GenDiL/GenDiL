@@ -22,6 +22,14 @@ struct DirectGlobalFaceReadDofsPolicy
 {
 };
 
+struct FullSharedFaceWriteDofsPolicy
+{
+};
+
+struct DirectGlobalFaceWriteDofsPolicy
+{
+};
+
 template < typename KernelConfiguration, typename = void >
 struct face_read_dofs_policy
 {
@@ -39,6 +47,25 @@ struct face_read_dofs_policy<
 template < typename KernelConfiguration >
 using face_read_dofs_policy_t =
    typename face_read_dofs_policy<
+      std::remove_cvref_t< KernelConfiguration > >::type;
+
+template < typename KernelConfiguration, typename = void >
+struct face_write_dofs_policy
+{
+   using type = DirectGlobalFaceWriteDofsPolicy;
+};
+
+template < typename KernelConfiguration >
+struct face_write_dofs_policy<
+   KernelConfiguration,
+   std::void_t< typename KernelConfiguration::face_write_dofs_policy > >
+{
+   using type = typename KernelConfiguration::face_write_dofs_policy;
+};
+
+template < typename KernelConfiguration >
+using face_write_dofs_policy_t =
+   typename face_write_dofs_policy<
       std::remove_cvref_t< KernelConfiguration > >::type;
 
 /**
@@ -179,7 +206,7 @@ struct OrientedGlobalDofView
 
    template < typename... Indices >
    GENDIL_HOST_DEVICE GENDIL_INLINE
-   decltype(auto) operator()( Indices... indices ) const
+   FaceReadDofsSignedIndex Offset( Indices... indices ) const
    {
       static_assert(
          sizeof...( Indices ) == Dim,
@@ -191,6 +218,22 @@ struct OrientedGlobalDofView
              static_cast< FaceReadDofsSignedIndex >( indices ) *
              strides[ axis++ ] ), ... );
 
+      return offset;
+   }
+
+   template < typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   decltype(auto) operator()( Indices... indices )
+   {
+      const FaceReadDofsSignedIndex offset = Offset( indices... );
+      return global_dofs.data[ static_cast< GlobalIndex >( offset ) ];
+   }
+
+   template < typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   decltype(auto) operator()( Indices... indices ) const
+   {
+      const FaceReadDofsSignedIndex offset = Offset( indices... );
       return global_dofs.data[ static_cast< GlobalIndex >( offset ) ];
    }
 };
