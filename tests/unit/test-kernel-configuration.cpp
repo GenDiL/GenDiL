@@ -18,6 +18,16 @@ struct KernelPolicyWithFaceReadPolicy : public BaseKernelPolicy
    using face_read_dofs_policy = FaceReadPolicy;
 };
 
+template <
+   typename BaseKernelPolicy,
+   typename FaceReadPolicy,
+   typename FaceWritePolicy >
+struct KernelPolicyWithFacePolicies : public BaseKernelPolicy
+{
+   using face_read_dofs_policy = FaceReadPolicy;
+   using face_write_dofs_policy = FaceWritePolicy;
+};
+
 bool Check( bool condition, const char * message )
 {
    if ( !condition )
@@ -265,6 +275,36 @@ int main( int, char ** )
       face_speed_of_light_required_shared_memory_v<
          FaceSoLType::ReadCell,
          FullSharedThreadedLayout,
+         FaceSharedMemoryCheckSpace > ==
+      FaceSharedMemoryCheckSpace::finite_element_type::GetNumDofs() );
+
+   using FullSharedFaceEmptyLayout =
+      KernelPolicyWithFacePolicies<
+         DirectGlobalEmptyLayout,
+         FullSharedFaceReadDofsPolicy,
+         FullSharedFaceWriteDofsPolicy >;
+   using DirectGlobalFaceThreadedLayout =
+      DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 2 >;
+   using FullSharedFaceThreadedLayout =
+      KernelPolicyWithFacePolicies<
+         DirectGlobalFaceThreadedLayout,
+         FullSharedFaceReadDofsPolicy,
+         FullSharedFaceWriteDofsPolicy >;
+   static_assert(
+      global_face_speed_of_light_required_shared_memory_v<
+         DirectGlobalEmptyLayout,
+         FaceSharedMemoryCheckSpace > == 0 );
+   static_assert(
+      global_face_speed_of_light_required_shared_memory_v<
+         FullSharedFaceEmptyLayout,
+         FaceSharedMemoryCheckSpace > == 0 );
+   static_assert(
+      global_face_speed_of_light_required_shared_memory_v<
+         DirectGlobalFaceThreadedLayout,
+         FaceSharedMemoryCheckSpace > == 0 );
+   static_assert(
+      global_face_speed_of_light_required_shared_memory_v<
+         FullSharedFaceThreadedLayout,
          FaceSharedMemoryCheckSpace > ==
       FaceSharedMemoryCheckSpace::finite_element_type::GetNumDofs() );
 

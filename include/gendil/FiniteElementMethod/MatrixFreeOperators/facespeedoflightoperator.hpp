@@ -64,6 +64,56 @@ inline constexpr size_t face_speed_of_light_required_shared_memory_v =
       KernelConfiguration,
       FiniteElementSpace >::value;
 
+template <
+   typename KernelConfiguration,
+   typename FiniteElementSpace >
+struct GlobalFaceSpeedOfLightRequiredSharedMemory
+{
+private:
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceReadPolicy =
+      face_read_dofs_policy_t< KernelConfiguration >;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t< KernelConfiguration >;
+
+   static constexpr bool is_threaded =
+      is_threaded_v< KernelConfiguration >;
+   static constexpr bool scalar_dofs =
+      !is_vector_shape_functions_v< ShapeFunctions >;
+   static constexpr bool direct_global_read =
+      std::is_same_v<
+         FaceReadPolicy,
+         DirectGlobalFaceReadDofsPolicy >;
+   static constexpr bool direct_global_write =
+      scalar_dofs &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
+   static constexpr size_t read_requirement =
+      !is_threaded || direct_global_read
+         ? 0
+         : FiniteElementSpace::finite_element_type::GetNumDofs();
+   static constexpr size_t write_requirement =
+      !is_threaded || direct_global_write
+         ? 0
+         : FiniteElementSpace::finite_element_type::GetNumDofs();
+   static constexpr size_t local_scratch_requirement = 0;
+
+public:
+   static constexpr size_t value =
+      Max( read_requirement, write_requirement, local_scratch_requirement );
+};
+
+template <
+   typename KernelConfiguration,
+   typename FiniteElementSpace >
+inline constexpr size_t global_face_speed_of_light_required_shared_memory_v =
+   GlobalFaceSpeedOfLightRequiredSharedMemory<
+      KernelConfiguration,
+      FiniteElementSpace >::value;
+
 /**
  * @brief Implementation of the "face" speed-of-light operator at the element level.
  * 
@@ -172,14 +222,22 @@ void FaceSpeedOfLightExplicitFaceOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
-
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
       {
-         constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            global_face_speed_of_light_required_shared_memory_v<
+               KernelConfiguration,
+               FiniteElementSpace >;
+         constexpr size_t shared_memory_block_size =
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size;
+         GENDIL_SHARED Real _shared_mem[
+            shared_memory_block_size == 0
+               ? 1
+               : shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
@@ -289,8 +347,6 @@ void GlobalFaceSpeedOfLightExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
-
    mesh::ForEachFaceMesh(
       face_meshes,
       [&] ( const auto & face_mesh ) mutable

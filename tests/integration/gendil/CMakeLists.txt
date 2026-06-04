@@ -7,6 +7,10 @@ if(USE_CUDA OR USE_HIP)
     test-batched-speed-of-light-operator.cpp
   )
   add_my_test(
+    test-batched-global-face-speed-of-light-operator
+    test-batched-global-face-speed-of-light-operator.cpp
+  )
+  add_my_test(
     test-batched-mixed-mass-operator
     test-batched-mixed-mass-operator.cpp
   )
@@ -46,6 +50,7 @@ if(USE_CUDA OR USE_HIP)
   set_tests_properties(
     test-batched-mass-operator
     test-batched-speed-of-light-operator
+    test-batched-global-face-speed-of-light-operator
     test-batched-mixed-mass-operator
     test-batched-l2-projection-operator
     test-batched-l2-error
