@@ -5,7 +5,11 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writeaddquadraturelocalvalues.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writequadraturelocalvalues.hpp"
 
 namespace gendil
 {
@@ -34,7 +38,8 @@ auto SerialAggregateDimensions(
       // auto sub_quad_index = qud_index.template Sub< 0, TestDim >();
       auto sub_quad_index = GetSubIndex< Dims ... >( quad_index );
 
-      WriteAddQuadratureLocalValues( kernel_conf, sub_quad_index, u_q, v );
+      const Real v_q = ReadQuadratureLocalValues( kernel_conf, sub_quad_index, v );
+      WriteQuadratureLocalValues( kernel_conf, sub_quad_index, v_q + u_q, v );
    });
 
    return v;
@@ -49,7 +54,7 @@ template <
    typename Input >
 GENDIL_HOST_DEVICE
 auto ThreadedAggregateDimensions(
-   const KernelConf & kernel_conf,
+   KernelConf & kernel_conf,
    const Input & u
 )
 {
@@ -88,13 +93,14 @@ template <
    typename Input >
 GENDIL_HOST_DEVICE
 auto AggregateDimensions(
-   const KernelConf & kernel_conf,
+   KernelConf & kernel_conf,
    const Input & u,
    std::index_sequence< Dims ... >
 )
 {
-   if constexpr ( is_serial_v< KernelConf > )
+   if constexpr ( !is_threaded_v< KernelConf > )
    {
+      // Register-only configurations have no shared-memory aggregation dimensions.
       return SerialAggregateDimensions< TrialIntegrationRule, TestIntegrationRule, Dims... >( kernel_conf, u );
    }
    else

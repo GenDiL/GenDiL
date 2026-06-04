@@ -24,6 +24,7 @@ option(USE_CUDA "Enables CUDA support." OFF)
 option(USE_HIP "Enables HIP support." OFF)
 option(USE_RAJA "Enables RAJA features." OFF)
 option(USE_CALIPER "Enables Caliper interface for benchmarking." OFF)
+option(GENDIL_ENABLE_BENCHMARKS "Build GenDiL benchmark executables" OFF)
 
 add_library(GENDIL INTERFACE)
 
@@ -196,5 +197,7 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/gendil DESTINATION include)
 
 enable_testing()
 add_subdirectory(tests)
-add_subdirectory(benchmarks)
+if(GENDIL_ENABLE_BENCHMARKS)
+  add_subdirectory(benchmarks)
+endif()
 add_subdirectory(examples)

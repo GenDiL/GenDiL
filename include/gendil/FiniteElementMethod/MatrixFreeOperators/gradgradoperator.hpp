@@ -38,7 +38,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void GradGradElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
@@ -97,14 +97,21 @@ void GradGradExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
+   // This is a cell-volume operator only. The face data arguments are inherited
+   // wrapper plumbing and are intentionally unused here.
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v< KernelConfiguration, IntegrationRule >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         KernelContext< KernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
 
          GradGradElementOperator< IntegrationRule >(
             kernel_conf,

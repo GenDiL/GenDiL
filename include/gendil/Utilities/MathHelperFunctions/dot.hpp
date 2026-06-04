@@ -7,7 +7,8 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
-#include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
 #include "gendil/Algebra/vector.hpp"
 
@@ -80,23 +81,27 @@ T Dot( const SerialRecursiveArray< T, Dims... > & u, const SerialRecursiveArray<
 
 template < typename KernelContext, typename Sizes, typename Container >
 GENDIL_HOST_DEVICE
-Real Dot( const KernelContext & kernel_conf, const ThreadedView< Sizes, KernelContext, Container > & u, const ThreadedView< Sizes, KernelContext, Container > & v )
+Real Dot( KernelContext & kernel_conf, const ThreadedView< Sizes, KernelContext, Container > & u, const ThreadedView< Sizes, KernelContext, Container > & v )
 {
    #ifdef GENDIL_DEVICE_CODE
-   if constexpr ( !is_serial_v< KernelContext > )
+   if constexpr ( is_threaded_v< KernelContext > )
    {
-      // !FIXME Assumes batch_size = 1
-      GENDIL_SHARED Real res; // TODO Use context shared memory
-      if( kernel_conf.GetLinearThreadIndex() == 0 ) res = 0.0;
-      GENDIL_SYNC_THREADS();
+      auto mark = kernel_conf.SharedAllocator.mark();
+      Real * res = kernel_conf.SharedAllocator.allocate( 1 );
+
+      if( kernel_conf.GetLinearThreadIndex() == 0 ) *res = 0.0;
+      kernel_conf.Sync();
       using tshape = subsequence_t< Sizes, typename KernelContext::template threaded_dimensions< Sizes::size() > >;
       ThreadLoop< tshape >( kernel_conf, [&] ( auto... t )
       {
          Real local_res = Dot( u.data, v.data );
-         AtomicAdd( res, local_res );
+         AtomicAdd( *res, local_res );
       });
-      GENDIL_SYNC_THREADS();
-      return res;
+      kernel_conf.Sync();
+      Real result = *res;
+      kernel_conf.Sync();
+      kernel_conf.SharedAllocator.restore( mark );
+      return result;
    }
    else
    #endif
@@ -104,6 +109,10 @@ Real Dot( const KernelContext & kernel_conf, const ThreadedView< Sizes, KernelCo
       return Dot( u.data, v.data );
    }
 }
+
+template < typename KernelConfiguration >
+static constexpr size_t required_threaded_dot_shared_memory_v =
+   is_device_configuration_v< KernelConfiguration > ? 1 : 0;
 
 Real Dot( const Vector & u, const Vector & v )
 {

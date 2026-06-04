@@ -11,6 +11,7 @@
 #include "gendil/Utilities/IndexSequenceHelperFunctions/indexsequencehelperfunctions.hpp"
 #include "gendil/Utilities/VariadicHelperFunctions/variadichelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 
 namespace gendil
 {
@@ -43,7 +44,11 @@ namespace GradHelperFunctions
                value += g * sx_view( q );
             }
 
-            Gu( j..., ActiveDim ) = value;
+            auto idx = std::tuple_cat(
+               std::tie( j... ),
+               std::forward< SliceIndexTuple >( slice_index ),
+               std::make_tuple( ActiveDim ) );
+            std::apply( Gu, idx ) = value;
          });
       });
    }
@@ -94,7 +99,7 @@ namespace GradHelperFunctions
 template < typename KernelContext, typename ProductOperator, typename InputTensor, typename OutputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateGradientAtQPointsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & uq,
    OutputTensor & Gu )
@@ -109,6 +114,9 @@ void InterpolateGradientAtQPointsThreaded(
    constexpr Integer RegisterBlockDim = Dim - ThreadBlockDim;
 
    using quad_shape = make_contraction_output_shape< ProductOperator >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, quad_shape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
 
 // Threading Strategy
    using ThreadedDimensions = typename KernelContext::template threaded_dimensions< Dim >;
@@ -169,18 +177,25 @@ void InterpolateGradientAtQPointsThreaded(
       });
    });
 
+   thread.Synchronize();
    thread.SharedAllocator.reset();
 }
 
 template < typename KernelContext, typename ProductOperator, typename InputTensor, typename OutputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateGradientThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u,
    OutputTensor & Gu )
 {
    constexpr bool face_interp = is_face_interpolation_v< ProductOperator >;
+   using dof_shape = make_contraction_input_shape< ProductOperator >;
+   using quad_shape = make_contraction_output_shape< ProductOperator >;
+   using helper_shape = max_sequence_t< dof_shape, quad_shape >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, helper_shape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
 
    if constexpr ( face_interp )
    {

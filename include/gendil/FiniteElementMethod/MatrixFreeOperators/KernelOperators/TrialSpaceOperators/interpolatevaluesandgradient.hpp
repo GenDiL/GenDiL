@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolategradient.hpp"
@@ -52,7 +53,7 @@ void InterpolateValuesAndGradients(
 template < typename KernelContext, typename ProductOperator, typename InputTensor >
 GENDIL_HOST_DEVICE
 void InterpolateValuesAndGradients(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & u )
 {
@@ -65,9 +66,9 @@ void InterpolateValuesAndGradients(
    auto Bu = MakeStaticFIFOView< Real >( rshape{} );
    auto Gu = MakeStaticFIFOView< Real >( shape{} );
 
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // serial interpolation
+      // Register-only configurations have no shared-memory staging dimensions.
       InterpolateValuesAndGradients( element_quad_data, u, Bu, Gu );
    }
    else

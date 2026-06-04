@@ -42,7 +42,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MassAdvectionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const GlobalIndex element_index,
@@ -151,7 +151,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MassAdvectionFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,
@@ -272,6 +272,8 @@ void MassAdvectionExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable

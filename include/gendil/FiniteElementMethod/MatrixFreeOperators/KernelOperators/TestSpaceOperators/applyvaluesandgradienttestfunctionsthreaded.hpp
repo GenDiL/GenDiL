@@ -19,7 +19,7 @@ template <
    typename... OutputTypes >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctionsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const std::tuple<ValueInputTypes...> & values_tuple,
    const std::tuple<GradientInputTypes...> & gradients_tuple,
@@ -62,7 +62,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctionsThreaded(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const ValuesInput & Duq,
    const GradientsInput & DGuq,

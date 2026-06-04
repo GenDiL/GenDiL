@@ -64,7 +64,7 @@ template <
    typename ElementDofsOut >
 GENDIL_HOST_DEVICE
 void GenericCellIntegrandOperator(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const ElementContext & element_context,
@@ -97,7 +97,7 @@ void GenericCellIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             auto quad_pt_context = MakeQuadraturePointContext(
                kernel_context,
@@ -145,7 +145,7 @@ template <
    typename ElementDofsOut >
 GENDIL_HOST_DEVICE
 void GenericCellIntegrandOperator(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const ElementContext & element_context,
@@ -193,7 +193,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -234,7 +234,7 @@ void GenericInteriorFacetIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          face_integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             // Use minus_side which satisfies CellFaceView concept
             // GetReferenceNormal() comes from minus_side
@@ -290,7 +290,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -335,7 +335,7 @@ template<
    typename MinusElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericInteriorFacetOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -349,7 +349,7 @@ void GenericInteriorFacetOperator(
    InteriorFaceLoop(
       trial_space,
       element_context.element_index,
-      [&] GENDIL_HOST_DEVICE (auto const & face_info)
+      [&] (auto const & face_info)
       {
          // Read plus-side DOFs inside face loop (neighbor element)
          auto plus_dofs_in = ReadDofs(
@@ -393,7 +393,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -431,7 +431,7 @@ void GenericBoundaryFacetIntegrandOperator(
       QuadraturePointLoop(
          kernel_context,
          face_integration_rule,
-         [&] GENDIL_HOST_DEVICE (const auto& quad_index)
+         [&] (const auto& quad_index)
          {
             // Create FACET context (NOT base QuadraturePointContext)
             auto facet_quad_pt_context = MakeFacetQuadraturePointContext(
@@ -484,7 +484,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetIntegrandOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -526,7 +526,7 @@ template<
    typename ElementDofsOut>
 GENDIL_HOST_DEVICE
 void GenericBoundaryFacetOperator(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
@@ -538,7 +538,7 @@ void GenericBoundaryFacetOperator(
    BoundaryFaceLoop(
       trial_space,
       element_context.element_index,
-      [&] GENDIL_HOST_DEVICE (auto const & face_info)
+      [&] (auto const & face_info)
       {
          GenericBoundaryFacetIntegrandOperator(
             kernel_context,
@@ -575,6 +575,8 @@ void GenericExplicitOperator(
   const DofsInView& dofs_in,
   DofsOutView& dofs_out)
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
+
    using I = std::remove_cvref_t<WeakForm>;
 
    constexpr auto TrialName = requirements<I>::trial_name;
@@ -595,6 +597,11 @@ void GenericExplicitOperator(
       trial_space,
       [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
       {
+         // CUDA fix
+         (void)wf_ctx;
+         (void)op_ctx;
+         (void)weak_form;
+
          GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
          KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
 

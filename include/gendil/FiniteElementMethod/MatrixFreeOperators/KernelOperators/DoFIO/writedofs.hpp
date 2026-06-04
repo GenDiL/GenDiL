@@ -4,13 +4,18 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
 
 namespace gendil {
 
@@ -68,7 +73,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void SerialWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -115,13 +120,16 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void ThreadedWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
@@ -160,13 +168,13 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteScalarDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return SerialWriteDofs<Add>( thread, fe_space, element_index, x, global_dofs );
    }
@@ -184,7 +192,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofsSerial(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -228,7 +236,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofsThreaded(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & local_dofs,
@@ -263,13 +271,13 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteVectorDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
    GlobalTensor & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return WriteVectorDofsSerial<Add>( thread, fe_space, element_index, x, global_dofs );
    }
@@ -290,7 +298,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE inline
 void WriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -313,7 +321,7 @@ template <
    typename GlobalTensor >
 GENDIL_HOST_DEVICE
 void WriteAddDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    GlobalIndex element_index,
    const LocalTensor & x,
@@ -345,7 +353,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void SerialWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
@@ -357,6 +365,10 @@ void SerialWriteDofs(
    );
 
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   using DofShape = rshape;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    Real data[ data_size ];
 
@@ -372,7 +384,6 @@ void SerialWriteDofs(
    );
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 
    const GlobalIndex element_index = face_info.GetCellIndex();
@@ -398,7 +409,7 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void ThreadedWriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
@@ -410,8 +421,13 @@ void ThreadedWriteDofs(
    );
 
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
    GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
@@ -430,7 +446,6 @@ void ThreadedWriteDofs(
    thread.Synchronize();
 
    // Apply orientation
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
    auto dofs_sizes = GetDofsSizes( typename FiniteElementSpace::finite_element_type::shape_functions{} );
    auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
 
@@ -453,6 +468,143 @@ void ThreadedWriteDofs(
 }
 
 template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalSerialWriteDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   static_assert(
+      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in WriteDofs."
+   );
+
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   const auto dofs_sizes = to_array( DofShape{} );
+   auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dofs_sizes,
+         orientation );
+
+   DofLoop< FiniteElementSpace >(
+      [&]( auto... indices )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               local_dofs( indices... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               -local_dofs( indices... ) );
+         }
+         else
+         {
+            oriented_global_dofs( indices... ) = local_dofs( indices... );
+         }
+      }
+   );
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalThreadedWriteDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   static_assert(
+      get_rank_v< GlobalDofsType > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in WriteDofs."
+   );
+
+   using DofShape =
+      orders_to_num_dofs<
+         typename FiniteElementSpace::finite_element_type::
+            shape_functions::orders >;
+   static_assert(
+      threaded_shape_covered_v< KernelContext, DofShape >,
+      "Under-threaded strided coverage is not supported by this threaded helper yet." );
+
+   using tshape =
+      subsequence_t<
+         DofShape,
+         typename KernelContext::template threaded_dimensions<
+            DofShape::size() > >;
+   using rshape =
+      subsequence_t<
+         DofShape,
+         typename KernelContext::template register_dimensions<
+            DofShape::size() > >;
+
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   const auto dofs_sizes = to_array( DofShape{} );
+   auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dofs_sizes,
+         orientation );
+
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
+   {
+      UnitLoop< rshape >( [&] ( auto... k )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               oriented_global_dofs( t..., k... ),
+               local_dofs( k... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               oriented_global_dofs( t..., k... ),
+               -local_dofs( k... ) );
+         }
+         else
+         {
+            oriented_global_dofs( t..., k... ) = local_dofs( k... );
+         }
+      });
+   });
+}
+
+template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
@@ -460,19 +612,64 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<Write>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<Write>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 
@@ -484,19 +681,64 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteAddDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<WriteAdd>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<WriteAdd>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 
@@ -508,19 +750,64 @@ template <
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
 void WriteSubDofs(
-   const KernelContext & thread,
+   KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
    const LocalDofsType & local_dofs,
    GlobalDofsType & global_dofs )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using FaceWritePolicy =
+      face_write_dofs_policy_t<
+         typename KernelContext::kernel_configuration_type >;
+   constexpr bool use_direct_global =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      std::is_same_v<
+         FaceWritePolicy,
+         DirectGlobalFaceWriteDofsPolicy >;
+
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      SerialWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalSerialWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         SerialWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
    else
    {
-      ThreadedWriteDofs<WriteSub>( thread, fe_space, face_info, local_dofs, global_dofs );
+      if constexpr ( use_direct_global )
+      {
+         DirectGlobalThreadedWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
+      else
+      {
+         ThreadedWriteDofs<WriteSub>(
+            thread,
+            fe_space,
+            face_info,
+            local_dofs,
+            global_dofs );
+      }
    }
 }
 

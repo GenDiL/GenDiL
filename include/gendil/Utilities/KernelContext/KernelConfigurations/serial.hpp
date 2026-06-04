@@ -4,11 +4,11 @@
 
 #pragma once
 
-#include "gendil/Utilities/KernelContext/KernelConfigurations/threadfirst.hpp"
+#include "gendil/Utilities/KernelContext/KernelConfigurations/host.hpp"
 
 namespace gendil
 {
 
-using SerialKernelConfiguration = ThreadFirstKernelConfiguration< ThreadBlockLayout<>, 0 >;
+using SerialKernelConfiguration = HostKernelConfiguration;
 
-}
+} // namespace gendil

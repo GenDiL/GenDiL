@@ -38,7 +38,7 @@ template <
    typename DofsOut >
 GENDIL_HOST_DEVICE
 void MassInvElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
@@ -101,6 +101,8 @@ void MassInvElementOperator(
  * @param sigma The function to evaluate the mass density at physical coordinates.
  * @param dofs_in The input degrees of freedom.
  * @param dofs_out The output degrees of freedom.
+ * @param max_iters The maximum number of local CG iterations.
+ * @param tolerance The local CG relative tolerance.
  */
 template <
    typename KernelConfiguration,
@@ -115,16 +117,24 @@ void MassInverseExplicitOperator(
    const ElementQuadData & element_quad_data,
    Sigma & sigma,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out,
+   const Integer max_iters,
+   const Real tolerance )
 {
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            required_shared_memory_v< KernelConfiguration, IntegrationRule > +
+            required_threaded_dot_shared_memory_v< KernelConfiguration >;
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         KernelContext< KernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
 
          auto op = [&]( const auto & in, auto & out )
          {
@@ -138,38 +148,11 @@ void MassInverseExplicitOperator(
             in,
             out );
          };
-         
+
          auto rhs = MakeThreadedView( kernel_conf, fe_space, ReadDofs( kernel_conf, fe_space, element_index, dofs_in ) );
          decltype(rhs) x{};
 
-         Integer max_iters = 10000;
-         Real tolerance = 1e-14;
          ConjugateGradient( kernel_conf, op, rhs, max_iters, tolerance, x );
-         // std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // auto result = ConjugateGradient( op, rhs, max_iters, tolerance, x );
-         // std::cout << "Element " << element_index << ": ";
-         // if ( std::get< 0 >( result ) )
-         // {
-         //    std::cout << " SUCCESS, " << std::get< 1 >( result ) << " iterations " << std::endl;
-         //    ElementDoF< FiniteElementSpace > y;
-         //    op( x, y );
-         //    Real norm = Norml2( y - rhs );
-         //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
-         //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
-         //    std:: cout << "norm diff=" << norm << std::endl;
-         //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // }
-         // else
-         // {
-         //    std::cout << " FAILED!!! " << std::get< 1 >( result ) << " iterations " << std::endl;
-         //    ElementDoF< FiniteElementSpace > y;
-         //    op( x, y );
-         //    Real norm = Norml2( y - rhs );
-         //    std:: cout << "norm y=" << Norml2( y ) << std::endl;
-         //    std:: cout << "norm rhs=" << Norml2( rhs ) << std::endl;
-         //    std:: cout << "norm diff=" << norm << std::endl;
-         //    std:: cout << "norm x=" << Norml2( x ) << std::endl;
-         // }
 
          WriteDofs( kernel_conf, fe_space, element_index, x, dofs_out );
       }
@@ -195,6 +178,8 @@ class MassInverseFiniteElementOperator
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
    Sigma & sigma;
+   Integer max_iters;
+   Real tolerance;
 
    using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
    using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
@@ -206,12 +191,18 @@ public:
     * @param finite_element_space The finite element space associated to the operator.
     * @param int_rules The integration rule used by the operator.
     * @param sigma The function to evaluate the mass density at physical coordinates.
+    * @param max_iters The maximum number of local CG iterations.
+    * @param tolerance The local CG relative tolerance.
     */
    MassInverseFiniteElementOperator( const FiniteElementSpace & finite_element_space,
                               const IntegrationRule & int_rules,
-                              Sigma & sigma ) :
+                              Sigma & sigma,
+                              const Integer max_iters,
+                              const Real tolerance ) :
       base( finite_element_space, int_rules ),
-      sigma( sigma )
+      sigma( sigma ),
+      max_iters( max_iters ),
+      tolerance( tolerance )
    { }
 
    /**
@@ -229,7 +220,9 @@ public:
            this->element_quad_data,
            sigma,
            dofs_in,
-           dofs_out );
+           dofs_out,
+           max_iters,
+           tolerance );
    }
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
@@ -268,6 +261,8 @@ public:
  * @param finite_element_space The finite element space associated to the operator.
  * @param int_rule The integration rule used by the operator.
  * @param sigma The function to evaluate the mass density at physical coordinates.
+ * @param max_iters The maximum number of local CG iterations.
+ * @param tolerance The local CG relative tolerance.
  * @return auto The Mass operator.
  */
 template <
@@ -278,14 +273,16 @@ template <
 auto MakeMassInverseFiniteElementOperator(
    const FiniteElementSpace & finite_element_space,
    const IntegrationRule & int_rule,
-   Sigma & sigma )
+   Sigma & sigma,
+   const Integer max_iters = 10000,
+   const Real tolerance = 1e-14 )
 {
    return MassInverseFiniteElementOperator<
              KernelPolicy,
              FiniteElementSpace,
              IntegrationRule,
              Sigma
-          >( finite_element_space, int_rule, sigma );
+          >( finite_element_space, int_rule, sigma, max_iters, tolerance );
 }
 
 /**
@@ -297,6 +294,8 @@ auto MakeMassInverseFiniteElementOperator(
  * @param finite_element_space The finite element space associated to the operator.
  * @param int_rule The integration rule used by the operator.
  * @param sigma The function to evaluate the mass density at physical coordinates.
+ * @param max_iters The maximum number of local CG iterations.
+ * @param tolerance The local CG relative tolerance.
  * @return auto The Mass operator.
  */
 template <
@@ -306,7 +305,9 @@ template <
 auto MakeMassInverseFiniteElementOperator(
    const FiniteElementSpace & finite_element_space,
    const IntegrationRule & int_rule,
-   Sigma & sigma )
+   Sigma & sigma,
+   const Integer max_iters = 10000,
+   const Real tolerance = 1e-14 )
 {
    using KernelPolicy = SerialKernelConfiguration;
 
@@ -315,7 +316,7 @@ auto MakeMassInverseFiniteElementOperator(
              FiniteElementSpace,
              IntegrationRule,
              Sigma
-          >( finite_element_space, int_rule, sigma );
+          >( finite_element_space, int_rule, sigma, max_iters, tolerance );
 }
 
 }

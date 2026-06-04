@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolategradientserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolategradientthreaded.hpp"
 
@@ -17,7 +18,7 @@ template <
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
@@ -31,7 +32,7 @@ template <
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
@@ -40,7 +41,7 @@ auto InterpolateGradient(
 
 template < typename KernelContext, typename ProductOperator, typename InputTensor >
 GENDIL_HOST_DEVICE
-auto InterpolateGradient( const KernelContext & thread, const ProductOperator & element_quad_data, const InputTensor & u )
+auto InterpolateGradient( KernelContext & thread, const ProductOperator & element_quad_data, const InputTensor & u )
 {
    constexpr Integer dim = std::tuple_size_v< ProductOperator >;
    using quad_shape = make_contraction_output_shape< ProductOperator >;
@@ -50,9 +51,9 @@ auto InterpolateGradient( const KernelContext & thread, const ProductOperator & 
    // auto Gu = MakeSerialRecursiveArray< Real >( shape{} );
    auto Gu = MakeStaticFIFOView< Real >( shape{} );
 
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // serial interpolation
+      // Register-only configurations have no shared-memory staging dimensions.
       InterpolateGradientSerial( element_quad_data, u, Gu );
    }
    else
@@ -71,7 +72,7 @@ template <
    typename DofTensor >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const DofTensor & u )

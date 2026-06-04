@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsthreaded.hpp"
 
@@ -18,7 +19,7 @@ template <
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & quad_data,
    const std::tuple< InputTensors ... > & quad_point_values,
    std::index_sequence< I... > )
@@ -33,7 +34,7 @@ template <
    typename ... InputTensors >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & quad_data,
    const std::tuple< InputTensors ... > & quad_point_values )
 {
@@ -47,16 +48,18 @@ template <
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & quad_point_values )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       using dof_shape  = make_contraction_input_shape< ProductOperator >;
       auto dofs_out = MakeSerialRecursiveArray< Real >( dof_shape{} );
-      // auto dofs_out = MakeStaticFIFOView< Real >( dof_shape{} );
-      ApplyTestFunctionsSerial< false, DiffDim >( element_quad_data, quad_point_values, dofs_out );
+      ApplyTestFunctionsSerial< false, DiffDim >(
+         element_quad_data,
+         quad_point_values,
+         dofs_out );
       return dofs_out;
    }
    else
@@ -73,7 +76,7 @@ template <
    typename InputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const InputTensor & quad_point_values )
@@ -113,7 +116,7 @@ template <
    size_t... I >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions_ComponentWise(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const ThisFaceData & this_face_data,
    const std::tuple< InputTensors... > & quad_point_values,
    std::index_sequence< I... > )
@@ -158,7 +161,7 @@ template <
    typename... InputTensors >
 GENDIL_HOST_DEVICE
 auto ApplyTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const std::tuple< InputTensors... > & quad_point_values )
@@ -182,14 +185,17 @@ template <
    typename OutputTensor >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & element_quad_data,
    const InputTensor & quad_point_values,
    OutputTensor & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      ApplyTestFunctionsSerial< true, DiffDim >( element_quad_data, quad_point_values, dofs_out );
+      ApplyTestFunctionsSerial< true, DiffDim >(
+         element_quad_data,
+         quad_point_values,
+         dofs_out );
    }
    else
    {
@@ -216,7 +222,7 @@ template <
    size_t... I >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & quad_data,
    const std::tuple< InputTensors... > & quad_point_values,
    std::tuple< OutputTensors... > & dofs_out,
@@ -235,7 +241,7 @@ template <
    typename... OutputTensors >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ProductOperator & quad_data,
    const std::tuple< InputTensors... > & quad_point_values,
    std::tuple< OutputTensors... > & dofs_out )
@@ -253,7 +259,7 @@ template <
    typename OutputTensor >
 GENDIL_HOST_DEVICE
 auto ApplyAddTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const InputTensor & quad_point_values,
@@ -279,7 +285,7 @@ template <
    size_t... I >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions_Tuple_Impl(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const std::tuple< InputTensors... > & quad_point_values,
@@ -309,7 +315,7 @@ template <
    typename... OutputTensors >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const std::tuple< InputTensors... > & quad_point_values,

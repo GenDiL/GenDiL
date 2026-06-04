@@ -197,7 +197,7 @@ auto MakeReadOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    const Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.ReadHostData() );
    }
@@ -212,7 +212,7 @@ auto MakeWriteOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.WriteHostData() );
    }
@@ -227,7 +227,7 @@ auto MakeReadWriteElementTensorView(
    const FiniteElementSpace & finite_element_space,
    Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.ReadWriteHostData() );
    }
@@ -243,7 +243,7 @@ auto MakeReadOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    const mfem::Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.HostRead() );
    }
@@ -258,7 +258,7 @@ auto MakeWriteOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
    mfem::Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.HostWrite() );
    }
@@ -273,7 +273,7 @@ auto MakeReadWriteElementTensorView(
    const FiniteElementSpace & finite_element_space,
    mfem::Vector & data )
 {
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       return MakeElementTensorView( finite_element_space, data.HostReadWrite() );
    }

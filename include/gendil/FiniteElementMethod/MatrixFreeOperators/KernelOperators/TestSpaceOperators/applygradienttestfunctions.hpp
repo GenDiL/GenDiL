@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsthreaded.hpp"
 
@@ -22,12 +23,12 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const Input & DGuq,
    Output & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       ApplyGradientTestFunctions<Add>( element_quad_data, DGuq, dofs_out );
    }
@@ -49,7 +50,7 @@ template <
    size_t... I >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctionsTupleImpl(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const std::tuple< InputTensors... > & DGuq_tuple,
    std::tuple< OutputTensors... > & dofs_out_tuple,
@@ -78,7 +79,7 @@ template <
    typename... OutputTensors >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const std::tuple< InputTensors... > & DGuq_tuple,
    std::tuple< OutputTensors... > & dofs_out_tuple )
@@ -100,7 +101,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const GradientsInput & DGuq,

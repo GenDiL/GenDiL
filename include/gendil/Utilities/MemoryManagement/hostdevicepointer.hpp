@@ -221,6 +221,11 @@ template < typename T >
 void FreeDevicePointer( HostDevicePointer< T > & x )
 {
 #if defined(GENDIL_USE_DEVICE)
+   if ( x.device_pointer == nullptr )
+   {
+      return;
+   }
+
    #if defined(GENDIL_USE_CUDA)
       GENDIL_GPU_CHECK( cudaFree( x.device_pointer ) );
    #elif defined(GENDIL_USE_HIP)
@@ -264,6 +269,11 @@ void AllocateHostPointer( size_t size, HostDevicePointer< T > & x )
 template < typename T >
 void AllocateDevicePointer( size_t size, HostDevicePointer< T > & x )
 {
+   if ( size == 0 )
+   {
+      return;
+   }
+
    #if defined(GENDIL_USE_CUDA)
       GENDIL_GPU_CHECK( cudaMalloc(&x.device_pointer, size * sizeof( T ) ) );
    #elif defined(GENDIL_USE_HIP)

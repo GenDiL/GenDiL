@@ -112,7 +112,7 @@ template <
    typename KernelContext,
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
-auto MakeSharedElementDoFValuesContainer( const KernelContext & kernel_conf, FiniteElementSpace )
+auto MakeSharedElementDoFValuesContainer( KernelContext & kernel_conf, FiniteElementSpace )
 {
    using Orders = typename FiniteElementSpace::finite_element_type::shape_functions::orders;
    using dof_shape = orders_to_num_dofs< Orders >;

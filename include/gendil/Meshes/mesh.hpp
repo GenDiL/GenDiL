@@ -6,10 +6,6 @@
 
 #include "gendil/Utilities/types.hpp"
 
-#ifdef GENDIL_USE_MFEM
-#include <general/forall.hpp>
-#endif
-
 namespace gendil {
 
 namespace mesh {
@@ -60,37 +56,18 @@ auto GetLocalFaceInfo( const Mesh & mesh, GlobalIndex cell_index, const FaceID &
 }
 
 /**
- * @brief Applies @a body to all cells in the @a mesh
- * 
- * @tparam Mesh The mesh type.
- * @tparam Lambda Invocable like void (*) ( GlobalIndex )
- * @param mesh The mesh.
- * @param body The function to invoke for each cell in mesh.
-*/
-template < Mesh Mesh, typename Lambda >
-void CellIterator( Mesh const & mesh, Lambda && body )
-{
-   const GlobalIndex num_cells = mesh.GetNumberOfCells();
-
-#if defined( GENDIL_USE_MFEM )
-   mfem::forall( num_cells, body );
-#elif defined( GENDIL_USE_RAJA )
-   // TODO:
-#else
-   #pragma omp parallel for
-   for (GlobalIndex i = 0; i < num_cells; i++)
-   {
-      body( i );
-   }
-#endif
-}
-
+ * @brief Applies @a body to all cells using @a KernelConfiguration.
+ *
+ * @details CellIterator is a mesh-level forwarding convenience. Production
+ * BlockLoop owns device launch details and inactive final-batch filtering, and
+ * invokes @a body only as body(GlobalIndex work_item_index).
+ */
 template < typename KernelConfiguration, Mesh Mesh, typename Lambda >
 void CellIterator( const Mesh & mesh, Lambda && body )
 {
-   const GlobalIndex num_cells = mesh.GetNumberOfCells();
-
-   KernelConfiguration::BlockLoop( num_cells, std::forward< Lambda >( body ) );
+   KernelConfiguration::BlockLoop(
+      mesh.GetNumberOfCells(),
+      std::forward< Lambda >( body ) );
 }
 
 } // namespace mesh

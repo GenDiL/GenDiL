@@ -39,7 +39,7 @@ template <
    typename TestElementQuadData >
 GENDIL_HOST_DEVICE
 void LinfProjectionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const TrialFiniteElementSpace & trial_fe_space,
    const TestFiniteElementSpace & test_fe_space,
    const GlobalIndex trial_element_index,
@@ -143,6 +143,8 @@ void LinfProjectionOperator(
    const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::CellIterator< KernelConfiguration >(
       trial_fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable

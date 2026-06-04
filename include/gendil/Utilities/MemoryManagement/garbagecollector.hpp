@@ -29,6 +29,11 @@ public:
    template < typename T >
    void RegisterHostPtr( T* ptr )
    {
+      if ( ptr == nullptr )
+      {
+         return;
+      }
+
       RegisterPtr(
          static_cast< void* >( const_cast< std::remove_const_t<T>* >( ptr ) ),
          []( void* p )
@@ -41,6 +46,11 @@ public:
    template < typename T >
    void RegisterDevicePtr( T* dptr )
    {
+      if ( dptr == nullptr )
+      {
+         return;
+      }
+
       RegisterPtr(
          static_cast< void* >( const_cast< std::remove_const_t<T>* >( dptr ) ),
          []( void* p )

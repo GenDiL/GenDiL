@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesthreaded.hpp"
 
@@ -18,7 +19,7 @@ template <
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto InterpolateValues(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
@@ -32,7 +33,7 @@ template <
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto InterpolateValues(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const DofToQuad & quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
@@ -57,13 +58,13 @@ template <
    typename ElementDofToQuad,
    typename DofTensor >
 GENDIL_HOST_DEVICE
-auto InterpolateValues( const KernelContext & ctx,
+auto InterpolateValues( KernelContext & ctx,
                         const ElementDofToQuad & element_quad_data,
                         const DofTensor & u )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
-      // serial interpolation
+      // Register-only configurations have no shared-memory staging dimensions.
       return InterpolateValuesSerial( element_quad_data, u );
    }
    else
@@ -79,7 +80,7 @@ template <
    typename FaceQuadData,
    typename DofTensor >
 GENDIL_HOST_DEVICE
-auto InterpolateValues( const KernelContext & ctx,
+auto InterpolateValues( KernelContext & ctx,
                         const Face & face,
                         const FaceQuadData & face_quad_data,
                         const DofTensor & u )

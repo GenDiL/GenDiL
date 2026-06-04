@@ -37,7 +37,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void MassElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const MeshQuadData & mesh_quad_data,
@@ -127,12 +127,18 @@ void MassExplicitOperator(
       {
          constexpr size_t required_shared_mem =
             Max(
-               required_shared_memory_v< KernelConfiguration, IntegrationRule >,
+               required_shared_memory_v<
+                  KernelConfiguration,
+                  IntegrationRule >,
                FiniteElementSpace::finite_element_type::GetNumDofs()
             );
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         KernelContext< KernelConfiguration, required_shared_mem >
+            kernel_conf( _shared_mem );
 
          MassElementOperator< IntegrationRule >(
             kernel_conf,

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 
 namespace gendil {
@@ -78,7 +79,7 @@ template < typename IntegrationRule, typename KernelContext, typename Lambda >
 GENDIL_HOST_DEVICE
 inline void QuadraturePointLoop( const KernelContext & thread, Lambda && lambda )
 {
-   if constexpr ( is_serial_v< KernelContext > )
+   if constexpr ( !is_threaded_v< KernelContext > )
    {
       return QuadraturePointLoop< IntegrationRule >( lambda );
    }

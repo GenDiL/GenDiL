@@ -21,7 +21,7 @@ template <
    typename DofsOut >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const OperatorContext& operator_context,
    const Integrand& integrand,
    const QuadraturePointData& Du,
@@ -32,7 +32,8 @@ void ApplyAddTestFunctions(
    constexpr auto TestName = requirements<Integrand>::test_name;
 
    // Get test quad data from operator context (TestName already extracted above)
-   const auto& test_qd = operator_context.template finite_element_quad_data<TestName>();
+   const auto& test_qd =
+      operator_context.template finite_element_quad_data<TestName>();
 
    // Channel presence (compile-time)
    constexpr bool has_value_channel = need_values(requirements<Integrand>::test_mask);
@@ -87,7 +88,7 @@ template <
    typename DofsOut >
 GENDIL_HOST_DEVICE
 void ApplyAddTestFunctions(
-   const KernelContext& kernel_context,
+   KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const FaceContext& face_info,
@@ -99,7 +100,8 @@ void ApplyAddTestFunctions(
    constexpr auto TestName = requirements<Integrand>::test_name;
 
    // Get test quad data from operator context (TestName already extracted above)
-   const auto& test_qd = operator_context.template finite_element_quad_data<TestName>();
+   const auto& test_qd =
+      operator_context.template finite_element_facet_quad_data<TestName>();
 
    // Channel presence (compile-time)
    constexpr bool has_value_channel = need_test_values_v<Integrand>;
@@ -122,14 +124,11 @@ void ApplyAddTestFunctions(
    }
    else if constexpr (has_value_channel)
    {
-      // Uses high-level helper that accepts GlobalFaceInfo
       ApplyAddTestFunctions(
          kernel_context,
-         weak_form_context,
-         operator_context,
-         face_info,          // Full GlobalFaceInfo
-         integrand,
-         Du,
+         face_info.MinusSide(),
+         test_qd,
+         Du.values,
          dofs_out);
    }
    else if constexpr (has_gradient_channel)

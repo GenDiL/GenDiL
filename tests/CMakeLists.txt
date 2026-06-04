@@ -28,5 +28,11 @@ macro(add_my_test target_name source_file)
   add_test(NAME ${target_name} COMMAND ${target_name})
 endmacro()
 
+macro(add_non_cuda_test target_name source_file)
+  if(NOT USE_CUDA)
+    add_my_test(${target_name} ${source_file})
+  endif()
+endmacro()
+
 add_subdirectory(unit)
 add_subdirectory(integration)

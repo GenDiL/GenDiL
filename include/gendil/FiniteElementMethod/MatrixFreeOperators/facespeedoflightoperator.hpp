@@ -4,7 +4,10 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
@@ -14,6 +17,52 @@ enum class FaceSoLType
    ReadCell,
    WriteCell
 };
+
+template <
+   FaceSoLType KernelType,
+   typename KernelConfiguration,
+   typename FiniteElementSpace >
+struct FaceSpeedOfLightRequiredSharedMemory
+{
+   static constexpr size_t value =
+      FiniteElementSpace::finite_element_type::GetNumDofs();
+};
+
+template <
+   typename KernelConfiguration,
+   typename FiniteElementSpace >
+struct FaceSpeedOfLightRequiredSharedMemory<
+   FaceSoLType::ReadCell,
+   KernelConfiguration,
+   FiniteElementSpace >
+{
+private:
+   using FaceReadPolicy =
+      face_read_dofs_policy_t< KernelConfiguration >;
+   static constexpr bool uses_direct_global_read =
+      std::is_same_v<
+         FaceReadPolicy,
+         DirectGlobalFaceReadDofsPolicy >;
+   static constexpr bool uses_full_shared_threaded_read =
+      !uses_direct_global_read &&
+      is_threaded_v< KernelConfiguration >;
+
+public:
+   static constexpr size_t value =
+      !uses_full_shared_threaded_read
+         ? 0
+         : FiniteElementSpace::finite_element_type::GetNumDofs();
+};
+
+template <
+   FaceSoLType KernelType,
+   typename KernelConfiguration,
+   typename FiniteElementSpace >
+inline constexpr size_t face_speed_of_light_required_shared_memory_v =
+   FaceSpeedOfLightRequiredSharedMemory<
+      KernelType,
+      KernelConfiguration,
+      FiniteElementSpace >::value;
 
 /**
  * @brief Implementation of the "face" speed-of-light operator at the element level.
@@ -31,7 +80,7 @@ template <
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceReadSpeedOfLightElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
@@ -56,7 +105,7 @@ template <
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void FaceWriteSpeedOfLightElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
@@ -83,7 +132,7 @@ template <
    typename FaceMesh >
 GENDIL_HOST_DEVICE
 void ReadWriteSpeedOfLightFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
    const GlobalIndex face_index,
@@ -123,6 +172,8 @@ void FaceSpeedOfLightExplicitFaceOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
@@ -163,12 +214,26 @@ void FaceSpeedOfLightExplicitOperator(
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
    if constexpr ( KernelType == FaceSoLType::ReadCell )
+   {
+      GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
       mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
-         constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            face_speed_of_light_required_shared_memory_v<
+               KernelType,
+               KernelConfiguration,
+               FiniteElementSpace >;
+         constexpr size_t shared_memory_block_size =
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size;
+         GENDIL_SHARED Real _shared_mem[
+            shared_memory_block_size == 0
+               ? 1
+               : shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 
@@ -179,7 +244,11 @@ void FaceSpeedOfLightExplicitOperator(
             dofs_in,
             dofs_out );
       });
+   }
    else if constexpr ( KernelType == FaceSoLType::WriteCell )
+   {
+      GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
       mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -196,6 +265,7 @@ void FaceSpeedOfLightExplicitOperator(
             dofs_in,
             dofs_out );
       });
+   }
 }
 
 
@@ -219,6 +289,8 @@ void GlobalFaceSpeedOfLightExplicitOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::ForEachFaceMesh(
       face_meshes,
       [&] ( const auto & face_mesh ) mutable

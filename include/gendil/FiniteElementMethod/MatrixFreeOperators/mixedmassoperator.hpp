@@ -38,7 +38,7 @@ template <
    typename Sigma >
 GENDIL_HOST_DEVICE
 void MixedMassElementOperator(
-   const KernelPolicy & kernel_conf,
+   KernelPolicy & kernel_conf,
    const TrialFiniteElementSpace & trial_fe_space,
    const TestFiniteElementSpace & test_fe_space,
    const GlobalIndex element_index,
@@ -139,8 +139,18 @@ void MixedMassExplicitOperator(
       trial_fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index )
       {
-         constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         constexpr size_t required_shared_mem =
+            Max(
+               required_shared_memory_v<
+                  KernelConfiguration,
+                  IntegrationRule >,
+               TrialFiniteElementSpace::finite_element_type::GetNumDofs(),
+               TestFiniteElementSpace::finite_element_type::GetNumDofs()
+            );
+         GENDIL_SHARED Real _shared_mem[
+            KernelContext<
+               KernelConfiguration,
+               required_shared_mem >::shared_memory_block_size ];
 
          KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
 

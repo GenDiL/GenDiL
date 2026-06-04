@@ -42,7 +42,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void DiffusionElementOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const GlobalIndex element_index,
@@ -144,7 +144,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void DiffusionFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceIntegrationRulesTuple & face_integration_rules,
    const GlobalIndex element_index,
@@ -375,6 +375,8 @@ void DiffusionExplicitOperator(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable

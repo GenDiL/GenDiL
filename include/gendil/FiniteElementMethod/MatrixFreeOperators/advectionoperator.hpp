@@ -47,7 +47,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithoutBC(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const FaceIntegrationRulesTuple & face_integration_rules,
@@ -210,7 +210,7 @@ template <
    typename DofsOutView >
 GENDIL_HOST_DEVICE
 void AdvectionFusedOperatorWithBC(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const IntegrationRule & integration_rule,
    const FaceIntegrationRulesTuple & face_integration_rules,
@@ -419,7 +419,7 @@ template <
    typename BCType >
 GENDIL_HOST_DEVICE
 void AdvectionLocalFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
    const FaceIntegrationRules & face_integration_rules,
@@ -537,7 +537,7 @@ template <
    typename OutputDofsPlus >
 GENDIL_HOST_DEVICE
 void AdvectionNonconformingLocalFaceOperator(
-   const KernelContext & kernel_conf,
+   KernelContext & kernel_conf,
    const FiniteElementSpaceMinus & minus_fe_space,
    const FiniteElementSpacePlus & plus_fe_space,
    const FaceMesh & face_mesh,
@@ -661,6 +661,8 @@ void AdvectionExplicitOperatorWithoutBC(
    const DofsInView & dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -734,6 +736,8 @@ void AdvectionExplicitOperatorWithBC(
    const DofsInView dofs_in,
    DofsOutView & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::CellIterator<KernelConfiguration>(
       fe_space,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
@@ -801,6 +805,8 @@ void AdvectionExplicitFaceOperator(
    const StridedView< FiniteElementSpace::Dim + 1, const Real > dofs_in,
    StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
@@ -882,6 +888,8 @@ void AdvectionExplicitNonconformingFaceOperator(
    OutputDofsLHS & dofs_out_lhs,
    OutputDofsRHS & dofs_out_rhs )
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
+
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable

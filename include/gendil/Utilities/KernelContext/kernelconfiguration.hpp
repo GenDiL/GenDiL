@@ -6,4 +6,5 @@
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
 #include "gendil/Utilities/KernelContext/KernelConfigurations/kernelconfigurations.hpp"
-#include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
+#include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applyvaluesandgradienttestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applyvaluesandgradienttestfunctionsthreaded.hpp"
 
@@ -19,14 +20,21 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctions(
-   const KernelContext & thread,
+   KernelContext & thread,
    const ElementDofToQuad & element_quad_data,
    const ValuesInput & Duq,
    const GradientsInput & DGuq,
    Output & dofs_out )
 {
-   if constexpr ( is_serial_v< KernelContext > )
-      ApplyValuesAndGradientTestFunctions< Add >( element_quad_data, Duq, DGuq, dofs_out );
+   if constexpr ( !is_threaded_v< KernelContext > )
+   {
+      // Register-only configurations have no shared-memory staging dimensions.
+      ApplyValuesAndGradientTestFunctions< Add >(
+         element_quad_data,
+         Duq,
+         DGuq,
+         dofs_out );
+   }
    else
    {
       ApplyValuesAndGradientTestFunctionsThreaded< Add >( thread, element_quad_data, Duq, DGuq, dofs_out );
@@ -43,7 +51,7 @@ template <
    typename Output >
 GENDIL_HOST_DEVICE
 auto ApplyValuesAndGradientTestFunctions(
-   const KernelContext & ctx,
+   KernelContext & ctx,
    const Face & face,
    const FaceQuadData & face_quad_data,
    const ValuesInput & Duq,

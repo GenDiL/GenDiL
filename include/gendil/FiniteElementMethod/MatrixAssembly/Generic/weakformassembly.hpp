@@ -16,7 +16,7 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontext.hpp"
-#include "gendil/Utilities/KernelContext/isserial.hpp"
+#include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 
 #include <type_traits>
@@ -71,7 +71,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleElementSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,
@@ -126,7 +126,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,
@@ -237,7 +237,7 @@ template <
    typename SparseMatrixType >
 GENDIL_HOST_DEVICE
 void AssembleBoundaryFacetSparseMatrix(
-   const KernelContext & kernel_context,
+   KernelContext & kernel_context,
    const WeakFormContext & weak_form_context,
    const OperatorContext & operator_context,
    const GlobalIndex & element_index,
@@ -332,6 +332,8 @@ void GenericBlockDiagonalAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
+
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
       
    using I = std::remove_cvref_t<WeakForm>;
@@ -404,6 +406,8 @@ void GenericAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType & sparse_matrix)
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
+
    auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
    using I = std::remove_cvref_t<WeakForm>;
@@ -424,6 +428,12 @@ void GenericAssembly(
       trial_space,
       [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
       {
+         // CUDA fix
+         (void)wf_ctx;
+         (void)op_ctx;
+         (void)weak_form;
+         (void)sparse_matrix;
+
          GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem> kernel_ctx(_shared_mem);
 
@@ -477,7 +487,7 @@ void SyncAssembledBSRValues(
       static_cast< GlobalIndex >( bsr_matrix.block_rows ) *
       static_cast< GlobalIndex >( bsr_matrix.block_cols );
 
-   if constexpr ( is_serial_v< KernelPolicy > )
+   if constexpr ( is_host_configuration_v< KernelPolicy > )
    {
       ToDevice( value_count, bsr_matrix.values );
    }
