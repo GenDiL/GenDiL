@@ -308,6 +308,39 @@ int main( int, char ** )
          FaceSharedMemoryCheckSpace > ==
       FaceSharedMemoryCheckSpace::finite_element_type::GetNumDofs() );
 
+   using FaceAdvectionRule =
+      decltype( MakeIntegrationRule( IntegrationRuleNumPoints< 4 >{} ) );
+   static_assert(
+      global_face_advection_required_shared_memory_v<
+         DirectGlobalEmptyLayout,
+         FaceAdvectionRule,
+         FaceSharedMemoryCheckSpace > ==
+      required_shared_memory_v< DirectGlobalEmptyLayout, FaceAdvectionRule > );
+   static_assert(
+      global_face_advection_required_shared_memory_v<
+         FullSharedFaceEmptyLayout,
+         FaceAdvectionRule,
+         FaceSharedMemoryCheckSpace > ==
+      required_shared_memory_v< FullSharedFaceEmptyLayout, FaceAdvectionRule > );
+   static_assert(
+      global_face_advection_required_shared_memory_v<
+         DirectGlobalFaceThreadedLayout,
+         FaceAdvectionRule,
+         FaceSharedMemoryCheckSpace > ==
+      required_shared_memory_v<
+         DirectGlobalFaceThreadedLayout,
+         FaceAdvectionRule > );
+   static_assert(
+      global_face_advection_required_shared_memory_v<
+         FullSharedFaceThreadedLayout,
+         FaceAdvectionRule,
+         FaceSharedMemoryCheckSpace > ==
+      Max(
+         FaceSharedMemoryCheckSpace::finite_element_type::GetNumDofs(),
+         required_shared_memory_v<
+            FullSharedFaceThreadedLayout,
+            FaceAdvectionRule > ) );
+
    using BatchedSingle =
       DeviceKernelConfiguration< ThreadBlockLayout< 2, 3 >, 2, 1 >;
    static_assert( !is_batched_device_configuration_v< BatchedSingle > );
