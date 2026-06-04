@@ -1405,7 +1405,11 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            true >() );
    RunDeviceBatchNGlobalFaceAdvectionCase<
       Dim,
       Order,
