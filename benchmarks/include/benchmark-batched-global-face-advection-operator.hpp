@@ -141,6 +141,28 @@ constexpr GlobalIndex FaceQuadraturePointsPerFace()
    return value;
 }
 
+constexpr size_t StaticPower( const size_t base, const size_t exponent )
+{
+   size_t value = 1;
+   for ( size_t i = 0; i < exponent; ++i )
+   {
+      value *= base;
+   }
+   return value;
+}
+
+template < Integer Dim, Integer Order, bool FullSharedFacePolicy >
+constexpr size_t GlobalFaceAdvectionRequiredSharedMemoryEstimate()
+{
+   constexpr size_t interpolation_and_test_requirement =
+      2 * StaticPower( Order + 2, Dim );
+   constexpr size_t face_staging_requirement =
+      FullSharedFacePolicy ? StaticPower( Order + 1, Dim ) : 0;
+   return interpolation_and_test_requirement > face_staging_requirement
+      ? interpolation_and_test_requirement
+      : face_staging_requirement;
+}
+
 inline void PrintGlobalFaceAdvectionHeader()
 {
    std::cout
@@ -232,6 +254,71 @@ inline void PrintGlobalFaceAdvectionRow(
       << dofs_written_per_s << ','
       << qpts_per_s << ','
       << status << '\n';
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   size_t BatchSize >
+void PrintSkippedDeviceGlobalFaceAdvectionRow(
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const char * kernel_family,
+   const char * kernel_name,
+   const char * face_policy,
+   const size_t target_threads_per_block,
+   const size_t shared_memory_per_work_item,
+   const char * status )
+{
+   static constexpr Integer num_quad_1d = Order + 2;
+
+   const auto extents =
+      GlobalFaceAdvectionBenchmarkExtents< Dim, Order >();
+   const GlobalIndex num_cells = Product( extents );
+   const auto face_counts = CountFacesByDirection( extents );
+   const GlobalIndex num_faces_total =
+      face_counts[ 0 ] + face_counts[ 1 ] + face_counts[ 2 ];
+   const GlobalIndex element_num_dofs =
+      DofsPerElement< Dim, Order >();
+   const GlobalIndex num_dofs =
+      num_cells * element_num_dofs;
+   const GlobalIndex dofs_read_per_apply =
+      2 * num_faces_total * element_num_dofs;
+   const GlobalIndex dofs_written_per_apply =
+      2 * num_faces_total * element_num_dofs;
+   const GlobalIndex qpts_per_apply =
+      num_faces_total *
+      FaceQuadraturePointsPerFace< Dim, num_quad_1d >();
+   const std::array< GlobalIndex, 3 > block_dims{
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      1
+   };
+
+   PrintGlobalFaceAdvectionRow(
+      Dim,
+      Order,
+      num_quad_1d,
+      num_cells,
+      face_counts,
+      num_dofs,
+      layout_name,
+      threaded_dimensions,
+      kernel_family,
+      kernel_name,
+      face_policy,
+      target_threads_per_block,
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      block_dims,
+      shared_memory_per_work_item,
+      shared_memory_per_work_item * BatchSize,
+      0.0,
+      dofs_read_per_apply,
+      dofs_written_per_apply,
+      qpts_per_apply,
+      status );
 }
 
 template < typename VectorType >
@@ -795,31 +882,81 @@ template <
    typename ThreadLayout,
    template < typename > typename FacePolicyTransform,
    size_t BatchSize,
-   size_t TargetThreads >
+   size_t TargetThreads,
+   bool FullSharedFacePolicy >
 void RunDeviceBatchNGlobalFaceAdvectionCase(
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy )
 {
-   using KernelPolicy =
-      FacePolicyTransform<
-         DeviceKernelConfiguration< ThreadLayout, Dim, BatchSize > >;
-   using ReferenceKernelPolicy =
-      FacePolicyTransform<
-         DeviceKernelConfiguration< ThreadLayout, Dim, 1 > >;
+   constexpr size_t shared_memory_per_work_item =
+      GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+         Dim,
+         Order,
+         FullSharedFacePolicy >();
+   constexpr size_t shared_memory_per_block =
+      shared_memory_per_work_item * BatchSize;
+   constexpr size_t total_threads_per_block =
+      ThreadLayout::GetNumberOfThreads() * BatchSize;
 
-   RunGlobalFaceAdvectionKernelPolicy<
-      Dim,
-      Order,
-      KernelPolicy,
-      ReferenceKernelPolicy >(
-         layout_name,
-         threaded_dimensions,
-         "DeviceKernelConfigurationBatchN",
-         "DeviceKernelConfiguration",
-         face_policy,
-         TargetThreads,
-         BatchSize );
+   if constexpr (
+      total_threads_per_block >
+      static_threads_per_block_compile_limit )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         BatchSize >(
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatchN",
+            "DeviceKernelConfiguration",
+            face_policy,
+            TargetThreads,
+            shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else if constexpr (
+      shared_memory_per_block * sizeof( Real ) >
+      static_shared_memory_compile_limit_bytes )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         BatchSize >(
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatchN",
+            "DeviceKernelConfiguration",
+            face_policy,
+            TargetThreads,
+            shared_memory_per_work_item,
+            "skipped-shared-memory" );
+   }
+   else
+   {
+      using KernelPolicy =
+         FacePolicyTransform<
+            DeviceKernelConfiguration< ThreadLayout, Dim, BatchSize > >;
+      using ReferenceKernelPolicy =
+         FacePolicyTransform<
+            DeviceKernelConfiguration< ThreadLayout, Dim, 1 > >;
+
+      RunGlobalFaceAdvectionKernelPolicy<
+         Dim,
+         Order,
+         KernelPolicy,
+         ReferenceKernelPolicy >(
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatchN",
+            "DeviceKernelConfiguration",
+            face_policy,
+            TargetThreads,
+            BatchSize );
+   }
 }
 
 template <
@@ -844,7 +981,8 @@ void RunDirectGlobalDeviceTarget(
          ThreadLayout,
          FacePolicyTransform,
          batch_size,
-         TargetThreads >(
+         TargetThreads,
+         false >(
             layout_name,
             threaded_dimensions,
             "DirectGlobal" );
@@ -1010,7 +1148,8 @@ void RunFullSharedRepresentativeLayout(
       ThreadLayout,
       FullSharedFaceDofPolicies,
       device_warp_size,
-      ThreadLayout::GetNumberOfThreads() * device_warp_size >(
+      ThreadLayout::GetNumberOfThreads() * device_warp_size,
+      true >(
          layout_name,
          threaded_dimensions,
          "FullShared" );
@@ -1038,7 +1177,8 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
       ThreadLayout,
       FullSharedFaceDofPolicies,
       device_warp_size,
-      ThreadLayout::GetNumberOfThreads() * device_warp_size >(
+      ThreadLayout::GetNumberOfThreads() * device_warp_size,
+      true >(
          layout_name,
          threaded_dimensions,
          "FullShared" );
