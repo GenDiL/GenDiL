@@ -69,22 +69,22 @@ add_my_benchmark(benchmark-vector-mass-3d benchmark-vector-mass-3d.cpp)
 add_my_benchmark(benchmark-vector-grad-grad-3d benchmark-vector-grad-grad-3d.cpp)
 # Advection benchmarks
 add_my_benchmark(benchmark-advection-3d benchmark-advection-3d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-1d benchmark-face-read-dofs-policy-1d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-2d benchmark-face-read-dofs-policy-2d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-3d benchmark-face-read-dofs-policy-3d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-4d benchmark-face-read-dofs-policy-4d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-5d benchmark-face-read-dofs-policy-5d.cpp)
-add_my_benchmark(benchmark-face-read-dofs-policy-6d benchmark-face-read-dofs-policy-6d.cpp)
-add_custom_target(benchmark-face-read-dofs-policy)
-add_dependencies(
-  benchmark-face-read-dofs-policy
-  benchmark-face-read-dofs-policy-1d
-  benchmark-face-read-dofs-policy-2d
-  benchmark-face-read-dofs-policy-3d
-  benchmark-face-read-dofs-policy-4d
-  benchmark-face-read-dofs-policy-5d
-  benchmark-face-read-dofs-policy-6d
-)
+# add_my_benchmark(benchmark-face-read-dofs-policy-1d benchmark-face-read-dofs-policy-1d.cpp)
+# add_my_benchmark(benchmark-face-read-dofs-policy-2d benchmark-face-read-dofs-policy-2d.cpp)
+# add_my_benchmark(benchmark-face-read-dofs-policy-3d benchmark-face-read-dofs-policy-3d.cpp)
+# add_my_benchmark(benchmark-face-read-dofs-policy-4d benchmark-face-read-dofs-policy-4d.cpp)
+# add_my_benchmark(benchmark-face-read-dofs-policy-5d benchmark-face-read-dofs-policy-5d.cpp)
+# add_my_benchmark(benchmark-face-read-dofs-policy-6d benchmark-face-read-dofs-policy-6d.cpp)
+# add_custom_target(benchmark-face-read-dofs-policy)
+# add_dependencies(
+#   benchmark-face-read-dofs-policy
+#   benchmark-face-read-dofs-policy-1d
+#   benchmark-face-read-dofs-policy-2d
+#   benchmark-face-read-dofs-policy-3d
+#   benchmark-face-read-dofs-policy-4d
+#   benchmark-face-read-dofs-policy-5d
+#   benchmark-face-read-dofs-policy-6d
+# )
 add_my_benchmark(range-benchmark-advection-3d range-benchmark-advection-3d.cpp)
 add_my_benchmark(range-benchmark-advection-p-adaptivity-3d range-benchmark-advection-p-adaptivity-3d.cpp)
 add_my_benchmark(range-benchmark-advection-h-adaptivity-3d range-benchmark-advection-h-adaptivity-3d.cpp)
