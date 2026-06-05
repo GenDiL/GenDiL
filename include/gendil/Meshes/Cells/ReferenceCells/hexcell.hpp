@@ -33,15 +33,15 @@ struct HexCell
 
    template < typename IntRule >
    using QuadData =  std::tuple<
-                        DofToQuad<
+                        CachedDofToQuad<
                            std::tuple_element_t<0, basis>,
                            std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
                         >,
-                        DofToQuad<
+                        CachedDofToQuad<
                            std::tuple_element_t<1, basis>,
                            std::tuple_element_t<1, typename IntRule::points::points_1d_tuple >
                         >,
-                        DofToQuad<
+                        CachedDofToQuad<
                            std::tuple_element_t<2, basis>,
                            std::tuple_element_t<2, typename IntRule::points::points_1d_tuple >
                         >

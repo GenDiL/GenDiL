@@ -139,6 +139,12 @@ using FullSharedFaceDofPolicies =
       FullSharedFaceReadDofsPolicy,
       FullSharedFaceWriteDofsPolicy >;
 
+template < typename BaseKernelPolicy >
+struct ComputedFaceDofToQuadPolicies : public BaseKernelPolicy
+{
+   using face_dof_to_quad_policy = ComputedDofToQuadPolicy;
+};
+
 template < Integer Dim, Integer Order >
 std::array< GlobalIndex, Dim > GlobalFaceAdvectionBenchmarkExtents(
    const GlobalIndex target_num_dofs )
@@ -257,7 +263,8 @@ inline void PrintGlobalFaceAdvectionHeader()
       << "num_faces_5,num_dofs,extent_0,extent_1,extent_2,"
       << "extent_3,extent_4,extent_5,"
       << "layout,threaded_dimensions,kernel_family,kernel,face_policy,"
-      << "target_threads_per_block,threads_per_work_item,batch_size,"
+      << "face_dof_to_quad_policy,target_threads_per_block,"
+      << "threads_per_work_item,batch_size,"
       << "total_threads_per_block,block_x,block_y,block_z,"
       << "shared_memory_per_work_item,shared_memory_per_block,"
       << "time_per_apply,faces_per_s,dofs_read_per_s,dofs_written_per_s,"
@@ -278,6 +285,7 @@ inline void PrintGlobalFaceAdvectionRow(
    const char * kernel_family,
    const char * kernel,
    const char * face_policy,
+   const char * face_dof_to_quad_policy,
    const size_t target_threads_per_block,
    const size_t threads_per_work_item,
    const size_t batch_size,
@@ -339,6 +347,7 @@ inline void PrintGlobalFaceAdvectionRow(
       << kernel_family << ','
       << kernel << ','
       << face_policy << ','
+      << face_dof_to_quad_policy << ','
       << target_threads_per_block << ','
       << threads_per_work_item << ','
       << batch_size << ','
@@ -368,6 +377,7 @@ void PrintSkippedDeviceGlobalFaceAdvectionRow(
    const char * kernel_family,
    const char * kernel_name,
    const char * face_policy,
+   const char * face_dof_to_quad_policy,
    const size_t target_threads_per_block,
    const size_t shared_memory_per_work_item,
    const char * status )
@@ -412,6 +422,7 @@ void PrintSkippedDeviceGlobalFaceAdvectionRow(
       kernel_family,
       kernel_name,
       face_policy,
+      face_dof_to_quad_policy,
       target_threads_per_block,
       ThreadLayout::GetNumberOfThreads(),
       BatchSize,
@@ -489,6 +500,81 @@ template <
    typename FiniteElementSpace,
    typename FaceMeshes,
    typename IntegrationRule,
+   typename Adv >
+class PolicyAwareGlobalFaceAdvectionBenchmarkOperator
+{
+   using finite_element_type =
+      typename FiniteElementSpace::finite_element_type;
+   using mesh_type = typename FiniteElementSpace::mesh_type;
+   using face_integration_rules =
+      decltype( GetFaceIntegrationRules( IntegrationRule{} ) );
+   using mesh_face_quad_data_type =
+      decltype( MakeMeshFaceQuadData< mesh_type >( face_integration_rules{} ) );
+   using element_face_quad_data_type =
+      decltype(
+         MakeFaceDofToQuad<
+            KernelPolicy,
+            typename finite_element_type::shape_functions,
+            face_integration_rules >() );
+   using input =
+      StridedView< FiniteElementSpace::Dim + 1, const Real >;
+   using output =
+      StridedView< FiniteElementSpace::Dim + 1, Real >;
+
+   const FiniteElementSpace & fe_space;
+   const FaceMeshes & face_meshes;
+   Adv adv;
+   mesh_face_quad_data_type mesh_face_quad_data{};
+   element_face_quad_data_type element_face_quad_data{};
+
+public:
+   PolicyAwareGlobalFaceAdvectionBenchmarkOperator(
+      const FiniteElementSpace & fe_space,
+      const FaceMeshes & face_meshes,
+      Adv adv ) :
+      fe_space( fe_space ),
+      face_meshes( face_meshes ),
+      adv( adv )
+   { }
+
+   void Apply( const input & dofs_in, output & dofs_out ) const
+   {
+      mesh::ForEachFaceMesh(
+         face_meshes,
+         [&] ( const auto & face_mesh ) mutable
+         {
+            auto boundary_field = Empty{};
+            AdvectionExplicitFaceOperator<
+               KernelPolicy,
+               IntegrationRule,
+               face_integration_rules >(
+                  fe_space,
+                  face_mesh,
+                  mesh_face_quad_data,
+                  element_face_quad_data,
+                  adv,
+                  boundary_field,
+                  dofs_in,
+                  dofs_out );
+         } );
+   }
+
+   void operator()( const Vector & x, Vector & y ) const
+   {
+      auto dofs_in =
+         MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, x );
+      auto dofs_out =
+         MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, y );
+
+      Apply( dofs_in, dofs_out );
+   }
+};
+
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename FaceMeshes,
+   typename IntegrationRule,
    Integer Dim >
 Vector ApplyGlobalFaceAdvectionOnce(
    const FiniteElementSpace & fe_space,
@@ -499,11 +585,14 @@ Vector ApplyGlobalFaceAdvectionOnce(
    BenchmarkAdvectionVelocity< Dim > adv )
 {
    Vector y = baseline;
-   auto op =
-      MakeAdvectionFaceOperator< KernelPolicy >(
+   PolicyAwareGlobalFaceAdvectionBenchmarkOperator<
+      KernelPolicy,
+      FiniteElementSpace,
+      FaceMeshes,
+      IntegrationRule,
+      BenchmarkAdvectionVelocity< Dim > > op(
          fe_space,
          face_meshes,
-         integration_rule,
          adv );
    op( x, y );
    GENDIL_DEVICE_SYNC;
@@ -590,11 +679,14 @@ double TimeGlobalFaceAdvection(
    y = 0.0;
 
    auto adv = BenchmarkAdvectionVelocity< Dim >{};
-   auto op =
-      MakeAdvectionFaceOperator< KernelPolicy >(
+   PolicyAwareGlobalFaceAdvectionBenchmarkOperator<
+      KernelPolicy,
+      FiniteElementSpace,
+      FaceMeshes,
+      IntegrationRule,
+      BenchmarkAdvectionVelocity< Dim > > op(
          fe_space,
          face_meshes,
-         integration_rule,
          adv );
 
    return TimeOperator( op, x, y );
@@ -632,6 +724,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
    const char * kernel_family,
    const char * kernel_name,
    const char * face_policy,
+   const char * face_dof_to_quad_policy,
    const size_t target_threads_per_block,
    const size_t batch_size )
 {
@@ -685,6 +778,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
          kernel_family,
          kernel_name,
          face_policy,
+         face_dof_to_quad_policy,
          target_threads_per_block,
          KernelPolicy::thread_layout_type::GetNumberOfThreads(),
          batch_size,
@@ -729,6 +823,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
          kernel_family,
          kernel_name,
          face_policy,
+         face_dof_to_quad_policy,
          target_threads_per_block,
          KernelPolicy::thread_layout_type::GetNumberOfThreads(),
          batch_size,
@@ -760,6 +855,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
             kernel_family,
             kernel_name,
             face_policy,
+            face_dof_to_quad_policy,
             target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
@@ -792,6 +888,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
             kernel_family,
             kernel_name,
             face_policy,
+            face_dof_to_quad_policy,
             target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
@@ -821,6 +918,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
             kernel_family,
             kernel_name,
             face_policy,
+            face_dof_to_quad_policy,
             target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
@@ -862,6 +960,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
             kernel_family,
             kernel_name,
             face_policy,
+            face_dof_to_quad_policy,
             target_threads_per_block,
             KernelPolicy::thread_layout_type::GetNumberOfThreads(),
             batch_size,
@@ -898,6 +997,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
          kernel_family,
          kernel_name,
          face_policy,
+         face_dof_to_quad_policy,
          target_threads_per_block,
          KernelPolicy::thread_layout_type::GetNumberOfThreads(),
          batch_size,
@@ -927,6 +1027,7 @@ void RunSerialGlobalFaceAdvectionCase(
          "SerialKernelConfiguration",
          "SerialKernelConfiguration",
          "DirectGlobal",
+         "cached",
          1,
          1 );
 }
@@ -952,6 +1053,7 @@ void RunLegacyGlobalFaceAdvectionCase(
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy,
+   const char * face_dof_to_quad_policy,
    const size_t skipped_shared_memory_per_work_item )
 {
    if constexpr (
@@ -969,6 +1071,7 @@ void RunLegacyGlobalFaceAdvectionCase(
             "ThreadFirstKernelConfiguration",
             "ThreadFirstKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             ThreadLayout::GetNumberOfThreads(),
             skipped_shared_memory_per_work_item,
             "skipped-launch-limit" );
@@ -990,6 +1093,7 @@ void RunLegacyGlobalFaceAdvectionCase(
             "ThreadFirstKernelConfiguration",
             "ThreadFirstKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             ThreadLayout::GetNumberOfThreads(),
             1 );
    }
@@ -1005,6 +1109,7 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
    const char * layout_name,
    const size_t threaded_dimensions,
    const char * face_policy,
+   const char * face_dof_to_quad_policy,
    const size_t skipped_shared_memory_per_work_item )
 {
    if constexpr (
@@ -1022,6 +1127,7 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatch1",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             ThreadLayout::GetNumberOfThreads(),
             skipped_shared_memory_per_work_item,
             "skipped-launch-limit" );
@@ -1043,6 +1149,7 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatch1",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             ThreadLayout::GetNumberOfThreads(),
             1 );
    }
@@ -1060,7 +1167,8 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions,
-   const char * face_policy )
+   const char * face_policy,
+   const char * face_dof_to_quad_policy )
 {
    constexpr size_t shared_memory_per_work_item =
       GlobalFaceAdvectionRequiredSharedMemoryEstimate<
@@ -1087,6 +1195,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatchN",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             TargetThreads,
             shared_memory_per_work_item,
             "skipped-launch-limit" );
@@ -1106,6 +1215,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatchN",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             TargetThreads,
             shared_memory_per_work_item,
             "skipped-launch-limit" );
@@ -1125,6 +1235,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatchN",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             TargetThreads,
             shared_memory_per_work_item,
             "skipped-shared-memory" );
@@ -1149,6 +1260,7 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
             "DeviceKernelConfigurationBatchN",
             "DeviceKernelConfiguration",
             face_policy,
+            face_dof_to_quad_policy,
             TargetThreads,
             BatchSize );
    }
@@ -1163,7 +1275,8 @@ template <
 void RunDirectGlobalDeviceTarget(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
-   const size_t threaded_dimensions )
+   const size_t threaded_dimensions,
+   const char * face_dof_to_quad_policy )
 {
    constexpr size_t batch_size =
       GlobalFaceAdvectionBatchSizeForTarget<
@@ -1182,7 +1295,8 @@ void RunDirectGlobalDeviceTarget(
             target_num_dofs,
             layout_name,
             threaded_dimensions,
-            "DirectGlobal" );
+            "DirectGlobal",
+            face_dof_to_quad_policy );
    }
 }
 
@@ -1194,7 +1308,8 @@ template <
 void RunDirectGlobalDeviceTargetSweep(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
-   const size_t threaded_dimensions )
+   const size_t threaded_dimensions,
+   const char * face_dof_to_quad_policy )
 {
 #if defined( GENDIL_USE_CUDA )
    RunDirectGlobalDeviceTarget<
@@ -1202,7 +1317,11 @@ void RunDirectGlobalDeviceTargetSweep(
       Order,
       ThreadLayout,
       FacePolicyTransform,
-      32 >( target_num_dofs, layout_name, threaded_dimensions );
+      32 >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         face_dof_to_quad_policy );
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 64 >() !=
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 32 >() )
@@ -1212,7 +1331,11 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         64 >( target_num_dofs, layout_name, threaded_dimensions );
+         64 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            face_dof_to_quad_policy );
    }
 #else
    RunDirectGlobalDeviceTarget<
@@ -1220,7 +1343,11 @@ void RunDirectGlobalDeviceTargetSweep(
       Order,
       ThreadLayout,
       FacePolicyTransform,
-      64 >( target_num_dofs, layout_name, threaded_dimensions );
+      64 >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         face_dof_to_quad_policy );
 #endif
 
    if constexpr (
@@ -1232,7 +1359,11 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         128 >( target_num_dofs, layout_name, threaded_dimensions );
+         128 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            face_dof_to_quad_policy );
    }
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 256 >() !=
@@ -1243,7 +1374,11 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         256 >( target_num_dofs, layout_name, threaded_dimensions );
+         256 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            face_dof_to_quad_policy );
    }
    if constexpr (
       GlobalFaceAdvectionBatchSizeForTarget< ThreadLayout, 512 >() !=
@@ -1254,7 +1389,130 @@ void RunDirectGlobalDeviceTargetSweep(
          Order,
          ThreadLayout,
          FacePolicyTransform,
-         512 >( target_num_dofs, layout_name, threaded_dimensions );
+         512 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            face_dof_to_quad_policy );
+   }
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   template < typename > typename FacePolicyTransform >
+void RunDirectGlobalLayout(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const char * face_dof_to_quad_policy )
+{
+   RunLegacyGlobalFaceAdvectionCase<
+      Dim,
+      Order,
+      ThreadLayout,
+      FacePolicyTransform >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         "DirectGlobal",
+         face_dof_to_quad_policy,
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
+   RunDeviceBatch1GlobalFaceAdvectionCase<
+      Dim,
+      Order,
+      ThreadLayout,
+      FacePolicyTransform >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         "DirectGlobal",
+         face_dof_to_quad_policy,
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
+   RunDirectGlobalDeviceTargetSweep<
+      Dim,
+      Order,
+      ThreadLayout,
+      FacePolicyTransform >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         face_dof_to_quad_policy );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   template < typename > typename FacePolicyTransform >
+void RunDirectGlobalRegisterOnlyLayout(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const char * face_dof_to_quad_policy )
+{
+   RunDeviceBatch1GlobalFaceAdvectionCase<
+      Dim,
+      Order,
+      ThreadLayout,
+      FacePolicyTransform >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         "DirectGlobal",
+         face_dof_to_quad_policy,
+         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
+            Dim,
+            Order,
+            false >() );
+   RunDirectGlobalDeviceTargetSweep<
+      Dim,
+      Order,
+      ThreadLayout,
+      FacePolicyTransform >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         face_dof_to_quad_policy );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout >
+void RunDirectGlobalLayoutMatrix(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name,
+   const size_t threaded_dimensions )
+{
+   RunDirectGlobalLayout<
+      Dim,
+      Order,
+      ThreadLayout,
+      DefaultFaceDofPolicies >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions,
+         "cached" );
+
+   if constexpr ( Dim >= 4 )
+   {
+      RunDirectGlobalLayout<
+         Dim,
+         Order,
+         ThreadLayout,
+         ComputedFaceDofToQuadPolicies >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "computed" );
    }
 }
 
@@ -1262,12 +1520,12 @@ template <
    Integer Dim,
    Integer Order,
    typename ThreadLayout >
-void RunDirectGlobalLayout(
+void RunDirectGlobalRegisterOnlyLayoutMatrix(
    const GlobalIndex target_num_dofs,
    const char * layout_name,
    const size_t threaded_dimensions )
 {
-   RunLegacyGlobalFaceAdvectionCase<
+   RunDirectGlobalRegisterOnlyLayout<
       Dim,
       Order,
       ThreadLayout,
@@ -1275,64 +1533,20 @@ void RunDirectGlobalLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "DirectGlobal",
-         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
-            Dim,
-            Order,
-            false >() );
-   RunDeviceBatch1GlobalFaceAdvectionCase<
-      Dim,
-      Order,
-      ThreadLayout,
-      DefaultFaceDofPolicies >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions,
-         "DirectGlobal",
-         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
-            Dim,
-            Order,
-            false >() );
-   RunDirectGlobalDeviceTargetSweep<
-      Dim,
-      Order,
-      ThreadLayout,
-      DefaultFaceDofPolicies >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions );
-}
+         "cached" );
 
-template <
-   Integer Dim,
-   Integer Order,
-   typename ThreadLayout >
-void RunDirectGlobalRegisterOnlyLayout(
-   const GlobalIndex target_num_dofs,
-   const char * layout_name,
-   const size_t threaded_dimensions )
-{
-   RunDeviceBatch1GlobalFaceAdvectionCase<
-      Dim,
-      Order,
-      ThreadLayout,
-      DefaultFaceDofPolicies >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions,
-         "DirectGlobal",
-         GlobalFaceAdvectionRequiredSharedMemoryEstimate<
-            Dim,
-            Order,
-            false >() );
-   RunDirectGlobalDeviceTargetSweep<
-      Dim,
-      Order,
-      ThreadLayout,
-      DefaultFaceDofPolicies >(
-         target_num_dofs,
-         layout_name,
-         threaded_dimensions );
+   if constexpr ( Dim >= 4 )
+   {
+      RunDirectGlobalRegisterOnlyLayout<
+         Dim,
+         Order,
+         ThreadLayout,
+         ComputedFaceDofToQuadPolicies >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "computed" );
+   }
 }
 
 template <
@@ -1353,6 +1567,7 @@ void RunFullSharedRepresentativeLayout(
          layout_name,
          threaded_dimensions,
          "FullShared",
+         "cached",
          GlobalFaceAdvectionRequiredSharedMemoryEstimate<
             Dim,
             Order,
@@ -1366,6 +1581,7 @@ void RunFullSharedRepresentativeLayout(
          layout_name,
          threaded_dimensions,
          "FullShared",
+         "cached",
          GlobalFaceAdvectionRequiredSharedMemoryEstimate<
             Dim,
             Order,
@@ -1381,7 +1597,8 @@ void RunFullSharedRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         "cached" );
 }
 
 template <
@@ -1402,6 +1619,7 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
          layout_name,
          threaded_dimensions,
          "FullShared",
+         "cached",
          GlobalFaceAdvectionRequiredSharedMemoryEstimate<
             Dim,
             Order,
@@ -1417,7 +1635,8 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
          target_num_dofs,
          layout_name,
          threaded_dimensions,
-         "FullShared" );
+         "FullShared",
+         "cached" );
 }
 #endif
 
@@ -1426,18 +1645,18 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
    const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_DEVICE )
-   RunDirectGlobalRegisterOnlyLayout< Dim, Order, ThreadBlockLayout<> >(
+   RunDirectGlobalRegisterOnlyLayoutMatrix< Dim, Order, ThreadBlockLayout<> >(
       target_num_dofs,
       "ThreadBlockLayout<>",
       0 );
-   RunDirectGlobalLayout< Dim, Order, ThreadBlockLayout< Order + 2 > >(
+   RunDirectGlobalLayoutMatrix< Dim, Order, ThreadBlockLayout< Order + 2 > >(
       target_num_dofs,
       "ThreadBlockLayout<num_quad_1d>",
       1 );
 
    if constexpr ( Dim >= 2 )
    {
-      RunDirectGlobalLayout<
+      RunDirectGlobalLayoutMatrix<
          Dim,
          Order,
          ThreadBlockLayout< Order + 2, Order + 2 > >(
@@ -1448,7 +1667,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
 
    if constexpr ( Dim >= 3 )
    {
-      RunDirectGlobalLayout<
+      RunDirectGlobalLayoutMatrix<
          Dim,
          Order,
          ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
@@ -1459,7 +1678,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
 
    if constexpr ( Dim >= 4 )
    {
-      RunDirectGlobalLayout<
+      RunDirectGlobalLayoutMatrix<
          Dim,
          Order,
          ThreadBlockLayout<
@@ -1474,7 +1693,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
 
    if constexpr ( Dim >= 5 )
    {
-      RunDirectGlobalLayout<
+      RunDirectGlobalLayoutMatrix<
          Dim,
          Order,
          ThreadBlockLayout<
@@ -1490,7 +1709,7 @@ void RunGlobalFaceAdvectionTensorProductLayouts(
 
    if constexpr ( Dim >= 6 )
    {
-      RunDirectGlobalLayout<
+      RunDirectGlobalLayoutMatrix<
          Dim,
          Order,
          ThreadBlockLayout<

@@ -4,6 +4,7 @@ add_my_test(test-kernel-configuration test-kernel-configuration.cpp)
 add_my_test(test-getpoint test-getpoint.cpp)
 add_my_test(test-garbage-collector test-garbage-collector.cpp)
 add_my_test(test-read-write test-read-write.cpp)
+add_my_test(test-dof-to-quad-policies test-dof-to-quad-policies.cpp)
 add_my_test(test-face-read-dofs-direct-global test-face-read-dofs-direct-global.cpp)
   add_my_test(
     test-face-read-dofs-direct-global-vector

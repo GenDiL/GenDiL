@@ -19,10 +19,17 @@ namespace details
    struct DomainRangeDimensions;
 
    template < typename ShapeFunctions, typename IntegrationRule >
-   struct DomainRangeDimensions< DofToQuad< ShapeFunctions, IntegrationRule > >
+   struct DomainRangeDimensions< CachedDofToQuad< ShapeFunctions, IntegrationRule > >
    {
-      static constexpr Integer RangeDim = DofToQuad< ShapeFunctions, IntegrationRule >::num_quads;
-      static constexpr Integer DomainDim = DofToQuad< ShapeFunctions, IntegrationRule >::num_dofs;
+      static constexpr Integer RangeDim = CachedDofToQuad< ShapeFunctions, IntegrationRule >::num_quads;
+      static constexpr Integer DomainDim = CachedDofToQuad< ShapeFunctions, IntegrationRule >::num_dofs;
+   };
+
+   template < typename ShapeFunctions, typename IntegrationRule >
+   struct DomainRangeDimensions< ComputedDofToQuad< ShapeFunctions, IntegrationRule > >
+   {
+      static constexpr Integer RangeDim = ComputedDofToQuad< ShapeFunctions, IntegrationRule >::num_quads;
+      static constexpr Integer DomainDim = ComputedDofToQuad< ShapeFunctions, IntegrationRule >::num_dofs;
    };
 
    template < typename ShapeFunctions, typename IntegrationRule, typename Face, Integer DimIndex >
