@@ -1820,6 +1820,32 @@ void RunGlobalFaceAdvectionOrder(
       target_num_dofs );
 }
 
+template < Integer Dim, Integer Order >
+int RunGlobalFaceAdvectionDriver(
+   const int argc,
+   char ** argv )
+{
+   GlobalFaceAdvectionBenchmarkOptions options;
+   const auto parse_result = ParseGlobalFaceAdvectionBenchmarkOptions(
+      argc,
+      argv,
+      options,
+      std::cerr );
+   if ( parse_result == BenchmarkOptionParseResult::exit_success )
+   {
+      return 0;
+   }
+   if ( parse_result == BenchmarkOptionParseResult::exit_failure )
+   {
+      return 1;
+   }
+
+   PrintGlobalFaceAdvectionHeader();
+   RunGlobalFaceAdvectionOrder< Dim, Order >(
+      options.target_num_dofs );
+   return 0;
+}
+
 template < Integer Dim >
 void RunGlobalFaceAdvectionDimension(
    const GlobalIndex target_num_dofs )
