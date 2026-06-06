@@ -254,6 +254,17 @@ constexpr size_t GlobalFaceAdvectionRequiredSharedMemoryEstimate()
       : face_staging_requirement;
 }
 
+template < Integer Dim, Integer Order, typename ThreadLayout >
+constexpr size_t GlobalFaceAdvectionEstimatedLocalMemoryBytes()
+{
+   // High-dimensional face advection can materialize interpolation and
+   // test-function tensors as private/local memory even when launch-thread
+   // and shared-memory limits are otherwise valid.
+   constexpr size_t interpolation_and_test_requirement =
+      2 * StaticPower( Order + 2, Dim );
+   return interpolation_and_test_requirement * sizeof( Real );
+}
+
 inline void PrintGlobalFaceAdvectionHeader()
 {
    std::cout
@@ -1076,6 +1087,29 @@ void RunLegacyGlobalFaceAdvectionCase(
             skipped_shared_memory_per_work_item,
             "skipped-launch-limit" );
    }
+   else if constexpr (
+      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+         Dim,
+         Order,
+         ThreadLayout >() >
+      static_local_memory_compile_limit_bytes )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         1 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "ThreadFirstKernelConfiguration",
+            "ThreadFirstKernelConfiguration",
+            face_policy,
+            face_dof_to_quad_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            skipped_shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
    else
    {
       using KernelPolicy =
@@ -1115,6 +1149,29 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
    if constexpr (
       ThreadLayout::GetNumberOfThreads() >
       max_threads_per_work_item )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         1 >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatch1",
+            "DeviceKernelConfiguration",
+            face_policy,
+            face_dof_to_quad_policy,
+            ThreadLayout::GetNumberOfThreads(),
+            skipped_shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else if constexpr (
+      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+         Dim,
+         Order,
+         ThreadLayout >() >
+      static_local_memory_compile_limit_bytes )
    {
       PrintSkippedDeviceGlobalFaceAdvectionRow<
          Dim,
@@ -1203,6 +1260,29 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
    else if constexpr (
       total_threads_per_block >
       static_threads_per_block_compile_limit )
+   {
+      PrintSkippedDeviceGlobalFaceAdvectionRow<
+         Dim,
+         Order,
+         ThreadLayout,
+         BatchSize >(
+            target_num_dofs,
+            layout_name,
+            threaded_dimensions,
+            "DeviceKernelConfigurationBatchN",
+            "DeviceKernelConfiguration",
+            face_policy,
+            face_dof_to_quad_policy,
+            TargetThreads,
+            shared_memory_per_work_item,
+            "skipped-launch-limit" );
+   }
+   else if constexpr (
+      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+         Dim,
+         Order,
+         ThreadLayout >() >
+      static_local_memory_compile_limit_bytes )
    {
       PrintSkippedDeviceGlobalFaceAdvectionRow<
          Dim,
