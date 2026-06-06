@@ -576,7 +576,7 @@ public:
       auto dofs_in =
          MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, x );
       auto dofs_out =
-         MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, y );
+         MakeReadWriteElementTensorView< KernelPolicy >( fe_space, y );
 
       Apply( dofs_in, dofs_out );
    }

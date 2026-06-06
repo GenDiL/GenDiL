@@ -262,7 +262,7 @@ Vector ApplyExplicitGlobalFaceAdvection(
    auto dofs_in =
       MakeReadOnlyElementTensorView< KernelPolicy >( fe_space, x );
    auto dofs_out =
-      MakeWriteOnlyElementTensorView< KernelPolicy >( fe_space, y );
+      MakeReadWriteElementTensorView< KernelPolicy >( fe_space, y );
    auto mesh_face_quad_data =
       MakeMeshFaceQuadData< mesh_type >( face_integration_rules{} );
    auto element_face_quad_data =
