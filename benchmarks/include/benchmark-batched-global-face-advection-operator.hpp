@@ -258,10 +258,11 @@ template < Integer Dim, Integer Order, typename ThreadLayout >
 constexpr size_t GlobalFaceAdvectionEstimatedLocalMemoryBytes()
 {
    // High-dimensional face advection can materialize interpolation and
-   // test-function tensors as private/local memory even when launch-thread
-   // and shared-memory limits are otherwise valid.
+   // test-function tensors as private/local memory. Use a conservative
+   // multiplier for backend private-memory overhead that is not reflected
+   // in the logical tensor size alone.
    constexpr size_t interpolation_and_test_requirement =
-      2 * StaticPower( Order + 2, Dim );
+      4 * StaticPower( Order + 2, Dim );
    return interpolation_and_test_requirement * sizeof( Real );
 }
 
