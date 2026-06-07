@@ -29,7 +29,7 @@ struct LineCell
    using basis = std::tuple< GaussLobattoLegendreShapeFunctions<D1D-1> >;
    template < typename IntRule >
    using QuadData =  std::tuple<
-                        DofToQuad<
+                        CachedDofToQuad<
                            std::tuple_element_t<0, basis>,
                            std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
                         >

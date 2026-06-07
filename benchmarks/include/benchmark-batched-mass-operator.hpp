@@ -6,35 +6,139 @@
 
 #include "benchmark-common.hpp"
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <limits>
 #include <type_traits>
 
 namespace gendil::benchmarks
 {
 
-#if defined( GENDIL_USE_DEVICE )
-constexpr GlobalIndex mass_target_dofs = 2'000'000;
-constexpr GlobalIndex mass_min_cells = 4'096;
-#else
-constexpr GlobalIndex mass_target_dofs = 100'000;
-constexpr GlobalIndex mass_min_cells = 512;
-#endif
+constexpr GlobalIndex mass_smoke_target_dofs = 1 * 1024 * 1024;
+constexpr GlobalIndex mass_performance_target_dofs = 32 * 1024 * 1024;
+
+struct MassBenchmarkOptions
+{
+   GlobalIndex target_num_dofs = mass_performance_target_dofs;
+};
+
+enum class MassBenchmarkOptionParseResult
+{
+   run,
+   exit_success,
+   exit_failure
+};
+
+inline void PrintMassUsage( const char * executable, std::ostream & os )
+{
+   os << "Usage: " << executable
+      << " [--performance] [--smoke] [--target-dofs N]\n"
+      << "  --performance    use the default 32M DoF target\n"
+      << "  --smoke          use a quick 1M DoF target\n"
+      << "  --target-dofs N  use an explicit positive DoF target\n";
+}
+
+inline bool MassParsePositiveGlobalIndex(
+   const char * value,
+   GlobalIndex & parsed )
+{
+   if ( value == nullptr || value[ 0 ] == '\0' )
+   {
+      return false;
+   }
+
+   errno = 0;
+   char * end = nullptr;
+   const unsigned long long raw = std::strtoull( value, &end, 10 );
+   if ( errno != 0 || end == value || *end != '\0' || raw == 0 )
+   {
+      return false;
+   }
+   if ( raw > std::numeric_limits< GlobalIndex >::max() )
+   {
+      return false;
+   }
+
+   parsed = static_cast< GlobalIndex >( raw );
+   return true;
+}
+
+inline MassBenchmarkOptionParseResult ParseMassBenchmarkOptions(
+   const int argc,
+   char ** argv,
+   MassBenchmarkOptions & options,
+   std::ostream & os )
+{
+   for ( int i = 1; i < argc; ++i )
+   {
+      if ( std::strcmp( argv[ i ], "--performance" ) == 0 )
+      {
+         options.target_num_dofs = mass_performance_target_dofs;
+      }
+      else if ( std::strcmp( argv[ i ], "--smoke" ) == 0 )
+      {
+         options.target_num_dofs = mass_smoke_target_dofs;
+      }
+      else if ( std::strcmp( argv[ i ], "--target-dofs" ) == 0 )
+      {
+         if ( i + 1 >= argc ||
+              !MassParsePositiveGlobalIndex(
+                 argv[ i + 1 ],
+                 options.target_num_dofs ) )
+         {
+            PrintMassUsage( argv[ 0 ], os );
+            return MassBenchmarkOptionParseResult::exit_failure;
+         }
+         ++i;
+      }
+      else if ( std::strcmp( argv[ i ], "--help" ) == 0 ||
+                std::strcmp( argv[ i ], "-h" ) == 0 )
+      {
+         PrintMassUsage( argv[ 0 ], os );
+         return MassBenchmarkOptionParseResult::exit_success;
+      }
+      else
+      {
+         PrintMassUsage( argv[ 0 ], os );
+         return MassBenchmarkOptionParseResult::exit_failure;
+      }
+   }
+
+   return MassBenchmarkOptionParseResult::run;
+}
 
 template < Integer Dim, Integer Order >
-std::array< Integer, Dim > MassBenchmarkExtents()
+std::array< Integer, Dim > MassBenchmarkExtents(
+   const GlobalIndex target_num_dofs )
 {
-   const GlobalIndex cells_from_dofs =
-      mass_target_dofs / DofsPerElement< Dim, Order >();
+   const GlobalIndex dofs_per_cell = DofsPerElement< Dim, Order >();
    const GlobalIndex target_cells =
-      cells_from_dofs > mass_min_cells ? cells_from_dofs : mass_min_cells;
-   return BalancedExtents< Dim >( target_cells );
+      BenchmarkClampCellExtent(
+         BenchmarkCeilDivideGlobalIndex( target_num_dofs, dofs_per_cell ) );
+   return ToIntegerExtents( BalancedBenchmarkExtents< Dim >( target_cells ) );
+}
+
+template < Integer Dim >
+std::array< GlobalIndex, 6 > MassExtentsTo6(
+   const std::array< Integer, Dim > & extents )
+{
+   std::array< GlobalIndex, 6 > padded{ 1, 1, 1, 1, 1, 1 };
+   for ( Integer d = 0; d < Dim; ++d )
+   {
+      padded[ d ] = static_cast< GlobalIndex >( extents[ d ] );
+   }
+   return padded;
 }
 
 inline void PrintMassHeader()
 {
    std::cout
       << "benchmark,dimension,order,num_quad_1d,num_cells,num_dofs,"
-      << "num_qpts,kernel,layout,threaded_dimensions,"
+      << "num_qpts,target_num_dofs,actual_num_dofs,"
+      << "extent_0,extent_1,extent_2,extent_3,extent_4,extent_5,"
+      << "kernel,layout,threaded_dimensions,"
       << "target_threads_per_block,threads_per_work_item,batch_size,"
       << "total_threads_per_block,block_x,block_y,block_z,"
       << "shared_memory_per_work_item,shared_memory_per_block,"
@@ -48,6 +152,9 @@ inline void PrintMassRow(
    const GlobalIndex num_cells,
    const GlobalIndex num_dofs,
    const GlobalIndex num_qpts,
+   const GlobalIndex target_num_dofs,
+   const GlobalIndex actual_num_dofs,
+   const std::array< GlobalIndex, 6 > & extents,
    const char * kernel,
    const char * layout,
    const size_t threaded_dimensions,
@@ -83,6 +190,14 @@ inline void PrintMassRow(
       << num_cells << ','
       << num_dofs << ','
       << num_qpts << ','
+      << target_num_dofs << ','
+      << actual_num_dofs << ','
+      << extents[ 0 ] << ','
+      << extents[ 1 ] << ','
+      << extents[ 2 ] << ','
+      << extents[ 3 ] << ','
+      << extents[ 4 ] << ','
+      << extents[ 5 ] << ','
       << kernel << ','
       << layout << ','
       << threaded_dimensions << ','
@@ -139,6 +254,8 @@ void RunTimedMassRow(
    const GlobalIndex num_cells,
    const GlobalIndex num_dofs,
    const GlobalIndex num_qpts,
+   const GlobalIndex target_num_dofs,
+   const std::array< GlobalIndex, 6 > & extents,
    const std::array< GlobalIndex, 3 > & block_dims,
    const size_t required_shared_mem,
    const size_t shared_memory_per_block )
@@ -176,6 +293,9 @@ void RunTimedMassRow(
       num_cells,
       num_dofs,
       num_qpts,
+      target_num_dofs,
+      num_dofs,
+      extents,
       kernel_name,
       layout_name,
       threaded_dimensions,
@@ -198,11 +318,14 @@ void RunMassKernelPolicy(
    const char * layout_name,
    const size_t threaded_dimensions,
    const size_t target_threads_per_block,
-   const size_t batch_size )
+   const size_t batch_size,
+   const GlobalIndex target_num_dofs )
 {
    static constexpr Integer num_quad_1d = Order + 2;
 
-   const auto extents = MassBenchmarkExtents< Dim, Order >();
+   const auto extents =
+      MassBenchmarkExtents< Dim, Order >( target_num_dofs );
+   const auto padded_extents = MassExtentsTo6( extents );
    const GlobalIndex num_cells = Product( extents );
    const GlobalIndex num_dofs =
       num_cells * DofsPerElement< Dim, Order >();
@@ -240,6 +363,9 @@ void RunMassKernelPolicy(
          num_cells,
          num_dofs,
          num_qpts,
+         target_num_dofs,
+         num_dofs,
+         padded_extents,
          kernel_name,
          layout_name,
          threaded_dimensions,
@@ -264,6 +390,9 @@ void RunMassKernelPolicy(
             num_cells,
             num_dofs,
             num_qpts,
+            target_num_dofs,
+            num_dofs,
+            padded_extents,
             kernel_name,
             layout_name,
             threaded_dimensions,
@@ -289,6 +418,9 @@ void RunMassKernelPolicy(
             num_cells,
             num_dofs,
             num_qpts,
+            target_num_dofs,
+            num_dofs,
+            padded_extents,
             kernel_name,
             layout_name,
             threaded_dimensions,
@@ -311,6 +443,9 @@ void RunMassKernelPolicy(
             num_cells,
             num_dofs,
             num_qpts,
+            target_num_dofs,
+            num_dofs,
+            padded_extents,
             kernel_name,
             layout_name,
             threaded_dimensions,
@@ -340,6 +475,8 @@ void RunMassKernelPolicy(
             num_cells,
             num_dofs,
             num_qpts,
+            target_num_dofs,
+            padded_extents,
             block_dims,
             required_shared_mem,
             shared_memory_per_block );
@@ -350,7 +487,7 @@ void RunMassKernelPolicy(
 template <
    Integer Dim,
    Integer Order >
-void RunSerialMassCase()
+void RunSerialMassCase( const GlobalIndex target_num_dofs )
 {
    RunMassKernelPolicy<
       Dim,
@@ -360,10 +497,89 @@ void RunSerialMassCase()
          "ThreadBlockLayout<>",
          0,
          1,
-         1 );
+         1,
+         target_num_dofs );
 }
 
 #if defined( GENDIL_USE_DEVICE )
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   size_t BatchSize >
+void PrintSkippedMassRow(
+   const GlobalIndex target_num_dofs,
+   const char * kernel_name,
+   const char * layout_name,
+   const size_t threaded_dimensions,
+   const size_t target_threads_per_block )
+{
+   static constexpr Integer num_quad_1d = Order + 2;
+
+   const auto extents =
+      MassBenchmarkExtents< Dim, Order >( target_num_dofs );
+   const auto padded_extents = MassExtentsTo6( extents );
+   const GlobalIndex num_cells = Product( extents );
+   const GlobalIndex num_dofs =
+      num_cells * DofsPerElement< Dim, Order >();
+   const GlobalIndex num_qpts =
+      num_cells * QuadraturePointsPerElement< Dim, num_quad_1d >();
+   constexpr size_t shared_memory_per_work_item =
+      Max(
+         static_cast< size_t >( DofsPerElement< Dim, Order >() ),
+         static_cast< size_t >(
+            QuadraturePointsPerElement< Dim, num_quad_1d >() )
+      );
+   const std::array< GlobalIndex, 3 > block_dims{
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      1
+   };
+
+   PrintMassRow(
+      Dim,
+      Order,
+      num_quad_1d,
+      num_cells,
+      num_dofs,
+      num_qpts,
+      target_num_dofs,
+      num_dofs,
+      padded_extents,
+      kernel_name,
+      layout_name,
+      threaded_dimensions,
+      target_threads_per_block,
+      ThreadLayout::GetNumberOfThreads(),
+      BatchSize,
+      block_dims,
+      shared_memory_per_work_item,
+      shared_memory_per_work_item * BatchSize,
+      0.0,
+      "skipped-launch-limit" );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout >
+void PrintSkippedLegacyMassCase(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name,
+   const size_t threaded_dimensions )
+{
+   PrintSkippedMassRow<
+      Dim,
+      Order,
+      ThreadLayout,
+      1 >(
+         target_num_dofs,
+         "ThreadFirstKernelConfiguration",
+         layout_name,
+         threaded_dimensions,
+         ThreadLayout::GetNumberOfThreads() );
+}
+
 template < typename ThreadLayout, size_t TargetThreads >
 constexpr size_t MassBatchSizeForTarget()
 {
@@ -377,10 +593,84 @@ constexpr size_t MassBatchSizeForTarget()
 template <
    Integer Dim,
    Integer Order,
+   typename ThreadLayout,
+   size_t TargetThreads >
+void PrintSkippedDeviceMassTarget(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name )
+{
+   PrintSkippedMassRow<
+      Dim,
+      Order,
+      ThreadLayout,
+      MassBatchSizeForTarget< ThreadLayout, TargetThreads >() >(
+         target_num_dofs,
+         "DeviceKernelConfiguration",
+         layout_name,
+         ThreadLayout::thread_block_dim,
+         TargetThreads );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout >
+void PrintSkippedDeviceMassTargetSweep(
+   const GlobalIndex target_num_dofs,
+   const char * layout_name )
+{
+#if defined( GENDIL_USE_CUDA )
+   PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 32 >(
+      target_num_dofs,
+      layout_name );
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 64 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 32 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+         target_num_dofs,
+         layout_name );
+   }
+#else
+   PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+      target_num_dofs,
+      layout_name );
+#endif
+
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 128 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 64 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 128 >(
+         target_num_dofs,
+         layout_name );
+   }
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 256 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 128 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 256 >(
+         target_num_dofs,
+         layout_name );
+   }
+   if constexpr (
+      MassBatchSizeForTarget< ThreadLayout, 512 >() !=
+      MassBatchSizeForTarget< ThreadLayout, 256 >() )
+   {
+      PrintSkippedDeviceMassTarget< Dim, Order, ThreadLayout, 512 >(
+         target_num_dofs,
+         layout_name );
+   }
+}
+
+template <
+   Integer Dim,
+   Integer Order,
    typename ThreadLayout >
 void RunLegacyMassCase(
    const char * layout_name,
-   const size_t threaded_dimensions )
+   const size_t threaded_dimensions,
+   const GlobalIndex target_num_dofs )
 {
    using KernelPolicy =
       ThreadFirstKernelConfiguration< ThreadLayout, Dim >;
@@ -395,7 +685,8 @@ void RunLegacyMassCase(
          layout_name,
          threaded_dimensions,
          threads_per_work_item,
-         1 );
+         1,
+         target_num_dofs );
 }
 
 template <
@@ -404,7 +695,9 @@ template <
    typename ThreadLayout,
    size_t BatchSize,
    size_t TargetThreads >
-void RunDeviceMassCase( const char * layout_name )
+void RunDeviceMassCase(
+   const char * layout_name,
+   const GlobalIndex target_num_dofs )
 {
    using KernelPolicy =
       DeviceKernelConfiguration< ThreadLayout, Dim, BatchSize >;
@@ -417,7 +710,8 @@ void RunDeviceMassCase( const char * layout_name )
          layout_name,
          ThreadLayout::thread_block_dim,
          TargetThreads,
-         BatchSize );
+         BatchSize,
+         target_num_dofs );
 }
 
 template <
@@ -425,51 +719,69 @@ template <
    Integer Order,
    typename ThreadLayout,
    size_t TargetThreads >
-void RunDeviceMassTarget( const char * layout_name )
+void RunDeviceMassTarget(
+   const char * layout_name,
+   const GlobalIndex target_num_dofs )
 {
    RunDeviceMassCase<
       Dim,
       Order,
       ThreadLayout,
       MassBatchSizeForTarget< ThreadLayout, TargetThreads >(),
-      TargetThreads >( layout_name );
+      TargetThreads >(
+         layout_name,
+         target_num_dofs );
 }
 
 template <
    Integer Dim,
    Integer Order,
    typename ThreadLayout >
-void RunDeviceMassTargetSweep( const char * layout_name )
+void RunDeviceMassTargetSweep(
+   const char * layout_name,
+   const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_CUDA )
-   RunDeviceMassTarget< Dim, Order, ThreadLayout, 32 >( layout_name );
+   RunDeviceMassTarget< Dim, Order, ThreadLayout, 32 >(
+      layout_name,
+      target_num_dofs );
    if constexpr (
       MassBatchSizeForTarget< ThreadLayout, 64 >() !=
       MassBatchSizeForTarget< ThreadLayout, 32 >() )
    {
-      RunDeviceMassTarget< Dim, Order, ThreadLayout, 64 >( layout_name );
+      RunDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+         layout_name,
+         target_num_dofs );
    }
 #else
-   RunDeviceMassTarget< Dim, Order, ThreadLayout, 64 >( layout_name );
+   RunDeviceMassTarget< Dim, Order, ThreadLayout, 64 >(
+      layout_name,
+      target_num_dofs );
 #endif
 
    if constexpr (
       MassBatchSizeForTarget< ThreadLayout, 128 >() !=
       MassBatchSizeForTarget< ThreadLayout, 64 >() )
    {
-      RunDeviceMassTarget< Dim, Order, ThreadLayout, 128 >( layout_name );
+      RunDeviceMassTarget< Dim, Order, ThreadLayout, 128 >(
+         layout_name,
+         target_num_dofs );
    }
    if constexpr (
       MassBatchSizeForTarget< ThreadLayout, 256 >() !=
       MassBatchSizeForTarget< ThreadLayout, 128 >() )
    {
-      RunDeviceMassTarget< Dim, Order, ThreadLayout, 256 >( layout_name );
+      RunDeviceMassTarget< Dim, Order, ThreadLayout, 256 >(
+         layout_name,
+         target_num_dofs );
    }
    if constexpr (
       MassBatchSizeForTarget< ThreadLayout, 512 >() !=
       MassBatchSizeForTarget< ThreadLayout, 256 >() )
    {
-      RunDeviceMassTarget< Dim, Order, ThreadLayout, 512 >( layout_name );
+      RunDeviceMassTarget< Dim, Order, ThreadLayout, 512 >(
+         layout_name,
+         target_num_dofs );
    }
 }
 
@@ -479,31 +791,53 @@ template <
    typename ThreadLayout >
 void RunMassLayout(
    const char * layout_name,
-   const size_t threaded_dimensions )
+   const size_t threaded_dimensions,
+   const GlobalIndex target_num_dofs )
 {
-   RunLegacyMassCase< Dim, Order, ThreadLayout >(
-      layout_name,
-      threaded_dimensions );
-   RunDeviceMassTargetSweep< Dim, Order, ThreadLayout >( layout_name );
+   if constexpr (
+      ThreadLayout::GetNumberOfThreads() >
+      max_threads_per_work_item )
+   {
+      PrintSkippedLegacyMassCase< Dim, Order, ThreadLayout >(
+         target_num_dofs,
+         layout_name,
+         threaded_dimensions );
+      PrintSkippedDeviceMassTargetSweep< Dim, Order, ThreadLayout >(
+         target_num_dofs,
+         layout_name );
+   }
+   else
+   {
+      RunLegacyMassCase< Dim, Order, ThreadLayout >(
+         layout_name,
+         threaded_dimensions,
+         target_num_dofs );
+      RunDeviceMassTargetSweep< Dim, Order, ThreadLayout >(
+         layout_name,
+         target_num_dofs );
+   }
 }
 #endif
 
 template < Integer Dim, Integer Order >
-void RunMassTensorProductLayouts()
+void RunMassTensorProductLayouts( const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_DEVICE )
    RunMassLayout< Dim, Order, ThreadBlockLayout<> >(
       "ThreadBlockLayout<>",
-      0 );
+      0,
+      target_num_dofs );
    RunMassLayout< Dim, Order, ThreadBlockLayout< Order + 2 > >(
       "ThreadBlockLayout<num_quad_1d>",
-      1 );
+      1,
+      target_num_dofs );
 
    if constexpr ( Dim >= 2 )
    {
       RunMassLayout< Dim, Order, ThreadBlockLayout< Order + 2, Order + 2 > >(
          "ThreadBlockLayout<num_quad_1d,num_quad_1d>",
-         2 );
+         2,
+         target_num_dofs );
    }
 
    if constexpr ( Dim >= 3 )
@@ -513,24 +847,75 @@ void RunMassTensorProductLayouts()
          Order,
          ThreadBlockLayout< Order + 2, Order + 2, Order + 2 > >(
             "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d>",
-            3 );
+            3,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 4 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            4,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 5 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            5,
+            target_num_dofs );
+   }
+
+   if constexpr ( Dim >= 6 )
+   {
+      RunMassLayout<
+         Dim,
+         Order,
+         ThreadBlockLayout<
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2,
+            Order + 2 > >(
+            "ThreadBlockLayout<num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d,num_quad_1d>",
+            6,
+            target_num_dofs );
    }
 #endif
 }
 
 template < Integer Dim, Integer Order >
-void RunMassOrder()
+void RunMassOrder( const GlobalIndex target_num_dofs )
 {
-   RunSerialMassCase< Dim, Order >();
-   RunMassTensorProductLayouts< Dim, Order >();
+   RunSerialMassCase< Dim, Order >( target_num_dofs );
+   RunMassTensorProductLayouts< Dim, Order >( target_num_dofs );
 }
 
 template < Integer Dim >
-void RunMassDimension()
+void RunMassDimension( const GlobalIndex target_num_dofs )
 {
-   RunMassOrder< Dim, 1 >();
-   RunMassOrder< Dim, 3 >();
-   RunMassOrder< Dim, 5 >();
+   RunMassOrder< Dim, 0 >( target_num_dofs );
+   RunMassOrder< Dim, 1 >( target_num_dofs );
+   RunMassOrder< Dim, 2 >( target_num_dofs );
+   RunMassOrder< Dim, 3 >( target_num_dofs );
+   RunMassOrder< Dim, 5 >( target_num_dofs );
 }
 
 } // namespace gendil::benchmarks

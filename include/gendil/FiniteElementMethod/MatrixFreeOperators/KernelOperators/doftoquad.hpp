@@ -4,12 +4,61 @@
 
 #pragma once
 
+#include <tuple>
+#include <type_traits>
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sqrt.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
 
 namespace gendil {
+
+struct CachedDofToQuadPolicy
+{
+};
+
+struct ComputedDofToQuadPolicy
+{
+};
+
+template < typename KernelConfiguration, typename = void >
+struct cell_dof_to_quad_policy
+{
+   using type = CachedDofToQuadPolicy;
+};
+
+template < typename KernelConfiguration >
+struct cell_dof_to_quad_policy<
+   KernelConfiguration,
+   std::void_t< typename KernelConfiguration::cell_dof_to_quad_policy > >
+{
+   using type = typename KernelConfiguration::cell_dof_to_quad_policy;
+};
+
+template < typename KernelConfiguration >
+using cell_dof_to_quad_policy_t =
+   typename cell_dof_to_quad_policy<
+      std::remove_cvref_t< KernelConfiguration > >::type;
+
+template < typename KernelConfiguration, typename = void >
+struct face_dof_to_quad_policy
+{
+   using type = CachedDofToQuadPolicy;
+};
+
+template < typename KernelConfiguration >
+struct face_dof_to_quad_policy<
+   KernelConfiguration,
+   std::void_t< typename KernelConfiguration::face_dof_to_quad_policy > >
+{
+   using type = typename KernelConfiguration::face_dof_to_quad_policy;
+};
+
+template < typename KernelConfiguration >
+using face_dof_to_quad_policy_t =
+   typename face_dof_to_quad_policy<
+      std::remove_cvref_t< KernelConfiguration > >::type;
 
 /**
  * @brief Concept for "DoF → quadrature" mapping containers.
@@ -28,7 +77,8 @@ namespace gendil {
  *      - `Real quad_gradients(LocalIndex i, LocalIndex j) const;`   // G*B'
  *      - `Real weights(LocalIndex q) const;`
  *
- * This is satisfied by both @c DofToQuad and @c NonconformingDofToQuad.
+ * This is satisfied by @c CachedDofToQuad, @c ComputedDofToQuad,
+ * and @c NonconformingDofToQuad.
  */
 template <typename DTQ>
 concept DofToQuadMapping =
@@ -63,7 +113,7 @@ concept DofToQuadMapping =
  * @tparam Points The points and weights of the integration rule.
  */
 template < typename ShapeFunctions, typename Points >
-struct DofToQuad
+struct CachedDofToQuad
 {
    using shape_functions = ShapeFunctions;
    using integration_rule = Points; // !FIXME
@@ -76,7 +126,7 @@ struct DofToQuad
    Real grad_q[ num_quads ][ num_quads ];
 
    GENDIL_HOST_DEVICE
-   constexpr DofToQuad()
+   constexpr CachedDofToQuad()
    {
       for ( Integer quad = 0; quad < num_quads; quad++ )
       {
@@ -123,6 +173,46 @@ struct DofToQuad
 };
 
 /**
+ * @brief Computed/on-demand DoF-to-quadrature map.
+ *
+ * This representation preserves the @c DofToQuadMapping accessor
+ * convention but stores no value, gradient, or quadrature-gradient
+ * tables. It is intended as an execution/resource policy for kernels
+ * where cached map payloads dominate compile-time or launch resources.
+ */
+template < typename ShapeFunctions, typename Points >
+struct ComputedDofToQuad
+{
+   using shape_functions = ShapeFunctions;
+   using integration_rule = Points; // !FIXME
+   using points = Points;
+   static constexpr Integer num_dofs = ShapeFunctions::num_dofs;
+   static constexpr Integer num_quads = points::GetNumPoints();
+
+   constexpr Real values( LocalIndex q, LocalIndex d ) const
+   {
+      return ShapeFunctions::ComputeValue( d, points::GetCoord( q ) );
+   }
+
+   constexpr Real gradients( LocalIndex q, LocalIndex d ) const
+   {
+      return ShapeFunctions::ComputeGradientValue( d, points::GetCoord( q ) );
+   }
+
+   /// @brief G*B' gradient operation from quadrature points to quadrature points.
+   constexpr Real quad_gradients( LocalIndex i, LocalIndex j ) const
+   {
+      using gl = LagrangeShapeFunctions< points >;
+      return gl::ComputeGradientValue( j, points::GetCoord( i ) );
+   }
+
+   constexpr Real weights( LocalIndex q ) const
+   {
+      return points::GetWeight( q );
+   }
+};
+
+/**
  * @brief Creates a tuple of DofToQuad objects corresponding to the 1D shape functions
  * evaluated at the 1D quadrature rule.
  * 
@@ -136,46 +226,83 @@ struct DofToQuad
 template < typename ShapeFunctions, typename IntRule > 
 auto MakeDofToQuad( );
 
-template < typename ShapeFunctions, typename IntRule, size_t... Is > 
-auto MakeTensorDofToQuad( std::index_sequence< Is... > )
+template < typename Policy, typename ShapeFunctions, typename IntRule >
+auto MakeDofToQuadForPolicy( );
+
+template < typename Policy, typename ShapeFunctions, typename IntRule, size_t... Is >
+auto MakeTensorDofToQuadForPolicy( std::index_sequence< Is... > )
 {
    return std::make_tuple(
-             DofToQuad<
+             MakeDofToQuadForPolicy<
+                Policy,
                 std::tuple_element_t< Is, typename ShapeFunctions::shape_functions_1d_tuple >,
-                std::tuple_element_t< Is, typename IntRule::points::points_1d_tuple > >{}... );
+                std::tuple_element_t< Is, typename IntRule::points::points_1d_tuple > >()... );
 }
 
-template < typename ShapeFunctions, typename IntRule, size_t... Is > 
-auto MakeVectorDofToQuad( std::index_sequence< Is... > )
+template < typename Policy, typename ShapeFunctions, typename IntRule, size_t... Is >
+auto MakeVectorDofToQuadForPolicy( std::index_sequence< Is... > )
 {
    return std::make_tuple(
-      MakeDofToQuad< 
+      MakeDofToQuadForPolicy<
+         Policy,
          std::tuple_element_t< Is, typename ShapeFunctions::scalar_shape_functions_tuple >,
          IntRule>()... );
 }
 
 // FIXME: IntRules assumes a specific struct for the IntRule: std::tuple<IntRules...>
-template < typename ShapeFunctions, typename IntRule > 
-auto MakeDofToQuad( )
+template < typename Policy, typename ShapeFunctions, typename IntRule >
+auto MakeDofToQuadForPolicy( )
 {
-   static_assert(
-      ShapeFunctions::dim == IntRule::space_dim,
-      "Shape functions and Integration Rule have different space dimensions." );
+   if constexpr ( requires { IntRule::space_dim; } )
+   {
+      static_assert(
+         ShapeFunctions::dim == IntRule::space_dim,
+         "Shape functions and Integration Rule have different space dimensions." );
+   }
 
    if constexpr ( is_tensor_shape_functions_v< ShapeFunctions > )
    {
-      return MakeTensorDofToQuad< ShapeFunctions, IntRule >(
+      return MakeTensorDofToQuadForPolicy< Policy, ShapeFunctions, IntRule >(
          std::make_index_sequence< std::tuple_size_v< typename IntRule::points::points_1d_tuple > >{} );
    }
    else if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
    {
-      return MakeVectorDofToQuad< ShapeFunctions, IntRule >(
+      return MakeVectorDofToQuadForPolicy< Policy, ShapeFunctions, IntRule >(
          std::make_index_sequence< ShapeFunctions::vector_dim >{} );
    }
    else
    {
-      return DofToQuad< ShapeFunctions, IntRule >{};
+      if constexpr ( std::is_same_v< Policy, ComputedDofToQuadPolicy > )
+      {
+         return ComputedDofToQuad< ShapeFunctions, IntRule >{};
+      }
+      else
+      {
+         return CachedDofToQuad< ShapeFunctions, IntRule >{};
+      }
    }
+}
+
+template < typename ShapeFunctions, typename IntRule >
+auto MakeDofToQuad( )
+{
+   return MakeDofToQuadForPolicy<
+      CachedDofToQuadPolicy,
+      ShapeFunctions,
+      IntRule >();
+}
+
+template < typename KernelConfiguration, typename ShapeFunctions, typename IntRule >
+auto MakeDofToQuad( )
+{
+   using policy = cell_dof_to_quad_policy_t< KernelConfiguration >;
+   static_assert(
+      std::is_same_v< policy, CachedDofToQuadPolicy >,
+      "Computed cell DofToQuad maps are not implemented in this milestone." );
+   return MakeDofToQuadForPolicy<
+      CachedDofToQuadPolicy,
+      ShapeFunctions,
+      IntRule >();
 }
 
 /**
@@ -190,16 +317,43 @@ auto MakeDofToQuad( )
 template < typename ShapeFunctions, typename FaceIntRulesTuple > 
 auto MakeFaceDofToQuad( );
 
-template < typename ShapeFunctions, typename FaceIntRulesTuple, size_t... Is > 
-auto MakeFaceDofToQuad( std::index_sequence< Is... > )
+template < typename Policy, typename ShapeFunctions, typename FaceIntRulesTuple, size_t... Is >
+auto MakeFaceDofToQuadForPolicy( std::index_sequence< Is... > )
 {
-   return std::make_tuple( MakeDofToQuad< ShapeFunctions, std::tuple_element_t< Is, FaceIntRulesTuple > >()... );
+   return std::make_tuple(
+      MakeDofToQuadForPolicy<
+         Policy,
+         ShapeFunctions,
+         std::tuple_element_t< Is, FaceIntRulesTuple > >()... );
+}
+
+template < typename Policy, typename ShapeFunctions, typename FaceIntRulesTuple >
+auto MakeFaceDofToQuadForPolicy( )
+{
+   return MakeFaceDofToQuadForPolicy<
+      Policy,
+      ShapeFunctions,
+      FaceIntRulesTuple >(
+         std::make_index_sequence<
+            std::tuple_size_v< FaceIntRulesTuple > >{} );
 }
 
 template < typename ShapeFunctions, typename FaceIntRulesTuple > 
 auto MakeFaceDofToQuad( )
 {
-   return MakeFaceDofToQuad< ShapeFunctions, FaceIntRulesTuple >( std::make_index_sequence< std::tuple_size_v< FaceIntRulesTuple > >{} );
+   return MakeFaceDofToQuadForPolicy<
+      CachedDofToQuadPolicy,
+      ShapeFunctions,
+      FaceIntRulesTuple >();
+}
+
+template < typename KernelConfiguration, typename ShapeFunctions, typename FaceIntRulesTuple >
+auto MakeFaceDofToQuad( )
+{
+   return MakeFaceDofToQuadForPolicy<
+      face_dof_to_quad_policy_t< KernelConfiguration >,
+      ShapeFunctions,
+      FaceIntRulesTuple >();
 }
 
 // Mesh Face quadrature data
@@ -274,7 +428,7 @@ template <
 GENDIL_HOST_DEVICE
 auto MakeNonconformingDofToQuadData(
    const Face & face,
-   const DofToQuad< ShapeFunctions, IntegrationRule > & dtq,
+   const CachedDofToQuad< ShapeFunctions, IntegrationRule > & dtq,
    std::integral_constant<Integer, DimIndex>)
 {
    return NonconformingDofToQuad< ShapeFunctions, IntegrationRule, Face, DimIndex >( face );

@@ -4,9 +4,27 @@
 
 #include "benchmark-batched-mass-operator.hpp"
 
-int main()
+int main( int argc, char ** argv )
 {
+   gendil::benchmarks::MassBenchmarkOptions options;
+   const auto parse_result =
+      gendil::benchmarks::ParseMassBenchmarkOptions(
+         argc,
+         argv,
+         options,
+         std::cerr );
+   if ( parse_result ==
+        gendil::benchmarks::MassBenchmarkOptionParseResult::exit_success )
+   {
+      return 0;
+   }
+   if ( parse_result ==
+        gendil::benchmarks::MassBenchmarkOptionParseResult::exit_failure )
+   {
+      return 1;
+   }
+
    gendil::benchmarks::PrintMassHeader();
-   gendil::benchmarks::RunMassDimension< 3 >();
+   gendil::benchmarks::RunMassDimension< 3 >( options.target_num_dofs );
    return 0;
 }

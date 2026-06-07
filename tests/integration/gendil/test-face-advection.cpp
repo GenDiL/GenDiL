@@ -78,6 +78,7 @@ int main(int argc, char* argv[])
    const Integer ndofs = fe_space.GetNumberOfFiniteElementDofs();
    Vector dofs_in(ndofs), dofs_out(ndofs);
    dofs_in = 1.0;
+   dofs_out = 0.0;
    face_op(dofs_in, dofs_out); // compile/link sanity check
 
    return 0;

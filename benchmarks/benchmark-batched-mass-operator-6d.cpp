@@ -25,11 +25,6 @@ int main( int argc, char ** argv )
    }
 
    gendil::benchmarks::PrintMassHeader();
-   gendil::benchmarks::RunMassDimension< 1 >( options.target_num_dofs );
-   gendil::benchmarks::RunMassDimension< 2 >( options.target_num_dofs );
-   gendil::benchmarks::RunMassDimension< 3 >( options.target_num_dofs );
-   gendil::benchmarks::RunMassDimension< 4 >( options.target_num_dofs );
-   gendil::benchmarks::RunMassDimension< 5 >( options.target_num_dofs );
    gendil::benchmarks::RunMassDimension< 6 >( options.target_num_dofs );
    return 0;
 }
