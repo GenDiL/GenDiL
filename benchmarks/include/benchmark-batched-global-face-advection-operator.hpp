@@ -257,6 +257,36 @@ constexpr size_t GlobalFaceAdvectionRequiredSharedMemoryForSharedDimensions(
       : face_staging_requirement;
 }
 
+constexpr size_t CachedDofToQuadPayloadBytes(
+   const size_t num_dofs,
+   const size_t num_quads )
+{
+   const size_t weights = num_quads;
+   const size_t values = num_dofs * num_quads;
+   const size_t gradients = num_dofs * num_quads;
+   const size_t quad_gradients = num_quads * num_quads;
+   return
+      ( weights + values + gradients + quad_gradients ) *
+      sizeof( Real );
+}
+
+template < Integer Dim, Integer Order >
+constexpr size_t CachedConformingFaceDofToQuadPayloadBytes()
+{
+   constexpr size_t num_dofs_1d = Order + 1;
+   constexpr size_t num_quad_1d = Order + 2;
+   constexpr size_t volume_axis_map =
+      CachedDofToQuadPayloadBytes( num_dofs_1d, num_quad_1d );
+   constexpr size_t face_axis_map =
+      CachedDofToQuadPayloadBytes( num_dofs_1d, 1 );
+
+   return
+      2 *
+      static_cast< size_t >( Dim ) *
+      ( face_axis_map +
+        ( static_cast< size_t >( Dim ) - 1 ) * volume_axis_map );
+}
+
 template <
    Integer Dim,
    Integer Order,
@@ -350,6 +380,60 @@ constexpr size_t GlobalFaceAdvectionEstimatedLocalMemoryBytes()
       private_memory_overhead_factor *
       StaticPower( Order + 2, private_dimensions );
    return interpolation_and_test_requirement * sizeof( Real );
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   template < typename > typename FacePolicyTransform >
+constexpr size_t GlobalFaceAdvectionFaceMapCompileFootprintBytes()
+{
+   using probe_policy = FacePolicyTransform< HostKernelConfiguration >;
+   using face_dof_to_quad_policy =
+      face_dof_to_quad_policy_t< probe_policy >;
+   constexpr bool computed_face_maps =
+      std::is_same_v<
+         face_dof_to_quad_policy,
+         ComputedDofToQuadPolicy >;
+
+   if constexpr ( computed_face_maps )
+   {
+      return 0;
+   }
+   else
+   {
+      // The raw cached face-map tuple is part of the kernel/lambda payload.
+      // On GPU backends it can also be materialized into private/local stack
+      // during inlining. The multiplier is intentionally conservative and
+      // localized to cached conforming face maps, so computed-map rows are
+      // not penalized.
+      constexpr size_t cached_face_map_materialization_factor = 4;
+      return
+         cached_face_map_materialization_factor *
+         CachedConformingFaceDofToQuadPayloadBytes< Dim, Order >();
+   }
+}
+
+template <
+   Integer Dim,
+   Integer Order,
+   typename ThreadLayout,
+   template < typename > typename FacePolicyTransform,
+   size_t BatchSize,
+   bool FullSharedFacePolicy >
+constexpr size_t GlobalFaceAdvectionEstimatedCompileResourceBytes()
+{
+   return
+      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+         Dim,
+         Order,
+         ThreadLayout,
+         BatchSize,
+         FullSharedFacePolicy >() +
+      GlobalFaceAdvectionFaceMapCompileFootprintBytes<
+         Dim,
+         Order,
+         FacePolicyTransform >();
 }
 
 template <
@@ -1231,10 +1315,11 @@ void RunLegacyGlobalFaceAdvectionCase(
             "skipped-launch-limit" );
    }
    else if constexpr (
-      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+      GlobalFaceAdvectionEstimatedCompileResourceBytes<
          Dim,
          Order,
          ThreadLayout,
+         FacePolicyTransform,
          batch_size,
          FullSharedFacePolicy >() >
       static_local_memory_compile_limit_bytes )
@@ -1378,10 +1463,11 @@ void RunDeviceBatch1GlobalFaceAdvectionCase(
             "skipped-launch-limit" );
    }
    else if constexpr (
-      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+      GlobalFaceAdvectionEstimatedCompileResourceBytes<
          Dim,
          Order,
          ThreadLayout,
+         FacePolicyTransform,
          batch_size,
          FullSharedFacePolicy >() >
       static_local_memory_compile_limit_bytes )
@@ -1559,10 +1645,11 @@ void RunDeviceBatchNGlobalFaceAdvectionCase(
             "skipped-launch-limit" );
    }
    else if constexpr (
-      GlobalFaceAdvectionEstimatedLocalMemoryBytes<
+      GlobalFaceAdvectionEstimatedCompileResourceBytes<
          Dim,
          Order,
          ThreadLayout,
+         FacePolicyTransform,
          BatchSize,
          FullSharedFacePolicy >() >
       static_local_memory_compile_limit_bytes )
