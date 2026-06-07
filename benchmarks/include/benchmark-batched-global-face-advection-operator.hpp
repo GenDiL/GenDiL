@@ -360,21 +360,17 @@ template <
 constexpr size_t GlobalFaceAdvectionEstimatedLocalMemoryBytes()
 {
    // High-dimensional face advection can materialize interpolation and
-   // test-function tensors as private/local memory. Threaded layouts move
-   // the threaded/shared slice out of the private tensor footprint; keep the
-   // high-dimensional register-only rows guarded without discarding the
-   // DirectGlobal + computed-map threaded cases.
-   constexpr size_t private_memory_overhead_factor = 4;
-   constexpr size_t shared_dimensions =
-      GlobalFaceAdvectionSelectedSharedDimensions<
-         Dim,
-         Order,
-         ThreadLayout,
-         BatchSize,
-         FullSharedFacePolicy >();
+   // test-function tensors as private/local memory. The reduction in this
+   // private footprint tracks the logical threaded tensor dimensions, not
+   // the larger shared-memory slice selected for staging.
+   constexpr size_t private_memory_overhead_factor = 8;
+   constexpr size_t logical_threaded_dimensions =
+      Min(
+         static_cast< size_t >( Dim ),
+         ThreadLayout::thread_block_dim );
    constexpr size_t private_dimensions =
-      Dim > shared_dimensions
-         ? Dim - shared_dimensions
+      Dim > logical_threaded_dimensions
+         ? Dim - logical_threaded_dimensions
          : 0;
    constexpr size_t interpolation_and_test_requirement =
       private_memory_overhead_factor *
