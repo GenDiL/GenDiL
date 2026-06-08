@@ -665,6 +665,20 @@ struct IsScalarDGL2Space
       !is_vector_shape_functions_v< ShapeFunctions >;
 };
 
+template < typename FESpace >
+struct IsScalarRawCOOCellSpace
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using Restriction = typename Space::restriction_type;
+
+   static constexpr bool value =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      ( std::is_same_v< Restriction, L2Restriction > ||
+        std::is_same_v< Restriction, H1Restriction > );
+};
+
 template<
    class KernelPolicy,
    class WeakForm,
@@ -703,9 +717,9 @@ auto GenericRawCOOAssembly(
       std::is_same_v< TrialSpace, TestSpace >,
       "GenericAssembly<RawCOO> first implementation requires matching trial/test FE spaces." );
    static_assert(
-      IsScalarDGL2Space< TrialSpace >::value &&
-      IsScalarDGL2Space< TestSpace >::value,
-      "GenericAssembly<RawCOO> first implementation supports scalar L2/DG spaces only." );
+      IsScalarRawCOOCellSpace< TrialSpace >::value &&
+      IsScalarRawCOOCellSpace< TestSpace >::value,
+      "GenericAssembly<RawCOO> currently supports scalar L2/DG or scalar H1/CG cell spaces only." );
 
    constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
