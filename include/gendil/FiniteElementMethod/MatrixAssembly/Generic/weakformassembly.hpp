@@ -793,11 +793,25 @@ auto GenericAssembly(
          wf_ctx,
          integration_rule );
    }
+   else if constexpr ( Type == MatrixAssemblyType::COO )
+   {
+      auto raw_coo =
+         GenericRawCOOAssembly<KernelPolicy>(
+            weak_form,
+            wf_ctx,
+            integration_rule );
+      auto coo =
+         FinalizeRawCOOToCOO(
+            raw_coo,
+            HostSortReduceRawCOOPolicy{} );
+      FreeRawCOOTripletBuffer( raw_coo );
+      return coo;
+   }
    else
    {
       static_assert(
          dependent_false_value_v< Type >,
-         "GenericAssembly: COO, CSR, and CSC assembly are reserved canonical formats and are not implemented yet." );
+         "GenericAssembly: CSR and CSC assembly are reserved canonical formats and are not implemented yet." );
    }
 }
 

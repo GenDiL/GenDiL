@@ -12,7 +12,7 @@
 namespace gendil {
 
 /**
- * Raw duplicated unsorted COO triplet stream.
+ * Intermediate raw duplicated unsorted COO triplet assembly stream.
  *
  * Entries are additive contributions in assembly order. Duplicate `(row, col)`
  * pairs are allowed and expected, and no sorting or duplicate reduction is

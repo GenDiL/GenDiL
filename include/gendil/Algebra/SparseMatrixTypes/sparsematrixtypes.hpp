@@ -10,3 +10,6 @@
 
 // Raw duplicated unsorted COO triplet assembly buffer.
 #include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
+
+// Canonical sorted and duplicate-reduced COO sparse matrix type.
+#include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"

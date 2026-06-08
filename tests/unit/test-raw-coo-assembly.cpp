@@ -18,13 +18,6 @@ namespace
 
 constexpr Real tolerance = 1.0e-12;
 
-struct Triplet
-{
-   GlobalIndex row;
-   GlobalIndex col;
-   Real value;
-};
-
 bool Check( const bool condition, const char * message )
 {
    if ( !condition )
@@ -119,50 +112,40 @@ bool HasDuplicateCoordinate(
       coordinates.end();
 }
 
-std::vector< Triplet > SortReduceTriplets(
-   const RawCOOTripletBuffer< Real, GlobalIndex > & buffer )
+bool CheckCanonicalCOOSortedUnique(
+   const COOMatrix< Real, GlobalIndex > & matrix )
 {
-   std::vector< Triplet > triplets;
-   triplets.reserve( static_cast< size_t >( buffer.nnz_raw ) );
-
-   for ( GlobalIndex i = 0; i < buffer.nnz_raw; ++i )
+   bool success = true;
+   for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      triplets.push_back(
-         Triplet{ buffer.rows[i], buffer.cols[i], buffer.values[i] } );
+      success = Check(
+         matrix.rows[i] < matrix.num_rows,
+         "Canonical COO emitted a row outside the matrix dimensions." ) && success;
+      success = Check(
+         matrix.cols[i] < matrix.num_cols,
+         "Canonical COO emitted a column outside the matrix dimensions." ) && success;
+      success = Check(
+         std::isfinite( matrix.values[i] ),
+         "Canonical COO emitted a non-finite value." ) && success;
    }
 
-   std::sort(
-      triplets.begin(),
-      triplets.end(),
-      [] ( const Triplet & lhs, const Triplet & rhs )
-      {
-         if ( lhs.row != rhs.row )
-         {
-            return lhs.row < rhs.row;
-         }
-         return lhs.col < rhs.col;
-      });
-
-   std::vector< Triplet > reduced;
-   for ( const auto & triplet : triplets )
+   for ( GlobalIndex i = 1; i < matrix.nnz; ++i )
    {
-      if ( !reduced.empty() &&
-           reduced.back().row == triplet.row &&
-           reduced.back().col == triplet.col )
-      {
-         reduced.back().value += triplet.value;
-      }
-      else
-      {
-         reduced.push_back( triplet );
-      }
+      const bool ordered =
+         matrix.rows[i - 1] < matrix.rows[i] ||
+         ( matrix.rows[i - 1] == matrix.rows[i] &&
+           matrix.cols[i - 1] < matrix.cols[i] );
+
+      success = Check(
+         ordered,
+         "Canonical COO entries are not strictly sorted and unique." ) && success;
    }
 
-   return reduced;
+   return success;
 }
 
-void ApplyReducedCOO(
-   const std::vector< Triplet > & triplets,
+void ApplyCOO(
+   const COOMatrix< Real, GlobalIndex > & matrix,
    const Vector & x,
    Vector & y )
 {
@@ -174,9 +157,9 @@ void ApplyReducedCOO(
       y_data[i] = 0.0;
    }
 
-   for ( const auto & triplet : triplets )
+   for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      y_data[triplet.row] += triplet.value * x_data[triplet.col];
+      y_data[matrix.rows[i]] += matrix.values[i] * x_data[matrix.cols[i]];
    }
 }
 
@@ -200,6 +183,54 @@ bool TestRawCOOBufferAllocation()
    }
 
    FreeRawCOOTripletBuffer( buffer );
+   return success;
+}
+
+bool TestRawCOOToCOOFinalization()
+{
+   auto raw = MakeRawCOOTripletBuffer< Real, GlobalIndex >( 2, 3, 6 );
+
+   raw.rows[0] = 1;
+   raw.cols[0] = 2;
+   raw.values[0] = 3.0;
+   raw.rows[1] = 0;
+   raw.cols[1] = 0;
+   raw.values[1] = 1.0;
+   raw.rows[2] = 1;
+   raw.cols[2] = 2;
+   raw.values[2] = 4.0;
+   raw.rows[3] = 0;
+   raw.cols[3] = 1;
+   raw.values[3] = 5.0;
+   raw.rows[4] = 1;
+   raw.cols[4] = 1;
+   raw.values[4] = 2.0;
+   raw.rows[5] = 1;
+   raw.cols[5] = 1;
+   raw.values[5] = -2.0;
+
+   auto coo =
+      FinalizeRawCOOToCOO(
+         raw,
+         HostSortReduceRawCOOPolicy{} );
+
+   bool success = true;
+   success = Check( coo.num_rows == 2, "Canonical COO row count is wrong." ) && success;
+   success = Check( coo.num_cols == 3, "Canonical COO column count is wrong." ) && success;
+   success = Check( coo.nnz == 4, "Canonical COO reduced nnz is wrong." ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   success = Check( coo.rows[0] == 0 && coo.cols[0] == 0, "Canonical COO entry 0 coordinate is wrong." ) && success;
+   success = Check( Near( coo.values[0], 1.0 ), "Canonical COO entry 0 value is wrong." ) && success;
+   success = Check( coo.rows[1] == 0 && coo.cols[1] == 1, "Canonical COO entry 1 coordinate is wrong." ) && success;
+   success = Check( Near( coo.values[1], 5.0 ), "Canonical COO entry 1 value is wrong." ) && success;
+   success = Check( coo.rows[2] == 1 && coo.cols[2] == 1, "Canonical COO entry 2 coordinate is wrong." ) && success;
+   success = Check( Near( coo.values[2], 0.0 ), "Canonical COO should retain exact reduced zeros." ) && success;
+   success = Check( coo.rows[3] == 1 && coo.cols[3] == 2, "Canonical COO entry 3 coordinate is wrong." ) && success;
+   success = Check( Near( coo.values[3], 7.0 ), "Canonical COO entry 3 value is wrong." ) && success;
+
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw );
    return success;
 }
 
@@ -235,8 +266,17 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
 
    using KernelPolicy = SerialKernelConfiguration;
 
-   auto coo =
+   auto raw_coo =
       GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      FinalizeRawCOOToCOO(
+         raw_coo,
+         HostSortReduceRawCOOPolicy{} );
+   auto direct_coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
          wf_context,
          integration_rule );
@@ -255,23 +295,26 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
 
    bool success = true;
    success = Check(
-      coo.num_rows ==
+      raw_coo.num_rows ==
          static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
       "Raw COO row dimension is wrong." ) && success;
    success = Check(
-      coo.num_cols ==
+      raw_coo.num_cols ==
          static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
       "Raw COO column dimension is wrong." ) && success;
    success = Check(
-      coo.nnz_raw == expected_nnz,
+      raw_coo.nnz_raw == expected_nnz,
       "Raw COO cell-mass triplet count is wrong." ) && success;
-   success = CheckRawTripletRangesAndFinite( coo ) && success;
-   success = CheckScalar1DRawCellSlotCoordinates( coo, fe_space ) && success;
-
-   auto reduced = SortReduceTriplets( coo );
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckScalar1DRawCellSlotCoordinates( raw_coo, fe_space ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( direct_coo ) && success;
    success = Check(
-      reduced.size() == static_cast< size_t >( coo.nnz_raw ),
+      coo.nnz == raw_coo.nnz_raw,
       "Scalar L2 cell-only RawCOO should not create duplicate triplets." ) && success;
+   success = Check(
+      direct_coo.nnz == coo.nnz,
+      "Direct scalar L2 COO assembly disagrees with explicit RawCOO finalization." ) && success;
 
    Vector x( fe_space.GetNumberOfFiniteElementDofs() );
    Real * x_data = x.WriteHostData();
@@ -282,7 +325,7 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyReducedCOO( reduced, x, y_coo );
+   ApplyCOO( direct_coo, x, y_coo );
    y_bsr = 0.0;
    bsr( x, y_bsr );
 
@@ -295,7 +338,9 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
          "Raw COO action disagrees with BSR action." ) && success;
    }
 
-   FreeRawCOOTripletBuffer( coo );
+   FreeCOOMatrix( direct_coo );
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -336,8 +381,17 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
 
    using KernelPolicy = SerialKernelConfiguration;
 
-   auto coo =
+   auto raw_coo =
       GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      FinalizeRawCOOToCOO(
+         raw_coo,
+         HostSortReduceRawCOOPolicy{} );
+   auto direct_coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
          wf_context,
          integration_rule );
@@ -356,26 +410,29 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
 
    bool success = true;
    success = Check(
-      coo.num_rows ==
+      raw_coo.num_rows ==
          static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
       "H1 Raw COO row dimension is wrong." ) && success;
    success = Check(
-      coo.num_cols ==
+      raw_coo.num_cols ==
          static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
       "H1 Raw COO column dimension is wrong." ) && success;
    success = Check(
-      coo.nnz_raw == expected_nnz,
+      raw_coo.nnz_raw == expected_nnz,
       "H1 Raw COO cell-mass triplet count is wrong." ) && success;
-   success = CheckRawTripletRangesAndFinite( coo ) && success;
-   success = CheckScalar1DRawCellSlotCoordinates( coo, fe_space ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckScalar1DRawCellSlotCoordinates( raw_coo, fe_space ) && success;
    success = Check(
-      HasDuplicateCoordinate( coo ),
+      HasDuplicateCoordinate( raw_coo ),
       "Scalar H1 RawCOO should preserve duplicate raw triplet coordinates." ) && success;
-
-   auto reduced = SortReduceTriplets( coo );
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( direct_coo ) && success;
    success = Check(
-      coo.nnz_raw > static_cast< GlobalIndex >( reduced.size() ),
+      raw_coo.nnz_raw > coo.nnz,
       "Scalar H1 RawCOO should have fewer canonical entries after reduction." ) && success;
+   success = Check(
+      direct_coo.nnz == coo.nnz,
+      "Direct scalar H1 COO assembly disagrees with explicit RawCOO finalization." ) && success;
 
    for ( Integer vector_case = 0; vector_case < 2; ++vector_case )
    {
@@ -391,7 +448,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
 
       Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
       Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
-      ApplyReducedCOO( reduced, x, y_coo );
+      ApplyCOO( direct_coo, x, y_coo );
       y_sgbsr = 0.0;
       sgbsr( x, y_sgbsr );
 
@@ -405,7 +462,9 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
       }
    }
 
-   FreeRawCOOTripletBuffer( coo );
+   FreeCOOMatrix( direct_coo );
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -415,6 +474,7 @@ int main()
 {
    bool success = true;
    success = TestRawCOOBufferAllocation() && success;
+   success = TestRawCOOToCOOFinalization() && success;
    success = TestScalarL2CellMassRawCOOAgainstBSR() && success;
    success = TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR() && success;
 

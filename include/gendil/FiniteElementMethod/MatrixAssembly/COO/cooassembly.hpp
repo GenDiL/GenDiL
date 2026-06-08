@@ -6,3 +6,6 @@
 
 // Raw COO triplet insertion helpers for generic sparse assembly.
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
+
+// Canonical COO storage and RawCOO host sort/reduce finalization.
+#include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
