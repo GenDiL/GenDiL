@@ -13,6 +13,7 @@ enum class MatrixAssemblyType
 {
    BSR,
    SGBSR,
+   RawCOO,
    COO,
    CSR,
    CSC

@@ -12,6 +12,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrpattern.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/localinsertion.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -664,6 +665,74 @@ struct IsScalarDGL2Space
       !is_vector_shape_functions_v< ShapeFunctions >;
 };
 
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericRawCOOAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule )
+{
+   using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
+
+   constexpr auto TrialName = requirements<I>::trial_name;
+   constexpr auto TestName  = requirements<I>::test_name;
+
+   static_assert(TrialName != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TrialSpace in integrand.");
+   static_assert(TestName  != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TestSpace in integrand.");
+   static_assert(
+      has_cell_contributions_v< I > &&
+      !has_boundary_facet_contributions_v< I > &&
+      !has_interior_facet_contributions_v< I >,
+      "GenericAssembly<RawCOO> currently supports cell-only weak forms." );
+
+   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+   const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
+
+   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+
+   static_assert(
+      std::is_same_v< TrialSpace, TestSpace >,
+      "GenericAssembly<RawCOO> first implementation requires matching trial/test FE spaces." );
+   static_assert(
+      IsScalarDGL2Space< TrialSpace >::value &&
+      IsScalarDGL2Space< TestSpace >::value,
+      "GenericAssembly<RawCOO> first implementation supports scalar L2/DG spaces only." );
+
+   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
+
+   const GlobalIndex num_elements = trial_space.GetNumberOfFiniteElements();
+   const GlobalIndex nnz_raw =
+      num_elements *
+      static_cast< GlobalIndex >( ntest ) *
+      static_cast< GlobalIndex >( ntrial );
+
+   auto coo_buffer =
+      MakeRawCOOTripletBuffer< Real, GlobalIndex >(
+         static_cast< GlobalIndex >( test_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( trial_space.GetNumberOfFiniteElementDofs() ),
+         nnz_raw );
+
+   GenericBlockDiagonalAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      coo_buffer );
+
+   SyncRawCOOTripletBuffer< KernelPolicy >( coo_buffer );
+
+   return coo_buffer;
+}
+
 template < typename TrialSpace, typename TestSpace >
 inline constexpr MatrixAssemblyType default_matrix_assembly_type_v =
    ( IsScalarDGL2Space< TrialSpace >::value &&
@@ -685,6 +754,8 @@ auto GenericAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
+   (void) backend;
+
    if constexpr ( Type == MatrixAssemblyType::BSR )
    {
       return GenericBSRAssembly<KernelPolicy>(
@@ -701,11 +772,18 @@ auto GenericAssembly(
          integration_rule,
          backend );
    }
+   else if constexpr ( Type == MatrixAssemblyType::RawCOO )
+   {
+      return GenericRawCOOAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule );
+   }
    else
    {
       static_assert(
          dependent_false_value_v< Type >,
-         "GenericAssembly: COO, CSR, and CSC assembly are reserved but not implemented yet." );
+         "GenericAssembly: COO, CSR, and CSC assembly are reserved canonical formats and are not implemented yet." );
    }
 }
 

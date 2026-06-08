@@ -7,3 +7,6 @@
 
 // Algebraic scatter/gather wrapper for BSR sparse matrix application.
 #include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"
+
+// Raw duplicated unsorted COO triplet assembly buffer.
+#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
