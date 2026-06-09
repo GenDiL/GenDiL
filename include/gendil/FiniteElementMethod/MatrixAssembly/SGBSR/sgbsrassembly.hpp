@@ -70,17 +70,17 @@ auto GenericSGBSRAssembly(
       std::is_same_v< TrialSpace, TestSpace >,
       "SGBSR GenericAssembly currently requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported." );
 
-   constexpr bool trial_is_h1 =
-      std::is_same_v< typename TrialSpace::restriction_type, H1Restriction >;
-   constexpr bool test_is_h1 =
-      std::is_same_v< typename TestSpace::restriction_type, H1Restriction >;
+   constexpr bool trial_is_cg =
+      is_h1_restriction_v< typename TrialSpace::restriction_type >;
+   constexpr bool test_is_cg =
+      is_h1_restriction_v< typename TestSpace::restriction_type >;
    constexpr bool has_facet_terms =
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I >;
 
    static_assert(
-      !( ( trial_is_h1 || test_is_h1 ) && has_facet_terms ),
-      "SGBSR GenericAssembly currently supports H1Restriction cell terms only; H1 boundary/interior facet terms are unsupported." );
+      !( ( trial_is_cg || test_is_cg ) && has_facet_terms ),
+      "SGBSR GenericAssembly currently supports H1Restriction/VectorH1Restriction cell terms only; H1/vector H1 boundary/interior facet terms are unsupported." );
 
    auto bsr_matrix = MakeSGBSRInternalPattern< I >( trial_space, backend );
 
