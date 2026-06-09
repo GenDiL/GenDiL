@@ -201,7 +201,7 @@ int TestFacetOnlyXDirection()
    generic_operator(u_h, v_h_generic);
 
    auto assembled_matrix =
-      GenericAssembly<KernelPolicy>(
+      GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
          facet_only_wf,
          wf_context,
          integration_rule
@@ -332,7 +332,7 @@ int TestFullAdvectionXDirection()
    generic_operator(u_h, v_h_generic);
 
    auto assembled_matrix =
-      GenericAssembly<KernelPolicy>(wf, wf_context, integration_rule);
+      GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(wf, wf_context, integration_rule);
 
    assembled_matrix(u_h, v_h_matrix);
 

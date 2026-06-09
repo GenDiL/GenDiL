@@ -329,25 +329,6 @@ GlobalIndex ExpectedRawCOONNZ( const FESpace & fe_space )
    return block_count * block_entries;
 }
 
-void ApplyCOO(
-   const COOMatrix< Real, GlobalIndex > & matrix,
-   const Vector & x,
-   Vector & y )
-{
-   const Real * x_data = x.ReadHostData();
-   Real * y_data = y.WriteHostData();
-
-   for ( GlobalIndex i = 0; i < y.Size(); ++i )
-   {
-      y_data[i] = 0.0;
-   }
-
-   for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
-   {
-      y_data[matrix.rows[i]] += matrix.values[i] * x_data[matrix.cols[i]];
-   }
-}
-
 bool CheckVectorNear(
    const Vector & actual,
    const Vector & expected,
@@ -568,7 +549,7 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( direct_coo, x, y_coo );
+   direct_coo( x, y_coo );
    y_bsr = 0.0;
    bsr( x, y_bsr );
 
@@ -693,7 +674,7 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( direct_coo, x, y_coo );
+   direct_coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
 
@@ -802,7 +783,7 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( direct_coo, x, y_coo );
+   direct_coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
 
@@ -921,7 +902,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
 
       Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
       Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
-      ApplyCOO( direct_coo, x, y_coo );
+      direct_coo( x, y_coo );
       y_sgbsr = 0.0;
       sgbsr( x, y_sgbsr );
 
@@ -1034,7 +1015,7 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_expected( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( direct_coo, x, y_coo );
+   direct_coo( x, y_coo );
    ApplyTwoCellVectorH1P1MassReference( x, y_expected );
 
    success = CheckVectorNear(
@@ -1139,7 +1120,7 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
    x_data[1] = 5.0;
 
    Vector y( 2 );
-   ApplyCOO( coo, x, y );
+   coo( x, y );
    const Real * y_data = y.ReadHostData();
    success = Check( Near( y_data[0], -3.0 ), "Analytic p0 COO action row 0 is wrong." ) && success;
    success = Check( Near( y_data[1], 3.0 ), "Analytic p0 COO action row 1 is wrong." ) && success;
@@ -1303,7 +1284,7 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
 
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( coo, x, y_coo );
+   coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
 
@@ -1387,7 +1368,7 @@ bool TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR()
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( coo, x, y_coo );
+   coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
    bsr( x, y_bsr );
@@ -1465,7 +1446,7 @@ bool TestScalarInteriorJumpCOOAgainstGenericAndBSR()
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( coo, x, y_coo );
+   coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
    bsr( x, y_bsr );
@@ -1594,7 +1575,7 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
    Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
-   ApplyCOO( coo, x, y_coo );
+   coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
    bsr( x, y_bsr );

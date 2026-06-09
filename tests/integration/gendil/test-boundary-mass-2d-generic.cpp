@@ -159,7 +159,7 @@ int TestBoundaryMass()
    // Generic assembled BSR matrix
    // --------------------------------------------------------------------------
 
-   auto boundary_matrix = GenericAssembly<KernelPolicy>(
+   auto boundary_matrix = GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
       boundary_mass_wf,
       boundary_wf_context,
       int_rules

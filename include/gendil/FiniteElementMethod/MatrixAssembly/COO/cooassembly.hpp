@@ -16,11 +16,13 @@ template<
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
-   class IntegrationRule >
+   class IntegrationRule,
+   typename Backend >
 auto GenericCOOAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule )
+   const IntegrationRule& integration_rule,
+   Backend backend )
 {
    auto raw_coo =
       GenericRawCOOAssembly<KernelPolicy>(
@@ -30,9 +32,27 @@ auto GenericCOOAssembly(
    auto coo =
       FinalizeRawCOOToCOO(
          raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+         HostSortReduceRawCOOPolicy{},
+         backend );
    FreeRawCOOTripletBuffer( raw_coo );
    return coo;
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericCOOAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule )
+{
+   return GenericCOOAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      DefaultCOOBackend{} );
 }
 
 } // namespace gendil

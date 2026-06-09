@@ -295,7 +295,7 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
    dofs_out_bsr = 0.0;
 
    auto generic_diffusion_matrix =
-      GenericAssembly<KernelPolicy>(
+      GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
          diffusion_wf,
          diffusion_wf_context,
          int_rules

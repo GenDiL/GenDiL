@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/defaultbackend.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
@@ -36,8 +37,6 @@ auto GenericAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
-   (void) backend;
-
    if constexpr ( Type == MatrixAssemblyType::BSR )
    {
       return GenericBSRAssembly<KernelPolicy>(
@@ -56,6 +55,7 @@ auto GenericAssembly(
    }
    else if constexpr ( Type == MatrixAssemblyType::RawCOO )
    {
+      (void) backend;
       return GenericRawCOOAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
@@ -66,7 +66,8 @@ auto GenericAssembly(
       return GenericCOOAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
-         integration_rule );
+         integration_rule,
+         backend );
    }
    else
    {
@@ -87,27 +88,24 @@ auto GenericAssembly(
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule)
 {
-   return GenericAssembly<Type, KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      DefaultBSRBackend{} );
-}
-
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule >
-auto GenericAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
-{
-   return GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
-      weak_form,
-      wf_ctx,
-      integration_rule );
+   if constexpr (
+      Type == MatrixAssemblyType::RawCOO ||
+      Type == MatrixAssemblyType::BSR ||
+      Type == MatrixAssemblyType::SGBSR ||
+      Type == MatrixAssemblyType::COO )
+   {
+      return GenericAssembly<Type, KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         DefaultBackendFor_t< Type >{} );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_value_v< Type >,
+         "GenericAssembly: CSR and CSC assembly are reserved canonical formats and are not implemented yet." );
+   }
 }
 
 } // namespace gendil

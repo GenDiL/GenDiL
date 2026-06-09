@@ -37,10 +37,11 @@ struct COOTriplet
 
 } // namespace details
 
-template < typename ValueType, typename IndexType >
+template < typename ValueType, typename IndexType, typename Backend >
 auto FinalizeRawCOOToCOO(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOPolicy & )
+   const HostSortReduceRawCOOPolicy &,
+   Backend backend )
 {
    using Triplet = details::COOTriplet< ValueType, IndexType >;
 
@@ -83,10 +84,11 @@ auto FinalizeRawCOOToCOO(
    }
 
    auto matrix =
-      MakeCOOMatrix< ValueType, IndexType >(
+      MakeCOOMatrix< ValueType, IndexType, Backend >(
          raw.num_rows,
          raw.num_cols,
-         static_cast< IndexType >( reduced.size() ) );
+         static_cast< IndexType >( reduced.size() ),
+         backend );
 
    for ( IndexType i = 0; i < matrix.nnz; ++i )
    {
@@ -104,6 +106,17 @@ auto FinalizeRawCOOToCOO(
    }
 
    return matrix;
+}
+
+template < typename ValueType, typename IndexType >
+auto FinalizeRawCOOToCOO(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   const HostSortReduceRawCOOPolicy & policy )
+{
+   return FinalizeRawCOOToCOO(
+      raw,
+      policy,
+      DefaultCOOBackend{} );
 }
 
 } // namespace gendil
