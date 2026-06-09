@@ -16,6 +16,7 @@
 #include "gendil/FiniteElementMethod/finiteelementorders.hpp"
 #include "gendil/FiniteElementMethod/restriction.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sum.hpp"
 
 namespace gendil {
@@ -74,6 +75,22 @@ auto MakeTensor(
    std::index_sequence< dof_shapes... > )
 {
    return MakeFIFOView( data, (GlobalIndex)dof_shapes..., num_elements );
+}
+
+template <
+   typename T,
+   size_t ... dof_shapes >
+auto MakeIndirectedTensor(
+   T * data,
+   const HostDevicePointer< const int > & indices,
+   GlobalIndex num_elements,
+   std::index_sequence< dof_shapes... > )
+{
+   return MakeIndirectedFIFOView(
+      data,
+      indices,
+      static_cast< GlobalIndex >( dof_shapes )...,
+      num_elements );
 }
 
 /**
@@ -142,20 +159,47 @@ auto MakeVectorElementTensorView(
    T * data,
    std::index_sequence< v_dims... > )
 {
-   static_assert(
-      std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-      "MakeVectorElementTensorView only supports L2Restriction."
-   );
+   using ShapeFunctions =
+      typename FiniteElementSpace::finite_element_type::shape_functions;
+   using Restriction = typename FiniteElementSpace::restriction_type;
    const GlobalIndex num_elements = finite_element_space.GetNumberOfFiniteElements();
-   using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
-   const GlobalIndex dof_shift = finite_element_space.restriction.shift;
-   return std::make_tuple(
-      MakeTensor(
-         data + dof_shift + VectorOffset( dof_shape{}, num_elements, std::make_index_sequence< v_dims >{} ),
-         num_elements,
-         std::tuple_element_t< v_dims, dof_shape >{}
-      )...
-   );
+   using dof_shape = typename ShapeFunctions::dof_shape;
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      const GlobalIndex dof_shift = finite_element_space.restriction.shift;
+      return std::make_tuple(
+         MakeTensor(
+            data + dof_shift + VectorOffset(
+               dof_shape{},
+               num_elements,
+               std::make_index_sequence< v_dims >{} ),
+            num_elements,
+            std::tuple_element_t< v_dims, dof_shape >{} )... );
+   }
+   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   {
+      static_assert(
+         Restriction::num_comp == ShapeFunctions::vector_dim,
+         "VectorH1Restriction<NComp> must match the vector finite element component count." );
+      static_assert(
+         VectorComponentDofShapesMatchFirst< ShapeFunctions >(),
+         "VectorH1Restriction currently requires identical scalar component DoF shapes." );
+
+      return std::make_tuple(
+         MakeIndirectedTensor(
+            data + static_cast< GlobalIndex >( v_dims ) *
+               static_cast< GlobalIndex >( finite_element_space.restriction.scalar_num_dofs ),
+            finite_element_space.restriction.indices,
+            num_elements,
+            std::tuple_element_t< v_dims, dof_shape >{} )... );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "MakeVectorElementTensorView supports only L2Restriction and VectorH1Restriction." );
+   }
 }
 
 template < typename FiniteElementSpace, typename T >
