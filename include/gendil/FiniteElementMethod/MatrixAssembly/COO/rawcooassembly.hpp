@@ -1,0 +1,121 @@
+// Copyright GenDiL Project Developers. See COPYRIGHT file for details.
+//
+// SPDX-License-Identifier: (BSD-3-Clause)
+
+#pragma once
+
+#include "gendil/prelude.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
+
+#include <type_traits>
+
+namespace gendil {
+
+template < typename FESpace >
+struct IsScalarRawCOOCellSpace
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using Restriction = typename Space::restriction_type;
+
+   static constexpr bool value =
+      !is_vector_shape_functions_v< ShapeFunctions > &&
+      ( std::is_same_v< Restriction, L2Restriction > ||
+        std::is_same_v< Restriction, H1Restriction > );
+};
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericRawCOOAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule )
+{
+   using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
+
+   constexpr auto TrialName = requirements<I>::trial_name;
+   constexpr auto TestName  = requirements<I>::test_name;
+
+   static_assert(TrialName != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TrialSpace in integrand.");
+   static_assert(TestName  != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TestSpace in integrand.");
+   static_assert(
+      has_cell_contributions_v< I > ||
+      has_boundary_facet_contributions_v< I > ||
+      has_interior_facet_contributions_v< I >,
+      "GenericAssembly<RawCOO> requires at least one active weak-form domain." );
+
+   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+   const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
+
+   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+
+   static_assert(
+      std::is_same_v< TrialSpace, TestSpace >,
+      "GenericAssembly<RawCOO> requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported." );
+
+   constexpr bool has_face_terms =
+      has_boundary_facet_contributions_v< I > ||
+      has_interior_facet_contributions_v< I >;
+
+   static_assert(
+      ( !has_face_terms &&
+        IsScalarRawCOOCellSpace< TrialSpace >::value &&
+        IsScalarRawCOOCellSpace< TestSpace >::value ) ||
+      ( has_face_terms &&
+        IsScalarDGL2Space< TrialSpace >::value &&
+        IsScalarDGL2Space< TestSpace >::value ),
+      "GenericAssembly<RawCOO> supports scalar L2/DG cell and conforming face terms, "
+      "or scalar H1/CG cell-only terms. H1 face terms, vector spaces, mixed spaces, "
+      "nonconforming faces, and variable-size hp emission are unsupported." );
+
+   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
+   constexpr GlobalIndex block_entry_count =
+      static_cast< GlobalIndex >( ntest ) *
+      static_cast< GlobalIndex >( ntrial );
+
+   auto layout =
+      MakeRawCOOAssemblyLayout<
+         has_cell_contributions_v< I >,
+         has_boundary_facet_contributions_v< I >,
+         has_interior_facet_contributions_v< I > >(
+            trial_space,
+            block_entry_count );
+
+   auto coo_buffer =
+      MakeRawCOOTripletBuffer< Real, GlobalIndex >(
+         static_cast< GlobalIndex >( test_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( trial_space.GetNumberOfFiniteElementDofs() ),
+         layout.nnz_raw );
+
+   RawCOOAssemblyTarget< Real, GlobalIndex > coo_target{
+      coo_buffer,
+      layout
+   };
+
+   GenericAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      coo_target );
+
+   SyncRawCOOTripletBuffer< KernelPolicy >( coo_buffer );
+   FreeRawCOOAssemblyLayout( layout );
+
+   return coo_buffer;
+}
+
+} // namespace gendil
