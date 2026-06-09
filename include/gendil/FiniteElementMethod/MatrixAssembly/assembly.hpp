@@ -21,3 +21,6 @@
 
 // CSR sparse assembly through RawCOO host sort/reduce finalization.
 #include "gendil/FiniteElementMethod/MatrixAssembly/CSR/csrassembly.hpp"
+
+// CSC sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/CSC/cscassembly.hpp"

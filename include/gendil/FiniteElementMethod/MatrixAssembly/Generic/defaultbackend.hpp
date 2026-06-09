@@ -6,6 +6,7 @@
 
 #include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -19,7 +20,7 @@ struct DefaultBackendFor
    static_assert(
       dependent_false_value_v< Type >,
       "DefaultBackendFor is defined only for implemented assembly formats. "
-      "CSC assembly is not implemented yet." );
+      "The requested matrix assembly format is not implemented yet." );
 };
 
 template <>
@@ -65,6 +66,16 @@ struct DefaultBackendFor< MatrixAssemblyType::CSR >
    using type = NativeDeviceCSRBackend;
 #else
    using type = HostCSRBackend;
+#endif
+};
+
+template <>
+struct DefaultBackendFor< MatrixAssemblyType::CSC >
+{
+#if defined(GENDIL_USE_DEVICE)
+   using type = NativeDeviceCSCBackend;
+#else
+   using type = HostCSCBackend;
 #endif
 };
 

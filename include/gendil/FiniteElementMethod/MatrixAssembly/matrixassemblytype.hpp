@@ -9,7 +9,7 @@ namespace gendil {
 // Public selector for matrix assembly/operator factories. BSR returns the raw
 // element-block sparse matrix, SGBSR wraps that element-block operator in
 // finite-element gather/scatter maps, RawCOO returns the intermediate triplet
-// stream, and COO/CSR return canonical sparse matrix storage.
+// stream, and COO/CSR/CSC return canonical sparse matrix storage.
 enum class MatrixAssemblyType
 {
    BSR,

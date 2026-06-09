@@ -16,3 +16,6 @@
 
 // Canonical compressed sparse row sparse matrix type.
 #include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
+
+// Canonical compressed sparse column sparse matrix type.
+#include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
