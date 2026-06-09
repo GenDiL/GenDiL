@@ -15,7 +15,7 @@
 namespace gendil {
 
 template < typename FESpace >
-struct IsScalarRawCOOCellSpace
+struct IsRawCOOCellAssemblySpace
 {
    using Space = std::remove_cvref_t< FESpace >;
    using ShapeFunctions =
@@ -23,9 +23,15 @@ struct IsScalarRawCOOCellSpace
    using Restriction = typename Space::restriction_type;
 
    static constexpr bool value =
-      !is_vector_shape_functions_v< ShapeFunctions > &&
-      ( std::is_same_v< Restriction, L2Restriction > ||
-        std::is_same_v< Restriction, H1Restriction > );
+      std::is_same_v< Restriction, L2Restriction > ||
+      ( std::is_same_v< Restriction, H1Restriction > &&
+        !is_vector_shape_functions_v< ShapeFunctions > );
+};
+
+template < typename FESpace >
+struct IsRawCOOFaceAssemblySpace
+{
+   static constexpr bool value = IsScalarDGL2Space< FESpace >::value;
 };
 
 template<
@@ -72,14 +78,15 @@ auto GenericRawCOOAssembly(
 
    static_assert(
       ( !has_face_terms &&
-        IsScalarRawCOOCellSpace< TrialSpace >::value &&
-        IsScalarRawCOOCellSpace< TestSpace >::value ) ||
+        IsRawCOOCellAssemblySpace< TrialSpace >::value &&
+        IsRawCOOCellAssemblySpace< TestSpace >::value ) ||
       ( has_face_terms &&
-        IsScalarDGL2Space< TrialSpace >::value &&
-        IsScalarDGL2Space< TestSpace >::value ),
-      "GenericAssembly<RawCOO> supports scalar L2/DG cell and conforming face terms, "
-      "or scalar H1/CG cell-only terms. H1 face terms, vector spaces, mixed spaces, "
-      "nonconforming faces, and variable-size hp emission are unsupported." );
+        IsRawCOOFaceAssemblySpace< TrialSpace >::value &&
+        IsRawCOOFaceAssemblySpace< TestSpace >::value ),
+      "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
+      "scalar H1/CG cell-only terms, and scalar L2/DG conforming face terms. "
+      "Vector face terms, H1 face terms, vector H1, mixed spaces, nonconforming "
+      "faces, and variable-size hp emission are unsupported." );
 
    constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();

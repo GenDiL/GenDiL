@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -96,6 +97,90 @@ bool CheckScalar1DRawCellSlotCoordinates(
    return success;
 }
 
+template < typename FESpace >
+bool CheckVectorRawCellSlotCoordinates(
+   const RawCOOTripletBuffer< Real, GlobalIndex > & buffer,
+   const FESpace & fe_space )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   static_assert(
+      is_vector_shape_functions_v< ShapeFunctions >,
+      "CheckVectorRawCellSlotCoordinates requires a vector FE space." );
+
+   const GlobalIndex local_dofs =
+      static_cast< GlobalIndex >( fe_space.finite_element.GetNumDofs() );
+   const GlobalIndex num_elements =
+      static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElements() );
+   const GlobalIndex block_entries = local_dofs * local_dofs;
+
+   bool success = true;
+   for ( GlobalIndex element = 0; element < num_elements; ++element )
+   {
+      std::vector< GlobalIndex > expected_globals(
+         static_cast< size_t >( local_dofs ),
+         0 );
+      std::vector< bool > seen(
+         static_cast< size_t >( local_dofs ),
+         false );
+
+      ForEachLocalDof(
+         fe_space,
+         [&] ( const auto component, const auto & indices )
+         {
+            const LocalIndex local_id =
+               FlattenLocalDof( fe_space, component, indices );
+            success = Check(
+               local_id < local_dofs,
+               "Vector Raw COO local DoF flattening exceeded the block size." ) && success;
+
+            if ( local_id < local_dofs )
+            {
+               expected_globals[static_cast< size_t >( local_id )] =
+                  ElementToGlobalDofIndex(
+                     fe_space,
+                     component,
+                     element,
+                     indices );
+               seen[static_cast< size_t >( local_id )] = true;
+            }
+         });
+
+      for ( const bool was_seen : seen )
+      {
+         success = Check(
+            was_seen,
+            "Vector Raw COO component-major local DoF traversal skipped a slot." ) && success;
+      }
+
+      for ( GlobalIndex local_col = 0; local_col < local_dofs; ++local_col )
+      {
+         for ( GlobalIndex local_row = 0; local_row < local_dofs; ++local_row )
+         {
+            const GlobalIndex raw_index =
+               element * block_entries +
+               local_col * local_dofs +
+               local_row;
+
+            success = Check(
+               raw_index < buffer.nnz_raw,
+               "Vector Raw COO slot coordinate test exceeded the triplet buffer." ) && success;
+            success = Check(
+               buffer.rows[raw_index] ==
+                  expected_globals[static_cast< size_t >( local_row )],
+               "Vector Raw COO row slot does not match component-major test DoF order." ) && success;
+            success = Check(
+               buffer.cols[raw_index] ==
+                  expected_globals[static_cast< size_t >( local_col )],
+               "Vector Raw COO column slot does not match component-major trial DoF order." ) && success;
+         }
+      }
+   }
+
+   return success;
+}
+
 bool HasDuplicateCoordinate(
    const RawCOOTripletBuffer< Real, GlobalIndex > & buffer )
 {
@@ -139,6 +224,40 @@ bool CheckCanonicalCOOSortedUnique(
       success = Check(
          ordered,
          "Canonical COO entries are not strictly sorted and unique." ) && success;
+   }
+
+   return success;
+}
+
+bool CheckCOOMatricesEqual(
+   const COOMatrix< Real, GlobalIndex > & actual,
+   const COOMatrix< Real, GlobalIndex > & expected,
+   const char * message )
+{
+   bool success = true;
+   success = Check(
+      actual.num_rows == expected.num_rows,
+      message ) && success;
+   success = Check(
+      actual.num_cols == expected.num_cols,
+      message ) && success;
+   success = Check(
+      actual.nnz == expected.nnz,
+      message ) && success;
+
+   const GlobalIndex nnz =
+      actual.nnz < expected.nnz ? actual.nnz : expected.nnz;
+   for ( GlobalIndex i = 0; i < nnz; ++i )
+   {
+      success = Check(
+         actual.rows[i] == expected.rows[i],
+         message ) && success;
+      success = Check(
+         actual.cols[i] == expected.cols[i],
+         message ) && success;
+      success = Check(
+         Near( actual.values[i], expected.values[i] ),
+         message ) && success;
    }
 
    return success;
@@ -430,6 +549,127 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
          Near( coo_data[i], bsr_data[i] ),
          "Raw COO action disagrees with BSR action." ) && success;
    }
+
+   FreeCOOMatrix( direct_coo );
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
+   return success;
+}
+
+bool TestVectorL2CellMassRawCOOAgainstSGBSR()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+
+   constexpr Integer order = 0;
+   FiniteElementOrders< order, order > orders;
+   auto scalar_fe = MakeLegendreFiniteElement( orders );
+   auto vector_fe =
+      MakeVectorFiniteElement(
+         scalar_fe,
+         scalar_fe );
+   auto fe_space = MakeFiniteElementSpace( mesh, vector_fe );
+
+   Cells< "mesh" > domain;
+   VectorTrialSpace< "u" > u;
+   VectorTestSpace< "u" > v;
+   auto weak_form = integrate( domain, dot( u, v ) );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   IntegrationRuleNumPoints< 1, 1 > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw_coo =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      FinalizeRawCOOToCOO(
+         raw_coo,
+         HostSortReduceRawCOOPolicy{} );
+   auto direct_coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto sgbsr =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+
+   const GlobalIndex local_dofs =
+      static_cast< GlobalIndex >( fe_space.finite_element.GetNumDofs() );
+   const GlobalIndex expected_nnz =
+      static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElements() ) *
+      local_dofs *
+      local_dofs;
+
+   bool success = true;
+   success = Check(
+      raw_coo.num_rows ==
+         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+      "Vector L2 Raw COO row dimension is wrong." ) && success;
+   success = Check(
+      raw_coo.num_cols ==
+         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+      "Vector L2 Raw COO column dimension is wrong." ) && success;
+   success = Check(
+      raw_coo.nnz_raw == expected_nnz,
+      "Vector L2 Raw COO cell-mass triplet count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckVectorRawCellSlotCoordinates( raw_coo, fe_space ) && success;
+
+   const std::array< std::pair< GlobalIndex, GlobalIndex >, 8 > raw_coords{
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 2, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 2 },
+      std::pair< GlobalIndex, GlobalIndex >{ 2, 2 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 3, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 3 },
+      std::pair< GlobalIndex, GlobalIndex >{ 3, 3 }
+   };
+
+   success = Check(
+      raw_coo.nnz_raw == raw_coords.size(),
+      "Vector p0 RawCOO test expected exactly two 2x2 cell blocks." ) && success;
+   for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
+   {
+      success = Check(
+         raw_coo.rows[i] == raw_coords[i].first &&
+            raw_coo.cols[i] == raw_coords[i].second,
+         "Vector p0 RawCOO coordinates are not component-major." ) && success;
+   }
+
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( direct_coo ) && success;
+   success = Check(
+      coo.nnz == raw_coo.nnz_raw,
+      "Vector L2 cell-only RawCOO should not create duplicate triplets." ) && success;
+   success = CheckCOOMatricesEqual(
+      direct_coo,
+      coo,
+      "Direct vector L2 COO assembly disagrees with explicit RawCOO finalization." ) && success;
+
+   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   FillDeterministicInput( x );
+
+   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
+   ApplyCOO( direct_coo, x, y_coo );
+   y_sgbsr = 0.0;
+   sgbsr( x, y_sgbsr );
+
+   success = CheckVectorNear(
+      y_coo,
+      y_sgbsr,
+      "Vector L2 COO action disagrees with SGBSR action." ) && success;
 
    FreeCOOMatrix( direct_coo );
    FreeCOOMatrix( coo );
@@ -955,6 +1195,7 @@ int main()
    success = TestRawCOOBufferAllocation() && success;
    success = TestRawCOOToCOOFinalization() && success;
    success = TestScalarL2CellMassRawCOOAgainstBSR() && success;
+   success = TestVectorL2CellMassRawCOOAgainstSGBSR() && success;
    success = TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR() && success;
    success = TestScalarP0InteriorJumpAnalyticRawCOO() && success;
    success = TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR() && success;
