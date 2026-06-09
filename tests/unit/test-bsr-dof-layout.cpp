@@ -233,6 +233,109 @@ bool TestScalarH1ElementToGlobalDofIndex()
    return success;
 }
 
+bool TestVectorH1ElementToGlobalDofIndex()
+{
+   const Integer n = 2;
+   const Real h = 1.0 / static_cast< Real >( n );
+   Cartesian1DMesh mesh( h, n );
+
+   constexpr Integer order = 1;
+   FiniteElementOrders< order > orders;
+   auto scalar_fe = MakeLobattoFiniteElement( orders );
+   auto vector_fe =
+      MakeVectorFiniteElement(
+         scalar_fe,
+         scalar_fe );
+
+   const std::array< int, 4 > restriction_map{
+      0, 1,
+      1, 2
+   };
+   HostDevicePointer< const int > restriction_indices{};
+   restriction_indices.host_pointer = restriction_map.data();
+   H1Restriction scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   auto vector_h1_space =
+      MakeFiniteElementSpace( mesh, vector_fe, restriction );
+
+   using VectorH1Space =
+      std::remove_cvref_t< decltype( vector_h1_space ) >;
+   using VectorH1Shape =
+      typename VectorH1Space::finite_element_type::shape_functions;
+   constexpr Component0Tag c0{};
+   constexpr Component1Tag c1{};
+   const std::array< GlobalIndex, 1 > i0{ 0 };
+   const std::array< GlobalIndex, 1 > i1{ 1 };
+
+   static_assert(
+      is_vector_h1_restriction_v< typename VectorH1Space::restriction_type >,
+      "This test must use the explicit vector H1 restriction type." );
+   static_assert(
+      VectorH1Space::restriction_type::num_comp ==
+         VectorH1Shape::vector_dim,
+      "VectorH1Restriction<NComp> should match the vector FE component count." );
+
+   bool success = true;
+
+   success = Check(
+      vector_h1_space.GetNumberOfFiniteElementDofs() == 6,
+      "Vector H1 total true-DoF count should be component-major scalar_count * NComp." ) && success;
+
+   success = Check(
+      FlattenLocalDof( vector_h1_space, c0, i0 ) == 0,
+      "Vector H1 component 0 local node 0 should flatten to local id 0." ) && success;
+   success = Check(
+      FlattenLocalDof( vector_h1_space, c0, i1 ) == 1,
+      "Vector H1 component 0 local node 1 should flatten to local id 1." ) && success;
+   success = Check(
+      FlattenLocalDof( vector_h1_space, c1, i0 ) == 2,
+      "Vector H1 component 1 local node 0 should flatten after component 0." ) && success;
+   success = Check(
+      FlattenLocalDof( vector_h1_space, c1, i1 ) == 3,
+      "Vector H1 component 1 local node 1 should flatten after component 0." ) && success;
+
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i0 ) == 0,
+      "Vector H1 component 0 element 0 left node should map to true DoF 0." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i1 ) == 1,
+      "Vector H1 component 0 element 0 right node should map to true DoF 1." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 1, i0 ) == 1,
+      "Vector H1 component 0 shared node should map to true DoF 1 from element 1." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 1, i1 ) == 2,
+      "Vector H1 component 0 element 1 right node should map to true DoF 2." ) && success;
+
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i0 ) == 3,
+      "Vector H1 component 1 true DoFs should begin after all component 0 DoFs." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i1 ) == 4,
+      "Vector H1 component 1 element 0 right node should map to true DoF 4." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c1, 1, i0 ) == 4,
+      "Vector H1 component 1 shared node should map to true DoF 4 from element 1." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c1, 1, i1 ) == 5,
+      "Vector H1 component 1 element 1 right node should map to true DoF 5." ) && success;
+
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i1 ) ==
+         ElementToGlobalDofIndex( vector_h1_space, c0, 1, i0 ),
+      "Vector H1 shared node should be shared within component 0." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i1 ) ==
+         ElementToGlobalDofIndex( vector_h1_space, c1, 1, i0 ),
+      "Vector H1 shared node should be shared within component 1." ) && success;
+   success = Check(
+      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i0 ) !=
+         ElementToGlobalDofIndex( vector_h1_space, c1, 0, i0 ),
+      "Vector H1 components must not alias each other." ) && success;
+
+   return success;
+}
+
 bool TestVectorGlobalDofIndex()
 {
    Cartesian2DMesh mesh( 1.0, 2, 1 );
@@ -430,6 +533,7 @@ int main()
    success = TestVectorFlattenLocalDof() && success;
    success = TestScalarGlobalDofIndex() && success;
    success = TestScalarH1ElementToGlobalDofIndex() && success;
+   success = TestVectorH1ElementToGlobalDofIndex() && success;
    success = TestVectorGlobalDofIndex() && success;
    success = TestVectorTrialTraversalAndSetLocalDof() && success;
    success = TestDescriptorThreadRegisterSplit() && success;
