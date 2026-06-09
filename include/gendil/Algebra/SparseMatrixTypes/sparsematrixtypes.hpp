@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+// Shared sparse matrix action arithmetic policy helpers.
+#include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
+
 // A block sparse row (BSR) sparse matrix type.
 #include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
 

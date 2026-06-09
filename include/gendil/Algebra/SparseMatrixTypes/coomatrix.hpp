@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -14,12 +15,19 @@
 
 namespace gendil {
 
+template < typename ComputeType = void >
 struct HostCOOBackend
-{ };
-struct NativeDeviceCOOBackend
-{ };
+{
+   using compute_type = ComputeType;
+};
 
-using DefaultCOOBackend = HostCOOBackend;
+template < typename ComputeType = void >
+struct NativeDeviceCOOBackend
+{
+   using compute_type = ComputeType;
+};
+
+using DefaultCOOBackend = HostCOOBackend<>;
 
 template <
    typename ValueType = Real,
@@ -30,9 +38,10 @@ struct COOMatrix;
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -40,9 +49,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend &,
+   const NativeDeviceCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -51,9 +61,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -61,9 +72,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend &,
+   const NativeDeviceCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -73,10 +85,11 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y );
@@ -172,10 +185,11 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > &,
    const COOMatrix< ValueType, IndexType, MatrixBackend > &,
    const InputVector &,
    OutputVector & )
@@ -226,15 +240,28 @@ void CheckCOOApplyDimensions(
 }
 
 template <
+   typename Backend,
    typename Matrix,
    typename InputValue,
    typename OutputValue >
 void ApplyHostCOOToRawPointers(
+   const Backend &,
    const Matrix & matrix,
    const InputValue * x_data,
    OutputValue * y_data )
 {
    using IndexType = typename Matrix::index_type;
+   using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+
+   CheckScatterSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType >();
 
    #pragma omp parallel for
    for ( IndexType row = 0; row < matrix.num_rows; ++row )
@@ -247,11 +274,11 @@ void ApplyHostCOOToRawPointers(
    {
       const IndexType row = matrix.rows[entry];
       const IndexType col = matrix.cols[entry];
-      const OutputValue contribution =
-         static_cast< OutputValue >(
-            matrix.values[entry] * x_data[col] );
+      const ComputeType contribution =
+         static_cast< ComputeType >( matrix.values[entry] ) *
+         static_cast< ComputeType >( x_data[col] );
       #pragma omp atomic
-      y_data[row] += contribution;
+      y_data[row] += static_cast< OutputValueType >( contribution );
    }
 }
 
@@ -277,14 +304,30 @@ void COODeviceZeroKernel(
    }
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 __global__
 void COODeviceApplyKernel(
+   const Backend backend,
    const Matrix matrix,
-   const Real * x,
-   Real * y )
+   const InputValue * x,
+   OutputValue * y )
 {
    using IndexType = typename Matrix::index_type;
+   using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+
+   CheckScatterSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType >();
 
    const IndexType stride =
       static_cast< IndexType >( blockDim.x ) *
@@ -299,9 +342,12 @@ void COODeviceApplyKernel(
    {
       const IndexType row = matrix.rows[entry];
       const IndexType col = matrix.cols[entry];
+      const ComputeType contribution =
+         static_cast< ComputeType >( matrix.values[entry] ) *
+         static_cast< ComputeType >( x[col] );
       AtomicAdd(
          y[row],
-         static_cast< Real >( matrix.values[entry] * x[col] ) );
+         static_cast< OutputValueType >( contribution ) );
    }
 }
 
@@ -321,11 +367,16 @@ inline dim3 MakeCOOApplyGrid(
    return dim3( static_cast< unsigned int >( grid_x_size ) );
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 void ApplyDeviceCOOToRawPointers(
+   const Backend & backend,
    const Matrix & matrix,
-   const Real * x_data,
-   Real * y_data )
+   const InputValue * x_data,
+   OutputValue * y_data )
 {
    constexpr unsigned int threads_per_block = 256;
    const dim3 block_dim( threads_per_block );
@@ -356,6 +407,7 @@ void ApplyDeviceCOOToRawPointers(
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
          "Apply(NativeDeviceCOOBackend, ...): before apply launch" );
       COODeviceApplyKernel<<< grid_dim, block_dim >>>(
+         backend,
          matrix,
          x_data,
          y_data );
@@ -370,9 +422,10 @@ void ApplyDeviceCOOToRawPointers(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -382,18 +435,19 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadHostData();
-   Real * y_data = y.WriteHostData();
+   const auto * x_data = x.ReadHostData();
+   auto * y_data = y.WriteHostData();
 
-   details::ApplyHostCOOToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCOOToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend &,
+   const NativeDeviceCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -404,10 +458,10 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadDeviceData();
-   Real * y_data = y.WriteDeviceData();
+   const auto * x_data = x.ReadDeviceData();
+   auto * y_data = y.WriteDeviceData();
 
-   details::ApplyDeviceCOOToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCOOToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< COOMatrix< ValueType, IndexType, MatrixBackend > >,
@@ -420,9 +474,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCOOBackend &,
+   const HostCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -432,18 +487,19 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.HostRead();
-   Real * y_data = y.HostWrite();
+   const auto * x_data = x.HostRead();
+   auto * y_data = y.HostWrite();
 
-   details::ApplyHostCOOToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCOOToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend &,
+   const NativeDeviceCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -454,10 +510,10 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.Read();
-   Real * y_data = y.Write();
+   const auto * x_data = x.Read();
+   auto * y_data = y.Write();
 
-   details::ApplyDeviceCOOToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCOOToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< COOMatrix< ValueType, IndexType, MatrixBackend > >,

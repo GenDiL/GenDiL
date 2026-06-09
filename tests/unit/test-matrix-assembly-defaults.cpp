@@ -25,36 +25,44 @@ bool Check( const bool condition, const char * message )
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::BSR >,
-      NativeDeviceBSRBackend > );
+      NativeDeviceBSRBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::SGBSR >,
-      NativeDeviceBSRBackend > );
+      NativeDeviceBSRBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
-      NativeDeviceCOOBackend > );
+      NativeDeviceCOOBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::CSR >,
-      NativeDeviceCSRBackend > );
+      NativeDeviceCSRBackend<> > );
+static_assert(
+   std::is_same_v<
+      DefaultBackendFor_t< MatrixAssemblyType::CSC >,
+      NativeDeviceCSCBackend<> > );
 #else
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::BSR >,
-      HostBSRBackend > );
+      HostBSRBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::SGBSR >,
-      HostBSRBackend > );
+      HostBSRBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
-      HostCOOBackend > );
+      HostCOOBackend<> > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::CSR >,
-      HostCSRBackend > );
+      HostCSRBackend<> > );
+static_assert(
+   std::is_same_v<
+      DefaultBackendFor_t< MatrixAssemblyType::CSC >,
+      HostCSCBackend<> > );
 #endif
 static_assert(
    std::is_same_v<
@@ -104,11 +112,17 @@ bool TestTypedGenericAssemblyDefaults()
          weak_form,
          wf_context,
          integration_rule );
+   auto csc =
+      GenericAssembly< MatrixAssemblyType::CSC, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
 
    using BSRType = std::remove_cvref_t< decltype( bsr ) >;
    using COOType = std::remove_cvref_t< decltype( coo ) >;
    using RawCOOType = std::remove_cvref_t< decltype( raw_coo ) >;
    using CSRType = std::remove_cvref_t< decltype( csr ) >;
+   using CSCType = std::remove_cvref_t< decltype( csc ) >;
 
    static_assert(
       std::is_same_v<
@@ -126,6 +140,10 @@ bool TestTypedGenericAssemblyDefaults()
       std::is_same_v<
          typename CSRType::backend_type,
          DefaultBackendFor_t< MatrixAssemblyType::CSR > > );
+   static_assert(
+      std::is_same_v<
+         typename CSCType::backend_type,
+         DefaultBackendFor_t< MatrixAssemblyType::CSC > > );
 
    bool success = true;
    success = Check(
@@ -142,7 +160,11 @@ bool TestTypedGenericAssemblyDefaults()
    success = Check(
       csr.num_rows == 1 && csr.num_cols == 1 && csr.nnz == 1,
       "Typed CSR GenericAssembly returned the wrong matrix dimensions." ) && success;
+   success = Check(
+      csc.num_rows == 1 && csc.num_cols == 1 && csc.nnz == 1,
+      "Typed CSC GenericAssembly returned the wrong matrix dimensions." ) && success;
 
+   FreeCSCMatrix( csc );
    FreeCSRMatrix( csr );
    FreeCOOMatrix( coo );
    FreeRawCOOTripletBuffer( raw_coo );

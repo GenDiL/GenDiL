@@ -27,9 +27,9 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::BSR >
 {
 #if defined(GENDIL_USE_DEVICE)
-   using type = NativeDeviceBSRBackend;
+   using type = NativeDeviceBSRBackend<>;
 #else
-   using type = HostBSRBackend;
+   using type = HostBSRBackend<>;
 #endif
 };
 
@@ -37,9 +37,9 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::SGBSR >
 {
 #if defined(GENDIL_USE_DEVICE)
-   using type = NativeDeviceBSRBackend;
+   using type = NativeDeviceBSRBackend<>;
 #else
-   using type = HostBSRBackend;
+   using type = HostBSRBackend<>;
 #endif
 };
 
@@ -53,9 +53,9 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::COO >
 {
 #if defined(GENDIL_USE_DEVICE)
-   using type = NativeDeviceCOOBackend;
+   using type = NativeDeviceCOOBackend<>;
 #else
-   using type = HostCOOBackend;
+   using type = HostCOOBackend<>;
 #endif
 };
 
@@ -63,9 +63,9 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::CSR >
 {
 #if defined(GENDIL_USE_DEVICE)
-   using type = NativeDeviceCSRBackend;
+   using type = NativeDeviceCSRBackend<>;
 #else
-   using type = HostCSRBackend;
+   using type = HostCSRBackend<>;
 #endif
 };
 
@@ -73,9 +73,9 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::CSC >
 {
 #if defined(GENDIL_USE_DEVICE)
-   using type = NativeDeviceCSCBackend;
+   using type = NativeDeviceCSCBackend<>;
 #else
-   using type = HostCSCBackend;
+   using type = HostCSCBackend<>;
 #endif
 };
 

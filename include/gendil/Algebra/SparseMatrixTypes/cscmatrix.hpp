@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -14,12 +15,19 @@
 
 namespace gendil {
 
+template < typename ComputeType = void >
 struct HostCSCBackend
-{ };
-struct NativeDeviceCSCBackend
-{ };
+{
+   using compute_type = ComputeType;
+};
 
-using DefaultCSCBackend = HostCSCBackend;
+template < typename ComputeType = void >
+struct NativeDeviceCSCBackend
+{
+   using compute_type = ComputeType;
+};
+
+using DefaultCSCBackend = HostCSCBackend<>;
 
 template <
    typename ValueType = Real,
@@ -30,9 +38,10 @@ struct CSCMatrix;
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -40,9 +49,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCSCBackend &,
+   const NativeDeviceCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -51,9 +61,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -61,9 +72,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCSCBackend &,
+   const NativeDeviceCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -73,10 +85,11 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y );
@@ -169,10 +182,11 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > &,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > &,
    const InputVector &,
    OutputVector & )
@@ -222,16 +236,28 @@ void CheckCSCApplyDimensions(
 }
 
 template <
+   typename Backend,
    typename Matrix,
    typename InputValue,
    typename OutputValue >
 void ApplyHostCSCToRawPointers(
+   const Backend &,
    const Matrix & matrix,
    const InputValue * x_data,
    OutputValue * y_data )
 {
    using IndexType = typename Matrix::index_type;
    using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+
+   CheckScatterSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType >();
 
    for ( IndexType row = 0; row < matrix.num_rows; ++row )
    {
@@ -240,17 +266,17 @@ void ApplyHostCSCToRawPointers(
 
    for ( IndexType col = 0; col < matrix.num_cols; ++col )
    {
-      const ValueType x_col =
-         static_cast< ValueType >( x_data[col] );
+      const ComputeType x_col =
+         static_cast< ComputeType >( x_data[col] );
 
       for ( IndexType entry = matrix.col_ptr[col];
             entry < matrix.col_ptr[col + 1];
             ++entry )
       {
          const IndexType row = matrix.row_ind[entry];
-         y_data[row] +=
-            static_cast< OutputValue >(
-               matrix.values[entry] * x_col );
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) * x_col;
+         y_data[row] += static_cast< OutputValueType >( contribution );
       }
    }
 }
@@ -277,15 +303,30 @@ void CSCDeviceZeroKernel(
    }
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 __global__
 void CSCDeviceApplyKernel(
+   const Backend backend,
    const Matrix matrix,
-   const Real * x,
-   Real * y )
+   const InputValue * x,
+   OutputValue * y )
 {
    using IndexType = typename Matrix::index_type;
    using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+
+   CheckScatterSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType >();
 
    const IndexType stride =
       static_cast< IndexType >( blockDim.x ) *
@@ -298,16 +339,18 @@ void CSCDeviceApplyKernel(
          col < matrix.num_cols;
          col += stride )
    {
-      const ValueType x_col =
-         static_cast< ValueType >( x[col] );
+      const ComputeType x_col =
+         static_cast< ComputeType >( x[col] );
 
       for ( IndexType entry = matrix.col_ptr[col];
             entry < matrix.col_ptr[col + 1];
             ++entry )
       {
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) * x_col;
          AtomicAdd(
             y[matrix.row_ind[entry]],
-            static_cast< Real >( matrix.values[entry] * x_col ) );
+            static_cast< OutputValueType >( contribution ) );
       }
    }
 }
@@ -328,11 +371,16 @@ inline dim3 MakeCSCApplyGrid(
    return dim3( static_cast< unsigned int >( grid_x_size ) );
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 void ApplyDeviceCSCToRawPointers(
+   const Backend & backend,
    const Matrix & matrix,
-   const Real * x_data,
-   Real * y_data )
+   const InputValue * x_data,
+   OutputValue * y_data )
 {
    constexpr unsigned int threads_per_block = 256;
    const dim3 block_dim( threads_per_block );
@@ -363,6 +411,7 @@ void ApplyDeviceCSCToRawPointers(
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
          "Apply(NativeDeviceCSCBackend, ...): before apply launch" );
       CSCDeviceApplyKernel<<< grid_dim, block_dim >>>(
+         backend,
          matrix,
          x_data,
          y_data );
@@ -377,9 +426,10 @@ void ApplyDeviceCSCToRawPointers(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > & backend,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -389,18 +439,19 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadHostData();
-   Real * y_data = y.WriteHostData();
+   const auto * x_data = x.ReadHostData();
+   auto * y_data = y.WriteHostData();
 
-   details::ApplyHostCSCToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCSCToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCSCBackend &,
+   const NativeDeviceCSCBackend< BackendComputeType > & backend,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -411,10 +462,10 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadDeviceData();
-   Real * y_data = y.WriteDeviceData();
+   const auto * x_data = x.ReadDeviceData();
+   auto * y_data = y.WriteDeviceData();
 
-   details::ApplyDeviceCSCToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCSCToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< CSCMatrix< ValueType, IndexType, MatrixBackend > >,
@@ -427,9 +478,10 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const HostCSCBackend &,
+   const HostCSCBackend< BackendComputeType > & backend,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -439,18 +491,19 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.HostRead();
-   Real * y_data = y.HostWrite();
+   const auto * x_data = x.HostRead();
+   auto * y_data = y.HostWrite();
 
-   details::ApplyHostCSCToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCSCToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType >
 void Apply(
-   const NativeDeviceCSCBackend &,
+   const NativeDeviceCSCBackend< BackendComputeType > & backend,
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -461,10 +514,10 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.Read();
-   Real * y_data = y.Write();
+   const auto * x_data = x.Read();
+   auto * y_data = y.Write();
 
-   details::ApplyDeviceCSCToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCSCToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< CSCMatrix< ValueType, IndexType, MatrixBackend > >,

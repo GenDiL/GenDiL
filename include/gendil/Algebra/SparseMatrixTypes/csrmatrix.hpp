@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
@@ -13,12 +14,25 @@
 
 namespace gendil {
 
+template <
+   typename ComputeType = void,
+   typename AccumulatorType = void >
 struct HostCSRBackend
-{ };
-struct NativeDeviceCSRBackend
-{ };
+{
+   using compute_type = ComputeType;
+   using accumulator_type = AccumulatorType;
+};
 
-using DefaultCSRBackend = HostCSRBackend;
+template <
+   typename ComputeType = void,
+   typename AccumulatorType = void >
+struct NativeDeviceCSRBackend
+{
+   using compute_type = ComputeType;
+   using accumulator_type = AccumulatorType;
+};
+
+using DefaultCSRBackend = HostCSRBackend<>;
 
 template <
    typename ValueType = Real,
@@ -29,9 +43,11 @@ struct CSRMatrix;
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -39,9 +55,11 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceCSRBackend &,
+   const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y );
@@ -50,9 +68,11 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -60,9 +80,11 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceCSRBackend &,
+   const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -72,10 +94,12 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y );
@@ -168,10 +192,12 @@ template <
    typename ValueType,
    typename IndexType,
    typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > &,
    const InputVector &,
    OutputVector & )
@@ -222,45 +248,79 @@ void CheckCSRApplyDimensions(
 }
 
 template <
+   typename Backend,
    typename Matrix,
    typename InputValue,
    typename OutputValue >
 void ApplyHostCSRToRawPointers(
+   const Backend &,
    const Matrix & matrix,
    const InputValue * x_data,
    OutputValue * y_data )
 {
    using IndexType = typename Matrix::index_type;
    using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+   using AccumulatorType =
+      ResolveSparseAccumulatorType_t< Backend, ComputeType >;
+
+   CheckRowOwnedSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType,
+      AccumulatorType >();
 
    #pragma omp parallel for
    for ( IndexType row = 0; row < matrix.num_rows; ++row )
    {
-      ValueType sum = ValueType( 0 );
+      AccumulatorType sum = AccumulatorType( 0 );
 
       for ( IndexType entry = matrix.row_ptr[row];
             entry < matrix.row_ptr[row + 1];
             ++entry )
       {
-         sum +=
-            matrix.values[entry] *
-            static_cast< ValueType >( x_data[matrix.col_ind[entry]] );
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) *
+            static_cast< ComputeType >( x_data[matrix.col_ind[entry]] );
+         sum += static_cast< AccumulatorType >( contribution );
       }
 
-      y_data[row] = static_cast< OutputValue >( sum );
+      y_data[row] = static_cast< OutputValueType >( sum );
    }
 }
 
 #if defined(GENDIL_USE_DEVICE)
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 __global__
 void CSRDeviceApplyKernel(
+   const Backend backend,
    const Matrix matrix,
-   const Real * x,
-   Real * y )
+   const InputValue * x,
+   OutputValue * y )
 {
    using IndexType = typename Matrix::index_type;
    using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+   using AccumulatorType =
+      ResolveSparseAccumulatorType_t< Backend, ComputeType >;
+
+   CheckRowOwnedSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType,
+      AccumulatorType >();
 
    const IndexType stride =
       static_cast< IndexType >( blockDim.x ) *
@@ -273,18 +333,19 @@ void CSRDeviceApplyKernel(
          row < matrix.num_rows;
          row += stride )
    {
-      ValueType sum = ValueType( 0 );
+      AccumulatorType sum = AccumulatorType( 0 );
 
       for ( IndexType entry = matrix.row_ptr[row];
             entry < matrix.row_ptr[row + 1];
             ++entry )
       {
-         sum +=
-            matrix.values[entry] *
-            static_cast< ValueType >( x[matrix.col_ind[entry]] );
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) *
+            static_cast< ComputeType >( x[matrix.col_ind[entry]] );
+         sum += static_cast< AccumulatorType >( contribution );
       }
 
-      y[row] = static_cast< Real >( sum );
+      y[row] = static_cast< OutputValueType >( sum );
    }
 }
 
@@ -304,11 +365,16 @@ inline dim3 MakeCSRApplyGrid(
    return dim3( static_cast< unsigned int >( grid_x_size ) );
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 void ApplyDeviceCSRToRawPointers(
+   const Backend & backend,
    const Matrix & matrix,
-   const Real * x_data,
-   Real * y_data )
+   const InputValue * x_data,
+   OutputValue * y_data )
 {
    if ( matrix.num_rows == 0 )
    {
@@ -326,6 +392,7 @@ void ApplyDeviceCSRToRawPointers(
    GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
       "Apply(NativeDeviceCSRBackend, ...): before apply launch" );
    CSRDeviceApplyKernel<<< grid_dim, block_dim >>>(
+      backend,
       matrix,
       x_data,
       y_data );
@@ -339,9 +406,11 @@ void ApplyDeviceCSRToRawPointers(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -351,18 +420,20 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadHostData();
-   Real * y_data = y.WriteHostData();
+   const auto * x_data = x.ReadHostData();
+   auto * y_data = y.WriteHostData();
 
-   details::ApplyHostCSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCSRToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceCSRBackend &,
+   const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
@@ -373,10 +444,10 @@ void Apply(
       x.Size(),
       y.Size() );
 
-   const Real * x_data = x.ReadDeviceData();
-   Real * y_data = y.WriteDeviceData();
+   const auto * x_data = x.ReadDeviceData();
+   auto * y_data = y.WriteDeviceData();
 
-   details::ApplyDeviceCSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCSRToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< CSRMatrix< ValueType, IndexType, MatrixBackend > >,
@@ -389,9 +460,11 @@ void Apply(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostCSRBackend &,
+   const HostCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -401,18 +474,20 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.HostRead();
-   Real * y_data = y.HostWrite();
+   const auto * x_data = x.HostRead();
+   auto * y_data = y.HostWrite();
 
-   details::ApplyHostCSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostCSRToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceCSRBackend &,
+   const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -423,10 +498,10 @@ void Apply(
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.Read();
-   Real * y_data = y.Write();
+   const auto * x_data = x.Read();
+   auto * y_data = y.Write();
 
-   details::ApplyDeviceCSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyDeviceCSRToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
       dependent_false_v< CSRMatrix< ValueType, IndexType, MatrixBackend > >,

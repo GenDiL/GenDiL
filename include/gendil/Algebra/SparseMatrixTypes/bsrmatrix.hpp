@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
 #include <limits>
@@ -18,12 +19,25 @@ enum class BlockLayout
    ColumnMajor
 };
 
+template <
+   typename ComputeType = void,
+   typename AccumulatorType = void >
 struct HostBSRBackend
-{ };
-struct NativeDeviceBSRBackend
-{ };
+{
+   using compute_type = ComputeType;
+   using accumulator_type = AccumulatorType;
+};
 
-using DefaultBSRBackend = HostBSRBackend;
+template <
+   typename ComputeType = void,
+   typename AccumulatorType = void >
+struct NativeDeviceBSRBackend
+{
+   using compute_type = ComputeType;
+   using accumulator_type = AccumulatorType;
+};
+
+using DefaultBSRBackend = HostBSRBackend<>;
 
 template <
    typename ValueType = Real,
@@ -36,9 +50,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const Vector & x,
    Vector & y );
@@ -47,9 +63,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceBSRBackend &,
+   const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const Vector & x,
    Vector & y );
@@ -59,9 +77,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -70,9 +90,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceBSRBackend &,
+   const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const mfem::Vector & x,
    mfem::Vector & y );
@@ -83,11 +105,13 @@ template <
    typename IndexType,
    BlockLayout Layout,
    typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType,
    typename InputVector,
    typename OutputVector >
 GENDIL_HOST_DEVICE
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const InputVector & x,
    OutputVector & y );
@@ -151,11 +175,13 @@ template <
    typename IndexType,
    BlockLayout Layout,
    typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType,
    typename InputVector,
    typename OutputVector >
 GENDIL_HOST_DEVICE
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const InputVector & x,
    OutputVector & y )
@@ -168,11 +194,13 @@ void Apply(
 }
 
 template <
+   typename BackendComputeType,
+   typename BackendAccumulatorType,
    typename Matrix,
    typename InputVector,
    typename OutputVector >
 void Apply(
-   const NativeDeviceBSRBackend &,
+   const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > &,
    const Matrix & matrix,
    const InputVector & x,
    OutputVector & y )
@@ -187,14 +215,32 @@ void Apply(
 namespace details
 {
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 void ApplyHostBSRToRawPointers(
+   const Backend &,
    const Matrix & matrix,
-   const Real * x_data,
-   Real * y_data )
+   const InputValue * x_data,
+   OutputValue * y_data )
 {
    using IndexType = typename Matrix::index_type;
    using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+   using AccumulatorType =
+      ResolveSparseAccumulatorType_t< Backend, ComputeType >;
+
+   CheckRowOwnedSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType,
+      AccumulatorType >();
 
    #pragma omp parallel for
    for (IndexType block_row = 0;
@@ -205,7 +251,7 @@ void ApplyHostBSRToRawPointers(
            local_row < matrix.block_rows;
            ++local_row)
       {
-         ValueType sum = ValueType(0);
+         AccumulatorType sum = AccumulatorType(0);
 
          for (IndexType block_it = matrix.row_offsets[block_row];
               block_it < matrix.row_offsets[block_row + 1];
@@ -220,15 +266,17 @@ void ApplyHostBSRToRawPointers(
                const IndexType global_col =
                   block_col * matrix.block_cols + local_col;
 
-               sum +=
-                  matrix.GetBlockEntry(block_it, local_row, local_col) *
-                  x_data[global_col];
+               const ComputeType contribution =
+                  static_cast< ComputeType >(
+                     matrix.GetBlockEntry(block_it, local_row, local_col) ) *
+                  static_cast< ComputeType >( x_data[global_col] );
+               sum += static_cast< AccumulatorType >( contribution );
             }
          }
 
          const IndexType global_row =
             block_row * matrix.block_rows + local_row;
-         y_data[global_row] = sum;
+         y_data[global_row] = static_cast< OutputValueType >( sum );
       }
    }
 }
@@ -239,17 +287,19 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const Vector & x,
    Vector & y )
 {
-   const Real * x_data = x.ReadHostData();
-   Real * y_data = y.WriteHostData();
+   const auto * x_data = x.ReadHostData();
+   auto * y_data = y.WriteHostData();
 
-   details::ApplyHostBSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostBSRToRawPointers( backend, matrix, x_data, y_data );
 }
 
 #ifdef GENDIL_USE_MFEM
@@ -257,17 +307,19 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const HostBSRBackend &,
+   const HostBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
 {
-   const Real * x_data = x.HostRead();
-   Real * y_data = y.HostWrite();
+   const auto * x_data = x.HostRead();
+   auto * y_data = y.HostWrite();
 
-   details::ApplyHostBSRToRawPointers( matrix, x_data, y_data );
+   details::ApplyHostBSRToRawPointers( backend, matrix, x_data, y_data );
 }
 #endif
 
@@ -305,14 +357,34 @@ GlobalIndex CheckBSRApplyDimensions(
 }
 
 #if defined(GENDIL_USE_DEVICE)
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 __global__
 void BSRDeviceApplyKernel(
+   const Backend backend,
    const Matrix matrix,
-   const Real * x,
-   Real * y,
+   const InputValue * x,
+   OutputValue * y,
    const GlobalIndex total_rows )
 {
+   using ValueType = typename Matrix::value_type;
+   using InputValueType = std::remove_cv_t< InputValue >;
+   using OutputValueType = std::remove_cv_t< OutputValue >;
+   using ComputeType =
+      ResolveSparseComputeType_t< Backend, ValueType, InputValueType >;
+   using AccumulatorType =
+      ResolveSparseAccumulatorType_t< Backend, ComputeType >;
+
+   CheckRowOwnedSparseApplyArithmetic<
+      ValueType,
+      InputValueType,
+      OutputValueType,
+      ComputeType,
+      AccumulatorType >();
+
    const GlobalIndex stride =
       static_cast< GlobalIndex >( blockDim.x ) *
       static_cast< GlobalIndex >( gridDim.x );
@@ -331,7 +403,7 @@ void BSRDeviceApplyKernel(
       const GlobalIndex block_row = global_row / block_rows;
       const GlobalIndex local_row = global_row % block_rows;
 
-      Real sum = Real( 0 );
+      AccumulatorType sum = AccumulatorType( 0 );
 
       for ( auto block_it = matrix.row_offsets[ block_row ];
             block_it < matrix.row_offsets[ block_row + 1 ];
@@ -347,24 +419,31 @@ void BSRDeviceApplyKernel(
                static_cast< GlobalIndex >( block_col ) * block_cols +
                local_col;
 
-            sum +=
-               matrix.GetBlockEntry(
-                  block_it,
-                  static_cast< decltype( matrix.block_rows ) >( local_row ),
-                  static_cast< decltype( matrix.block_cols ) >( local_col ) ) *
-               x[ global_col ];
+            const ComputeType contribution =
+               static_cast< ComputeType >(
+                  matrix.GetBlockEntry(
+                     block_it,
+                     static_cast< decltype( matrix.block_rows ) >( local_row ),
+                     static_cast< decltype( matrix.block_cols ) >( local_col ) ) ) *
+               static_cast< ComputeType >( x[ global_col ] );
+            sum += static_cast< AccumulatorType >( contribution );
          }
       }
 
-      y[ global_row ] = sum;
+      y[ global_row ] = static_cast< OutputValueType >( sum );
    }
 }
 
-template < typename Matrix >
+template <
+   typename Backend,
+   typename Matrix,
+   typename InputValue,
+   typename OutputValue >
 void ApplyDeviceBSRToRawPointers(
+   const Backend & backend,
    const Matrix & matrix,
-   const Real * x_data,
-   Real * y_data,
+   const InputValue * x_data,
+   OutputValue * y_data,
    const GlobalIndex total_rows )
 {
    if ( total_rows == 0 )
@@ -388,6 +467,7 @@ void ApplyDeviceBSRToRawPointers(
    GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
       "Apply(NativeDeviceBSRBackend, ...): before launch" );
    BSRDeviceApplyKernel<<< grid_dim, block_dim >>>(
+      backend,
       matrix,
       x_data,
       y_data,
@@ -403,9 +483,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceBSRBackend &,
+   const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const Vector & x,
    Vector & y )
@@ -417,10 +499,11 @@ void Apply(
          x.Size(),
          y.Size() );
 
-   const Real * x_data = x.ReadDeviceData();
-   Real * y_data = y.WriteDeviceData();
+   const auto * x_data = x.ReadDeviceData();
+   auto * y_data = y.WriteDeviceData();
 
    details::ApplyDeviceBSRToRawPointers(
+      backend,
       matrix,
       x_data,
       y_data,
@@ -438,9 +521,11 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
+   typename MatrixBackend,
+   typename BackendComputeType,
+   typename BackendAccumulatorType >
 void Apply(
-   const NativeDeviceBSRBackend &,
+   const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
@@ -452,10 +537,11 @@ void Apply(
          static_cast< size_t >( x.Size() ),
          static_cast< size_t >( y.Size() ) );
 
-   const Real * x_data = x.Read();
-   Real * y_data = y.Write();
+   const auto * x_data = x.Read();
+   auto * y_data = y.Write();
 
    details::ApplyDeviceBSRToRawPointers(
+      backend,
       matrix,
       x_data,
       y_data,
