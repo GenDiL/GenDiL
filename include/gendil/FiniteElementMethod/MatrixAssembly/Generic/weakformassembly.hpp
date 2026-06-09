@@ -20,6 +20,7 @@
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -112,7 +113,6 @@ void AssembleElementSparseMatrix(
          trial_fe_space,
          test_fe_space,
          element_index,
-         element_index,
          trial_dof,
          y,
          sparse_matrix );
@@ -152,8 +152,6 @@ void AssembleInteriorFacetSparseMatrix(
       element_index,
       [&] ( auto const & face_info )
       {
-         const GlobalIndex plus_element_index = face_info.PlusSide().GetCellIndex();
-
          // Block A(e,e): minus-side trial basis -> minus-side test residual
          ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
          {
@@ -180,7 +178,6 @@ void AssembleInteriorFacetSparseMatrix(
                kernel_context,
                trial_fe_space,
                test_fe_space,
-               element_index,
                element_index,
                trial_dof,
                y_minus,
@@ -221,7 +218,7 @@ void AssembleInteriorFacetSparseMatrix(
                trial_fe_space,
                test_fe_space,
                element_index,
-               plus_element_index,
+               face_info,
                plus_native_dof,
                y_minus,
                sparse_matrix
@@ -311,7 +308,6 @@ void AssembleBoundaryFacetSparseMatrix(
                trial_fe_space,
                test_fe_space,
                element_index,
-               element_index,  // Diagonal block only
                trial_dof,
                y_minus,
                sparse_matrix
@@ -679,6 +675,206 @@ struct IsScalarRawCOOCellSpace
         std::is_same_v< Restriction, H1Restriction > );
 };
 
+inline GlobalIndex CheckedRawCOOAdd(
+   const GlobalIndex lhs,
+   const GlobalIndex rhs,
+   const char * message )
+{
+   GENDIL_VERIFY(
+      rhs <= std::numeric_limits< GlobalIndex >::max() - lhs,
+      message );
+   return lhs + rhs;
+}
+
+inline GlobalIndex CheckedRawCOOMultiply(
+   const GlobalIndex lhs,
+   const GlobalIndex rhs,
+   const char * message )
+{
+   GENDIL_VERIFY(
+      lhs == 0 || rhs <= std::numeric_limits< GlobalIndex >::max() / lhs,
+      message );
+   return lhs * rhs;
+}
+
+inline void AllocateRawCOOOffsetArray(
+   const GlobalIndex count,
+   HostDevicePointer< GlobalIndex > & offsets )
+{
+   AllocateHostPointer( count, offsets );
+   AllocateDevicePointer( count, offsets );
+
+   for ( GlobalIndex i = 0; i < count; ++i )
+   {
+      offsets[i] = RawCOOInactiveOffset;
+   }
+
+   if ( count > 0 )
+   {
+      ToDevice( count, offsets );
+   }
+}
+
+inline void SyncRawCOOAssemblyLayoutToDevice(
+   const RawCOOAssemblyLayout & layout )
+{
+   if ( layout.num_elements > 0 )
+   {
+      ToDevice( layout.num_elements, layout.diagonal_offsets );
+   }
+
+   const GlobalIndex face_offset_count =
+      CheckedRawCOOMultiply(
+         layout.num_elements,
+         layout.num_faces,
+         "RawCOO face offset array size overflow." );
+
+   if ( face_offset_count > 0 )
+   {
+      ToDevice( face_offset_count, layout.offdiag_offsets );
+   }
+}
+
+inline void FreeRawCOOAssemblyLayout( RawCOOAssemblyLayout & layout )
+{
+   FreeHostPointer( layout.diagonal_offsets );
+   FreeDevicePointer( layout.diagonal_offsets );
+   FreeHostPointer( layout.offdiag_offsets );
+   FreeDevicePointer( layout.offdiag_offsets );
+}
+
+inline void ActivateRawCOODiagonalBlock(
+   RawCOOAssemblyLayout & layout,
+   const GlobalIndex element_index,
+   const GlobalIndex block_entry_count,
+   GlobalIndex & next_offset )
+{
+   GENDIL_VERIFY(
+      element_index < layout.num_elements,
+      "RawCOO diagonal activation element index is out of range." );
+
+   if ( layout.diagonal_offsets[element_index] == RawCOOInactiveOffset )
+   {
+      layout.diagonal_offsets[element_index] = next_offset;
+      next_offset =
+         CheckedRawCOOAdd(
+            next_offset,
+            block_entry_count,
+            "RawCOO diagonal block offset overflow." );
+   }
+}
+
+template <
+   bool IncludeCellTerms,
+   bool IncludeBoundaryFaceTerms,
+   bool IncludeInteriorFaceTerms,
+   typename FESpace >
+auto MakeRawCOOAssemblyLayout(
+   const FESpace & fe_space,
+   const GlobalIndex block_entry_count )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   constexpr GlobalIndex num_faces =
+      static_cast< GlobalIndex >(
+         Space::finite_element_type::geometry::num_faces );
+
+   RawCOOAssemblyLayout layout{};
+   layout.num_elements =
+      static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElements() );
+   layout.num_faces = num_faces;
+   layout.block_entry_count = block_entry_count;
+
+   const GlobalIndex face_offset_count =
+      CheckedRawCOOMultiply(
+         layout.num_elements,
+         layout.num_faces,
+         "RawCOO face offset array size overflow." );
+
+   AllocateRawCOOOffsetArray( layout.num_elements, layout.diagonal_offsets );
+   AllocateRawCOOOffsetArray(
+      face_offset_count,
+      layout.offdiag_offsets );
+
+   GlobalIndex next_offset = 0;
+
+   for ( GlobalIndex element_index = 0;
+         element_index < layout.num_elements;
+         ++element_index )
+   {
+      if constexpr ( IncludeCellTerms )
+      {
+         ActivateRawCOODiagonalBlock(
+            layout,
+            element_index,
+            block_entry_count,
+            next_offset );
+      }
+
+      if constexpr ( IncludeInteriorFaceTerms )
+      {
+         InteriorFaceLoop(
+            fe_space,
+            element_index,
+            [&] ( const auto & face_info )
+            {
+               using FaceInfo =
+                  std::remove_cvref_t< decltype(face_info) >;
+               static_assert(
+                  FaceInfo::minus_side_type::is_conforming &&
+                  FaceInfo::plus_side_type::is_conforming,
+                  "RawCOO face assembly supports conforming faces only." );
+
+               const GlobalIndex offset_index =
+                  RawCOOFaceOffsetArrayIndex(
+                     layout,
+                     element_index,
+                     RawCOOLocalFaceIndex( face_info ) );
+
+               ActivateRawCOODiagonalBlock(
+                  layout,
+                  element_index,
+                  block_entry_count,
+                  next_offset );
+
+               layout.offdiag_offsets[offset_index] =
+                  next_offset;
+               next_offset =
+                  CheckedRawCOOAdd(
+                     next_offset,
+                     block_entry_count,
+                     "RawCOO interior offdiag block offset overflow." );
+            });
+      }
+
+      if constexpr ( IncludeBoundaryFaceTerms )
+      {
+         BoundaryFaceLoop(
+            fe_space,
+            element_index,
+            [&] ( const auto & face_info )
+            {
+               using FaceInfo =
+                  std::remove_cvref_t< decltype(face_info) >;
+               static_assert(
+                  FaceInfo::minus_side_type::is_conforming &&
+                  FaceInfo::plus_side_type::is_conforming,
+                  "RawCOO face assembly supports conforming faces only." );
+
+               ActivateRawCOODiagonalBlock(
+                  layout,
+                  element_index,
+                  block_entry_count,
+                  next_offset );
+            });
+      }
+   }
+
+   layout.nnz_raw = next_offset;
+   SyncRawCOOAssemblyLayoutToDevice( layout );
+
+   return layout;
+}
+
 template<
    class KernelPolicy,
    class WeakForm,
@@ -698,10 +894,10 @@ auto GenericRawCOOAssembly(
    static_assert(TrialName != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TrialSpace in integrand.");
    static_assert(TestName  != StaticString{"Error"}, "GenericAssembly<RawCOO>: missing TestSpace in integrand.");
    static_assert(
-      has_cell_contributions_v< I > &&
-      !has_boundary_facet_contributions_v< I > &&
-      !has_interior_facet_contributions_v< I >,
-      "GenericAssembly<RawCOO> currently supports cell-only weak forms." );
+      has_cell_contributions_v< I > ||
+      has_boundary_facet_contributions_v< I > ||
+      has_interior_facet_contributions_v< I >,
+      "GenericAssembly<RawCOO> requires at least one active weak-form domain." );
 
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
@@ -715,34 +911,56 @@ auto GenericRawCOOAssembly(
 
    static_assert(
       std::is_same_v< TrialSpace, TestSpace >,
-      "GenericAssembly<RawCOO> first implementation requires matching trial/test FE spaces." );
+      "GenericAssembly<RawCOO> requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported." );
+
+   constexpr bool has_face_terms =
+      has_boundary_facet_contributions_v< I > ||
+      has_interior_facet_contributions_v< I >;
+
    static_assert(
-      IsScalarRawCOOCellSpace< TrialSpace >::value &&
-      IsScalarRawCOOCellSpace< TestSpace >::value,
-      "GenericAssembly<RawCOO> currently supports scalar L2/DG or scalar H1/CG cell spaces only." );
+      ( !has_face_terms &&
+        IsScalarRawCOOCellSpace< TrialSpace >::value &&
+        IsScalarRawCOOCellSpace< TestSpace >::value ) ||
+      ( has_face_terms &&
+        IsScalarDGL2Space< TrialSpace >::value &&
+        IsScalarDGL2Space< TestSpace >::value ),
+      "GenericAssembly<RawCOO> supports scalar L2/DG cell and conforming face terms, "
+      "or scalar H1/CG cell-only terms. H1 face terms, vector spaces, mixed spaces, "
+      "nonconforming faces, and variable-size hp emission are unsupported." );
 
    constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
-
-   const GlobalIndex num_elements = trial_space.GetNumberOfFiniteElements();
-   const GlobalIndex nnz_raw =
-      num_elements *
+   constexpr GlobalIndex block_entry_count =
       static_cast< GlobalIndex >( ntest ) *
       static_cast< GlobalIndex >( ntrial );
+
+   auto layout =
+      MakeRawCOOAssemblyLayout<
+         has_cell_contributions_v< I >,
+         has_boundary_facet_contributions_v< I >,
+         has_interior_facet_contributions_v< I > >(
+            trial_space,
+            block_entry_count );
 
    auto coo_buffer =
       MakeRawCOOTripletBuffer< Real, GlobalIndex >(
          static_cast< GlobalIndex >( test_space.GetNumberOfFiniteElementDofs() ),
          static_cast< GlobalIndex >( trial_space.GetNumberOfFiniteElementDofs() ),
-         nnz_raw );
+         layout.nnz_raw );
 
-   GenericBlockDiagonalAssembly<KernelPolicy>(
+   RawCOOAssemblyTarget< Real, GlobalIndex > coo_target{
+      coo_buffer,
+      layout
+   };
+
+   GenericAssembly<KernelPolicy>(
       weak_form,
       wf_ctx,
       integration_rule,
-      coo_buffer );
+      coo_target );
 
    SyncRawCOOTripletBuffer< KernelPolicy >( coo_buffer );
+   FreeRawCOOAssemblyLayout( layout );
 
    return coo_buffer;
 }

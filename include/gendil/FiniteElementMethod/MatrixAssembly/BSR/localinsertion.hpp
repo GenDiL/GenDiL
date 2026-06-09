@@ -250,4 +250,68 @@ void AddSparseMatrixEntry(
    });
 }
 
+template <
+   typename KernelContext,
+   typename TrialFESpace,
+   typename TestFESpace,
+   typename TrialDofDescriptor,
+   typename ElementVector,
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
+GENDIL_HOST_DEVICE
+void AddSparseMatrixEntry(
+   const KernelContext & kernel_context,
+   const TrialFESpace & trial_fe_space,
+   const TestFESpace & test_fe_space,
+   const GlobalIndex & element_index,
+   const TrialDofDescriptor & trial_dof,
+   const ElementVector & y,
+   BSRMatrix<ValueType, IndexType, Layout, Backend> & bsr_matrix )
+{
+   AddSparseMatrixEntry(
+      kernel_context,
+      trial_fe_space,
+      test_fe_space,
+      element_index,
+      element_index,
+      trial_dof,
+      y,
+      bsr_matrix );
+}
+
+template <
+   typename KernelContext,
+   typename TrialFESpace,
+   typename TestFESpace,
+   typename FaceInfo,
+   typename TrialDofDescriptor,
+   typename ElementVector,
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
+GENDIL_HOST_DEVICE
+void AddSparseMatrixEntry(
+   const KernelContext & kernel_context,
+   const TrialFESpace & trial_fe_space,
+   const TestFESpace & test_fe_space,
+   const GlobalIndex & element_index,
+   const FaceInfo & face_info,
+   const TrialDofDescriptor & trial_dof,
+   const ElementVector & y,
+   BSRMatrix<ValueType, IndexType, Layout, Backend> & bsr_matrix )
+{
+   AddSparseMatrixEntry(
+      kernel_context,
+      trial_fe_space,
+      test_fe_space,
+      element_index,
+      face_info.PlusSide().GetCellIndex(),
+      trial_dof,
+      y,
+      bsr_matrix );
+}
+
 }

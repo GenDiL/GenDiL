@@ -144,6 +144,72 @@ bool CheckCanonicalCOOSortedUnique(
    return success;
 }
 
+template <
+   bool IncludeCellTerms,
+   bool IncludeBoundaryFaceTerms,
+   bool IncludeInteriorFaceTerms,
+   typename FESpace >
+GlobalIndex ExpectedRawCOONNZ( const FESpace & fe_space )
+{
+   const GlobalIndex local_dofs =
+      static_cast< GlobalIndex >( fe_space.finite_element.GetNumDofs() );
+   const GlobalIndex block_entries = local_dofs * local_dofs;
+   const GlobalIndex num_elements =
+      static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElements() );
+   std::vector< bool > active_diagonal(
+      static_cast< size_t >( num_elements ),
+      false );
+   GlobalIndex offdiag_blocks = 0;
+
+   if constexpr ( IncludeCellTerms )
+   {
+      std::fill(
+         active_diagonal.begin(),
+         active_diagonal.end(),
+         true );
+   }
+
+   if constexpr ( IncludeBoundaryFaceTerms )
+   {
+      for ( GlobalIndex element = 0; element < num_elements; ++element )
+      {
+         BoundaryFaceLoop(
+            fe_space,
+            element,
+            [&] ( const auto & )
+            {
+               active_diagonal[static_cast< size_t >( element )] = true;
+            });
+      }
+   }
+
+   if constexpr ( IncludeInteriorFaceTerms )
+   {
+      for ( GlobalIndex element = 0; element < num_elements; ++element )
+      {
+         InteriorFaceLoop(
+            fe_space,
+            element,
+            [&] ( const auto & )
+            {
+               active_diagonal[static_cast< size_t >( element )] = true;
+               ++offdiag_blocks;
+            });
+      }
+   }
+
+   GlobalIndex block_count = offdiag_blocks;
+   for ( const bool is_active : active_diagonal )
+   {
+      if ( is_active )
+      {
+         ++block_count;
+      }
+   }
+
+   return block_count * block_entries;
+}
+
 void ApplyCOO(
    const COOMatrix< Real, GlobalIndex > & matrix,
    const Vector & x,
@@ -160,6 +226,33 @@ void ApplyCOO(
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
       y_data[matrix.rows[i]] += matrix.values[i] * x_data[matrix.cols[i]];
+   }
+}
+
+bool CheckVectorNear(
+   const Vector & actual,
+   const Vector & expected,
+   const char * message )
+{
+   const Real * actual_data = actual.ReadHostData();
+   const Real * expected_data = expected.ReadHostData();
+
+   bool success = true;
+   for ( GlobalIndex i = 0; i < actual.Size(); ++i )
+   {
+      success = Check(
+         Near( actual_data[i], expected_data[i] ),
+         message ) && success;
+   }
+   return success;
+}
+
+void FillDeterministicInput( Vector & x )
+{
+   Real * data = x.WriteHostData();
+   for ( GlobalIndex i = 0; i < x.Size(); ++i )
+   {
+      data[i] = 0.75 + 0.125 * static_cast< Real >( i );
    }
 }
 
@@ -468,6 +561,392 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
    return success;
 }
 
+bool TestScalarP0InteriorJumpAnalyticRawCOO()
+{
+   // Analytic p0 assumptions for this mesh/form:
+   // - each element basis value is 1 everywhere on the element;
+   // - the single interior vertical face has physical measure 1.
+   // Therefore integrate(interior_facets, jump(u) * jump(v)) on two cells is
+   // [[1, -1], [-1, 1]].
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+
+   constexpr Integer order = 0;
+   FiniteElementOrders< order, order > orders;
+   auto fe = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, fe );
+
+   InteriorFacets< "mesh" > interior_facets;
+   TrialSpace< "u" > u;
+   TestSpace< "u" > v;
+   auto weak_form = integrate( interior_facets, jump( u ) * jump( v ) );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   IntegrationRuleNumPoints< 1, 1 > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw_coo =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      FinalizeRawCOOToCOO(
+         raw_coo,
+         HostSortReduceRawCOOPolicy{} );
+
+   bool success = true;
+   success = Check(
+      raw_coo.nnz_raw == 4,
+      "Analytic p0 interior jump RawCOO count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+
+   const std::array< std::pair< GlobalIndex, GlobalIndex >, 4 > raw_coords{
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 0 }
+   };
+   const std::array< Real, 4 > raw_values{ 1.0, -1.0, 1.0, -1.0 };
+
+   for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
+   {
+      success = Check(
+         raw_coo.rows[i] == raw_coords[i].first &&
+            raw_coo.cols[i] == raw_coords[i].second,
+         "Analytic p0 RawCOO did not preserve the directed interior face traversal." ) && success;
+      success = Check(
+         Near( raw_coo.values[i], raw_values[i] ),
+         "Analytic p0 RawCOO value is wrong." ) && success;
+   }
+
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = Check( coo.nnz == 4, "Analytic p0 canonical COO nnz is wrong." ) && success;
+
+   const std::array< std::pair< GlobalIndex, GlobalIndex >, 4 > coo_coords{
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 1 }
+   };
+   const std::array< Real, 4 > coo_values{ 1.0, -1.0, -1.0, 1.0 };
+
+   for ( GlobalIndex i = 0; i < coo.nnz; ++i )
+   {
+      success = Check(
+         coo.rows[i] == coo_coords[i].first &&
+            coo.cols[i] == coo_coords[i].second,
+         "Analytic p0 canonical COO coordinate is wrong." ) && success;
+      success = Check(
+         Near( coo.values[i], coo_values[i] ),
+         "Analytic p0 canonical COO value is wrong." ) && success;
+   }
+
+   Vector x( 2 );
+   Real * x_data = x.WriteHostData();
+   x_data[0] = 2.0;
+   x_data[1] = 5.0;
+
+   Vector y( 2 );
+   ApplyCOO( coo, x, y );
+   const Real * y_data = y.ReadHostData();
+   success = Check( Near( y_data[0], -3.0 ), "Analytic p0 COO action row 0 is wrong." ) && success;
+   success = Check( Near( y_data[1], 3.0 ), "Analytic p0 COO action row 1 is wrong." ) && success;
+
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
+   return success;
+}
+
+bool TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR()
+{
+   Cartesian2DMesh mesh( 0.5, 2, 2 );
+
+   constexpr Integer order = 1;
+   FiniteElementOrders< order, order > orders;
+   auto fe = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, fe );
+
+   BoundaryFacets< "mesh" > boundary_facets;
+   TrialSpace< "u" > u;
+   TestSpace< "u" > v;
+   auto weak_form = integrate( boundary_facets, u * v );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   IntegrationRuleNumPoints< order + 2, order + 2 > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw_coo =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto generic_operator =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw_coo.nnz_raw ==
+         ExpectedRawCOONNZ< false, true, false >( fe_space ),
+      "Boundary face RawCOO count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   FillDeterministicInput( x );
+
+   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   ApplyCOO( coo, x, y_coo );
+   y_bsr = 0.0;
+   y_generic = 0.0;
+   bsr( x, y_bsr );
+   generic_operator( x, y_generic );
+
+   success = CheckVectorNear(
+      y_coo,
+      y_bsr,
+      "Boundary face COO action disagrees with BSR action." ) && success;
+   success = CheckVectorNear(
+      y_coo,
+      y_generic,
+      "Boundary face COO action disagrees with matrix-free action." ) && success;
+
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
+   return success;
+}
+
+bool TestScalarInteriorJumpCOOAgainstGenericAndBSR()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+
+   constexpr Integer order = 1;
+   FiniteElementOrders< order, order > orders;
+   auto fe = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, fe );
+
+   InteriorFacets< "mesh" > interior_facets;
+   TrialSpace< "u" > u;
+   TestSpace< "u" > v;
+   auto weak_form = integrate( interior_facets, jump( u ) * jump( v ) );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   IntegrationRuleNumPoints< order + 2, order + 2 > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw_coo =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto generic_operator =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw_coo.nnz_raw ==
+         ExpectedRawCOONNZ< false, false, true >( fe_space ),
+      "Interior face RawCOO count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   FillDeterministicInput( x );
+
+   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   ApplyCOO( coo, x, y_coo );
+   y_bsr = 0.0;
+   y_generic = 0.0;
+   bsr( x, y_bsr );
+   generic_operator( x, y_generic );
+
+   success = CheckVectorNear(
+      y_coo,
+      y_bsr,
+      "Interior face COO action disagrees with BSR action." ) && success;
+   success = CheckVectorNear(
+      y_coo,
+      y_generic,
+      "Interior face COO action disagrees with matrix-free action." ) && success;
+
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
+   return success;
+}
+
+bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+
+   constexpr Integer order = 0;
+   FiniteElementOrders< order, order > orders;
+   auto fe = MakeLegendreFiniteElement( orders );
+   auto fe_space = MakeFiniteElementSpace( mesh, fe );
+
+   Cells< "mesh" > cells;
+   BoundaryFacets< "mesh" > boundary_facets;
+   InteriorFacets< "mesh" > interior_facets;
+   TrialSpace< "u" > u;
+   TestSpace< "u" > v;
+
+   auto weak_form =
+      integrate( cells, u * v ) +
+      integrate( boundary_facets, u * v ) +
+      integrate( boundary_facets, 2.0 * u * v ) +
+      integrate( interior_facets, jump( u ) * jump( v ) );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   IntegrationRuleNumPoints< 1, 1 > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw_coo =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto generic_operator =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw_coo.nnz_raw ==
+         ExpectedRawCOONNZ< true, true, true >( fe_space ),
+      "Combined face RawCOO count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   const std::array< std::pair< GlobalIndex, GlobalIndex >, 4 > raw_coords{
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 0 }
+   };
+   const std::array< Real, 4 > raw_values{ 11.0, -1.0, 11.0, -1.0 };
+
+   success = Check(
+      raw_coo.nnz_raw == raw_values.size(),
+      "Combined p0 RawCOO should have compact diagonal/offdiag blocks only." ) && success;
+   for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
+   {
+      success = Check(
+         raw_coo.rows[i] == raw_coords[i].first &&
+            raw_coo.cols[i] == raw_coords[i].second,
+         "Combined p0 RawCOO compact block coordinate is wrong." ) && success;
+      success = Check(
+         Near( raw_coo.values[i], raw_values[i] ),
+         "Combined p0 RawCOO did not accumulate self contributions into diagonal slots." ) && success;
+   }
+
+   const std::array< std::pair< GlobalIndex, GlobalIndex >, 4 > coo_coords{
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 0, 1 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 0 },
+      std::pair< GlobalIndex, GlobalIndex >{ 1, 1 }
+   };
+   const std::array< Real, 4 > coo_values{ 11.0, -1.0, -1.0, 11.0 };
+
+   success = Check(
+      coo.nnz == coo_values.size(),
+      "Combined p0 canonical COO nnz is wrong." ) && success;
+   for ( GlobalIndex i = 0; i < coo.nnz; ++i )
+   {
+      success = Check(
+         coo.rows[i] == coo_coords[i].first &&
+            coo.cols[i] == coo_coords[i].second,
+         "Combined p0 canonical COO coordinate is wrong." ) && success;
+      success = Check(
+         Near( coo.values[i], coo_values[i] ),
+         "Combined p0 canonical COO value is wrong." ) && success;
+   }
+
+   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   FillDeterministicInput( x );
+
+   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   ApplyCOO( coo, x, y_coo );
+   y_bsr = 0.0;
+   y_generic = 0.0;
+   bsr( x, y_bsr );
+   generic_operator( x, y_generic );
+
+   success = CheckVectorNear(
+      y_coo,
+      y_bsr,
+      "Combined face COO action disagrees with BSR action." ) && success;
+   success = CheckVectorNear(
+      y_coo,
+      y_generic,
+      "Combined face COO action disagrees with matrix-free action." ) && success;
+
+   FreeCOOMatrix( coo );
+   FreeRawCOOTripletBuffer( raw_coo );
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -477,6 +956,10 @@ int main()
    success = TestRawCOOToCOOFinalization() && success;
    success = TestScalarL2CellMassRawCOOAgainstBSR() && success;
    success = TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR() && success;
+   success = TestScalarP0InteriorJumpAnalyticRawCOO() && success;
+   success = TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR() && success;
+   success = TestScalarInteriorJumpCOOAgainstGenericAndBSR() && success;
+   success = TestScalarCombinedFaceCOOOffsetsAndAccumulation() && success;
 
    return success ? 0 : 1;
 }
