@@ -34,6 +34,10 @@ static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
       NativeDeviceCOOBackend > );
+static_assert(
+   std::is_same_v<
+      DefaultBackendFor_t< MatrixAssemblyType::CSR >,
+      NativeDeviceCSRBackend > );
 #else
 static_assert(
    std::is_same_v<
@@ -47,6 +51,10 @@ static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
       HostCOOBackend > );
+static_assert(
+   std::is_same_v<
+      DefaultBackendFor_t< MatrixAssemblyType::CSR >,
+      HostCSRBackend > );
 #endif
 static_assert(
    std::is_same_v<
@@ -91,10 +99,16 @@ bool TestTypedGenericAssemblyDefaults()
          weak_form,
          wf_context,
          integration_rule );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
 
    using BSRType = std::remove_cvref_t< decltype( bsr ) >;
    using COOType = std::remove_cvref_t< decltype( coo ) >;
    using RawCOOType = std::remove_cvref_t< decltype( raw_coo ) >;
+   using CSRType = std::remove_cvref_t< decltype( csr ) >;
 
    static_assert(
       std::is_same_v<
@@ -108,6 +122,10 @@ bool TestTypedGenericAssemblyDefaults()
       std::is_same_v<
          RawCOOType,
          RawCOOTripletBuffer< Real, GlobalIndex > > );
+   static_assert(
+      std::is_same_v<
+         typename CSRType::backend_type,
+         DefaultBackendFor_t< MatrixAssemblyType::CSR > > );
 
    bool success = true;
    success = Check(
@@ -121,7 +139,11 @@ bool TestTypedGenericAssemblyDefaults()
       raw_coo.num_cols == 1 &&
       raw_coo.nnz_raw == 1,
       "Typed RawCOO GenericAssembly returned the wrong triplet dimensions." ) && success;
+   success = Check(
+      csr.num_rows == 1 && csr.num_cols == 1 && csr.nnz == 1,
+      "Typed CSR GenericAssembly returned the wrong matrix dimensions." ) && success;
 
+   FreeCSRMatrix( csr );
    FreeCOOMatrix( coo );
    FreeRawCOOTripletBuffer( raw_coo );
    return success;

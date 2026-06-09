@@ -205,7 +205,7 @@ void Apply(
       "Apply(backend, COOMatrix, x, y) currently supports only "
       "HostCOOBackend and NativeDeviceCOOBackend. OpenMP is enabled through "
       "HostCOOBackend when GENDIL_USE_OPENMP is defined; row-segmented, "
-      "CSR/CSC, and other COO backends are not implemented yet." );
+      "format-converting, and other COO backends are not implemented yet." );
 }
 
 namespace details

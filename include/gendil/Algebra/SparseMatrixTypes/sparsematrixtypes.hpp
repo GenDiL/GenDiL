@@ -13,3 +13,6 @@
 
 // Canonical sorted and duplicate-reduced COO sparse matrix type.
 #include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
+
+// Canonical compressed sparse row sparse matrix type.
+#include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"

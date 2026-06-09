@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/CSR/csrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/defaultbackend.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrassembly.hpp"
@@ -69,11 +70,19 @@ auto GenericAssembly(
          integration_rule,
          backend );
    }
+   else if constexpr ( Type == MatrixAssemblyType::CSR )
+   {
+      return GenericCSRAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         backend );
+   }
    else
    {
       static_assert(
          dependent_false_value_v< Type >,
-         "GenericAssembly: CSR and CSC assembly are reserved canonical formats and are not implemented yet." );
+         "GenericAssembly: CSC assembly is a reserved canonical format and is not implemented yet." );
    }
 }
 
@@ -92,7 +101,8 @@ auto GenericAssembly(
       Type == MatrixAssemblyType::RawCOO ||
       Type == MatrixAssemblyType::BSR ||
       Type == MatrixAssemblyType::SGBSR ||
-      Type == MatrixAssemblyType::COO )
+      Type == MatrixAssemblyType::COO ||
+      Type == MatrixAssemblyType::CSR )
    {
       return GenericAssembly<Type, KernelPolicy>(
          weak_form,
@@ -104,7 +114,7 @@ auto GenericAssembly(
    {
       static_assert(
          dependent_false_value_v< Type >,
-         "GenericAssembly: CSR and CSC assembly are reserved canonical formats and are not implemented yet." );
+         "GenericAssembly: CSC assembly is a reserved canonical format and is not implemented yet." );
    }
 }
 

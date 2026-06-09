@@ -19,3 +19,5 @@
 // Raw COO triplet sparse assembly (unsorted and duplicated entries).
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
 
+// CSR sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/CSR/csrassembly.hpp"
