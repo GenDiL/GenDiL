@@ -197,8 +197,9 @@ bool HasDuplicateCoordinate(
       coordinates.end();
 }
 
+template < typename Backend >
 bool CheckCanonicalCOOSortedUnique(
-   const COOMatrix< Real, GlobalIndex > & matrix )
+   const COOMatrix< Real, GlobalIndex, Backend > & matrix )
 {
    bool success = true;
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
@@ -229,9 +230,10 @@ bool CheckCanonicalCOOSortedUnique(
    return success;
 }
 
+template < typename ActualBackend, typename ExpectedBackend >
 bool CheckCOOMatricesEqual(
-   const COOMatrix< Real, GlobalIndex > & actual,
-   const COOMatrix< Real, GlobalIndex > & expected,
+   const COOMatrix< Real, GlobalIndex, ActualBackend > & actual,
+   const COOMatrix< Real, GlobalIndex, ExpectedBackend > & expected,
    const char * message )
 {
    bool success = true;
