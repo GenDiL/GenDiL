@@ -211,18 +211,29 @@ if(USE_CUDA)
     set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
   endif()
 
-  target_compile_options(GENDIL INTERFACE
-    --extended-lambda
-    --expt-relaxed-constexpr
-    -keep
-    -ftemplate-backtrace-limit=0
-    -Xptxas=-v
-    -ccbin=${CMAKE_CXX_COMPILER}
-  )
-  if(USE_OPENMP)
+  # NVCC-specific flags
+  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
     target_compile_options(GENDIL INTERFACE
-      $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${OpenMP_CXX_FLAGS}>
+      $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>
+      $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+      $<$<COMPILE_LANGUAGE:CUDA>:-keep>
+      $<$<COMPILE_LANGUAGE:CUDA>:-ftemplate-backtrace-limit=0>
+      $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>
+      $<$<COMPILE_LANGUAGE:CUDA>:-ccbin=${CMAKE_CXX_COMPILER}>
     )
+  endif()
+  if(USE_OPENMP)
+    if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+      # NVCC requires OpenMP flags to be passed via -Xcompiler
+      target_compile_options(GENDIL INTERFACE
+        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${OpenMP_CXX_FLAGS}>
+      )
+    else()
+      # Clang-CUDA and other compilers accept OpenMP flags directly
+      target_compile_options(GENDIL INTERFACE
+        $<$<COMPILE_LANGUAGE:CUDA>:${OpenMP_CXX_FLAGS}>
+      )
+    endif()
   endif()
 
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CUDA)

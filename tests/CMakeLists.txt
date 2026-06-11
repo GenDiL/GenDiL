@@ -28,8 +28,22 @@ macro(add_my_test target_name source_file)
   add_test(NAME ${target_name} COMMAND ${target_name})
 endmacro()
 
-macro(add_non_cuda_test target_name source_file)
-  if(NOT USE_CUDA)
+macro(add_non_nvcc_test target_name source_file)
+  # Skip only when using NVCC as the CUDA compiler
+  # Add test for: CPU/OpenMP builds, HIP builds, and CUDA builds with clang
+  if(USE_CUDA)
+    if(NOT DEFINED CMAKE_CUDA_COMPILER_ID)
+      message(FATAL_ERROR "USE_CUDA is ON but CMAKE_CUDA_COMPILER_ID is undefined. Ensure enable_language(CUDA) has been called before using add_non_nvcc_test.")
+    endif()
+    if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+      # Skip this test - it doesn't compile with NVCC
+      message(STATUS "Skipping test ${target_name}: excluded for NVCC compiler")
+    else()
+      # CUDA with non-NVCC compiler (e.g., clang): add the test
+      add_my_test(${target_name} ${source_file})
+    endif()
+  else()
+    # CPU/OpenMP or HIP build: add the test
     add_my_test(${target_name} ${source_file})
   endif()
 endmacro()
