@@ -703,12 +703,34 @@ public:
    {
       constexpr auto TrialName = requirements<WeakForm>::trial_name;
       constexpr auto TestName  = requirements<WeakForm>::test_name;
-      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( wf_ctx.template fe_field<TrialName>().space, dofs_vector_in );
-      auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( wf_ctx.template fe_field<TestName>().space, dofs_vector_out );
+      const auto & trial_space = wf_ctx.template fe_field<TrialName>().space;
+      const auto & test_space = wf_ctx.template fe_field<TestName>().space;
+      using TestSpace = std::remove_cvref_t< decltype(test_space) >;
+      using TestRestriction = typename TestSpace::restriction_type;
 
-      GenericExplicitOperator<KernelPolicy>(
-         weak_form, wf_ctx, op_ctx, dofs_in, dofs_out
-      );
+      auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( trial_space, dofs_vector_in );
+
+      if constexpr ( std::is_same_v< TestRestriction, L2Restriction > )
+      {
+         auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( test_space, dofs_vector_out );
+         GenericExplicitOperator<KernelPolicy>(
+            weak_form, wf_ctx, op_ctx, dofs_in, dofs_out
+         );
+      }
+      else if constexpr ( is_h1_restriction_v< TestRestriction > )
+      {
+         dofs_vector_out = 0.0;
+         auto dofs_out = MakeReadWriteElementTensorView< KernelPolicy >( test_space, dofs_vector_out );
+         GenericExplicitOperator<KernelPolicy>(
+            weak_form, wf_ctx, op_ctx, dofs_in, dofs_out
+         );
+      }
+      else
+      {
+         static_assert(
+            is_h1_restriction_v< TestRestriction >,
+            "PullbackGenericOperator supports only L2Restriction, H1Restriction, and VectorH1Restriction outputs." );
+      }
    }
 };
 
