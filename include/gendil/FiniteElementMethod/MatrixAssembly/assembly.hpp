@@ -13,5 +13,19 @@
 // Assembly of block sparse matrices in BSR format.
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"
 
-// Scatter/gather wrapper for applying BSR matrices to finite-element vectors.
-#include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
+// Scatter/gather BSR assembly wrapper for finite-element vectors.
+#include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrassembly.hpp"
+
+// Raw COO triplet sparse assembly (unsorted and duplicated entries).
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
+
+// CSR sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/CSR/csrassembly.hpp"
+
+// CSC sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/CSC/cscassembly.hpp"
+
+#ifdef GENDIL_USE_HYPRE
+// Hypre-compatible CSR sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/HypreCSR/hyprecsrassembly.hpp"
+#endif

@@ -54,6 +54,32 @@ template < typename ShapeFunctions, size_t Component >
 using component_dof_shape_t =
    typename ComponentDofShape< ShapeFunctions, Component >::type;
 
+template < typename ShapeFunctions, size_t ... I >
+GENDIL_HOST_DEVICE
+constexpr bool VectorComponentDofShapesMatchFirst_impl(
+   std::index_sequence< I... > )
+{
+   using FirstDofShape = component_dof_shape_t< ShapeFunctions, 0 >;
+   return ( std::is_same_v<
+      FirstDofShape,
+      component_dof_shape_t< ShapeFunctions, I > > && ... );
+}
+
+template < typename ShapeFunctions >
+GENDIL_HOST_DEVICE
+constexpr bool VectorComponentDofShapesMatchFirst()
+{
+   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   {
+      return VectorComponentDofShapesMatchFirst_impl< ShapeFunctions >(
+         std::make_index_sequence< ShapeFunctions::vector_dim >{} );
+   }
+   else
+   {
+      return false;
+   }
+}
+
 template < typename DofShapes, size_t ... I >
 GENDIL_HOST_DEVICE
 constexpr LocalIndex DofShapeTupleDofCount( std::index_sequence< I... > )
@@ -259,7 +285,7 @@ GlobalIndex ElementToGlobalDofIndex(
    {
       static_assert(
          !is_vector_shape_functions_v< ShapeFunctions >,
-         "ElementToGlobalDofIndex currently supports scalar H1 spaces only; vector H1 is not supported." );
+         "H1Restriction is scalar-only; use VectorH1Restriction<NComp> for vector H1 spaces." );
       static_assert(Component == 0, "Scalar H1 finite element spaces only have component 0.");
 
       constexpr LocalIndex local_dofs = LocalDofCount< ShapeFunctions >();
@@ -273,11 +299,46 @@ GlobalIndex ElementToGlobalDofIndex(
          "H1Restriction contains a negative element-to-global DoF index." );
       return static_cast< GlobalIndex >( global_index );
    }
+   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   {
+      static_assert(
+         is_vector_shape_functions_v< ShapeFunctions >,
+         "VectorH1Restriction requires a vector finite element space." );
+      static_assert(
+         Restriction::num_comp == ShapeFunctions::vector_dim,
+         "VectorH1Restriction<NComp> must match the vector finite element component count." );
+      static_assert(
+         Component < Restriction::num_comp,
+         "VectorH1Restriction component index is out of bounds." );
+      static_assert(
+         VectorComponentDofShapesMatchFirst< ShapeFunctions >(),
+         "VectorH1Restriction currently requires identical scalar component DoF shapes." );
+
+      using ComponentDofShape =
+         component_dof_shape_t< ShapeFunctions, Component >;
+      constexpr LocalIndex component_local_dofs =
+         static_cast< LocalIndex >( Product( ComponentDofShape{} ) );
+      const GlobalIndex component_local_id =
+         static_cast< GlobalIndex >(
+            FlattenMultiIndex< ComponentDofShape >( indices ) );
+      const GlobalIndex restriction_index =
+         element_index * static_cast< GlobalIndex >( component_local_dofs ) +
+         component_local_id;
+      const int scalar_global_index =
+         fe_space.restriction.indices[restriction_index];
+      GENDIL_VERIFY(
+         scalar_global_index >= 0,
+         "VectorH1Restriction contains a negative scalar element-to-global DoF index." );
+
+      return static_cast< GlobalIndex >( Component ) *
+            static_cast< GlobalIndex >( fe_space.restriction.scalar_num_dofs ) +
+         static_cast< GlobalIndex >( scalar_global_index );
+   }
    else
    {
       static_assert(
          dependent_false_v< Restriction >,
-         "ElementToGlobalDofIndex supports only L2Restriction and scalar H1Restriction." );
+         "ElementToGlobalDofIndex supports only L2Restriction, scalar H1Restriction, and VectorH1Restriction." );
       return 0;
    }
 }

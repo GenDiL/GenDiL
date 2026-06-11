@@ -174,7 +174,7 @@ int TestMass()
    // --------------------------------------------------------------------------
 
    auto assembled_mass_matrix =
-      GenericAssembly<KernelPolicy>(
+      GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
          weak_form,
          weak_form_context,
          integration_rule);

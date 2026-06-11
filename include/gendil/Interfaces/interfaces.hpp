@@ -8,3 +8,6 @@
 
 // Interface with the Caliper library.
 #include "Caliper/caliperinterface.hpp"
+
+// Interface with the Hypre library.
+#include "Hypre/hypre.hpp"

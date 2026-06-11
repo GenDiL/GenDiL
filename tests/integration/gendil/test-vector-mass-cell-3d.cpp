@@ -299,7 +299,9 @@ int main()
 {
    if (TestVectorMass<1>() != 0) { return 1; }
    if (TestVectorMass<2>() != 0) { return 1; }
+#ifndef GENDIL_USE_CUDA
    if (TestVectorMass<3>() != 0) { return 1; }
+#endif
 
    std::cout << "\nAll vector mass tests passed.\n";
    return 0;

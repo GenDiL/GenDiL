@@ -51,6 +51,84 @@ HostDevicePointer< const int > MakeManualH1RestrictionIndices()
    return indices;
 }
 
+void FillVectorH1InputCase( Vector & x, const Integer case_id )
+{
+   Real * data = x.WriteHostData();
+   for ( GlobalIndex i = 0; i < x.Size(); ++i )
+   {
+      data[i] = 0.0;
+   }
+
+   if ( case_id == 0 )
+   {
+      for ( GlobalIndex i = 0; i < x.Size(); ++i )
+      {
+         data[i] = 0.5 + 0.25 * static_cast< Real >( i );
+      }
+   }
+   else if ( case_id == 1 )
+   {
+      data[0] = 1.0;
+      data[1] = 2.0;
+      data[2] = 3.0;
+   }
+   else
+   {
+      data[3] = -1.0;
+      data[4] = 0.5;
+      data[5] = 4.0;
+   }
+}
+
+void ApplyTwoCellVectorH1P1MassReference(
+   const Vector & x,
+   Vector & y,
+   const Real h )
+{
+   // Two uniform 1D p1 H1 elements have local scalar mass
+   // (h / 6) * [[2, 1], [1, 2]]. Assembling the shared middle
+   // node gives the component-major diag(M_scalar, M_scalar) action.
+   const Real scale = h / 6.0;
+   const Real * x_data = x.ReadHostData();
+   Real * y_data = y.WriteHostData();
+
+   for ( GlobalIndex i = 0; i < y.Size(); ++i )
+   {
+      y_data[i] = 0.0;
+   }
+
+   for ( GlobalIndex component = 0; component < 2; ++component )
+   {
+      const GlobalIndex offset = 3 * component;
+      y_data[offset + 0] =
+         scale * ( 2.0 * x_data[offset + 0] + x_data[offset + 1] );
+      y_data[offset + 1] =
+         scale * ( x_data[offset + 0] +
+                   4.0 * x_data[offset + 1] +
+                   x_data[offset + 2] );
+      y_data[offset + 2] =
+         scale * ( x_data[offset + 1] + 2.0 * x_data[offset + 2] );
+   }
+}
+
+bool CheckVectorNear(
+   const Vector & actual,
+   const Vector & expected,
+   const char * message )
+{
+   const Real * actual_data = actual.ReadHostData();
+   const Real * expected_data = expected.ReadHostData();
+
+   bool success = true;
+   for ( GlobalIndex i = 0; i < actual.Size(); ++i )
+   {
+      success = Check(
+         Near( actual_data[i], expected_data[i] ),
+         message ) && success;
+   }
+   return success;
+}
+
 void FillIdentityBlocks(
    BSRMatrix< Real, GlobalIndex > & matrix )
 {
@@ -355,6 +433,94 @@ bool TestVectorGatherScatterMapping()
    return success;
 }
 
+bool TestVectorH1GatherScatterMapping()
+{
+   const Integer n = 2;
+   const Real h = 1.0 / static_cast< Real >( n );
+   Cartesian1DMesh mesh( h, n );
+
+   constexpr Integer order = 1;
+   FiniteElementOrders< order > orders;
+   auto scalar_fe = MakeLobattoFiniteElement( orders );
+   auto vector_fe =
+      MakeVectorFiniteElement(
+         scalar_fe,
+         scalar_fe );
+
+   const std::array< int, 4 > restriction_map{
+      0, 1,
+      1, 2
+   };
+   HostDevicePointer< const int > restriction_indices{};
+   restriction_indices.host_pointer = restriction_map.data();
+   H1Restriction scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   auto vector_h1_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
+
+   using VectorH1Space = std::remove_cvref_t< decltype( vector_h1_space ) >;
+   using ShapeFunctions = typename VectorH1Space::finite_element_type::shape_functions;
+   constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+   const GlobalIndex num_elements =
+      vector_h1_space.GetNumberOfFiniteElements();
+
+   Vector x_fe( vector_h1_space.GetNumberOfFiniteElementDofs() );
+   Real * x_fe_data = x_fe.WriteHostData();
+   for ( GlobalIndex i = 0; i < x_fe.Size(); ++i )
+   {
+      x_fe_data[i] = 10.0 * static_cast< Real >( i + 1 );
+   }
+
+   VectorCGGatherToBsr< decltype( vector_h1_space ) > gather{
+      vector_h1_space };
+   Vector x_bsr( num_elements * block_size );
+   gather( x_fe, x_bsr );
+
+   bool success = true;
+   const Real expected_gather[] = {
+      10.0, 20.0, 40.0, 50.0,
+      20.0, 30.0, 50.0, 60.0
+   };
+   const Real * x_bsr_data = x_bsr.ReadHostData();
+   for ( GlobalIndex i = 0; i < x_bsr.Size(); ++i )
+   {
+      success = Check(
+         Near( x_bsr_data[i], expected_gather[i] ),
+         "Vector H1 gather mapping is wrong." ) && success;
+   }
+
+   Vector y_bsr( num_elements * block_size );
+   Real * y_bsr_data = y_bsr.WriteHostData();
+   for ( GlobalIndex i = 0; i < y_bsr.Size(); ++i )
+   {
+      y_bsr_data[i] = static_cast< Real >( i + 1 );
+   }
+
+   Vector y_fe( vector_h1_space.GetNumberOfFiniteElementDofs() );
+   Real * y_fe_data = y_fe.WriteHostData();
+   for ( GlobalIndex i = 0; i < y_fe.Size(); ++i )
+   {
+      y_fe_data[i] = 99.0;
+   }
+
+   VectorCGScatterFromBsr< decltype( vector_h1_space ) > scatter{
+      vector_h1_space };
+   scatter( y_bsr, y_fe );
+
+   const Real expected_scatter[] = {
+      1.0, 7.0, 6.0,
+      3.0, 11.0, 8.0
+   };
+   y_fe_data = y_fe.ReadWriteHostData();
+   for ( GlobalIndex i = 0; i < y_fe.Size(); ++i )
+   {
+      success = Check(
+         Near( y_fe_data[i], expected_scatter[i] ),
+         "Vector H1 scatter-add mapping or Set semantics is wrong." ) && success;
+   }
+
+   return success;
+}
+
 bool TestVectorSGBSRPermutationApply()
 {
    Cartesian2DMesh mesh( 1.0, 2, 1 );
@@ -398,6 +564,109 @@ bool TestVectorSGBSRPermutationApply()
    return success;
 }
 
+bool TestVectorH1SGBSRCellMass()
+{
+   const Integer n = 2;
+   const Real h = 1.0 / static_cast< Real >( n );
+   Cartesian1DMesh mesh( h, n );
+
+   constexpr Integer order = 1;
+   FiniteElementOrders< order > orders;
+   auto scalar_fe = MakeLobattoFiniteElement( orders );
+   auto vector_fe =
+      MakeVectorFiniteElement(
+         scalar_fe,
+         scalar_fe );
+
+   const std::array< int, 4 > restriction_map{
+      0, 1,
+      1, 2
+   };
+   HostDevicePointer< const int > restriction_indices{};
+   restriction_indices.host_pointer = restriction_map.data();
+   H1Restriction scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   auto vector_h1_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
+
+   Cells< "mesh" > cells;
+   VectorTrialSpace< "u" > u;
+   VectorTestSpace< "u" > v;
+   auto weak_form = integrate( cells, dot( u, v ) );
+   auto wf_context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( vector_h1_space ),
+         MakeDomain< "mesh" >( mesh ) );
+
+   constexpr Integer num_quad_1d = order + 2;
+   IntegrationRuleNumPoints< num_quad_1d > nq;
+   auto integration_rule = MakeIntegrationRule( nq );
+
+   using KernelPolicy = SerialKernelConfiguration;
+   auto sgbsr_matrix =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+   auto generic_operator =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         wf_context,
+         integration_rule );
+
+   bool success = true;
+   for ( Integer case_id = 0; case_id < 3; ++case_id )
+   {
+      Vector x( vector_h1_space.GetNumberOfFiniteElementDofs() );
+      Vector y_sgbsr( vector_h1_space.GetNumberOfFiniteElementDofs() );
+      Vector y_operator( vector_h1_space.GetNumberOfFiniteElementDofs() );
+      Vector y_expected( vector_h1_space.GetNumberOfFiniteElementDofs() );
+
+      FillVectorH1InputCase( x, case_id );
+      y_sgbsr = 0.0;
+      y_operator = 0.0;
+
+      sgbsr_matrix( x, y_sgbsr );
+      generic_operator( x, y_operator );
+      ApplyTwoCellVectorH1P1MassReference( x, y_expected, h );
+
+      success = CheckVectorNear(
+         y_sgbsr,
+         y_expected,
+         "Vector H1 SGBSR action disagrees with the manual p1 mass reference." ) && success;
+      success = CheckVectorNear(
+         y_sgbsr,
+         y_operator,
+         "Vector H1 SGBSR action disagrees with GenericOperator." ) && success;
+
+      const Real * y_data = y_sgbsr.ReadHostData();
+      const Real * expected_data = y_expected.ReadHostData();
+      if ( case_id == 1 )
+      {
+         success = Check(
+            Near( y_data[1], expected_data[1] ),
+            "Vector H1 SGBSR did not accumulate the component 0 shared middle node." ) && success;
+         success = Check(
+            Near( y_data[3], 0.0 ) &&
+            Near( y_data[4], 0.0 ) &&
+            Near( y_data[5], 0.0 ),
+            "Vector H1 SGBSR aliased component 0 input into component 1 output." ) && success;
+      }
+      else if ( case_id == 2 )
+      {
+         success = Check(
+            Near( y_data[4], expected_data[4] ),
+            "Vector H1 SGBSR did not accumulate the component 1 shared middle node." ) && success;
+         success = Check(
+            Near( y_data[0], 0.0 ) &&
+            Near( y_data[1], 0.0 ) &&
+            Near( y_data[2], 0.0 ),
+            "Vector H1 SGBSR aliased component 1 input into component 0 output." ) && success;
+      }
+   }
+
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -407,7 +676,9 @@ int main()
    success = TestRawBsrOperatorDelegatesToBackendApply() && success;
    success = TestScalarH1GatherScatterMapping() && success;
    success = TestVectorGatherScatterMapping() && success;
+   success = TestVectorH1GatherScatterMapping() && success;
    success = TestVectorSGBSRPermutationApply() && success;
+   success = TestVectorH1SGBSRCellMass() && success;
 
    return success ? 0 : 1;
 }

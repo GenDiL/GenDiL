@@ -188,7 +188,7 @@ int TestBoundarySIPDG()
    // Generic assembled BSR matrix
    // --------------------------------------------------------------------------
 
-   auto boundary_matrix = GenericAssembly<KernelPolicy>(
+   auto boundary_matrix = GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
       boundary_sipdg_wf,
       boundary_wf_context,
       int_rules

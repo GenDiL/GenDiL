@@ -210,7 +210,7 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
    // Generic assembled BSR matrix
    // --------------------------------------------------------------------------
 
-   auto diffusion_matrix = GenericAssembly<KernelPolicy>(
+   auto diffusion_matrix = GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
       diffusion_wf,
       diffusion_wf_context,
       int_rules

@@ -202,7 +202,7 @@ int TestAdvection()
    // Generic assembled BSR matrix
    // --------------------------------------------------------------------------
 
-   auto advection_matrix = GenericAssembly<KernelPolicy>(
+   auto advection_matrix = GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
       advection_dg_wf,
       advection_wf_context,
       integration_rule
