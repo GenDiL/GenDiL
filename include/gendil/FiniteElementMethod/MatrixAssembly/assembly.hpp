@@ -24,3 +24,8 @@
 
 // CSC sparse assembly through RawCOO host sort/reduce finalization.
 #include "gendil/FiniteElementMethod/MatrixAssembly/CSC/cscassembly.hpp"
+
+#ifdef GENDIL_USE_HYPRE
+// Hypre-compatible CSR sparse assembly through RawCOO host sort/reduce finalization.
+#include "gendil/FiniteElementMethod/MatrixAssembly/HypreCSR/hyprecsrassembly.hpp"
+#endif

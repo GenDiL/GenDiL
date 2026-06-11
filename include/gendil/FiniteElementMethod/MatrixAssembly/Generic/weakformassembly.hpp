@@ -9,6 +9,9 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/cooassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/CSC/cscassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/CSR/csrassembly.hpp"
+#ifdef GENDIL_USE_HYPRE
+#include "gendil/FiniteElementMethod/MatrixAssembly/HypreCSR/hyprecsrassembly.hpp"
+#endif
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/defaultbackend.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrassembly.hpp"
@@ -79,6 +82,16 @@ auto GenericAssembly(
          integration_rule,
          backend );
    }
+#ifdef GENDIL_USE_HYPRE
+   else if constexpr ( Type == MatrixAssemblyType::HypreCSR )
+   {
+      return GenericHypreCSRAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         backend );
+   }
+#endif
    else if constexpr ( Type == MatrixAssemblyType::CSC )
    {
       return GenericCSCAssembly<KernelPolicy>(
@@ -112,7 +125,11 @@ auto GenericAssembly(
       Type == MatrixAssemblyType::SGBSR ||
       Type == MatrixAssemblyType::COO ||
       Type == MatrixAssemblyType::CSR ||
-      Type == MatrixAssemblyType::CSC )
+      Type == MatrixAssemblyType::CSC
+#ifdef GENDIL_USE_HYPRE
+      || Type == MatrixAssemblyType::HypreCSR
+#endif
+      )
    {
       return GenericAssembly<Type, KernelPolicy>(
          weak_form,

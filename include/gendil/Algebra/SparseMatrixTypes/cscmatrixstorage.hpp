@@ -4,19 +4,20 @@
 
 #pragma once
 
+#include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
 namespace gendil {
 
 template < typename ComputeType = void >
-struct HostCSCBackend
+struct HostCSCBackend : HostMatVecBackend
 {
    using compute_type = ComputeType;
 };
 
 template < typename ComputeType = void >
-struct NativeDeviceCSCBackend
+struct NativeDeviceCSCBackend : DeviceMatVecBackend
 {
    using compute_type = ComputeType;
 };

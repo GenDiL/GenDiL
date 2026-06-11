@@ -24,7 +24,9 @@ option(USE_CUDA "Enables CUDA support." OFF)
 option(USE_HIP "Enables HIP support." OFF)
 option(USE_RAJA "Enables RAJA features." OFF)
 option(USE_CALIPER "Enables Caliper interface for benchmarking." OFF)
+option(USE_HYPRE "Enables Hypre interface." OFF)
 option(GENDIL_ENABLE_BENCHMARKS "Build GenDiL benchmark executables" OFF)
+set(GENDIL_USE_HYPRE_DEVICE OFF)
 
 add_library(GENDIL INTERFACE)
 
@@ -96,6 +98,96 @@ if(USE_CALIPER)
   message(STATUS "Caliper libraries: ${CALIPER_LIBRARIES}")
 else()
   message(STATUS "Caliper support is not enabled.")
+endif()
+
+# Hypre
+if(USE_HYPRE)
+  find_package(HYPRE REQUIRED CONFIG)
+  message(STATUS "Hypre found!")
+  target_link_libraries(GENDIL INTERFACE HYPRE::HYPRE)
+  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE)
+
+  if(HYPRE_ENABLE_SYCL)
+    message(FATAL_ERROR
+      "USE_HYPRE=ON found a SYCL-enabled Hypre, but GenDiL's Hypre device "
+      "backend supports only CUDA and HIP in this version.")
+  endif()
+
+  if(USE_CUDA)
+    if(HYPRE_ENABLE_CUDA)
+      set(GENDIL_USE_HYPRE_DEVICE ON)
+      target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE_DEVICE)
+      message(STATUS "GenDiL HypreCSR default backend: HypreCSRDeviceBackend (CUDA)")
+    elseif(HYPRE_ENABLE_HIP)
+      message(FATAL_ERROR
+        "USE_CUDA=ON requires a CUDA-enabled Hypre for HypreCSRDeviceBackend, "
+        "but the found Hypre was built with HIP support.")
+    else()
+      message(STATUS
+        "GenDiL device support is enabled, but the found Hypre is host-only; "
+        "HypreCSR will use HypreCSRHostBackend by default.")
+    endif()
+  elseif(USE_HIP)
+    if(HYPRE_ENABLE_HIP)
+      set(GENDIL_USE_HYPRE_DEVICE ON)
+      target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE_DEVICE)
+      message(STATUS "GenDiL HypreCSR default backend: HypreCSRDeviceBackend (HIP)")
+    elseif(HYPRE_ENABLE_CUDA)
+      message(FATAL_ERROR
+        "USE_HIP=ON requires a HIP-enabled Hypre for HypreCSRDeviceBackend, "
+        "but the found Hypre was built with CUDA support.")
+    else()
+      message(STATUS
+        "GenDiL device support is enabled, but the found Hypre is host-only; "
+        "HypreCSR will use HypreCSRHostBackend by default.")
+    endif()
+  elseif(HYPRE_ENABLE_CUDA OR HYPRE_ENABLE_HIP)
+    message(STATUS
+      "The found Hypre has device support, but GenDiL device support is off; "
+      "HypreCSR will use HypreCSRHostBackend by default.")
+  endif()
+
+  include(CheckCXXSourceCompiles)
+  get_target_property(HYPRE_INCLUDE_DIRS HYPRE::HYPRE INTERFACE_INCLUDE_DIRECTORIES)
+  set(GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS ${HYPRE_INCLUDE_DIRS})
+  foreach(_hypre_include_dir IN LISTS HYPRE_INCLUDE_DIRS)
+    if(EXISTS "${_hypre_include_dir}/seq_block_mv/_hypre_seq_block_mv.h")
+      list(APPEND GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS "${_hypre_include_dir}/seq_block_mv")
+    endif()
+  endforeach()
+  target_include_directories(GENDIL INTERFACE ${GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS})
+
+  set(CMAKE_REQUIRED_INCLUDES ${GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS})
+  set(CMAKE_REQUIRED_LIBRARIES HYPRE::HYPRE)
+  check_cxx_source_compiles("
+    #include <HYPRE.h>
+    #include <HYPRE_parcsr_mv.h>
+    #include <HYPRE_parcsr_ls.h>
+    #include <HYPRE_utilities.h>
+    #include \"_hypre_utilities.h\"
+    #include \"_hypre_seq_mv.h\"
+    #include \"_hypre_parcsr_mv.h\"
+    int main()
+    {
+      HYPRE_Initialized();
+      (void) &hypre_SeqVectorSetData;
+      (void) &hypre_ParVectorInitializeShell;
+      (void) &hypre_ParVectorInitialize_v2;
+      (void) &hypre_ParCSRMatrixInitialize_v2;
+      return 0;
+    }
+  " GENDIL_HYPRE_HAS_INTERNAL_HEADERS)
+  unset(CMAKE_REQUIRED_INCLUDES)
+  unset(CMAKE_REQUIRED_LIBRARIES)
+  if(NOT GENDIL_HYPRE_HAS_INTERNAL_HEADERS)
+    message(FATAL_ERROR
+      "USE_HYPRE=ON requires Hypre internal headers "
+      "(_hypre_utilities.h, _hypre_seq_mv.h, _hypre_parcsr_mv.h) "
+      "and the corresponding internal aliasing APIs for zero-copy "
+      "HYPRE_ParCSRMatrix/HYPRE_ParVector views.")
+  endif()
+else()
+  message(STATUS "Hypre support is not enabled.")
 endif()
 
 target_include_directories(

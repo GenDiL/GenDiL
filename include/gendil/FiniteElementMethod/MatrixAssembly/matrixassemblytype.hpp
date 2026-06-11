@@ -18,6 +18,10 @@ enum class MatrixAssemblyType
    COO,
    CSR,
    CSC
+#ifdef GENDIL_USE_HYPRE
+   ,
+   HypreCSR
+#endif
 };
 
 } // namespace gendil

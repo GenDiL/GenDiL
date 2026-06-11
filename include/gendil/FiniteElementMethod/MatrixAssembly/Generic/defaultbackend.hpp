@@ -8,6 +8,9 @@
 #include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
+#ifdef GENDIL_USE_HYPRE
+#include "gendil/Interfaces/Hypre/hypretypes.hpp"
+#endif
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/types.hpp"
@@ -68,6 +71,18 @@ struct DefaultBackendFor< MatrixAssemblyType::CSR >
    using type = HostCSRBackend<>;
 #endif
 };
+
+#ifdef GENDIL_USE_HYPRE
+template <>
+struct DefaultBackendFor< MatrixAssemblyType::HypreCSR >
+{
+#ifdef GENDIL_USE_HYPRE_DEVICE
+   using type = HypreCSRDeviceBackend;
+#else
+   using type = HypreCSRHostBackend;
+#endif
+};
+#endif
 
 template <>
 struct DefaultBackendFor< MatrixAssemblyType::CSC >

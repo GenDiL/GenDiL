@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
@@ -18,7 +19,7 @@ enum class BlockLayout
 template <
    typename ComputeType = void,
    typename AccumulatorType = void >
-struct HostBSRBackend
+struct HostBSRBackend : HostMatVecBackend
 {
    using compute_type = ComputeType;
    using accumulator_type = AccumulatorType;
@@ -27,7 +28,7 @@ struct HostBSRBackend
 template <
    typename ComputeType = void,
    typename AccumulatorType = void >
-struct NativeDeviceBSRBackend
+struct NativeDeviceBSRBackend : DeviceMatVecBackend
 {
    using compute_type = ComputeType;
    using accumulator_type = AccumulatorType;

@@ -21,8 +21,14 @@ if (@USE_CALIPER@)
     find_dependency(caliper)
 endif()
 
+if (@USE_HYPRE@)
+    find_dependency(HYPRE CONFIG REQUIRED)
+endif()
+
 set(GENDIL_USE_CUDA "@USE_CUDA@")
 set(GENDIL_USE_HIP "@USE_HIP@")
+set(GENDIL_USE_HYPRE "@USE_HYPRE@")
+set(GENDIL_USE_HYPRE_DEVICE "@GENDIL_USE_HYPRE_DEVICE@")
 
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 

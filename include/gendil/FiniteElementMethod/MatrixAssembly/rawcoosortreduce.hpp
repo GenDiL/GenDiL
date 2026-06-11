@@ -15,6 +15,7 @@ namespace gendil {
 enum class SparseCoordinateOrder
 {
    RowThenColumn,
+   RowThenDiagonalThenColumn,
    ColumnThenRow
 };
 
@@ -38,6 +39,22 @@ bool RawCOOTripletLess( const Triplet & lhs, const Triplet & rhs )
       {
          return lhs.row < rhs.row;
       }
+      return lhs.col < rhs.col;
+   }
+   else if constexpr ( Order == SparseCoordinateOrder::RowThenDiagonalThenColumn )
+   {
+      if ( lhs.row != rhs.row )
+      {
+         return lhs.row < rhs.row;
+      }
+
+      const bool lhs_is_diagonal = lhs.row == lhs.col;
+      const bool rhs_is_diagonal = rhs.row == rhs.col;
+      if ( lhs_is_diagonal != rhs_is_diagonal )
+      {
+         return lhs_is_diagonal;
+      }
+
       return lhs.col < rhs.col;
    }
    else

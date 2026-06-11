@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
@@ -12,7 +13,7 @@ namespace gendil {
 template <
    typename ComputeType = void,
    typename AccumulatorType = void >
-struct HostCSRBackend
+struct HostCSRBackend : HostMatVecBackend
 {
    using compute_type = ComputeType;
    using accumulator_type = AccumulatorType;
@@ -21,7 +22,7 @@ struct HostCSRBackend
 template <
    typename ComputeType = void,
    typename AccumulatorType = void >
-struct NativeDeviceCSRBackend
+struct NativeDeviceCSRBackend : DeviceMatVecBackend
 {
    using compute_type = ComputeType;
    using accumulator_type = AccumulatorType;

@@ -68,6 +68,17 @@ static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::RawCOO >,
       Empty > );
+#ifdef GENDIL_USE_HYPRE
+#ifdef GENDIL_USE_HYPRE_DEVICE
+using ExpectedHypreCSRBackend = HypreCSRDeviceBackend;
+#else
+using ExpectedHypreCSRBackend = HypreCSRHostBackend;
+#endif
+static_assert(
+   std::is_same_v<
+      DefaultBackendFor_t< MatrixAssemblyType::HypreCSR >,
+      ExpectedHypreCSRBackend > );
+#endif
 
 bool TestTypedGenericAssemblyDefaults()
 {
