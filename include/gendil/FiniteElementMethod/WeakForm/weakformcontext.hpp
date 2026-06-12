@@ -26,6 +26,8 @@ struct WeakFormKeyTag {};
 struct FieldKeyTag : WeakFormKeyTag {};
 struct FiniteElementFieldKeyTag : WeakFormKeyTag {};
 struct DomainKeyTag : WeakFormKeyTag {};
+struct InteriorFaceDomainKeyTag : WeakFormKeyTag {};
+struct BoundaryFaceDomainKeyTag : WeakFormKeyTag {};
 
 // -----------------------------------------------------------------------------
 // Keys
@@ -45,6 +47,18 @@ struct FiniteElementFieldKey : FiniteElementFieldKeyTag
 
 template<StaticString Name>
 struct DomainKey : DomainKeyTag
+{
+   static constexpr auto name = Name;
+};
+
+template<StaticString Name>
+struct InteriorFaceDomainKey : InteriorFaceDomainKeyTag
+{
+   static constexpr auto name = Name;
+};
+
+template<StaticString Name>
+struct BoundaryFaceDomainKey : BoundaryFaceDomainKeyTag
 {
    static constexpr auto name = Name;
 };
@@ -74,6 +88,22 @@ struct is_domain_key
 
 template<class Key>
 inline constexpr bool is_domain_key_v = is_domain_key<Key>::value;
+
+template<class Key>
+struct is_interior_face_domain_key
+   : std::bool_constant<std::is_base_of_v<InteriorFaceDomainKeyTag, uncvref_t<Key>>> {};
+
+template<class Key>
+inline constexpr bool is_interior_face_domain_key_v =
+   is_interior_face_domain_key<Key>::value;
+
+template<class Key>
+struct is_boundary_face_domain_key
+   : std::bool_constant<std::is_base_of_v<BoundaryFaceDomainKeyTag, uncvref_t<Key>>> {};
+
+template<class Key>
+inline constexpr bool is_boundary_face_domain_key_v =
+   is_boundary_face_domain_key<Key>::value;
 
 template<class Key>
 struct is_weak_form_context_key
@@ -173,21 +203,68 @@ constexpr auto MakeDomain(T&& x)
    return Entry<DomainKey<Name>, V>{ static_cast<V>(v) };
 }
 
+template<StaticString Name, class T>
+constexpr auto MakeInteriorFaceDomain(T&& x)
+{
+   auto v = to_view(std::forward<T>(x));
+   using V = uncvref_t<decltype(v)>;
+   return Entry<InteriorFaceDomainKey<Name>, V>{ static_cast<V>(v) };
+}
+
+template<StaticString Name, class T>
+constexpr auto MakeBoundaryFaceDomain(T&& x)
+{
+   auto v = to_view(std::forward<T>(x));
+   using V = uncvref_t<decltype(v)>;
+   return Entry<BoundaryFaceDomainKey<Name>, V>{ static_cast<V>(v) };
+}
+
 // -----------------------------------------------------------------------------
 // Context
 // -----------------------------------------------------------------------------
 
-template<class DomainsMap, class FEFieldsMap, class FieldsMap>
+template<
+   class DomainsMap,
+   class InteriorFaceDomainsMap,
+   class BoundaryFaceDomainsMap,
+   class FEFieldsMap,
+   class FieldsMap>
 struct WeakFormContext
 {
-   DomainsMap  domains;
-   FEFieldsMap fe_fields;
-   FieldsMap   fields;
+   DomainsMap             domains;
+   InteriorFaceDomainsMap interior_face_domains;
+   BoundaryFaceDomainsMap boundary_face_domains;
+   FEFieldsMap            fe_fields;
+   FieldsMap              fields;
 
    template<StaticString Name>
    static consteval bool has_domain()
    {
       return DomainsMap::template contains<DomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   static consteval bool has_interior_face_domain()
+   {
+      return InteriorFaceDomainsMap::template contains<InteriorFaceDomainKey<Name>>();
+   }
+
+   static consteval bool has_any_interior_face_domain()
+   {
+      return std::tuple_size_v<
+         decltype(std::declval<InteriorFaceDomainsMap>().entries)> != 0;
+   }
+
+   template<StaticString Name>
+   static consteval bool has_boundary_face_domain()
+   {
+      return BoundaryFaceDomainsMap::template contains<BoundaryFaceDomainKey<Name>>();
+   }
+
+   static consteval bool has_any_boundary_face_domain()
+   {
+      return std::tuple_size_v<
+         decltype(std::declval<BoundaryFaceDomainsMap>().entries)> != 0;
    }
 
    template<StaticString Name>
@@ -214,6 +291,42 @@ struct WeakFormContext
    {
       static_assert(has_domain<Name>(), "WeakFormContext: missing required domain.");
       return domains.template get<DomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) interior_face_domain() &
+   {
+      static_assert(
+         has_interior_face_domain<Name>(),
+         "WeakFormContext: missing required interior face domain.");
+      return interior_face_domains.template get<InteriorFaceDomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) interior_face_domain() const &
+   {
+      static_assert(
+         has_interior_face_domain<Name>(),
+         "WeakFormContext: missing required interior face domain.");
+      return interior_face_domains.template get<InteriorFaceDomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) boundary_face_domain() &
+   {
+      static_assert(
+         has_boundary_face_domain<Name>(),
+         "WeakFormContext: missing required boundary face domain.");
+      return boundary_face_domains.template get<BoundaryFaceDomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) boundary_face_domain() const &
+   {
+      static_assert(
+         has_boundary_face_domain<Name>(),
+         "WeakFormContext: missing required boundary face domain.");
+      return boundary_face_domains.template get<BoundaryFaceDomainKey<Name>>();
    }
 
    template<StaticString Name>
@@ -298,6 +411,28 @@ constexpr auto as_domain_tuple(E&& e)
    }
 }
 
+template<class E>
+constexpr auto as_interior_face_domain_tuple(E&& e)
+{
+   using Key = entry_key_t<E>;
+   if constexpr (is_interior_face_domain_key_v<Key>) {
+      return std::tuple{ std::forward<E>(e) };
+   } else {
+      return std::tuple{};
+   }
+}
+
+template<class E>
+constexpr auto as_boundary_face_domain_tuple(E&& e)
+{
+   using Key = entry_key_t<E>;
+   if constexpr (is_boundary_face_domain_key_v<Key>) {
+      return std::tuple{ std::forward<E>(e) };
+   } else {
+      return std::tuple{};
+   }
+}
+
 // -----------------------------------------------------------------------------
 // Factory
 // -----------------------------------------------------------------------------
@@ -317,19 +452,31 @@ constexpr auto MakeWeakFormContext(Entries&&... es)
       all_unique<entry_key_t<Entries>...>::value,
                   "MakeWeakFormContext: duplicate key provided.");
 
-   auto fields_t    = std::tuple_cat(as_field_tuple(std::forward<Entries>(es))...);
-   auto domains_t   = std::tuple_cat(as_domain_tuple(std::forward<Entries>(es))...);
+   auto fields_t = std::tuple_cat(as_field_tuple(std::forward<Entries>(es))...);
+   auto domains_t = std::tuple_cat(as_domain_tuple(std::forward<Entries>(es))...);
+   auto interior_face_domains_t =
+      std::tuple_cat(as_interior_face_domain_tuple(std::forward<Entries>(es))...);
+   auto boundary_face_domains_t =
+      std::tuple_cat(as_boundary_face_domain_tuple(std::forward<Entries>(es))...);
    auto fe_fields_t = std::tuple_cat(as_fe_field_tuple(std::forward<Entries>(es))...);
 
-   auto fields_map    = tuple_to_map(std::move(fields_t));
-   auto domains_map   = tuple_to_map(std::move(domains_t));
+   auto fields_map = tuple_to_map(std::move(fields_t));
+   auto domains_map = tuple_to_map(std::move(domains_t));
+   auto interior_face_domains_map =
+      tuple_to_map(std::move(interior_face_domains_t));
+   auto boundary_face_domains_map =
+      tuple_to_map(std::move(boundary_face_domains_t));
    auto fe_fields_map = tuple_to_map(std::move(fe_fields_t));
 
    return WeakFormContext<
       decltype(domains_map),
+      decltype(interior_face_domains_map),
+      decltype(boundary_face_domains_map),
       decltype(fe_fields_map),
       decltype(fields_map)>{
          std::move(domains_map),
+         std::move(interior_face_domains_map),
+         std::move(boundary_face_domains_map),
          std::move(fe_fields_map),
          std::move(fields_map)
    };

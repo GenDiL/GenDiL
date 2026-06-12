@@ -105,3 +105,4 @@ add_non_nvcc_test(test-diffusion-symmetry-per-face test-diffusion-symmetry-per-f
 add_non_nvcc_test(test-diffusion-symmetry-plus-minus-faces test-diffusion-symmetry-plus-minus-faces.cpp)
 add_non_nvcc_test(test-boundary-mass-2d-generic test-boundary-mass-2d-generic.cpp)
 add_non_nvcc_test(test-boundary-sipdg-2d-generic test-boundary-sipdg-2d-generic.cpp)
+add_non_nvcc_test(test-generic-global-face-domains test-generic-global-face-domains.cpp)

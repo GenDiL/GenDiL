@@ -169,8 +169,7 @@ void AssembleInteriorFacetSparseMatrix(
 
             auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-            // GenericInteriorFacetWeakFormOperator(
-            GenericInteriorFacetIntegrandOperator(
+            LocalInteriorFacetIntegrandOperator(
                kernel_context,
                weak_form_context,
                operator_context,
@@ -202,8 +201,7 @@ void AssembleInteriorFacetSparseMatrix(
 
             auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-            // GenericInteriorFacetWeakFormOperator(
-            GenericInteriorFacetIntegrandOperator(
+            LocalInteriorFacetIntegrandOperator(
                kernel_context,
                weak_form_context,
                operator_context,
@@ -272,8 +270,7 @@ void AssembleBoundaryFacetSparseMatrix(
          auto x_zero = MakeZeroElementVector(kernel_context, trial_fe_space);
          auto y_rhs = MakeZeroElementVector(kernel_context, test_fe_space);
 
-         // GenericBoundaryFacetWeakFormOperator(
-         GenericBoundaryFacetIntegrandOperator(
+         LocalBoundaryFacetIntegrandOperator(
             kernel_context,
             weak_form_context,
             operator_context,
@@ -292,8 +289,7 @@ void AssembleBoundaryFacetSparseMatrix(
 
             auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
 
-            // GenericBoundaryFacetWeakFormOperator(
-            GenericBoundaryFacetIntegrandOperator(
+            LocalBoundaryFacetIntegrandOperator(
                kernel_context,
                weak_form_context,
                operator_context,

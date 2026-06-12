@@ -25,6 +25,9 @@
 // A face connectivity describing global face connectivity on a Cartesian mesh
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianglobalfaceconnectivity.hpp"
 
+// A face connectivity describing global boundary faces on a Cartesian mesh
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianglobalboundaryfaceconnectivity.hpp"
+
 // An intermesh face connectivity between two conforming Cartesian meshes
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianintermeshfaceconnectivity.hpp"
 
