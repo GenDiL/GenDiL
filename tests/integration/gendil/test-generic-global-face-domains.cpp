@@ -81,6 +81,13 @@ Vector ApplyOperator(const Operator& op, const Vector& x)
    return y;
 }
 
+struct FullSharedThreadedFaceKernelPolicy :
+   public DeviceKernelConfiguration<ThreadBlockLayout<1>, 1, 1>
+{
+   using face_read_dofs_policy = FullSharedFaceReadDofsPolicy;
+   using face_write_dofs_policy = FullSharedFaceWriteDofsPolicy;
+};
+
 bool TestContextStorage()
 {
    constexpr Integer Dim = 2;
@@ -142,6 +149,100 @@ bool TestInteriorTwoCellSigns()
    auto integration_rule = MakeIntegrationRule(num_quads);
 
    using KernelPolicy = SerialKernelConfiguration;
+   using FESpace = std::remove_cvref_t<decltype(fe_space)>;
+   using IntegrationRule = decltype(integration_rule);
+   using SmallIntegrationRule =
+      decltype(MakeIntegrationRule(IntegrationRuleNumPoints<1>{}));
+
+   static_assert(
+      generic_operator_face_read_scratch_requirement_v<
+         FullSharedThreadedFaceKernelPolicy,
+         FESpace> ==
+      FESpace::finite_element_type::GetNumDofs());
+   static_assert(
+      generic_operator_face_write_scratch_requirement_v<
+         FullSharedThreadedFaceKernelPolicy,
+         FESpace> ==
+      FESpace::finite_element_type::GetNumDofs());
+
+   constexpr size_t integrand_scratch =
+      generic_operator_integrand_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule>;
+   constexpr size_t one_face_read_scratch =
+      generic_operator_face_read_scratch_requirement_v<
+         FullSharedThreadedFaceKernelPolicy,
+         FESpace>;
+   constexpr size_t one_face_write_scratch =
+      generic_operator_face_write_scratch_requirement_v<
+         FullSharedThreadedFaceKernelPolicy,
+         FESpace>;
+   constexpr size_t accurate_global_face_scratch =
+      Max(
+         integrand_scratch,
+         one_face_read_scratch,
+         one_face_write_scratch);
+
+   static_assert(
+      global_generic_interior_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace> == accurate_global_face_scratch);
+   static_assert(
+      global_generic_boundary_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace> == accurate_global_face_scratch);
+
+   constexpr size_t small_integrand_scratch =
+      generic_operator_integrand_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         SmallIntegrationRule>;
+   constexpr size_t one_read_small_rule_formula =
+      Max(
+         small_integrand_scratch,
+         one_face_read_scratch,
+         one_face_write_scratch);
+   constexpr size_t two_read_small_rule_formula =
+      Max(
+         small_integrand_scratch,
+         2 * one_face_read_scratch,
+         one_face_write_scratch);
+   static_assert(small_integrand_scratch < one_face_read_scratch);
+   static_assert(one_read_small_rule_formula != two_read_small_rule_formula);
+   static_assert(
+      global_generic_interior_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         SmallIntegrationRule,
+         FESpace> == one_read_small_rule_formula);
+   static_assert(
+      global_generic_interior_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         SmallIntegrationRule,
+         FESpace> != two_read_small_rule_formula);
+   static_assert(
+      global_generic_boundary_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         SmallIntegrationRule,
+         FESpace> == one_read_small_rule_formula);
+   static_assert(
+      local_generic_cell_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace> ==
+      local_generic_interior_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace>);
+   static_assert(
+      local_generic_cell_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace> ==
+      local_generic_boundary_facet_required_shared_memory_v<
+         FullSharedThreadedFaceKernelPolicy,
+         IntegrationRule,
+         FESpace>);
    using BatchedKernelPolicy =
       DeviceKernelConfiguration<ThreadBlockLayout<>, 0, 2>;
    static_assert(
