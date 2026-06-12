@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/cellintegrand.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localinteriorfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localboundaryfacet.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
 
 namespace gendil {
 
@@ -39,7 +40,14 @@ void LocalFacetsGenericExplicitOperator(
    const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
    using IntegrationRule = decltype(op_ctx.integration_rule());
 
-   constexpr size_t required_shared_mem = required_shared_memory_v<KernelPolicy, IntegrationRule>;
+   constexpr size_t required_shared_mem =
+      local_generic_cell_required_shared_memory_v<
+         KernelPolicy,
+         IntegrationRule,
+         std::remove_cvref_t<decltype(trial_space)>,
+         WeakForm,
+         DofsInView,
+         DofsOutView>;
 
    mesh::CellIterator<KernelPolicy>(
       trial_space,

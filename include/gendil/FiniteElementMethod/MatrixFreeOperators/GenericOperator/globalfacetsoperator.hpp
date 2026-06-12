@@ -9,6 +9,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalinteriorfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalboundaryfacet.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
 
 namespace gendil {
 
@@ -46,7 +47,13 @@ void GlobalFacetsGenericExplicitOperator(
    using IntegrationRule = decltype(op_ctx.integration_rule());
 
    constexpr size_t required_shared_mem =
-      required_shared_memory_v<KernelPolicy, IntegrationRule>;
+      local_generic_cell_required_shared_memory_v<
+         KernelPolicy,
+         IntegrationRule,
+         std::remove_cvref_t<decltype(trial_space)>,
+         WeakForm,
+         DofsInView,
+         DofsOutView>;
 
    mesh::CellIterator<KernelPolicy>(
       trial_space,

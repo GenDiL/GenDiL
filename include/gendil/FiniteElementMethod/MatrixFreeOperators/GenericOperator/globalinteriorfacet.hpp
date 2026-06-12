@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacethelpers.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localinteriorfacet.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
 
 namespace gendil {
 
@@ -201,10 +202,13 @@ void GenericGlobalInteriorFacetDomainOperator(
 
    using IntegrationRule = decltype(op_ctx.integration_rule());
    constexpr size_t required_shared_mem =
-      global_generic_face_required_shared_memory_v<
+      global_generic_interior_facet_required_shared_memory_v<
          KernelPolicy,
          IntegrationRule,
-         std::remove_cvref_t<decltype(face_space)>>;
+         std::remove_cvref_t<decltype(face_space)>,
+         Integrand,
+         DofsInView,
+         DofsOutView>;
    constexpr size_t shared_memory_block_size =
       KernelContext<
          KernelPolicy,
