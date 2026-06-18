@@ -5,11 +5,26 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetFacetContextCellDomainSpace(
+   const CellIntegrationDomain<Space>& domain)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      is_cell_finite_element_space_v<SpaceType>,
+      "Facet context construction requires a selected homogeneous "
+      "CellIntegrationDomain<Space>. Mixed or raw domains must be normalized "
+      "and restricted before context construction.");
+   return (domain.space);
+}
 
 template<typename FaceInfo, typename PlusCellView>
 struct FacetContext : FaceInfo
@@ -30,7 +45,8 @@ auto MakeInteriorFacetContext(const WeakFormContext & wf_ctx, const Integrand & 
    if constexpr (requires_plus_side_jacobian_v<Integrand>)
    {
       constexpr auto DomainName = Integrand::domain_type::name;
-      const auto& mesh = wf_ctx.template domain<DomainName>();
+      const auto& mesh =
+         GetFacetContextCellDomainSpace(wf_ctx.template domain<DomainName>());
       auto plus_cell = mesh.GetCell(face_info.PlusSide().GetCellIndex());
       ApplyOrientationToCell(face_info.PlusSide().GetOrientation(), plus_cell);
       return FacetContext{ face_info, plus_cell };

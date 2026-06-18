@@ -352,7 +352,7 @@ int TestInteriorCoefficientFieldInputsH1()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(dg_space),
       MakeFiniteElementField<"w_cg">(h1_space, w_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(dg_space));
 
    auto unqualified_op = MakeGenericOperator<KernelPolicy>(
       unqualified_form,

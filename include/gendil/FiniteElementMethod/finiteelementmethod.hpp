@@ -15,6 +15,9 @@
 // Homogeneous finite element spaces over Cartesian global face meshes.
 #include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
 
+// Lightweight aggregation of homogeneous finite element spaces.
+#include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
+
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 
 // An expression template domain specific language (DSL) to represent weak forms.

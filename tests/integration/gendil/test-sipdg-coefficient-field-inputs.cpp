@@ -576,7 +576,7 @@ int TestSIPDGCoefficientFieldInputs()
       MakeWeakFormContext(
          MakeTrialField<"u">(fe_space),
          MakeFiniteElementField<"mu">(fe_space, mu_view),
-         MakeDomain<"mesh">(mesh));
+         MakeIntegrationDomain<"mesh">(fe_space));
 
    auto op =
       MakeGenericOperator<KernelPolicy>(
@@ -639,4 +639,3 @@ int main()
       << "\nAll SIPDG coefficient field-input tests passed.\n";
    return 0;
 }
-

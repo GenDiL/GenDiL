@@ -27,7 +27,11 @@ void GenericBlockDiagonalAssembly(
 {
    GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
 
-   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericBlockDiagonalAssembly: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
 
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
@@ -40,6 +44,7 @@ void GenericBlockDiagonalAssembly(
 
    // FE spaces come from wf_ctx via MakeTrialField/MakeTestField
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
    // Shared memory requirement: for now, bind to the integration rule used by this operator
    constexpr size_t required_shared_mem = required_shared_memory_v<KernelPolicy, IntegrationRule>;
@@ -73,6 +78,12 @@ auto GenericBlockDiagonalAssembly(
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule)
 {
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericBSRAssembly: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
+
    constexpr auto TrialName = requirements<WeakForm>::trial_name;
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    auto bsr_matrix = MakeBlockDiagonalDGBSRPattern( trial_space );

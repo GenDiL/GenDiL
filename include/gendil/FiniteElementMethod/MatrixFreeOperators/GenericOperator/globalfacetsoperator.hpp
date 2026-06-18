@@ -5,110 +5,453 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/cellintegrand.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/celloperator.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainfiniteelementspaceiteration.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globaloperatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalinteriorfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalboundaryfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/restrictedweakformcontext.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/writedofs.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 
 namespace gendil {
 
 template<
-  class KernelPolicy,
-  class WeakForm,
-  class WeakFormContext,
-  class OperatorContext,
-  class DofsInView,
-  class DofsOutView>
-void GlobalFacetsGenericExplicitOperator(
-  const WeakForm& weak_form,
-  const WeakFormContext& wf_ctx,
-  const OperatorContext& op_ctx,
-  const DofsInView& dofs_in,
-  DofsOutView& dofs_out)
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   StaticString DomainName,
+   size_t CellI,
+   class CellSpace,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericCellDomainOperator(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   Cells<DomainName> domain_tag,
+   const CellExecutionBatch<DomainName, CellI, CellSpace>& batch,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
 {
-   using I = std::remove_cvref_t<WeakForm>;
+   const auto& cell_space = batch.GetCellFiniteElementSpace();
+   auto batch_ctx =
+      MakeRestrictedWeakFormContext<TrialName, TestName>(
+         wf_ctx,
+         domain_tag,
+         batch);
+   auto batch_op_ctx = MakeCellOnlyOperatorContext(batch_ctx, integration_rule);
 
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TestName  = requirements<I>::test_name;
+   auto dofs_in =
+      MakeReadOnlyElementTensorView<KernelPolicy>(cell_space, dofs_vector_in);
+   auto dofs_out =
+      MakeReadWriteElementTensorView<KernelPolicy>(cell_space, dofs_vector_out);
 
-   static_assert(TrialName != StaticString{"Error"}, "GlobalFacetsGenericExplicitOperator: missing TrialSpace in weak_form.");
-   static_assert(TestName  != StaticString{"Error"}, "GlobalFacetsGenericExplicitOperator: missing TestSpace in weak_form.");
-   static_assert(
-      global_facet_domain_requirements_satisfied_v<WeakForm, WeakFormContext>,
-      "GlobalFacetsGenericExplicitOperator: hybrid local/global facet "
-      "execution is not supported. When any global face domain is present, "
-      "every InteriorFacets<Name> term must have MakeInteriorFaceDomain<Name>(...) "
-      "and every BoundaryFacets<Name> term must have "
-      "MakeBoundaryFaceDomain<Name>(...).");
-
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
-   using IntegrationRule = decltype(op_ctx.integration_rule());
+   using DofsInView = decltype(dofs_in);
+   using DofsOutView = decltype(dofs_out);
+   using BatchOperatorContext = decltype(batch_op_ctx);
+   using BatchIntegrationRule =
+      decltype(std::declval<BatchOperatorContext>().integration_rule());
 
    constexpr size_t required_shared_mem =
       local_generic_cell_required_shared_memory_v<
          KernelPolicy,
-         IntegrationRule,
-         std::remove_cvref_t<decltype(trial_space)>,
+         BatchIntegrationRule,
+         std::remove_cvref_t<decltype(cell_space)>,
          WeakForm,
          DofsInView,
          DofsOutView>;
 
    mesh::CellIterator<KernelPolicy>(
-      trial_space,
+      cell_space,
       [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
       {
-         (void)wf_ctx;
-         (void)op_ctx;
+         (void)batch_ctx;
+         (void)batch_op_ctx;
          (void)weak_form;
 
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
 
-         auto u_elem = ReadDofs(kernel, trial_space, element_index, dofs_in);
+         auto u_elem = ReadDofs(kernel, cell_space, element_index, dofs_in);
 
-         using VType = decltype(ReadDofs(kernel, test_space, element_index, dofs_out));
+         using VType = decltype(ReadDofs(
+            kernel,
+            cell_space,
+            element_index,
+            dofs_out));
          VType v_elem{};
 
-         ElementContext element_context{ element_index, trial_space.GetCell( element_index ) };
+         ElementContext element_context{
+            element_index,
+            cell_space.GetCell(element_index)};
 
-         if constexpr (has_cell_contributions_v<WeakForm>)
-         {
-            GenericCellIntegrandOperator(
-               kernel,
+         GenericCellIntegrandOperator(
+            kernel,
+            batch_ctx,
+            batch_op_ctx,
+            element_context,
+            weak_form,
+            u_elem,
+            v_elem);
+
+         WriteAddDofs(kernel, cell_space, element_index, v_elem, dofs_out);
+      });
+}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalCellPhase(
+   const WeakForm&,
+   const WeakFormContext&,
+   const IntegrationRule&,
+   const DofsInVector&,
+   DofsOutVector&)
+{}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   StaticString DomainName,
+   FieldExpr Expr,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalCellPhase(
+   const Integrand<Cells<DomainName>, Expr>& integrand,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   ForEachCellFiniteElementSpace(
+      wf_ctx,
+      Cells<DomainName>{},
+      [&] (const auto& batch)
+      {
+         GenericCellDomainOperator<
+            TrialName,
+            TestName,
+            KernelPolicy>(
+               integrand,
                wf_ctx,
-               op_ctx,
-               element_context,
-               weak_form,
-               u_elem,
-               v_elem
-            );
+               Cells<DomainName>{},
+               batch,
+               integration_rule,
+               dofs_vector_in,
+               dofs_vector_out);
+      });
+}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class Map,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalCellPhase(
+   const SumFormExpr<Map>& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   std::apply(
+      [&] (const auto&... entries)
+      {
+         (
+            GenericGlobalCellPhase<
+               TrialName,
+               TestName,
+               KernelPolicy>(
+                  entries.value,
+                  wf_ctx,
+                  integration_rule,
+                  dofs_vector_in,
+                  dofs_vector_out),
+            ...
+         );
+      },
+      weak_form.map.entries);
+}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalInteriorFacePhase(
+   const WeakForm&,
+   const WeakFormContext&,
+   const IntegrationRule&,
+   const DofsInVector&,
+   DofsOutVector&)
+{}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   StaticString DomainName,
+   FieldExpr Expr,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalInteriorFacePhase(
+   const Integrand<InteriorFacets<DomainName>, Expr>& integrand,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   static_assert(
+      std::remove_cvref_t<WeakFormContext>::template
+         has_interior_face_domain<DomainName>(),
+      "GenericGlobalDomainOperator: InteriorFacets<Name> requires an "
+      "interior face domain registered under Name when global traversal is "
+      "selected.");
+
+   ForEachInteriorFaceFiniteElementSpace(
+      wf_ctx,
+      InteriorFacets<DomainName>{},
+      [&] (const auto& batch)
+      {
+         using Batch = std::remove_cvref_t<decltype(batch)>;
+         if constexpr (is_interior_face_execution_batch_v<Batch>)
+         {
+            GenericGlobalInteriorFaceDomainOperator<
+               TrialName,
+               TestName,
+               KernelPolicy>(
+                  integrand,
+                  wf_ctx,
+                  InteriorFacets<DomainName>{},
+                  batch,
+                  integration_rule,
+                  dofs_vector_in,
+                  dofs_vector_out);
          }
+         else
+         {
+            static_assert(
+               dependent_false_v<Batch>,
+               "GenericGlobalDomainOperator: InteriorFacets<Name> resolved "
+               "to a non-global execution batch.");
+         }
+      });
+}
 
-         WriteDofs(kernel, test_space, element_index, v_elem, dofs_out);
-      }
-   );
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class Map,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalInteriorFacePhase(
+   const SumFormExpr<Map>& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   std::apply(
+      [&] (const auto&... entries)
+      {
+         (
+            GenericGlobalInteriorFacePhase<
+               TrialName,
+               TestName,
+               KernelPolicy>(
+                  entries.value,
+                  wf_ctx,
+                  integration_rule,
+                  dofs_vector_in,
+                  dofs_vector_out),
+            ...
+         );
+      },
+      weak_form.map.entries);
+}
 
-   if constexpr (has_interior_facet_contributions_v<WeakForm>)
-   {
-      GenericGlobalInteriorFacetOperator<KernelPolicy>(
-         wf_ctx,
-         op_ctx,
-         weak_form,
-         dofs_in,
-         dofs_out);
-   }
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalBoundaryFacePhase(
+   const WeakForm&,
+   const WeakFormContext&,
+   const IntegrationRule&,
+   const DofsInVector&,
+   DofsOutVector&)
+{}
 
-   if constexpr (has_boundary_facet_contributions_v<WeakForm>)
-   {
-      GenericGlobalBoundaryFacetOperator<KernelPolicy>(
-         wf_ctx,
-         op_ctx,
-         weak_form,
-         dofs_in,
-         dofs_out);
-   }
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   StaticString DomainName,
+   FieldExpr Expr,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalBoundaryFacePhase(
+   const Integrand<BoundaryFacets<DomainName>, Expr>& integrand,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   static_assert(
+      std::remove_cvref_t<WeakFormContext>::template
+         has_boundary_face_domain<DomainName>(),
+      "GenericGlobalDomainOperator: BoundaryFacets<Name> requires a "
+      "boundary face domain registered under Name when global traversal is "
+      "selected.");
+
+   ForEachBoundaryFaceFiniteElementSpace(
+      wf_ctx,
+      BoundaryFacets<DomainName>{},
+      [&] (const auto& batch)
+      {
+         using Batch = std::remove_cvref_t<decltype(batch)>;
+         if constexpr (is_boundary_face_execution_batch_v<Batch>)
+         {
+            GenericGlobalBoundaryFaceDomainOperator<
+               TrialName,
+               TestName,
+               KernelPolicy>(
+                  integrand,
+                  wf_ctx,
+                  BoundaryFacets<DomainName>{},
+                  batch,
+                  integration_rule,
+                  dofs_vector_in,
+                  dofs_vector_out);
+         }
+         else
+         {
+            static_assert(
+               dependent_false_v<Batch>,
+               "GenericGlobalDomainOperator: BoundaryFacets<Name> resolved "
+               "to a non-global execution batch.");
+         }
+      });
+}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class Map,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalBoundaryFacePhase(
+   const SumFormExpr<Map>& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   std::apply(
+      [&] (const auto&... entries)
+      {
+         (
+            GenericGlobalBoundaryFacePhase<
+               TrialName,
+               TestName,
+               KernelPolicy>(
+                  entries.value,
+                  wf_ctx,
+                  integration_rule,
+                  dofs_vector_in,
+                  dofs_vector_out),
+            ...
+         );
+      },
+      weak_form.map.entries);
+}
+
+template<
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalDomainOperator(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
+{
+   static_assert(
+      global_facet_domain_requirements_satisfied_v<WeakForm, WeakFormContext>,
+      "GenericGlobalDomainOperator: hybrid local/global facet execution is "
+      "not supported. When any global face domain is present, every "
+      "InteriorFacets<Name> term must have an interior face domain registered "
+      "under Name and every BoundaryFacets<Name> term must have a boundary "
+      "face domain registered under Name.");
+
+   GenericGlobalCellPhase<TrialName, TestName, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      dofs_vector_in,
+      dofs_vector_out);
+
+   GenericGlobalInteriorFacePhase<TrialName, TestName, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      dofs_vector_in,
+      dofs_vector_out);
+
+   GenericGlobalBoundaryFacePhase<TrialName, TestName, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      dofs_vector_in,
+      dofs_vector_out);
 }
 
 } // namespace gendil

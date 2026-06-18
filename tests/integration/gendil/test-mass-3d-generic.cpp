@@ -159,7 +159,7 @@ int TestMass()
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(fe_space));
 
    auto generic_mass_operator =
       MakeGenericOperator<KernelPolicy>(

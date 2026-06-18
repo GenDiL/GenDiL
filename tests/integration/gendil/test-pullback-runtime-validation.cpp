@@ -97,7 +97,7 @@ int main()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fes),
       MakeTestField<"v">(fes),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fes)
    );
 
    using KernelPolicy = SerialKernelConfiguration;

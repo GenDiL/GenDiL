@@ -54,6 +54,12 @@ auto GenericSGBSRAssembly(
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericAssembly<SGBSR>: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
+
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
 

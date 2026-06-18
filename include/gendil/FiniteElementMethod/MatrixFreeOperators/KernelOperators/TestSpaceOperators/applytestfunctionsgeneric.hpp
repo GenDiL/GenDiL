@@ -10,6 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctions.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctions.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/elementcontext.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontext.hpp"
 
 namespace gendil
 {
@@ -110,7 +111,8 @@ void ApplyAddTestFunctions(
       "ApplyAddTestFunctions: neither test values nor test gradients are required.");
 
    // Test-space quad data is generated in OperatorContext from MakeTestField<TestName>(...)
-   const auto& test_qd = op_ctx.template finite_element_facet_quad_data<TestName>();
+   const auto& test_qd =
+      op_ctx.template finite_element_facet_quad_data<TestName>().MinusSide();
    // constexpr Integer local_face_index = Face::local_face_index_type::value;
    // const auto & local_face_quad_data = std::get< local_face_index >( test_qd );
 

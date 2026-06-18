@@ -108,12 +108,12 @@ bool TestContextStorage()
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
    auto boundary_face_fes =
       MakeGlobalBoundaryFaceFiniteElementSpace(fe_space, boundary_faces);
+   auto singleton_global_fes =
+      MakeMixedFiniteElementSpace(fe_space, interior_face_fes, boundary_face_fes);
 
    auto ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh">(mesh),
-      MakeInteriorFaceDomain<"mesh">(interior_face_fes),
-      MakeBoundaryFaceDomain<"mesh">(boundary_face_fes));
+      MakeTrialField<"u">(singleton_global_fes),
+      MakeIntegrationDomain<"mesh">(singleton_global_fes));
 
    using Ctx = decltype(ctx);
    static_assert(Ctx::template has_domain<"mesh">());
@@ -264,17 +264,18 @@ bool TestInteriorTwoCellSigns()
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto interior_faces =
       make_cartesian_interior_face_connectivity<1>({n});
    auto interior_face_fes =
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
+   auto singleton_global_fes =
+      MakeMixedFiniteElementSpace(fe_space, interior_face_fes);
 
    auto global_ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh">(mesh),
-      MakeInteriorFaceDomain<"mesh">(interior_face_fes));
+      MakeTrialField<"u">(singleton_global_fes),
+      MakeIntegrationDomain<"mesh">(singleton_global_fes));
 
    auto local_op =
       MakeGenericOperator<KernelPolicy>(
@@ -374,30 +375,32 @@ bool TestDispatchIndependence()
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
    auto boundary_face_fes =
       MakeGlobalBoundaryFaceFiniteElementSpace(fe_space, boundary_faces);
+   auto interior_global_fes =
+      MakeMixedFiniteElementSpace(fe_space, interior_face_fes);
+   auto boundary_global_fes =
+      MakeMixedFiniteElementSpace(fe_space, boundary_face_fes);
+   auto both_global_fes =
+      MakeMixedFiniteElementSpace(fe_space, interior_face_fes, boundary_face_fes);
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
       MakeFiniteElementField<"mu">(fe_space, mu_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto interior_ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeFiniteElementField<"mu">(fe_space, mu_view),
-      MakeDomain<"mesh">(mesh),
-      MakeInteriorFaceDomain<"mesh">(interior_face_fes));
+      MakeTrialField<"u">(interior_global_fes),
+      MakeFiniteElementField<"mu">(interior_global_fes, mu_view),
+      MakeIntegrationDomain<"mesh">(interior_global_fes));
 
    auto boundary_ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeFiniteElementField<"mu">(fe_space, mu_view),
-      MakeDomain<"mesh">(mesh),
-      MakeBoundaryFaceDomain<"mesh">(boundary_face_fes));
+      MakeTrialField<"u">(boundary_global_fes),
+      MakeFiniteElementField<"mu">(boundary_global_fes, mu_view),
+      MakeIntegrationDomain<"mesh">(boundary_global_fes));
 
    auto both_ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeFiniteElementField<"mu">(fe_space, mu_view),
-      MakeDomain<"mesh">(mesh),
-      MakeInteriorFaceDomain<"mesh">(interior_face_fes),
-      MakeBoundaryFaceDomain<"mesh">(boundary_face_fes));
+      MakeTrialField<"u">(both_global_fes),
+      MakeFiniteElementField<"mu">(both_global_fes, mu_view),
+      MakeIntegrationDomain<"mesh">(both_global_fes));
 
    static_assert(!use_global_facets_operator_v<decltype(local_ctx)>);
    static_assert(use_global_facets_operator_v<decltype(interior_ctx)>);
@@ -431,10 +434,9 @@ bool TestDispatchIndependence()
       integrate(interior_facets_a, jump(u) * jump(v))
       + integrate(interior_facets_b, jump(u) * jump(v));
    auto mesh_a_ctx = MakeWeakFormContext(
-      MakeTrialField<"u">(fe_space),
-      MakeFiniteElementField<"mu">(fe_space, mu_view),
-      MakeDomain<"mesh">(mesh),
-      MakeInteriorFaceDomain<"mesh_a">(interior_face_fes));
+      MakeTrialField<"u">(interior_global_fes),
+      MakeFiniteElementField<"mu">(interior_global_fes, mu_view),
+      MakeIntegrationDomain<"mesh_a">(interior_global_fes));
    static_assert(
       !global_facet_domain_requirements_satisfied_v<
          decltype(two_name_interior_form),

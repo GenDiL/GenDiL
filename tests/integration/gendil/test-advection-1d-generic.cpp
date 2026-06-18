@@ -173,7 +173,7 @@ int TestAdvection1D()
 
    auto advection_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
 
    auto generic_advection_operator =

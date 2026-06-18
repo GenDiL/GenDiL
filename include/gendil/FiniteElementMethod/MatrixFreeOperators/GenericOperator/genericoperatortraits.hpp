@@ -39,8 +39,10 @@ inline constexpr bool has_global_face_domains_v =
 template<class Form, class WFContext>
 struct interior_facet_terms_have_domains : std::true_type {};
 
-// An interior facet integrand requires the matching
-// MakeInteriorFaceDomain<Name>(...) entry in the weak-form context.
+// An interior facet integrand requires the matching internal face-domain entry
+// produced by MakeIntegrationDomain<Name>(domain_decomposed_fes) in the
+// weak-form context. Homogeneous MakeIntegrationDomain<Name>(fe_space) is
+// cell/local-facet topology only and does not create global face domains.
 template<StaticString DomainName, FieldExpr Expr, class WFContext>
 struct interior_facet_terms_have_domains<
    Integrand<InteriorFacets<DomainName>, Expr>,
@@ -85,8 +87,10 @@ inline constexpr bool interior_facet_terms_have_domains_v =
 template<class Form, class WFContext>
 struct boundary_facet_terms_have_domains : std::true_type {};
 
-// A boundary facet integrand requires the matching
-// MakeBoundaryFaceDomain<Name>(...) entry in the weak-form context.
+// A boundary facet integrand requires the matching internal face-domain entry
+// produced by MakeIntegrationDomain<Name>(domain_decomposed_fes) in the
+// weak-form context. Homogeneous MakeIntegrationDomain<Name>(fe_space) is
+// cell/local-facet topology only and does not create global face domains.
 template<StaticString DomainName, FieldExpr Expr, class WFContext>
 struct boundary_facet_terms_have_domains<
    Integrand<BoundaryFacets<DomainName>, Expr>,

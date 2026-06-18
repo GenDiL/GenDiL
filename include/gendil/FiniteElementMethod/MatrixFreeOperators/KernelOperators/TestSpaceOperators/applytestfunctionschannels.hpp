@@ -10,6 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctions.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctions.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applyvaluesandgradienttestfunctions.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontext.hpp"
 
 namespace gendil {
 
@@ -80,6 +81,58 @@ void ApplyAddTestFunctions(
 
 template <
    typename KernelContext,
+   typename FaceSide,
+   typename FacetTestQData,
+   typename Integrand,
+   typename QuadraturePointData,
+   typename DofsOut >
+GENDIL_HOST_DEVICE
+void ApplyAddFacetTestFunctions(
+   KernelContext& kernel_context,
+   const FaceSide& side,
+   const FacetTestQData& test_qd,
+   const Integrand&,
+   const QuadraturePointData& Du,
+   DofsOut& dofs_out)
+{
+   constexpr bool has_value_channel = need_test_values_v<Integrand>;
+   constexpr bool has_gradient_channel = need_test_grads_v<Integrand>;
+
+   static_assert(has_value_channel || has_gradient_channel,
+      "At least one channel (Value or Gradient) must be present.");
+
+   if constexpr (has_value_channel && has_gradient_channel)
+   {
+      ApplyValuesAndGradientTestFunctions<true>(
+         kernel_context,
+         side,
+         test_qd,
+         Du.values,
+         Du.gradients,
+         dofs_out);
+   }
+   else if constexpr (has_value_channel)
+   {
+      ApplyAddTestFunctions(
+         kernel_context,
+         side,
+         test_qd,
+         Du.values,
+         dofs_out);
+   }
+   else if constexpr (has_gradient_channel)
+   {
+      ApplyGradientTestFunctions<true>(
+         kernel_context,
+         side,
+         test_qd,
+         Du.gradients,
+         dofs_out);
+   }
+}
+
+template <
+   typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
    typename FaceContext,
@@ -100,47 +153,16 @@ void ApplyAddTestFunctions(
    constexpr auto TestName = requirements<Integrand>::test_name;
 
    // Get test quad data from operator context (TestName already extracted above)
-   const auto& test_qd =
+   const auto& test_qd_wrapper =
       operator_context.template finite_element_facet_quad_data<TestName>();
 
-   // Channel presence (compile-time)
-   constexpr bool has_value_channel = need_test_values_v<Integrand>;
-   constexpr bool has_gradient_channel = need_test_grads_v<Integrand>;
-
-   static_assert(has_value_channel || has_gradient_channel,
-      "At least one channel (Value or Gradient) must be present.");
-
-   // Explicit dispatch based on channel presence
-   if constexpr (has_value_channel && has_gradient_channel)
-   {
-      // Mixed: both value and gradient channels
-      ApplyValuesAndGradientTestFunctions<true>(
-         kernel_context,
-         face_info.MinusSide(),     // CellFaceView from face_info.MinusSide() at line 571
-         test_qd,
-         Du.values,
-         Du.gradients,
-         dofs_out);
-   }
-   else if constexpr (has_value_channel)
-   {
-      ApplyAddTestFunctions(
-         kernel_context,
-         face_info.MinusSide(),
-         test_qd,
-         Du.values,
-         dofs_out);
-   }
-   else if constexpr (has_gradient_channel)
-   {
-      // Gradient channel only
-      ApplyGradientTestFunctions<true>(
-         kernel_context,
-         face_info.MinusSide(),     // CellFaceView from face_info.MinusSide() at line 571
-         test_qd,
-         Du.gradients,
-         dofs_out);
-   }
+   ApplyAddFacetTestFunctions(
+      kernel_context,
+      face_info.MinusSide(),
+      test_qd_wrapper.MinusSide(),
+      integrand,
+      Du,
+      dofs_out);
 }
 
 } // namespace gendil

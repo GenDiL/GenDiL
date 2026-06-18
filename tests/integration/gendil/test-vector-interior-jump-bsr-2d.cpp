@@ -179,7 +179,7 @@ int TestVectorInteriorJumpBsrAction()
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( vector_fe_space ),
-      MakeDomain< "mesh1" >( mesh ) );
+      MakeIntegrationDomain< "mesh1" >( vector_fe_space ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

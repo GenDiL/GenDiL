@@ -20,6 +20,29 @@
 
 namespace gendil {
 
+template<class Map>
+struct static_map_has_mixed_cell_integration_domain : std::false_type {};
+
+template<class T>
+struct is_mixed_sparse_cell_integration_domain : std::false_type {};
+
+template<class Space>
+struct is_mixed_sparse_cell_integration_domain<CellIntegrationDomain<Space>>
+   : std::bool_constant<is_mixed_finite_element_space_v<Space>> {};
+
+template<class... Entries>
+struct static_map_has_mixed_cell_integration_domain<StaticMap<Entries...>>
+   : std::bool_constant<
+        (false || ... ||
+         is_mixed_sparse_cell_integration_domain<
+            typename Entries::value_type>::value)> {};
+
+template<class WFContext>
+inline constexpr bool weak_form_context_has_mixed_sparse_domain_v =
+   static_map_has_mixed_cell_integration_domain<
+      std::remove_cvref_t<
+         decltype(std::declval<WFContext>().domains)>>::value;
+
 template<class WeakForm>
 consteval void ValidateSparseLinearAssemblyCoefficientInputs()
 {
@@ -335,7 +358,11 @@ void GenericAssembly(
 {
    GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
 
-   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericAssembly: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
 
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
@@ -347,6 +374,7 @@ void GenericAssembly(
    static_assert(TestName  != StaticString{"Error"}, "GenericAssembly: missing TestSpace in integrand.");
 
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
 
    constexpr size_t required_shared_mem =
       required_shared_memory_v<KernelPolicy, IntegrationRule>;

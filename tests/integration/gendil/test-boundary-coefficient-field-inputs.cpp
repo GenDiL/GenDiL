@@ -274,7 +274,7 @@ int TestBoundaryCoefficientFieldInputs()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
       MakeFiniteElementField<"w">(fe_space, w_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto value_form = integrate(boundary_facets, value_coeff * u * v);
    auto gradient_form = integrate(boundary_facets, gradient_coeff * u * v);

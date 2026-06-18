@@ -188,7 +188,7 @@ int TestLegacyPlusJacobian(int fp1, int fp2)
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto generic_operator =
       MakeGenericOperator<KernelPolicy>(

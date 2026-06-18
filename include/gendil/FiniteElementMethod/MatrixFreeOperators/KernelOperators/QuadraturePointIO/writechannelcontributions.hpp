@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/FiniteElementMethod/WeakForm/pullback.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/quadraturemeasure.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writequadraturelocalvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymappingtranspose.hpp"
 

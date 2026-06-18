@@ -68,12 +68,13 @@ int main()
    v_h = 0.0;
    auto weak_form_context = MakeWeakFormContext(
       MakeFiniteElementField<"displacement">(fe_space, u_h),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
 
    auto& u_f = weak_form_context.fe_field<"displacement">();
    auto& domain_f = weak_form_context.domain<"mesh1">();
-   std::cout << "u_f size: " << u_f.dofs.Size() << ", domain size: " << domain_f.GetNumberOfCells() << "\n";
+   std::cout << "u_f size: " << u_f.dofs.Size()
+             << ", domain size: " << domain_f.space.GetNumberOfCells() << "\n";
 
    ////////////////
    // Mass Operator
@@ -95,9 +96,9 @@ int main()
    
    auto mass_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
-   
+
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints<num_quad_1d> nq;
    auto integration_rule = MakeIntegrationRule(nq);
@@ -154,7 +155,7 @@ int main()
 
    auto advection_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
    
    auto advection_op = MakeGenericOperator<KernelPolicy>( advection_dg_wf, advection_wf_context, integration_rule );

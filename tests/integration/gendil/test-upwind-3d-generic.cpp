@@ -188,7 +188,7 @@ int TestFacetOnlyXDirection()
 
    auto wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
 
    auto generic_operator =
@@ -323,7 +323,7 @@ int TestFullAdvectionXDirection()
 
    auto wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeDomain<"mesh1">(mesh)
+      MakeIntegrationDomain<"mesh1">(fe_space)
    );
 
    auto generic_operator =

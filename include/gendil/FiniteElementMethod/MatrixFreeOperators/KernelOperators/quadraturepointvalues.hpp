@@ -9,6 +9,7 @@
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Utilities/MathHelperFunctions/min.hpp"
 #include "elementdof.hpp"
+#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {
@@ -388,6 +389,40 @@ auto MakeQuadraturePointContainer(
  * @param integration_rule Integration rule
  * @return InterpolatedField with .values and/or .gradients allocated per mask
  */
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetQuadraturePointContainerVolumeSpace(
+   const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      supports_one_sided_face_qdata_v<SpaceType>,
+      "GetQuadraturePointContainerVolumeSpace is a one-sided same-space/"
+      "boundary compatibility helper. Two-space interior face finite element "
+      "spaces require side-specific quadrature-point containers.");
+
+   if constexpr (is_boundary_face_finite_element_space_v<SpaceType>)
+   {
+      return space.GetMinusFiniteElementSpace();
+   }
+   else if constexpr (is_interior_face_finite_element_space_v<SpaceType>)
+   {
+      static_assert(
+         is_same_space_interior_face_finite_element_space_v<SpaceType> ||
+         std::is_same_v<
+            std::remove_cvref_t<decltype(space.GetMinusFiniteElementSpace())>,
+            std::remove_cvref_t<decltype(space.GetPlusFiniteElementSpace())>>,
+         "Quadrature-point containers for cross-space interior face bindings "
+         "are deferred. Selected two-space global face lowering must be "
+         "rejected before test-space container construction.");
+      return space.GetMinusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
+
 template<
    StaticString TestName,
    OperatorMask ExplicitMask,
@@ -410,7 +445,8 @@ auto MakeQuadraturePointContainerFromTestMask(
 
    // Test space comes from wf_ctx via MakeTestField<TestName>(space)
    const auto& test_fev   = wf_ctx.template fe_field<TestName>();
-   const auto& test_space = test_fev.space;
+   const auto& test_space =
+      GetQuadraturePointContainerVolumeSpace(test_fev.space);
 
    constexpr size_t NumComp = num_comp_v<decltype(test_space)>;
    constexpr size_t Dim     = static_cast<size_t>(IR::space_dim);

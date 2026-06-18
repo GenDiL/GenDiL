@@ -6,11 +6,48 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacethelpers.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globaloperatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localinteriorfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/restrictedweakformcontext.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 
 namespace gendil {
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetInteriorFaceOperatorVolumeSpace(
+   const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      supports_one_sided_face_qdata_v<SpaceType>,
+      "GetInteriorFaceOperatorVolumeSpace is a one-sided same-space "
+      "compatibility helper. Two-space interior face finite element spaces "
+      "require side-specific minus/plus volume spaces and qdata.");
+
+   if constexpr (is_face_finite_element_space_v<SpaceType>)
+   {
+      static_assert(
+         is_interior_face_finite_element_space_v<SpaceType>,
+         "GetInteriorFaceOperatorVolumeSpace requires an interior face finite "
+         "element space or a homogeneous volume finite element space.");
+      static_assert(
+         is_same_space_interior_face_finite_element_space_v<SpaceType> ||
+         std::is_same_v<
+            std::remove_cvref_t<decltype(space.GetMinusFiniteElementSpace())>,
+            std::remove_cvref_t<decltype(space.GetPlusFiniteElementSpace())>>,
+         "GenericExplicitOperator cannot evaluate cross-space interior face "
+         "batches yet; two-space global face lowering is not supported in "
+         "this milestone.");
+      return space.GetMinusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
 
 template<
    typename KernelContext,
@@ -95,10 +132,12 @@ void GenericGlobalInteriorFacetIntegrandOperator(
 
       // Compatibility adapter: swap sides so the canonical plus Cell becomes
       // the local/current row evaluated by the local facet integrand.
+      auto swapped_operator_context =
+         SwapFacetOperatorContext(operator_context);
       LocalInteriorFacetIntegrandOperator(
          kernel_context,
          weak_form_context,
-         operator_context,
+         swapped_operator_context,
          plus_element_context,
          swapped_face_info,
          integrand,
@@ -167,25 +206,29 @@ void GenericGlobalInteriorFacetIntegrandOperator(
 template<
    typename KernelPolicy,
    typename WeakFormContext,
-   typename OperatorContext,
    typename FaceDomain,
    typename Integrand,
+   typename IntegrationRule,
    typename DofsInView,
    typename DofsOutView>
 void GenericGlobalInteriorFacetDomainOperator(
    const WeakFormContext& wf_ctx,
-   const OperatorContext& op_ctx,
    const FaceDomain& face_domain,
    const Integrand& integrand,
+   const IntegrationRule& integration_rule,
    const DofsInView& dofs_in,
    DofsOutView& dofs_out)
 {
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName  = requirements<Integrand>::test_name;
 
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
-   const auto& face_space = face_domain.finite_element_space;
+   const auto& trial_binding = wf_ctx.template fe_field<TrialName>().space;
+   const auto& test_binding  = wf_ctx.template fe_field<TestName>().space;
+   const auto& trial_space =
+      GetInteriorFaceOperatorVolumeSpace(trial_binding);
+   const auto& test_space =
+      GetInteriorFaceOperatorVolumeSpace(test_binding);
+   const auto& face_space = face_domain.GetMinusFiniteElementSpace();
 
    static_assert(
       std::is_same_v<
@@ -200,11 +243,10 @@ void GenericGlobalInteriorFacetDomainOperator(
       "Global interior face domains currently require the active test finite "
       "element space to match the face-domain finite element space.");
 
-   using IntegrationRule = decltype(op_ctx.integration_rule());
    constexpr size_t required_shared_mem =
       global_generic_interior_facet_required_shared_memory_v<
          KernelPolicy,
-         IntegrationRule,
+         std::remove_cvref_t<IntegrationRule>,
          std::remove_cvref_t<decltype(face_space)>,
          Integrand,
          DofsInView,
@@ -214,112 +256,95 @@ void GenericGlobalInteriorFacetDomainOperator(
          KernelPolicy,
          required_shared_mem >::shared_memory_block_size;
 
-   mesh::ForEachFaceMesh(
-      face_domain.face_mesh,
-      [&] (const auto& face_mesh) mutable
+   const auto& face_mesh = face_domain.GetFaceMesh();
+   auto facet_op_ctx =
+      MakeFacetOperatorContext(
+         wf_ctx,
+         integration_rule,
+         face_domain);
+
+   mesh::GlobalFaceIterator<KernelPolicy>(
+      face_mesh,
+      [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
       {
-         mesh::GlobalFaceIterator<KernelPolicy>(
-            face_mesh,
-            [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
-            {
-               (void)wf_ctx;
-               (void)op_ctx;
-               (void)integrand;
+         (void)wf_ctx;
+         (void)facet_op_ctx;
+         (void)integrand;
 
-               GENDIL_SHARED Real _shared_mem[
-                  shared_memory_block_size == 0
-                     ? 1
-                     : shared_memory_block_size ];
-               KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[
+            shared_memory_block_size == 0
+               ? 1
+               : shared_memory_block_size ];
+         KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
 
-               const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
+         const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
 
-               GenericGlobalInteriorFacetIntegrandOperator(
-                  kernel,
-                  wf_ctx,
-                  op_ctx,
-                  trial_space,
-                  test_space,
-                  face_info,
-                  integrand,
-                  dofs_in,
-                  dofs_out);
-            }
-         );
+         GenericGlobalInteriorFacetIntegrandOperator(
+            kernel,
+            wf_ctx,
+            facet_op_ctx,
+            trial_space,
+            test_space,
+            face_info,
+            integrand,
+            dofs_in,
+            dofs_out);
       }
    );
 }
 
 template<
-   typename KernelPolicy,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename Integrand,
-   typename DofsInView,
-   typename DofsOutView>
-void GenericGlobalInteriorFacetOperator(
+   StaticString TrialName,
+   StaticString TestName,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   StaticString DomainName,
+   size_t FaceI,
+   class FaceSpace,
+   class IntegrationRule,
+   class DofsInVector,
+   class DofsOutVector>
+void GenericGlobalInteriorFaceDomainOperator(
+   const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
-   const OperatorContext& op_ctx,
-   const Integrand& integrand,
-   const DofsInView& dofs_in,
-   DofsOutView& dofs_out)
+   InteriorFacets<DomainName> domain_tag,
+   const InteriorFaceExecutionBatch<
+      DomainName,
+      FaceI,
+      FaceSpace>& batch,
+   const IntegrationRule& integration_rule,
+   const DofsInVector& dofs_vector_in,
+   DofsOutVector& dofs_vector_out)
 {
-   if constexpr (InteriorFacetIntegrand<Integrand>)
-   {
-      constexpr auto DomainName = Integrand::domain_type::name;
-      static_assert(
-         std::remove_cvref_t<WeakFormContext>::template
-            has_interior_face_domain<DomainName>(),
-         "Generic global facet operator cannot evaluate InteriorFacets<Name> "
-         "without MakeInteriorFaceDomain<Name>(...). Hybrid local/global "
-         "facet execution is not supported.");
-      const auto& face_domain =
-         wf_ctx.template interior_face_domain<DomainName>();
-      GenericGlobalInteriorFacetDomainOperator<KernelPolicy>(
-         wf_ctx,
-         op_ctx,
-         face_domain,
-         integrand,
-         dofs_in,
-         dofs_out);
-   }
-}
+   static_assert(
+      is_same_space_interior_face_finite_element_space_v<FaceSpace>,
+      "GenericExplicitOperator cannot evaluate cross-space interior face "
+      "batches yet; two-space global face lowering is not supported in this "
+      "milestone.");
 
-template<
-   typename KernelPolicy,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename Map,
-   typename DofsInView,
-   typename DofsOutView>
-void GenericGlobalInteriorFacetOperator(
-   const WeakFormContext& wf_ctx,
-   const OperatorContext& op_ctx,
-   const SumFormExpr<Map>& sum_integrand,
-   const DofsInView& dofs_in,
-   DofsOutView& dofs_out)
-{
-   std::apply(
-      [&] (auto const & ... entries)
-      {
-         (
-            [&]
-            {
-               if constexpr (has_interior_facet_contributions_v<decltype(entries.value)>)
-               {
-                  GenericGlobalInteriorFacetOperator<KernelPolicy>(
-                     wf_ctx,
-                     op_ctx,
-                     entries.value,
-                     dofs_in,
-                     dofs_out);
-               }
-            }(),
-            ...
-         );
-      },
-      sum_integrand.map.entries
-   );
+   const auto& face_space = batch.GetInteriorFaceFiniteElementSpace();
+   const auto& finite_element_space = batch.GetMinusCellFiniteElementSpace();
+   auto batch_ctx =
+      MakeRestrictedWeakFormContext<TrialName, TestName>(
+         wf_ctx,
+         domain_tag,
+         batch);
+
+   auto dofs_in = MakeReadOnlyElementTensorView<KernelPolicy>(
+      finite_element_space,
+      dofs_vector_in);
+   auto dofs_out = MakeReadWriteElementTensorView<KernelPolicy>(
+      finite_element_space,
+      dofs_vector_out);
+
+   GenericGlobalInteriorFacetDomainOperator<KernelPolicy>(
+      batch_ctx,
+      face_space,
+      weak_form,
+      integration_rule,
+      dofs_in,
+      dofs_out);
 }
 
 } // namespace gendil

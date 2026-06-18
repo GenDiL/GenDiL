@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/elementcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/computefacetgeometry.hpp"
@@ -12,6 +13,20 @@
 
 namespace gendil
 {
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetCellIntegrationDomainSpace(
+   const CellIntegrationDomain<Space>& domain)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      is_cell_finite_element_space_v<SpaceType>,
+      "Quadrature-point context construction requires a selected homogeneous "
+      "CellIntegrationDomain<Space>. Mixed or raw domains must be normalized "
+      "and restricted before context construction.");
+   return (domain.space);
+}
 
 template<class QuadIndex, class PhysicalCoordinates, class Jacobian>
 struct QuadraturePointContext
@@ -107,7 +122,8 @@ auto MakeQuadraturePointContext(
    const auto& trial_quad_data  = op_ctx.template finite_element_quad_data<TrialName>();
 
    // Types for X and Jacobian from the domain mesh type
-   const auto& mesh = wf_ctx.template domain<DomainName>();
+   const auto& mesh =
+      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
    using Mesh = std::remove_cvref_t<decltype(mesh)>;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;
@@ -152,11 +168,14 @@ auto MakeQuadraturePointContext(
       "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
 
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
-   const auto& mesh_quad_data   = op_ctx.template mesh_facet_quad_data<DomainName>();
-   const auto& trial_quad_data  = op_ctx.template finite_element_facet_quad_data<TrialName>();
+   const auto& mesh_quad_data =
+      op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
+   const auto& trial_quad_data =
+      op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
 
    // Types for X and Jacobian from the domain mesh type
-   const auto& mesh = wf_ctx.template domain<DomainName>();
+   const auto& mesh =
+      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
    using Mesh = std::remove_cvref_t<decltype(mesh)>;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;
@@ -249,11 +268,14 @@ auto MakeFacetQuadraturePointContext(
          "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
 
       // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
-      const auto& mesh_quad_data   = op_ctx.template mesh_facet_quad_data<DomainName>();
-      const auto& trial_quad_data  = op_ctx.template finite_element_facet_quad_data<TrialName>();
+      const auto& mesh_quad_data =
+         op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
+      const auto& trial_quad_data =
+         op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
 
       // Types for X and Jacobian from the domain mesh type
-      const auto& mesh = wf_ctx.template domain<DomainName>();
+      const auto& mesh =
+         GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
       using Mesh = std::remove_cvref_t<decltype(mesh)>;
       using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
       using Jacobian            = typename Mesh::cell_type::jacobian;
@@ -278,8 +300,10 @@ auto MakeFacetQuadraturePointContext(
       if constexpr (requires_plus_side_jacobian_v<Integrand>)
       {
          QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_plus{};
+         const auto& mesh_quad_data_plus =
+            op_ctx.template mesh_facet_quad_data<DomainName>().PlusSide();
          mesh::ComputePhysicalCoordinatesAndJacobian(
-            face.plus_cell, face.PlusSide(), quad_index, mesh_quad_data, qc_plus.X, qc_plus.J_mesh );
+            face.plus_cell, face.PlusSide(), quad_index, mesh_quad_data_plus, qc_plus.X, qc_plus.J_mesh );
 
          qc_plus.det_J  = ComputeInverseAndDeterminant(qc_plus.J_mesh, qc_plus.inv_J_mesh);
 

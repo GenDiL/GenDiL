@@ -44,7 +44,7 @@ int main() {
     auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(velocity);
 
     auto symmetry_wf = integrate(interior_facets, sigma * jump(u) * average(mu * dot(grad(v), Normal{})));
-    auto wf_context = MakeWeakFormContext(MakeTrialField<"displacement">(fe_space), MakeDomain<"mesh1">(mesh));
+    auto wf_context = MakeWeakFormContext(MakeTrialField<"displacement">(fe_space), MakeIntegrationDomain<"mesh1">(fe_space));
     auto generic_operator = MakeGenericOperator<KernelPolicy>(symmetry_wf, wf_context, int_rules);
 
     // Test with u[0]=1 (element 0, which is at grid position (0,0,0))
