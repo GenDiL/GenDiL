@@ -6,6 +6,8 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
+#include "gendil/Meshes/partition.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
 
@@ -217,7 +219,7 @@ template<class FaceMesh>
 Integer GetConcreteFaceMeshNumberOfFaces(const FaceMesh& face_mesh)
 {
    static_assert(
-      !is_std_tuple_v<FaceMesh>,
+      !is_tuple_v<FaceMesh>,
       "MixedFiniteElementSpace expects each face finite element space to own "
       "one concrete face mesh. Tuple face meshes must be normalized into "
       "tuple face finite element spaces by the face FES factory and then "
@@ -243,7 +245,7 @@ constexpr auto as_mixed_cell_space_tuple(T&& arg)
 {
    using Arg = std::remove_cvref_t<T>;
 
-   if constexpr (is_std_tuple_v<Arg>)
+   if constexpr (is_tuple_v<Arg>)
    {
       return std::apply(
          [] (auto&&... entries)
@@ -271,7 +273,7 @@ constexpr auto as_mixed_interior_face_space_tuple(T&& arg)
 {
    using Arg = std::remove_cvref_t<T>;
 
-   if constexpr (is_std_tuple_v<Arg>)
+   if constexpr (is_tuple_v<Arg>)
    {
       return std::apply(
          [] (auto&&... entries)
@@ -299,7 +301,7 @@ constexpr auto as_mixed_boundary_face_space_tuple(T&& arg)
 {
    using Arg = std::remove_cvref_t<T>;
 
-   if constexpr (is_std_tuple_v<Arg>)
+   if constexpr (is_tuple_v<Arg>)
    {
       return std::apply(
          [] (auto&&... entries)
@@ -346,6 +348,279 @@ constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
          std::move(cell_spaces),
          std::move(interior_face_spaces),
          std::move(boundary_face_spaces) };
+}
+
+struct DGDirectSumNumbering {};
+
+namespace details {
+
+template<
+   size_t I,
+   class CellPartsTuple,
+   class FiniteElementsTuple,
+   class RestrictionsTuple>
+constexpr auto MakePartitionCellFiniteElementSpaceTuple(
+   const CellPartsTuple& cell_parts,
+   const FiniteElementsTuple& finite_elements,
+   const RestrictionsTuple& restrictions)
+{
+   constexpr size_t NumCellParts =
+      std::tuple_size_v<std::remove_cvref_t<CellPartsTuple>>;
+
+   if constexpr (I == NumCellParts)
+   {
+      return std::tuple{};
+   }
+   else
+   {
+      const auto& cell_part = std::get<I>(cell_parts);
+      const auto& finite_element = std::get<I>(finite_elements);
+      const auto& restriction = std::get<I>(restrictions);
+      auto finite_element_space =
+         MakeFiniteElementSpace(
+            cell_part.mesh,
+            finite_element,
+            restriction);
+
+      return std::tuple_cat(
+         std::tuple{ finite_element_space },
+         MakePartitionCellFiniteElementSpaceTuple<I + 1>(
+            cell_parts,
+            finite_elements,
+            restrictions));
+   }
+}
+
+template<size_t I, class CellPartsTuple, class FiniteElementsTuple>
+constexpr auto MakeDGDirectSumRestrictionTuple(
+   const CellPartsTuple& cell_parts,
+   const FiniteElementsTuple& finite_elements,
+   GlobalIndex shift)
+{
+   constexpr size_t NumCellParts =
+      std::tuple_size_v<std::remove_cvref_t<CellPartsTuple>>;
+
+   if constexpr (I == NumCellParts)
+   {
+      return std::tuple{};
+   }
+   else
+   {
+      const auto& cell_part = std::get<I>(cell_parts);
+      const auto& finite_element = std::get<I>(finite_elements);
+      L2Restriction restriction{ shift };
+      auto finite_element_space =
+         MakeFiniteElementSpace(
+            cell_part.mesh,
+            finite_element,
+            restriction);
+      const GlobalIndex next_shift =
+         shift + finite_element_space.GetNumberOfFiniteElementDofs();
+
+      return std::tuple_cat(
+         std::tuple{ restriction },
+         MakeDGDirectSumRestrictionTuple<I + 1>(
+            cell_parts,
+            finite_elements,
+            next_shift));
+   }
+}
+
+template<class CellFESTuple, class InteriorFacePart>
+constexpr auto MakePartitionInteriorFaceFiniteElementSpace(
+   const CellFESTuple& cell_fes_tuple,
+   const InteriorFacePart& face_part)
+{
+   using FacePart = std::remove_cvref_t<InteriorFacePart>;
+   constexpr size_t MinusCellI = FacePart::minus_cell_index;
+   constexpr size_t PlusCellI = FacePart::plus_cell_index;
+
+   if constexpr (MinusCellI == PlusCellI)
+   {
+      return MakeGlobalInteriorFaceFiniteElementSpace(
+         std::get<MinusCellI>(cell_fes_tuple),
+         face_part.face_mesh);
+   }
+   else
+   {
+      return MakeGlobalInteriorFaceFiniteElementSpace(
+         std::get<MinusCellI>(cell_fes_tuple),
+         std::get<PlusCellI>(cell_fes_tuple),
+         face_part.face_mesh);
+   }
+}
+
+template<class CellFESTuple, class InteriorFacePartsTuple, size_t... Is>
+constexpr auto MakePartitionInteriorFaceFiniteElementSpaceTuple(
+   const CellFESTuple& cell_fes_tuple,
+   const InteriorFacePartsTuple& interior_face_parts,
+   std::index_sequence<Is...>)
+{
+   return std::tuple{
+      MakePartitionInteriorFaceFiniteElementSpace(
+         cell_fes_tuple,
+         std::get<Is>(interior_face_parts))... };
+}
+
+template<class CellFESTuple, class BoundaryFacePart>
+constexpr auto MakePartitionBoundaryFaceFiniteElementSpace(
+   const CellFESTuple& cell_fes_tuple,
+   const BoundaryFacePart& face_part)
+{
+   using FacePart = std::remove_cvref_t<BoundaryFacePart>;
+   constexpr size_t CellI = FacePart::cell_index;
+
+   return MakeGlobalBoundaryFaceFiniteElementSpace(
+      std::get<CellI>(cell_fes_tuple),
+      face_part.face_mesh);
+}
+
+template<class CellFESTuple, class BoundaryFacePartsTuple, size_t... Is>
+constexpr auto MakePartitionBoundaryFaceFiniteElementSpaceTuple(
+   const CellFESTuple& cell_fes_tuple,
+   const BoundaryFacePartsTuple& boundary_face_parts,
+   std::index_sequence<Is...>)
+{
+   return std::tuple{
+      MakePartitionBoundaryFaceFiniteElementSpace(
+         cell_fes_tuple,
+         std::get<Is>(boundary_face_parts))... };
+}
+
+} // namespace details
+
+template<class PartitionType, class FiniteElementsTuple, class RestrictionsTuple>
+   requires (
+      is_partition_v<PartitionType> &&
+      !std::is_same_v<
+         std::remove_cvref_t<RestrictionsTuple>,
+         DGDirectSumNumbering>)
+constexpr auto MakeMixedFiniteElementSpace(
+   PartitionType&& partition,
+   FiniteElementsTuple&& finite_elements,
+   RestrictionsTuple&& restrictions)
+{
+   using Partition = std::remove_cvref_t<PartitionType>;
+   using FiniteElements = std::remove_cvref_t<FiniteElementsTuple>;
+   using Restrictions = std::remove_cvref_t<RestrictionsTuple>;
+
+   static_assert(
+      is_tuple_v<FiniteElements>,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "restrictions): finite_elements must be a std::tuple.");
+
+   static_assert(
+      is_tuple_v<Restrictions>,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "restrictions): restrictions must be a std::tuple.");
+
+   static_assert(
+      tuple_size_or_zero_v<FiniteElements> ==
+         Partition::num_cell_parts,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "restrictions): finite element tuple size must equal the number of "
+      "CellParts.");
+
+   static_assert(
+      tuple_size_or_zero_v<Restrictions> ==
+         Partition::num_cell_parts,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "restrictions): restriction tuple size must equal the number of "
+      "CellParts.");
+
+   if constexpr (
+      is_tuple_v<FiniteElements> &&
+      is_tuple_v<Restrictions> &&
+      tuple_size_or_zero_v<FiniteElements> ==
+         Partition::num_cell_parts &&
+      tuple_size_or_zero_v<Restrictions> ==
+         Partition::num_cell_parts)
+   {
+      auto cell_fes_tuple =
+         details::MakePartitionCellFiniteElementSpaceTuple<0>(
+            partition.CellParts(),
+            finite_elements,
+            restrictions);
+
+      const auto& interior_face_parts = partition.InteriorFaceParts();
+      using InteriorFaceParts =
+         std::remove_cvref_t<decltype(interior_face_parts)>;
+      auto interior_face_fes_tuple =
+         details::MakePartitionInteriorFaceFiniteElementSpaceTuple(
+            cell_fes_tuple,
+            interior_face_parts,
+            std::make_index_sequence<
+               std::tuple_size_v<InteriorFaceParts>>{});
+
+      const auto& boundary_face_parts = partition.BoundaryFaceParts();
+      using BoundaryFaceParts =
+         std::remove_cvref_t<decltype(boundary_face_parts)>;
+      auto boundary_face_fes_tuple =
+         details::MakePartitionBoundaryFaceFiniteElementSpaceTuple(
+            cell_fes_tuple,
+            boundary_face_parts,
+            std::make_index_sequence<
+               std::tuple_size_v<BoundaryFaceParts>>{});
+
+      return MakeMixedFiniteElementSpace(
+         cell_fes_tuple,
+         interior_face_fes_tuple,
+         boundary_face_fes_tuple);
+   }
+   else
+   {
+      return MixedFiniteElementSpace<std::tuple<>, std::tuple<>, std::tuple<>>{
+         {},
+         {},
+         {} };
+   }
+}
+
+template<class PartitionType, class FiniteElementsTuple>
+   requires is_partition_v<PartitionType>
+constexpr auto MakeMixedFiniteElementSpace(
+   PartitionType&& partition,
+   FiniteElementsTuple&& finite_elements,
+   DGDirectSumNumbering)
+{
+   using Partition = std::remove_cvref_t<PartitionType>;
+   using FiniteElements = std::remove_cvref_t<FiniteElementsTuple>;
+
+   static_assert(
+      is_tuple_v<FiniteElements>,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "DGDirectSumNumbering): finite_elements must be a std::tuple.");
+
+   static_assert(
+      tuple_size_or_zero_v<FiniteElements> ==
+         Partition::num_cell_parts,
+      "MakeMixedFiniteElementSpace(partition, finite_elements, "
+      "DGDirectSumNumbering): finite element tuple size must equal the "
+      "number of CellParts.");
+
+   if constexpr (
+      is_tuple_v<FiniteElements> &&
+      tuple_size_or_zero_v<FiniteElements> ==
+         Partition::num_cell_parts)
+   {
+      auto restrictions =
+         details::MakeDGDirectSumRestrictionTuple<0>(
+            partition.CellParts(),
+            finite_elements,
+            GlobalIndex{0});
+
+      return MakeMixedFiniteElementSpace(
+         std::forward<PartitionType>(partition),
+         std::forward<FiniteElementsTuple>(finite_elements),
+         restrictions);
+   }
+   else
+   {
+      return MixedFiniteElementSpace<std::tuple<>, std::tuple<>, std::tuple<>>{
+         {},
+         {},
+         {} };
+   }
 }
 
 template<class Space>

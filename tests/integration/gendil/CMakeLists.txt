@@ -107,3 +107,4 @@ add_non_nvcc_test(test-boundary-mass-2d-generic test-boundary-mass-2d-generic.cp
 add_non_nvcc_test(test-boundary-sipdg-2d-generic test-boundary-sipdg-2d-generic.cpp)
 add_non_nvcc_test(test-generic-global-face-domains test-generic-global-face-domains.cpp)
 add_non_nvcc_test(test-mixed-integration-domain test-mixed-integration-domain.cpp)
+add_non_nvcc_test(test-partition-mixed-fes test-partition-mixed-fes.cpp)

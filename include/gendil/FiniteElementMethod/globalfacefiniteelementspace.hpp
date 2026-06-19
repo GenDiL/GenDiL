@@ -5,22 +5,13 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
 
 #include <tuple>
 #include <type_traits>
 
 namespace gendil
 {
-
-template<class T>
-struct is_std_tuple : std::false_type {};
-
-template<class... Ts>
-struct is_std_tuple<std::tuple<Ts...>> : std::true_type {};
-
-template<class T>
-inline constexpr bool is_std_tuple_v =
-   is_std_tuple<std::remove_cvref_t<T>>::value;
 
 // Same-space/two-space classification is determined by the construction
 // category, not by CXX type equality. A two-space face FES constructed from
@@ -29,7 +20,7 @@ template<class FiniteElementSpace, class InteriorFaceMesh>
 struct GlobalSameSpaceInteriorFaceFiniteElementSpace
 {
    static_assert(
-      !is_std_tuple_v<InteriorFaceMesh>,
+      !is_tuple_v<InteriorFaceMesh>,
       "A global interior face finite element space must own exactly one "
       "concrete face mesh. If a face mesh factory returns a tuple, "
       "MakeGlobalInteriorFaceFiniteElementSpace maps it to a tuple of face "
@@ -69,7 +60,7 @@ template<
 struct GlobalTwoSpaceInteriorFaceFiniteElementSpace
 {
    static_assert(
-      !is_std_tuple_v<InteriorFaceMesh>,
+      !is_tuple_v<InteriorFaceMesh>,
       "A global interior face finite element space must own exactly one "
       "concrete face mesh. If a face mesh factory returns a tuple, "
       "MakeGlobalInteriorFaceFiniteElementSpace maps it to a tuple of face "
@@ -108,7 +99,7 @@ constexpr auto MakeGlobalInteriorFaceFiniteElementSpace(
    const FiniteElementSpace& finite_element_space,
    const InteriorFaceMesh& face_mesh)
 {
-   if constexpr (is_std_tuple_v<InteriorFaceMesh>)
+   if constexpr (is_tuple_v<InteriorFaceMesh>)
    {
       return std::apply(
          [&] (const auto&... concrete_face_meshes)
@@ -137,7 +128,7 @@ constexpr auto MakeGlobalInteriorFaceFiniteElementSpace(
    const PlusFiniteElementSpace& plus_finite_element_space,
    const InteriorFaceMesh& face_mesh)
 {
-   if constexpr (is_std_tuple_v<InteriorFaceMesh>)
+   if constexpr (is_tuple_v<InteriorFaceMesh>)
    {
       return std::apply(
          [&] (const auto&... concrete_face_meshes)
@@ -166,7 +157,7 @@ template<class FiniteElementSpace, class BoundaryFaceMesh>
 struct GlobalBoundaryFaceFiniteElementSpace
 {
    static_assert(
-      !is_std_tuple_v<BoundaryFaceMesh>,
+      !is_tuple_v<BoundaryFaceMesh>,
       "A global boundary face finite element space must own exactly one "
       "concrete face mesh. If a face mesh factory returns a tuple, "
       "MakeGlobalBoundaryFaceFiniteElementSpace maps it to a tuple of face "
@@ -196,7 +187,7 @@ constexpr auto MakeGlobalBoundaryFaceFiniteElementSpace(
    const FiniteElementSpace& finite_element_space,
    const BoundaryFaceMesh& face_mesh)
 {
-   if constexpr (is_std_tuple_v<BoundaryFaceMesh>)
+   if constexpr (is_tuple_v<BoundaryFaceMesh>)
    {
       return std::apply(
          [&] (const auto&... concrete_face_meshes)
