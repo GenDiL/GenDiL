@@ -1,4 +1,5 @@
 
+add_my_test(test-constexprloop test-constexprloop.cpp)
 add_my_test(test-dot test-dot.cpp)
 add_my_test(test-kernel-configuration test-kernel-configuration.cpp)
 add_my_test(test-getpoint test-getpoint.cpp)
