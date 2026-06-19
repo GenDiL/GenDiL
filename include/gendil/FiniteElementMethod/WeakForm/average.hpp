@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 
 namespace gendil
 {
@@ -91,22 +92,22 @@ struct AverageExpr : FieldBase
       {
          // Side-evaluable average: 0.5 * (minus + plus). This covers trial
          // traces, coefficient expressions, and explicit FE-field expressions.
-         auto minus_value = expr(
+         auto minus_value = minus(expr)(
             kernel_context,
             weak_form_context,
             operator_context,
             element_context,
-            quad_pt_context.MinusSide(),
-            fields.minus_fields
+            quad_pt_context,
+            fields
          );
 
-         auto plus_value = expr(
+         auto plus_value = plus(expr)(
             kernel_context,
             weak_form_context,
             operator_context,
             element_context,
-            quad_pt_context.PlusSide(),
-            fields.plus_fields
+            quad_pt_context,
+            fields
          );
 
          return details::AverageValues(minus_value, plus_value);

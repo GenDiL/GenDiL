@@ -27,7 +27,7 @@ namespace gendil
  *
  * Invalid operand combinations that should use other operators:
  * - Scalar × Scalar → Use operator* / ProductExpr for scalar multiplication
- * - Matrix × Vector → Use operator* for matrix-vector product (MatVecExpr or ProductExpr)
+ * - Matrix × Vector → Use operator* for matrix-vector ProductExpr
  * - Matrix × Matrix → Use inner() for Frobenius inner product if supported
  */
 template<class LHS, class RHS, bool HasShape =

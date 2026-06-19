@@ -36,28 +36,6 @@ struct InteriorFacetQuadratureData
    constexpr const PlusQD& PlusSide() const { return plus_qd; }
 };
 
-template<class QData>
-struct SwappedInteriorFacetQuadratureData
-{
-   const QData& qdata;
-
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) MinusSide() const { return qdata.PlusSide(); }
-
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) PlusSide() const { return qdata.MinusSide(); }
-};
-
-template<class QData>
-GENDIL_HOST_DEVICE
-constexpr auto SwapInteriorFacetQData(const QData& qdata)
-{
-   // same-space mirrored-row compatibility adapter: current global interior
-   // lowering reuses local facet row semantics for the plus row by swapping the
-   // already side-selected qdata. This is not the future two-space lowering model.
-   return SwappedInteriorFacetQuadratureData<QData>{ qdata };
-}
-
 // Global facet contexts side-select exactly one local-face family from a
 // concrete face mesh. That is only valid when the face-info side types expose
 // static local-face indices; otherwise MakeFacetOperatorContext must reject the
@@ -201,51 +179,6 @@ struct FacetOperatorContext
       return fe_facet_qd.template get<FiniteElementFieldKey<Name>>();
    }
 };
-
-template<class FacetContext>
-struct SwappedFacetOperatorContext
-{
-   const FacetContext& ctx;
-
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) integration_rule() const
-   {
-      return ctx.integration_rule();
-   }
-
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) facet_integration_rules() const
-   {
-      return ctx.facet_integration_rules();
-   }
-
-   template<StaticString Name>
-   GENDIL_HOST_DEVICE
-   constexpr auto mesh_facet_quad_data() const
-   {
-      return SwapInteriorFacetQData(
-         ctx.template mesh_facet_quad_data<Name>());
-   }
-
-   template<StaticString Name>
-   GENDIL_HOST_DEVICE
-   constexpr auto finite_element_facet_quad_data() const
-   {
-      return SwapInteriorFacetQData(
-         ctx.template finite_element_facet_quad_data<Name>());
-   }
-};
-
-template<class FacetContext>
-GENDIL_HOST_DEVICE
-constexpr auto SwapFacetOperatorContext(const FacetContext& ctx)
-{
-   // same-space mirrored-row compatibility adapter for the current global
-   // interior path. Future two-space lowering should construct explicit
-   // side/row qdata instead of treating this swap as the model; this is not
-   // the future two-space lowering model.
-   return SwappedFacetOperatorContext<FacetContext>{ ctx };
-}
 
 template<class IntegrationRule, size_t SelectedIndex, class VolumeSpace>
 constexpr auto MakeSelectedMeshFacetQuadDataForSide(

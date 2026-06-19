@@ -5,7 +5,6 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacethelpers.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globaloperatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localboundaryfacet.hpp"

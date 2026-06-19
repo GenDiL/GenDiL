@@ -3,7 +3,6 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 
 #include <type_traits>
@@ -60,9 +59,6 @@ struct concat_many<First, Second, Rest...>
 
 template<class... Lists>
 using concat_many_t = typename concat_many<Lists...>::type;
-
-// Forward declaration for the optional matrix-vector expression extension.
-template<typename, typename> struct MatVecExpr;
 
 // ---------------------------------------------------------------------------
 // Named-field requirement model
@@ -347,6 +343,18 @@ struct raw_named_field_requirements<NegExpr<Expr>>
 };
 
 template<FieldExpr Expr>
+struct raw_named_field_requirements<MinusTraceExpr<Expr>>
+{
+   using type = typename raw_named_field_requirements<Expr>::type;
+};
+
+template<FieldExpr Expr>
+struct raw_named_field_requirements<PlusTraceExpr<Expr>>
+{
+   using type = typename raw_named_field_requirements<Expr>::type;
+};
+
+template<FieldExpr Expr>
 struct raw_named_field_requirements<AverageExpr<Expr>>
 {
    using type = typename raw_named_field_requirements<Expr>::type;
@@ -418,13 +426,6 @@ template<FieldExpr Expr>
 struct raw_named_field_requirements<TransposeExpr<Expr>>
 {
    using type = typename raw_named_field_requirements<Expr>::type;
-};
-
-template<class MatrixExpr, class VectorExpr>
-struct raw_named_field_requirements<MatVecExpr<MatrixExpr, VectorExpr>>
-{
-   using type = concat_t<typename raw_named_field_requirements<MatrixExpr>::type,
-                         typename raw_named_field_requirements<VectorExpr>::type>;
 };
 
 template<DomainExpr Domain, FieldExpr Expr>
@@ -533,13 +534,13 @@ inline constexpr bool has_side_dependent_named_field_inputs_v =
 // that are not protected by an explicit side-selection wrapper such as
 // average(...) or jump(...).
 //
-// average(E) and jump(E) clear the unqualified dependency set for the two
-// interior-facet cases with explicit side semantics:
-//   - test-free/side-evaluable expressions, where the operand is evaluated on
-//     the minus and plus sides and then combined;
-//   - test-linear pullback expressions, where GenDiL's current-side facet
-//     convention evaluates coefficient inputs on the current side and the
-//     opposite contribution is produced when the neighbor is current.
+// minus(E), plus(E), average(E), and jump(E) clear the unqualified dependency
+// set because they provide explicit canonical side semantics on interior
+// facets. Bare FE trial/coefficient quantities are otherwise ambiguous on a
+// two-trace face and must not silently fall back to the minus side. Analytical
+// coefficients with no FE-field inputs are side-independent because they have
+// no named-field requirements here; FE-backed quantities remain side-dependent
+// until explicitly traced.
 // ---------------------------------------------------------------------------
 
 template<class Expr>
@@ -605,21 +606,27 @@ struct unqualified_side_dependent_named_field_requirements<NegExpr<Expr>>
 };
 
 template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<MinusTraceExpr<Expr>>
+{
+   using type = type_list<>;
+};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<PlusTraceExpr<Expr>>
+{
+   using type = type_list<>;
+};
+
+template<FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<AverageExpr<Expr>>
 {
-   using type = std::conditional_t<
-      is_side_evaluable_v<Expr> || is_test_linear_v<Expr>,
-      type_list<>,
-      typename unqualified_side_dependent_named_field_requirements<Expr>::type>;
+   using type = type_list<>;
 };
 
 template<FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<JumpExpr<Expr>>
 {
-   using type = std::conditional_t<
-      is_side_evaluable_v<Expr> || is_test_linear_v<Expr>,
-      type_list<>,
-      typename unqualified_side_dependent_named_field_requirements<Expr>::type>;
+   using type = type_list<>;
 };
 
 template<FieldExpr Expr>
@@ -700,15 +707,6 @@ struct unqualified_side_dependent_named_field_requirements<
       typename unqualified_side_dependent_named_field_requirements<Expr>::type;
 };
 
-template<class MatrixExpr, class VectorExpr>
-struct unqualified_side_dependent_named_field_requirements<
-   MatVecExpr<MatrixExpr, VectorExpr>>
-{
-   using type = concat_t<
-      typename unqualified_side_dependent_named_field_requirements<MatrixExpr>::type,
-      typename unqualified_side_dependent_named_field_requirements<VectorExpr>::type>;
-};
-
 template<DomainExpr Domain, FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<
    Integrand<Domain, Expr>>
@@ -750,87 +748,127 @@ inline constexpr bool has_unqualified_side_dependent_inputs_v =
    !is_empty_type_list_v<
       unqualified_side_dependent_named_field_requirements_t<Expr>>;
 
+// ---------------------------------------------------------------------------
+// Interior-facet test traces must be explicit.
+//
+// Unlike coefficient/trial side dependencies above, this validation is purely
+// about test functions. An unqualified interior-facet test value or gradient is
+// not mathematically defined because the test field has two traces. Older
+// compatibility lowering assigned row-relative meaning to these expressions;
+// current interior-facet lowering rejects them before pullback and requires
+// minus(...), plus(...), jump(...), or average(...) trace syntax.
+// ---------------------------------------------------------------------------
+
+template<class Expr>
+struct has_unqualified_interior_test_trace : std::false_type {};
+
+template<StaticString Name, FieldShape Shape>
+struct has_unqualified_interior_test_trace<TestSpace<Name, Shape>>
+   : std::true_type {};
+
+template<StaticString Name, FieldShape Shape>
+struct has_unqualified_interior_test_trace<
+   GradientExpr<TestSpace<Name, Shape>>>
+   : std::true_type {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<NegExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<GradientExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<MinusTraceExpr<Expr>>
+   : std::false_type {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<PlusTraceExpr<Expr>>
+   : std::false_type {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<AverageExpr<Expr>>
+   : std::false_type {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<JumpExpr<Expr>>
+   : std::false_type {};
+
+template<FieldExpr AdvExpr, FieldExpr Expr>
+struct has_unqualified_interior_test_trace<UpwindExpr<AdvExpr, Expr>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<AdvExpr>::value ||
+        has_unqualified_interior_test_trace<Expr>::value> {};
+
+template<FieldExpr Head, FieldExpr... Tail>
+struct has_unqualified_interior_test_trace<SumExpr<Head, Tail...>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<Head>::value ||
+        (has_unqualified_interior_test_trace<Tail>::value || ...)> {};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct has_unqualified_interior_test_trace<MultFieldExpr<LHS, RHS>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<LHS>::value ||
+        has_unqualified_interior_test_trace<RHS>::value> {};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct has_unqualified_interior_test_trace<ProductExpr<LHS, RHS>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<LHS>::value ||
+        has_unqualified_interior_test_trace<RHS>::value> {};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct has_unqualified_interior_test_trace<DotExpr<LHS, RHS>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<LHS>::value ||
+        has_unqualified_interior_test_trace<RHS>::value> {};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct has_unqualified_interior_test_trace<InnerExpr<LHS, RHS>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<LHS>::value ||
+        has_unqualified_interior_test_trace<RHS>::value> {};
+
+template<FieldExpr LHS, FieldExpr RHS>
+struct has_unqualified_interior_test_trace<OuterExpr<LHS, RHS>>
+   : std::bool_constant<
+        has_unqualified_interior_test_trace<LHS>::value ||
+        has_unqualified_interior_test_trace<RHS>::value> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<TransposeExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<DomainExpr Domain, FieldExpr Expr>
+struct has_unqualified_interior_test_trace<Integrand<Domain, Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<class Key, class T>
+struct has_unqualified_interior_test_trace<Entry<Key, T>>
+   : has_unqualified_interior_test_trace<T> {};
+
+template<class... Entries>
+struct has_unqualified_interior_test_trace<StaticMap<Entries...>>
+   : std::bool_constant<
+        (has_unqualified_interior_test_trace<Entries>::value || ...)> {};
+
+template<class Map>
+struct has_unqualified_interior_test_trace<SumFormExpr<Map>>
+   : has_unqualified_interior_test_trace<Map> {};
+
+template<class Expr>
+inline constexpr bool has_unqualified_interior_test_trace_v =
+   has_unqualified_interior_test_trace<std::remove_cvref_t<Expr>>::value;
+
 template<class Req>
 inline constexpr bool is_value_only_requirement_v =
    need_values(Req::mask) && !need_gradients(Req::mask);
 
-template<class WeakFormContext, StaticString Name, bool HasField>
-struct trace_continuous_named_field_impl : std::false_type {};
-
-template<class WeakFormContext, StaticString Name>
-struct trace_continuous_named_field_impl<WeakFormContext, Name, true>
-{
-   using WFC = std::remove_cvref_t<WeakFormContext>;
-   using FieldView = std::remove_cvref_t<
-      decltype(std::declval<const WFC&>().fe_fields.template get<
-         FiniteElementFieldKey<Name>>())>;
-   using Space = std::remove_cvref_t<
-      decltype(std::declval<FieldView>().space)>;
-
-   static constexpr bool value =
-      std::is_same_v<typename Space::restriction_type, H1Restriction>;
-};
-
-template<class WeakFormContext, StaticString Name>
-inline constexpr bool is_trace_continuous_named_field_v =
-   trace_continuous_named_field_impl<
-      std::remove_cvref_t<WeakFormContext>,
-      Name,
-      std::remove_cvref_t<WeakFormContext>::template has_fe_field<Name>()>::value;
-
-template<class FaceContext, class = void>
-struct face_context_is_conforming : std::false_type {};
-
-template<class FaceContext>
-struct face_context_is_conforming<
-   FaceContext,
-   std::void_t<
-      typename std::remove_cvref_t<FaceContext>::minus_side_type,
-      typename std::remove_cvref_t<FaceContext>::plus_side_type>>
-   : std::bool_constant<
-        std::remove_cvref_t<FaceContext>::minus_side_type::is_conforming &&
-        std::remove_cvref_t<FaceContext>::plus_side_type::is_conforming>
-{};
-
-template<class FaceContext>
-inline constexpr bool face_context_is_conforming_v =
-   face_context_is_conforming<FaceContext>::value;
-
-template<class Req, class WeakFormContext, class FaceContext, StaticString TrialName>
-struct is_allowed_unqualified_interior_side_dependency
-   : std::bool_constant<
-        is_value_only_requirement_v<Req> &&
-        Req::name != TrialName &&
-        !has_provenance(Req::provenance, NamedFieldProvenance::ActiveTrial) &&
-        std::remove_cvref_t<WeakFormContext>::template has_fe_field<Req::name>() &&
-        is_trace_continuous_named_field_v<WeakFormContext, Req::name> &&
-        face_context_is_conforming_v<FaceContext>>
-{};
-
-template<class List, class WeakFormContext, class FaceContext, StaticString TrialName>
-struct all_unqualified_interior_side_dependencies_allowed;
-
-template<class WeakFormContext, class FaceContext, StaticString TrialName>
-struct all_unqualified_interior_side_dependencies_allowed<
-   type_list<>, WeakFormContext, FaceContext, TrialName> : std::true_type {};
-
-template<class Req, class... Rest, class WeakFormContext, class FaceContext, StaticString TrialName>
-struct all_unqualified_interior_side_dependencies_allowed<
-   type_list<Req, Rest...>, WeakFormContext, FaceContext, TrialName>
-   : std::bool_constant<
-        is_allowed_unqualified_interior_side_dependency<
-           Req, WeakFormContext, FaceContext, TrialName>::value &&
-        all_unqualified_interior_side_dependencies_allowed<
-           type_list<Rest...>, WeakFormContext, FaceContext, TrialName>::value>
-{};
-
 template<class Expr, class WeakFormContext, class FaceContext>
 inline constexpr bool has_invalid_unqualified_interior_side_dependencies_v =
-   !all_unqualified_interior_side_dependencies_allowed<
-      unqualified_side_dependent_named_field_requirements_t<Expr>,
-      WeakFormContext,
-      FaceContext,
-      requirements<std::remove_cvref_t<Expr>>::trial_name>::value;
+   has_unqualified_side_dependent_inputs_v<Expr>;
 
 template<class Expr>
 inline constexpr bool has_active_trial_coefficient_dependency_v =
@@ -892,6 +930,20 @@ struct plus_side_jacobian_requirement<NegExpr<Expr>, InPlusSideContext>
 };
 
 template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, false>::value;
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>
+{
+   static constexpr bool value =
+      plus_side_jacobian_requirement<Expr, true>::value;
+};
+
+template<FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext>
 {
    static constexpr bool value =
@@ -901,31 +953,17 @@ struct plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext>
 template<FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<AverageExpr<Expr>, InPlusSideContext>
 {
-   static constexpr bool value = [] {
-      if constexpr (is_side_evaluable_v<Expr>)
-      {
-         return plus_side_jacobian_requirement<Expr, true>::value;
-      }
-      else
-      {
-         return plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
-      }
-   }();
+   static constexpr bool value =
+      plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>::value;
 };
 
 template<FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<JumpExpr<Expr>, InPlusSideContext>
 {
-   static constexpr bool value = [] {
-      if constexpr (is_side_evaluable_v<Expr>)
-      {
-         return plus_side_jacobian_requirement<Expr, true>::value;
-      }
-      else
-      {
-         return plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
-      }
-   }();
+   static constexpr bool value =
+      plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>::value ||
+      plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>::value;
 };
 
 template<FieldExpr AdvExpr, FieldExpr Expr, bool InPlusSideContext>
@@ -994,15 +1032,6 @@ struct plus_side_jacobian_requirement<
 {
    static constexpr bool value =
       plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
-};
-
-template<class MatrixExpr, class VectorExpr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   MatVecExpr<MatrixExpr, VectorExpr>, InPlusSideContext>
-{
-   static constexpr bool value =
-      plus_side_jacobian_requirement<MatrixExpr, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<VectorExpr, InPlusSideContext>::value;
 };
 
 template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext>

@@ -952,7 +952,8 @@ auto InterpolateFields(
    static_assert(
       !has_invalid_unqualified_interior_side_dependencies_v<I, WeakFormContext, FaceContext>,
       "Side-dependent expression appears on an interior facet without side "
-      "selection. Use average(expr), jump(expr), or future minus(expr)/plus(expr).");
+      "selection. Use minus(expr), plus(expr), average(expr), jump(expr), "
+      "or a trace-aware operator such as upwind(...).");
 
    using Deps = interpolation_named_field_requirements_t<I>;
 

@@ -169,7 +169,7 @@ int TestAdvection1D()
 
    auto advection_dg_wf =
       integrate(cells, -u_adv * dot(beta, grad(v_adv)))
-      + integrate(interior_facets, upwind(beta, u_adv) * v_adv);
+      + integrate(interior_facets, upwind(beta, u_adv) * jump(v_adv));
 
    auto advection_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),

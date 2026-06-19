@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/pullback.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {
@@ -37,12 +38,27 @@ struct FacetContext : FaceInfo
    {}
 };
 
-// Factory: domain fetched from weak form context by compile-time name
-template<typename WeakFormContext, typename Integrand, typename FaceInfo>
+template<class Channels>
+inline constexpr bool global_interior_channels_require_plus_side_jacobian_v =
+   std::remove_cvref_t<Channels>::template contains<GradientPlusChannel>();
+
+template<class Integrand>
+inline constexpr bool local_interior_context_requires_plus_side_jacobian_v =
+   requires_plus_side_jacobian_v<Integrand>;
+
+template<class Integrand, class Channels>
+inline constexpr bool global_interior_context_requires_plus_side_jacobian_v =
+   requires_plus_side_jacobian_v<Integrand> ||
+   global_interior_channels_require_plus_side_jacobian_v<Channels>;
+
+template<bool NeedPlusSideInvJ, typename WeakFormContext, typename Integrand, typename FaceInfo>
 GENDIL_HOST_DEVICE
-auto MakeInteriorFacetContext(const WeakFormContext & wf_ctx, const Integrand & /*integrand*/, const FaceInfo & face_info)
+auto MakeInteriorFacetContextImpl(
+   const WeakFormContext& wf_ctx,
+   const Integrand& /*integrand*/,
+   const FaceInfo& face_info)
 {
-   if constexpr (requires_plus_side_jacobian_v<Integrand>)
+   if constexpr (NeedPlusSideInvJ)
    {
       constexpr auto DomainName = Integrand::domain_type::name;
       const auto& mesh =
@@ -55,6 +71,41 @@ auto MakeInteriorFacetContext(const WeakFormContext & wf_ctx, const Integrand & 
    {
       return face_info;
    }
+}
+
+template<typename WeakFormContext, typename Integrand, typename FaceInfo>
+GENDIL_HOST_DEVICE
+auto MakeLocalInteriorFacetContext(
+   const WeakFormContext& wf_ctx,
+   const Integrand& integrand,
+   const FaceInfo& face_info)
+{
+   return MakeInteriorFacetContextImpl<
+      local_interior_context_requires_plus_side_jacobian_v<Integrand>>(
+         wf_ctx,
+         integrand,
+         face_info);
+}
+
+template<
+   typename WeakFormContext,
+   typename Integrand,
+   typename Channels,
+   typename FaceInfo>
+GENDIL_HOST_DEVICE
+auto MakeGlobalInteriorFacetContext(
+   const WeakFormContext& wf_ctx,
+   const Integrand& integrand,
+   const Channels& /*channels*/,
+   const FaceInfo& face_info)
+{
+   return MakeInteriorFacetContextImpl<
+      global_interior_context_requires_plus_side_jacobian_v<
+         Integrand,
+         Channels>>(
+            wf_ctx,
+            integrand,
+            face_info);
 }
 
 } // namespace gendil

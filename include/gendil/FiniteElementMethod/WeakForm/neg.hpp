@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
 
 namespace gendil
 {

@@ -38,12 +38,12 @@ std::ostream& operator<<(std::ostream& os, const MultFieldExpr<LHS, RHS>& prod)
  * @brief Legacy generic operator* → MultFieldExpr
  *
  * This is the fallback multiplication operator for cases NOT handled by
- * ProductExpr (ScalarTimes and MatMat).
+ * ProductExpr (ScalarTimes, MatVec, and MatMat).
  *
  * Constraint: Excludes is_productexpr_syntax_candidate_v to ensure
  * mutual exclusion with ProductExpr operator*.
  *
- * Note: MatVec products (A × β) remain in this legacy path for now.
+ * Unsupported or intentionally ambiguous products remain in this legacy path.
  */
 template < FieldExpr LHS, FieldExpr RHS >
    requires (!is_productexpr_syntax_candidate_v<LHS, RHS>)

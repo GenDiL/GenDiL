@@ -184,7 +184,7 @@ int TestFacetOnlyXDirection()
    auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
 
    auto facet_only_wf =
-      integrate(interior_facets, upwind(beta, u_adv) * v_adv);
+      integrate(interior_facets, upwind(beta, u_adv) * jump(v_adv));
 
    auto wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
@@ -319,7 +319,7 @@ int TestFullAdvectionXDirection()
 
    auto wf =
       integrate(cells, -u_adv * dot(beta, grad(v_adv)))
-      + integrate(interior_facets, upwind(beta, u_adv) * v_adv);
+      + integrate(interior_facets, upwind(beta, u_adv) * jump(v_adv));
 
    auto wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),

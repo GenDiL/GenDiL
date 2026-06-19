@@ -23,8 +23,9 @@ namespace gendil {
 // Evaluates a local/cell-owned interior facet contribution for one row side.
 // For this adapter, face_info.MinusSide() is the active/current Cell side,
 // face_info.PlusSide() is the neighbor, and only the current row contribution
-// is accumulated into minus_dofs_out. The mirrored global prototype reuses this
-// local semantics by swapping face sides before evaluating the plus row.
+// is accumulated into minus_dofs_out. Global interior execution uses the
+// canonical side-qualified channel path instead of this local/current-row
+// semantics.
 template<
    typename KernelContext,
    typename WeakFormContext,
@@ -58,7 +59,11 @@ void LocalInteriorFacetIntegrandOperator(
          minus_dofs_in,
          plus_dofs_in);
 
-      auto face_context = MakeInteriorFacetContext(weak_form_context, integrand, face_info);
+      auto face_context =
+         MakeLocalInteriorFacetContext(
+            weak_form_context,
+            integrand,
+            face_info);
 
       const auto minus_side = face_info.MinusSide();
       auto face_integration_rule =
@@ -75,7 +80,8 @@ void LocalInteriorFacetIntegrandOperator(
          face_integration_rule,
          [&] (const auto& quad_index)
          {
-            auto facet_quad_pt_context = MakeFacetQuadraturePointContext(
+            auto facet_quad_pt_context =
+               MakeLocalInteriorFacetQuadraturePointContext(
                kernel_context,
                weak_form_context,
                operator_context,

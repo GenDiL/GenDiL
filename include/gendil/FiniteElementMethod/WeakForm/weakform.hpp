@@ -18,6 +18,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/dot.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/inner.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/outer.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/jump.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/average.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"

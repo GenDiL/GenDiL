@@ -223,6 +223,14 @@ template < FieldExpr Expr >
 struct requirements< NegExpr<Expr> > : UnaryExprRequirements<Expr>
 {};
 
+template < FieldExpr Expr >
+struct requirements< MinusTraceExpr<Expr> > : UnaryExprRequirements<Expr>
+{};
+
+template < FieldExpr Expr >
+struct requirements< PlusTraceExpr<Expr> > : UnaryExprRequirements<Expr>
+{};
+
 template < FieldExpr HeadExpr, FieldExpr... TailExpr >
 struct requirements< SumExpr<HeadExpr, TailExpr...> > : NAryExprRequirements<HeadExpr, TailExpr...>
 {};

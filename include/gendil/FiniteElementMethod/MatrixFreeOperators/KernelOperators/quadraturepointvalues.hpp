@@ -237,6 +237,115 @@ auto MakeVectorGradientsTuple(
       std::make_index_sequence<NumComp>{});
 }
 
+template<
+   bool NeedValues,
+   bool NeedGradients,
+   typename KernelContext,
+   typename IntegrationRule,
+   typename TestSpace>
+GENDIL_HOST_DEVICE
+auto MakeQuadraturePointContainerForSpace(
+   const KernelContext& kernel,
+   const IntegrationRule& integration_rule,
+   const TestSpace& test_space)
+{
+   using IR = std::remove_cvref_t<IntegrationRule>;
+
+   static_assert(
+      NeedValues || NeedGradients,
+      "MakeQuadraturePointContainerForSpace requires at least Values or "
+      "Gradients.");
+
+   constexpr size_t NumComp = num_comp_v<std::remove_cvref_t<TestSpace>>;
+   constexpr size_t Dim = static_cast<size_t>(IR::space_dim);
+   (void)test_space;
+
+   if constexpr (NumComp == 1)
+   {
+      using ValuesC = std::conditional_t<
+         NeedValues,
+         decltype(MakeQuadraturePointValuesContainer(kernel, integration_rule)),
+         Empty>;
+
+      using GradsC = std::conditional_t<
+         NeedGradients,
+         decltype(MakeQuadraturePointValuesContainer<Dim>(
+            kernel,
+            integration_rule)),
+         Empty>;
+
+      return InterpolatedField<ValuesC, GradsC>{
+         [&] () -> ValuesC
+         {
+            if constexpr (NeedValues)
+            {
+               return MakeQuadraturePointValuesContainer(
+                  kernel,
+                  integration_rule);
+            }
+            else
+            {
+               return Empty{};
+            }
+         }(),
+         [&] () -> GradsC
+         {
+            if constexpr (NeedGradients)
+            {
+               return MakeQuadraturePointValuesContainer<Dim>(
+                  kernel,
+                  integration_rule);
+            }
+            else
+            {
+               return Empty{};
+            }
+         }() };
+   }
+   else
+   {
+      using ValuesC = std::conditional_t<
+         NeedValues,
+         decltype(MakeVectorValuesTuple<NumComp>(kernel, integration_rule)),
+         Empty>;
+
+      using GradsC = std::conditional_t<
+         NeedGradients,
+         decltype(MakeVectorGradientsTuple<NumComp, Dim>(
+            kernel,
+            integration_rule)),
+         Empty>;
+
+      return InterpolatedField<ValuesC, GradsC>{
+         [&] () -> ValuesC
+         {
+            if constexpr (NeedValues)
+            {
+               return MakeVectorValuesTuple<NumComp>(
+                  kernel,
+                  integration_rule);
+            }
+            else
+            {
+               return Empty{};
+            }
+         }(),
+         [&] () -> GradsC
+         {
+            if constexpr (NeedGradients)
+            {
+               return MakeVectorGradientsTuple<NumComp, Dim>(
+                  kernel,
+                  integration_rule);
+            }
+            else
+            {
+               return Empty{};
+            }
+         }() };
+   }
+}
+
 // ============================================================================
 
 template<
@@ -252,7 +361,6 @@ auto MakeQuadraturePointContainer(
    const IntegrationRule & integration_rule)
 {
    using I  = std::remove_cvref_t<Integrand>;
-   using IR = std::remove_cvref_t<decltype(integration_rule)>;
 
    constexpr auto TestName = requirements<I>::test_name;
    constexpr auto TestMask = requirements<I>::test_mask;
@@ -270,91 +378,12 @@ auto MakeQuadraturePointContainer(
    const auto& test_fev   = wf_ctx.template fe_field<TestName>();
    const auto& test_space = test_fev.space;
 
-   constexpr size_t NumComp = num_comp_v<decltype(test_space)>;
-   constexpr size_t Dim     = static_cast<size_t>(IR::space_dim);
-
-   if constexpr (NumComp == 1)
-   {
-      using ValuesC = std::conditional_t<
-         need_vals,
-         decltype(MakeQuadraturePointValuesContainer(kernel, integration_rule)),
-         Empty>;
-
-      using GradsC = std::conditional_t<
-         need_grads,
-         decltype(MakeQuadraturePointValuesContainer<Dim>(kernel, integration_rule)),
-         Empty>;
-
-      using Container = InterpolatedField<ValuesC, GradsC>;
-
-      return Container{
-         // values container (or Empty)
-         [] (const KernelContext & kernel, const IR & integration_rule) -> ValuesC {
-            if constexpr (need_vals)  return MakeQuadraturePointValuesContainer(kernel, integration_rule);
-            else                      return Empty{};
-         }(kernel, integration_rule),
-
-         // gradients container (or Empty)
-         [] (const KernelContext & kernel, const IR & integration_rule) -> GradsC {
-            if constexpr (need_grads) return MakeQuadraturePointValuesContainer<Dim>(kernel, integration_rule);
-            else                      return Empty{};
-         }(kernel, integration_rule)
-      };
-   }
-   else
-   {
-      // Vector branch - use tuple-per-component storage
-      //
-      // **Why tuple-per-component?**
-      // Vector FE components may have different scalar shapes/orders (e.g., H1 × L2,
-      // different polynomial degrees per component). Tuple storage ensures each
-      // component's quadrature container has its own type, matching the tuple-of-DOFs
-      // pattern in ReadVectorDofs/WriteVectorDofs.
-      //
-      // **Storage layout:**
-      //   - Values: tuple<scalar_QP_container_0, ..., scalar_QP_container_N-1>
-      //   - Gradients: tuple<scalar_grad_QP_container_0, ..., scalar_grad_QP_container_N-1>
-      //
-      // **Single quadrature point:**
-      //   - Values: SerialRecursiveArray<Real, NumComp>
-      //   - Gradients: SerialRecursiveArray<Real, NumComp, Dim> with grad(comp, dir)
-      //
-      // **Component-wise operations:**
-      // Tuple storage allows reuse of scalar kernel operators via std::get<I>(...)
-      // in InterpolateValues, ApplyAddTestFunctions, etc. Each component is processed
-      // independently using existing scalar infrastructure.
-      //
-      // TODO (vector grad-grad): Tuple gradient Read/Write will need to handle
-      //   SerialRecursiveArray<Real, NumComp, Dim> for vector grad-grad operators.
-      // TODO (vector facets): Facet tuple ApplyAddTestFunctions may be needed for
-      //   vector interior/boundary facet operators.
-
-      using ValuesC = std::conditional_t<
-         need_vals,
-         decltype(MakeVectorValuesTuple<NumComp>(kernel, integration_rule)),
-         Empty>;
-
-      using GradsC = std::conditional_t<
-         need_grads,
-         decltype(MakeVectorGradientsTuple<NumComp, Dim>(kernel, integration_rule)),
-         Empty>;
-
-      using Container = InterpolatedField<ValuesC, GradsC>;
-
-      return Container{
-         // values container (or Empty)
-         [&]() -> ValuesC {
-            if constexpr (need_vals)  return MakeVectorValuesTuple<NumComp>(kernel, integration_rule);
-            else                      return Empty{};
-         }(),
-
-         // gradients container (or Empty)
-         [&]() -> GradsC {
-            if constexpr (need_grads) return MakeVectorGradientsTuple<NumComp, Dim>(kernel, integration_rule);
-            else                      return Empty{};
-         }()
-      };
-   }
+   return MakeQuadraturePointContainerForSpace<
+      need_vals,
+      need_grads>(
+         kernel,
+         integration_rule,
+         test_space);
 }
 
 /**
@@ -435,8 +464,6 @@ auto MakeQuadraturePointContainerFromTestMask(
    const WeakFormContext & wf_ctx,
    const IntegrationRule & integration_rule)
 {
-   using IR = std::remove_cvref_t<decltype(integration_rule)>;
-
    static constexpr bool need_vals  = need_values(ExplicitMask);
    static constexpr bool need_grads = need_gradients(ExplicitMask);
 
@@ -448,71 +475,12 @@ auto MakeQuadraturePointContainerFromTestMask(
    const auto& test_space =
       GetQuadraturePointContainerVolumeSpace(test_fev.space);
 
-   constexpr size_t NumComp = num_comp_v<decltype(test_space)>;
-   constexpr size_t Dim     = static_cast<size_t>(IR::space_dim);
-
-   if constexpr (NumComp == 1)
-   {
-      // Scalar test space
-      using ValuesC = std::conditional_t<
-         need_vals,
-         decltype(MakeQuadraturePointValuesContainer(kernel, integration_rule)),
-         Empty>;
-
-      using GradsC = std::conditional_t<
-         need_grads,
-         decltype(MakeQuadraturePointValuesContainer<Dim>(kernel, integration_rule)),
-         Empty>;
-
-      using Container = InterpolatedField<ValuesC, GradsC>;
-
-      ValuesC values_c;
-      if constexpr (need_vals) {
-         values_c = MakeQuadraturePointValuesContainer(kernel, integration_rule);
-      } else {
-         values_c = Empty{};
-      }
-
-      GradsC grads_c;
-      if constexpr (need_grads) {
-         grads_c = MakeQuadraturePointValuesContainer<Dim>(kernel, integration_rule);
-      } else {
-         grads_c = Empty{};
-      }
-
-      return Container{values_c, grads_c};
-   }
-   else
-   {
-      // Vector test space - use tuple-per-component storage
-      using ValuesC = std::conditional_t<
-         need_vals,
-         decltype(MakeVectorValuesTuple<NumComp>(kernel, integration_rule)),
-         Empty>;
-
-      using GradsC = std::conditional_t<
-         need_grads,
-         decltype(MakeVectorGradientsTuple<NumComp, Dim>(kernel, integration_rule)),
-         Empty>;
-
-      using Container = InterpolatedField<ValuesC, GradsC>;
-
-      ValuesC values_c;
-      if constexpr (need_vals) {
-         values_c = MakeVectorValuesTuple<NumComp>(kernel, integration_rule);
-      } else {
-         values_c = Empty{};
-      }
-
-      GradsC grads_c;
-      if constexpr (need_grads) {
-         grads_c = MakeVectorGradientsTuple<NumComp, Dim>(kernel, integration_rule);
-      } else {
-         grads_c = Empty{};
-      }
-
-      return Container{values_c, grads_c};
-   }
+   return MakeQuadraturePointContainerForSpace<
+      need_vals,
+      need_grads>(
+         kernel,
+         integration_rule,
+         test_space);
 }
 
 template<

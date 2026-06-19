@@ -98,9 +98,8 @@ inline constexpr size_t generic_operator_integrand_required_shared_memory_v =
  * staging. The current non-direct threaded face read path allocates one
  * temporary staging buffer, copies into the returned local/register object,
  * synchronizes, and resets the shared arena before returning. The returned
- * minus/plus DoF objects do not alias that temporary staging, so mirrored
- * global interior evaluation can reuse this one read buffer for the second
- * side.
+ * global-face DoF objects do not alias that temporary staging, so later phases
+ * can reuse the arena.
  */
 template <
    typename KernelPolicy,
@@ -301,24 +300,30 @@ local_generic_boundary_facet_required_shared_memory_v =
       DofsOutView>::value;
 
 /**
- * @brief Global interior face generic operator scratch policy.
+ * @brief Canonical two-side global interior scratch policy.
  *
- * @details The mirrored global prototype reads the canonical minus side, then
- * the canonical plus side, evaluates one local/current-row facet integrand,
- * writes that row, swaps sides, evaluates the other row, and writes again.
- * Each ReadDofs/WriteAddDofs call resets the shared arena before returning,
- * and the integrand/quadrature/test scratch is used between read and write
- * phases. The required arena is therefore the maximum live requirement among
- * one face read, one facet integrand, and one face write.
+ * @details Canonical side-qualified global interior lowering reads the minus
+ * and plus trial traces into local objects, evaluates one canonical face
+ * quadrature loop that writes side-qualified test channels, then performs the
+ * minus and plus additive face writes sequentially. Face read/write staging
+ * buffers are reset before returning from each call, and they are not live with
+ * each other or with the quadrature/test scratch. Unequal side spaces are
+ * therefore handled by taking the maximum live requirement, not by summing
+ * both sides.
  */
 template <
    typename KernelPolicy,
    typename IntegrationRule,
-   typename FiniteElementSpace,
+   typename MinusTrialSpace,
+   typename PlusTrialSpace,
+   typename MinusTestSpace,
+   typename PlusTestSpace,
    typename WeakForm = void,
-   typename DofsInView = void,
-   typename DofsOutView = void >
-struct GlobalGenericInteriorFacetRequiredSharedMemory
+   typename DofsInMinusView = void,
+   typename DofsInPlusView = void,
+   typename DofsOutMinusView = void,
+   typename DofsOutPlusView = void >
+struct TwoSpaceGlobalInteriorRequiredSharedMemory
 {
    static constexpr size_t value =
       Max(
@@ -327,30 +332,47 @@ struct GlobalGenericInteriorFacetRequiredSharedMemory
             IntegrationRule>,
          generic_operator_face_read_scratch_requirement_v<
             KernelPolicy,
-            FiniteElementSpace,
-            DofsInView>,
+            MinusTrialSpace,
+            DofsInMinusView>,
+         generic_operator_face_read_scratch_requirement_v<
+            KernelPolicy,
+            PlusTrialSpace,
+            DofsInPlusView>,
          generic_operator_face_write_scratch_requirement_v<
             KernelPolicy,
-            FiniteElementSpace,
-            DofsOutView>);
+            MinusTestSpace,
+            DofsOutMinusView>,
+         generic_operator_face_write_scratch_requirement_v<
+            KernelPolicy,
+            PlusTestSpace,
+            DofsOutPlusView>);
 };
 
 template <
    typename KernelPolicy,
    typename IntegrationRule,
-   typename FiniteElementSpace,
+   typename MinusTrialSpace,
+   typename PlusTrialSpace,
+   typename MinusTestSpace,
+   typename PlusTestSpace,
    typename WeakForm = void,
-   typename DofsInView = void,
-   typename DofsOutView = void >
-inline constexpr size_t
-global_generic_interior_facet_required_shared_memory_v =
-   GlobalGenericInteriorFacetRequiredSharedMemory<
+   typename DofsInMinusView = void,
+   typename DofsInPlusView = void,
+   typename DofsOutMinusView = void,
+   typename DofsOutPlusView = void >
+inline constexpr size_t two_space_global_interior_required_shared_memory_v =
+   TwoSpaceGlobalInteriorRequiredSharedMemory<
       KernelPolicy,
       IntegrationRule,
-      FiniteElementSpace,
+      MinusTrialSpace,
+      PlusTrialSpace,
+      MinusTestSpace,
+      PlusTestSpace,
       WeakForm,
-      DofsInView,
-      DofsOutView>::value;
+      DofsInMinusView,
+      DofsInPlusView,
+      DofsOutMinusView,
+      DofsOutPlusView>::value;
 
 /**
  * @brief Global boundary face generic operator scratch policy.

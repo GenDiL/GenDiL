@@ -165,4 +165,53 @@ void ApplyAddTestFunctions(
       dofs_out);
 }
 
+template<
+   typename KernelContext,
+   typename FaceSide,
+   typename FacetTestQData,
+   typename Du,
+   typename DofsOut>
+GENDIL_HOST_DEVICE
+void ApplyAddGlobalInteriorFacetTestFunctionsForSide(
+   KernelContext& kernel_context,
+   const FaceSide& side,
+   const FacetTestQData& test_qd,
+   const Du& Du_side,
+   DofsOut& dofs_out)
+{
+   using Values = std::remove_cvref_t<decltype(Du_side.values)>;
+   using Gradients = std::remove_cvref_t<decltype(Du_side.gradients)>;
+   constexpr bool has_values = !std::is_same_v<Values, Empty>;
+   constexpr bool has_gradients = !std::is_same_v<Gradients, Empty>;
+
+   if constexpr (has_values && has_gradients)
+   {
+      ApplyValuesAndGradientTestFunctions<true>(
+         kernel_context,
+         side,
+         test_qd,
+         Du_side.values,
+         Du_side.gradients,
+         dofs_out);
+   }
+   else if constexpr (has_values)
+   {
+      ApplyAddTestFunctions(
+         kernel_context,
+         side,
+         test_qd,
+         Du_side.values,
+         dofs_out);
+   }
+   else if constexpr (has_gradients)
+   {
+      ApplyGradientTestFunctions<true>(
+         kernel_context,
+         side,
+         test_qd,
+         Du_side.gradients,
+         dofs_out);
+   }
+}
+
 } // namespace gendil

@@ -110,7 +110,7 @@ std::ostream& operator<<(std::ostream& os, const ProductExpr<LHS, RHS>& expr)
 // =============================================================================
 
 /**
- * @brief ScalarTimes and MatMat operator* → ProductExpr
+ * @brief ScalarTimes, MatVec, and MatMat operator* → ProductExpr
  *
  * Handles ProductKind::ScalarTimes products:
  * - Scalar × Scalar → Scalar (u × v, μ × v, v × v)
@@ -121,6 +121,9 @@ std::ostream& operator<<(std::ostream& os, const ProductExpr<LHS, RHS>& expr)
  *
  * Handles ProductKind::MatMat products:
  * - Matrix × Matrix → Matrix (A × A, A × grad(vᵥ), grad(vᵥ) × A)
+ *
+ * Handles ProductKind::MatVec products:
+ * - Matrix × Vector → Vector (A × β, A × Normal{}, grad(V) × Normal{})
  *
  * Examples:
  * - μ × v, v × μ (scalar coefficient × test field)
@@ -133,7 +136,8 @@ std::ostream& operator<<(std::ostream& os, const ProductExpr<LHS, RHS>& expr)
  * Constraint: is_productexpr_syntax_candidate_v ensures this overload
  * and MultFieldExpr operator* are mutually exclusive.
  *
- * Note: MatVec products (A × β) are deferred to preserve existing MatVecExpr path.
+ * ProductExpr is the single weak-form node for supported matrix-vector,
+ * matrix-matrix, and scalar-multiplication products.
  */
 template<class LHS, class RHS>
    requires is_productexpr_syntax_candidate_v<LHS, RHS>

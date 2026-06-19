@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/elementcontext.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/facetcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/computefacetgeometry.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 
@@ -195,6 +196,190 @@ auto MakeQuadraturePointContext(
 }
 
 // =============================================================================
+// Interior facet quadrature-point context
+// =============================================================================
+template<
+   bool NeedPlusSideInvJ,
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename FaceContext,
+   typename Integrand,
+   typename QuadIndex>
+GENDIL_HOST_DEVICE
+auto MakeInteriorFacetQuadraturePointContextImpl(
+   const KernelContext& kernel_context,
+   const WeakFormContext& wf_ctx,
+   const OperatorContext& op_ctx,
+   const ElementContext& element_context,
+   const FaceContext& face,
+   const Integrand& integrand,
+   const QuadIndex& quad_index)
+{
+   static_assert(
+      InteriorFacetIntegrand<Integrand>,
+      "MakeInteriorFacetQuadraturePointContext requires an interior facet "
+      "integrand.");
+
+   constexpr auto DomainName = Integrand::domain_type::name;
+
+   constexpr auto TrialName = requirements<Integrand>::trial_name;
+   static_assert(TrialName != StaticString("Error"),
+      "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
+
+   const auto& mesh_quad_data =
+      op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
+   const auto& trial_quad_data =
+      op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
+
+   const auto& mesh =
+      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
+   using Mesh = std::remove_cvref_t<decltype(mesh)>;
+   using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
+   using Jacobian            = typename Mesh::cell_type::jacobian;
+
+   QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_minus{};
+   qc_minus.quad_index = quad_index;
+   mesh::ComputePhysicalCoordinatesAndJacobian(
+      element_context.cell,
+      face.MinusSide(),
+      quad_index,
+      mesh_quad_data,
+      qc_minus.X,
+      qc_minus.J_mesh);
+
+   qc_minus.det_J  = ComputeInverseAndDeterminant(qc_minus.J_mesh, qc_minus.inv_J_mesh);
+   qc_minus.weight = GetWeight(face.MinusSide(), quad_index, trial_quad_data);
+
+   auto reference_normal_minus = face.MinusSide().GetReferenceNormal();
+   auto facet_geometry_minus = ComputeFacetGeometry(
+      qc_minus.inv_J_mesh,
+      reference_normal_minus,
+      qc_minus.det_J);
+
+   using PhysicalNormal = decltype(facet_geometry_minus.normalized_physical_normal);
+
+   if constexpr (NeedPlusSideInvJ)
+   {
+      QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_plus{};
+      const auto& mesh_quad_data_plus =
+         op_ctx.template mesh_facet_quad_data<DomainName>().PlusSide();
+      mesh::ComputePhysicalCoordinatesAndJacobian(
+         face.plus_cell,
+         face.PlusSide(),
+         quad_index,
+         mesh_quad_data_plus,
+         qc_plus.X,
+         qc_plus.J_mesh);
+
+      qc_plus.det_J  = ComputeInverseAndDeterminant(qc_plus.J_mesh, qc_plus.inv_J_mesh);
+
+      TwoSidedFacetQuadraturePointContext<
+         QuadIndex,
+         decltype(qc_minus.X),
+         decltype(qc_minus.inv_J_mesh),
+         decltype(qc_plus.inv_J_mesh),
+         PhysicalNormal
+      > facet_qctx;
+
+      facet_qctx.quad_index = qc_minus.quad_index;
+      facet_qctx.X = qc_minus.X;
+      facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
+      facet_qctx.inv_J_mesh_plus = qc_plus.inv_J_mesh;
+      facet_qctx.weight = qc_minus.weight;
+      facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
+      facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
+      facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
+
+      return facet_qctx;
+   }
+   else
+   {
+      TwoSidedFacetQuadraturePointContext<
+         QuadIndex,
+         decltype(qc_minus.X),
+         decltype(qc_minus.inv_J_mesh),
+         Empty,
+         PhysicalNormal
+      > facet_qctx;
+
+      facet_qctx.quad_index = qc_minus.quad_index;
+      facet_qctx.X = qc_minus.X;
+      facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
+      facet_qctx.inv_J_mesh_plus = Empty{};
+      facet_qctx.weight = qc_minus.weight;
+      facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
+      facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
+      facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
+
+      return facet_qctx;
+   }
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename FaceContext,
+   typename Integrand,
+   typename QuadIndex>
+GENDIL_HOST_DEVICE
+auto MakeLocalInteriorFacetQuadraturePointContext(
+   const KernelContext& kernel_context,
+   const WeakFormContext& wf_ctx,
+   const OperatorContext& op_ctx,
+   const ElementContext& element_context,
+   const FaceContext& face,
+   const Integrand& integrand,
+   const QuadIndex& quad_index)
+{
+   return MakeInteriorFacetQuadraturePointContextImpl<
+      local_interior_context_requires_plus_side_jacobian_v<Integrand>>(
+         kernel_context,
+         wf_ctx,
+         op_ctx,
+         element_context,
+         face,
+         integrand,
+         quad_index);
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename FaceContext,
+   typename Integrand,
+   typename Channels,
+   typename QuadIndex>
+GENDIL_HOST_DEVICE
+auto MakeGlobalInteriorFacetQuadraturePointContext(
+   const KernelContext& kernel_context,
+   const WeakFormContext& wf_ctx,
+   const OperatorContext& op_ctx,
+   const ElementContext& element_context,
+   const FaceContext& face,
+   const Integrand& integrand,
+   const Channels& /*channels*/,
+   const QuadIndex& quad_index)
+{
+   return MakeInteriorFacetQuadraturePointContextImpl<
+      global_interior_context_requires_plus_side_jacobian_v<
+         Integrand,
+         Channels>>(
+            kernel_context,
+            wf_ctx,
+            op_ctx,
+            element_context,
+            face,
+            integrand,
+            quad_index);
+}
+
+// =============================================================================
 // MakeFacetQuadraturePointContext
 // =============================================================================
 template<
@@ -260,93 +445,14 @@ auto MakeFacetQuadraturePointContext(
    }
    else if constexpr ( InteriorFacetIntegrand<Integrand> )
    {
-      // Volume domains only for now: Cells<DomainName> must provide `static constexpr auto name`
-      constexpr auto DomainName = Integrand::domain_type::name;
-
-      constexpr auto TrialName = requirements<Integrand>::trial_name;
-      static_assert(TrialName != StaticString("Error"),
-         "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
-
-      // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
-      const auto& mesh_quad_data =
-         op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
-      const auto& trial_quad_data =
-         op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
-
-      // Types for X and Jacobian from the domain mesh type
-      const auto& mesh =
-         GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
-      using Mesh = std::remove_cvref_t<decltype(mesh)>;
-      using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
-      using Jacobian            = typename Mesh::cell_type::jacobian;
-
-      // Minus side
-      QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_minus{};
-      qc_minus.quad_index = quad_index;
-      mesh::ComputePhysicalCoordinatesAndJacobian(
-         element_context.cell, face.MinusSide(), quad_index, mesh_quad_data, qc_minus.X, qc_minus.J_mesh );
-
-      qc_minus.det_J  = ComputeInverseAndDeterminant(qc_minus.J_mesh, qc_minus.inv_J_mesh);
-      qc_minus.weight = GetWeight( face.MinusSide(), quad_index, trial_quad_data );
-
-      auto reference_normal_minus = face.MinusSide().GetReferenceNormal();
-      auto facet_geometry_minus = ComputeFacetGeometry(
-         qc_minus.inv_J_mesh,
-         reference_normal_minus,
-         qc_minus.det_J);
-      
-      using PhysicalNormal = decltype(facet_geometry_minus.normalized_physical_normal);
-
-      if constexpr (requires_plus_side_jacobian_v<Integrand>)
-      {
-         QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_plus{};
-         const auto& mesh_quad_data_plus =
-            op_ctx.template mesh_facet_quad_data<DomainName>().PlusSide();
-         mesh::ComputePhysicalCoordinatesAndJacobian(
-            face.plus_cell, face.PlusSide(), quad_index, mesh_quad_data_plus, qc_plus.X, qc_plus.J_mesh );
-
-         qc_plus.det_J  = ComputeInverseAndDeterminant(qc_plus.J_mesh, qc_plus.inv_J_mesh);
-
-         TwoSidedFacetQuadraturePointContext<
-            QuadIndex,
-            decltype(qc_minus.X),
-            decltype(qc_minus.inv_J_mesh),
-            decltype(qc_plus.inv_J_mesh),
-            PhysicalNormal
-         > facet_qctx;
-
-         facet_qctx.quad_index = qc_minus.quad_index;
-         facet_qctx.X = qc_minus.X;
-         facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
-         facet_qctx.inv_J_mesh_plus = qc_plus.inv_J_mesh;
-         facet_qctx.weight = qc_minus.weight;
-         facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
-         facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
-         facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
-
-         return facet_qctx;
-      }
-      else
-      {
-         TwoSidedFacetQuadraturePointContext<
-            QuadIndex,
-            decltype(qc_minus.X),
-            decltype(qc_minus.inv_J_mesh),
-            Empty,
-            PhysicalNormal
-         > facet_qctx;
-
-         facet_qctx.quad_index = qc_minus.quad_index;
-         facet_qctx.X = qc_minus.X;
-         facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
-         facet_qctx.inv_J_mesh_plus = Empty{};
-         facet_qctx.weight = qc_minus.weight;
-         facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
-         facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
-         facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
-
-         return facet_qctx;
-      }
+      return MakeLocalInteriorFacetQuadraturePointContext(
+         kernel_context,
+         wf_ctx,
+         op_ctx,
+         element_context,
+         face,
+         integrand,
+         quad_index);
    }
 }
 

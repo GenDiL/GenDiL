@@ -4,8 +4,10 @@
 
 #include <gendil/gendil.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 using namespace gendil;
 
@@ -79,6 +81,91 @@ Vector ApplyOperator(const Operator& op, const Vector& x)
    y = 0.0;
    op(x, y);
    return y;
+}
+
+template <typename Operator>
+std::vector<Real> BuildDenseMatrix(
+   const Operator& op,
+   const Integer size)
+{
+   std::vector<Real> dense(static_cast<size_t>(size * size), 0.0);
+   Vector x(size);
+   Vector y(size);
+
+   for (Integer col = 0; col < size; ++col)
+   {
+      x = 0.0;
+      y = 0.0;
+      x.WriteHostData()[col] = 1.0;
+      op(x, y);
+
+      for (Integer row = 0; row < size; ++row)
+      {
+         dense[static_cast<size_t>(row * size + col)] = y[row];
+      }
+   }
+
+   return dense;
+}
+
+void AddOuterProduct(
+   std::vector<Real>& ref,
+   const std::vector<Real>& row_trace,
+   const std::vector<Real>& col_trace,
+   const Real scale = 1.0)
+{
+   GENDIL_VERIFY(
+      row_trace.size() == col_trace.size(),
+      "Trace vector sizes do not match.");
+   const size_t size = row_trace.size();
+   GENDIL_VERIFY(ref.size() == size * size, "Dense matrix size mismatch.");
+
+   for (size_t row = 0; row < size; ++row)
+   {
+      for (size_t col = 0; col < size; ++col)
+      {
+         ref[row * size + col] +=
+            scale * row_trace[row] * col_trace[col];
+      }
+   }
+}
+
+bool CheckDenseClose(
+   const char* label,
+   const std::vector<Real>& dense,
+   const std::vector<Real>& ref,
+   const Real tol = 1.0e-11)
+{
+   GENDIL_VERIFY(dense.size() == ref.size(), "Dense matrix sizes do not match.");
+
+   Real max_err = 0.0;
+   for (size_t i = 0; i < dense.size(); ++i)
+   {
+      max_err = std::max(max_err, std::abs(dense[i] - ref[i]));
+   }
+
+   std::cout << label << " | dense max error = " << max_err << "\n";
+   if (max_err > tol)
+   {
+      std::cerr << "FAILED: " << label << "\n";
+      const size_t size =
+         static_cast<size_t>(std::sqrt(static_cast<Real>(dense.size())));
+      for (size_t row = 0; row < size; ++row)
+      {
+         for (size_t col = 0; col < size; ++col)
+         {
+            const size_t idx = row * size + col;
+            if (std::abs(dense[idx] - ref[idx]) > tol)
+            {
+               std::cerr
+                  << "  (" << row << ", " << col << "): got "
+                  << dense[idx] << ", expected " << ref[idx] << "\n";
+            }
+         }
+      }
+      return false;
+   }
+   return true;
 }
 
 struct FullSharedThreadedFaceKernelPolicy :
@@ -183,11 +270,18 @@ bool TestInteriorTwoCellSigns()
          one_face_read_scratch,
          one_face_write_scratch);
 
+   using ScalarJumpForm = decltype(integrate(
+      InteriorFacets<"solid">{},
+      jump(TrialSpace<"u">{}) * jump(TestSpace<"u">{})));
    static_assert(
-      global_generic_interior_facet_required_shared_memory_v<
+      two_space_global_interior_required_shared_memory_v<
          FullSharedThreadedFaceKernelPolicy,
          IntegrationRule,
-         FESpace> == accurate_global_face_scratch);
+         FESpace,
+         FESpace,
+         FESpace,
+         FESpace,
+         ScalarJumpForm> == accurate_global_face_scratch);
    static_assert(
       global_generic_boundary_facet_required_shared_memory_v<
          FullSharedThreadedFaceKernelPolicy,
@@ -211,15 +305,23 @@ bool TestInteriorTwoCellSigns()
    static_assert(small_integrand_scratch < one_face_read_scratch);
    static_assert(one_read_small_rule_formula != two_read_small_rule_formula);
    static_assert(
-      global_generic_interior_facet_required_shared_memory_v<
+      two_space_global_interior_required_shared_memory_v<
          FullSharedThreadedFaceKernelPolicy,
          SmallIntegrationRule,
-         FESpace> == one_read_small_rule_formula);
+         FESpace,
+         FESpace,
+         FESpace,
+         FESpace,
+         ScalarJumpForm> == one_read_small_rule_formula);
    static_assert(
-      global_generic_interior_facet_required_shared_memory_v<
+      two_space_global_interior_required_shared_memory_v<
          FullSharedThreadedFaceKernelPolicy,
          SmallIntegrationRule,
-         FESpace> != two_read_small_rule_formula);
+         FESpace,
+         FESpace,
+         FESpace,
+         FESpace,
+         ScalarJumpForm> != two_read_small_rule_formula);
    static_assert(
       global_generic_boundary_facet_required_shared_memory_v<
          FullSharedThreadedFaceKernelPolicy,
@@ -258,6 +360,10 @@ bool TestInteriorTwoCellSigns()
    auto sign_sensitive_form =
       integrate(
          interior_facets,
+         jump(u) * jump(v));
+   auto canonical_sign_sensitive_form =
+      integrate(
+         interior_facets,
          jump(u) * jump(v)
          + average(u) * jump(v)
          + average(dot(grad(u), Normal{})) * jump(v));
@@ -287,11 +393,38 @@ bool TestInteriorTwoCellSigns()
          sign_sensitive_form,
          global_ctx,
          integration_rule);
+   auto canonical_global_op =
+      MakeGenericOperator<KernelPolicy>(
+         canonical_sign_sensitive_form,
+         global_ctx,
+         integration_rule);
 
    const Vector y_local = ApplyOperator(local_op, u_h);
    const Vector y_global = ApplyOperator(global_op, u_h);
 
-   return CheckClose("two-Cell interior local vs global", y_global, y_local);
+   const std::vector<Real> jump_trace{0.0, 0.0, 1.0, -1.0, 0.0, 0.0};
+   const std::vector<Real> average_trace{0.0, 0.0, 0.5, 0.5, 0.0, 0.0};
+   const std::vector<Real> average_normal_flux_trace{
+      -1.0, 4.0, -3.0, 3.0, -4.0, 1.0};
+   // Dense reference in the canonical global-face test-row convention. This
+   // deliberately keeps the broader expression sign-sensitive instead of
+   // falling back to local/current-row parity.
+   std::vector<Real> canonical_ref(jump_trace.size() * jump_trace.size(), 0.0);
+   AddOuterProduct(canonical_ref, jump_trace, jump_trace);
+   AddOuterProduct(canonical_ref, jump_trace, average_trace, -1.0);
+   AddOuterProduct(canonical_ref, jump_trace, average_normal_flux_trace, -1.0);
+
+   bool success =
+      CheckClose("two-Cell interior local vs global", y_global, y_local);
+   success =
+      CheckDenseClose(
+         "two-Cell canonical global sign-sensitive dense reference",
+         BuildDenseMatrix(
+            canonical_global_op,
+            fe_space.GetNumberOfFiniteElementDofs()),
+         canonical_ref) &&
+      success;
+   return success;
 }
 
 bool TestDispatchIndependence()

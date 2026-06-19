@@ -134,27 +134,6 @@ struct field_shape_impl<ProductExpr<LHS, RHS>>
 };
 
 // =============================================================================
-// Specialized MatVecExpr exclusion helper
-// =============================================================================
-
-/**
- * @brief Predicate for the specialized MatVecExpr normal contraction syntax.
- *
- * Returns true iff the expression matches:
- *   grad(VectorTestSpace) * Normal  OR  grad(VectorTrialSpace) * Normal
- *
- * This specialized path returns MatVecExpr and must be excluded from generic
- * ProductExpr MatVec syntax.
- */
-template<class LHS, class RHS>
-inline constexpr bool is_specialized_matvec_syntax_v = false;
-
-// Specialization for GradientExpr<VectorField> * Normal
-template<class E>
-   requires is_vector_field_reference_v<std::remove_cvref_t<E>>
-inline constexpr bool is_specialized_matvec_syntax_v<GradientExpr<E>, Normal> = true;
-
-// =============================================================================
 // Predicate: should ProductExpr handle this operator* syntax?
 // =============================================================================
 
@@ -164,7 +143,7 @@ inline constexpr bool is_specialized_matvec_syntax_v<GradientExpr<E>, Normal> = 
  * True when:
  * - Both operands are FieldExpr
  * - Both operands have field_shape_v
- * - ProductKind is ScalarTimes OR MatMat OR (MatVec except specialized normal contraction)
+ * - ProductKind is ScalarTimes, MatVec, or MatMat
  *
  * This predicate is used to make ProductExpr operator* and MultFieldExpr operator*
  * mutually exclusive.
@@ -175,13 +154,12 @@ inline constexpr bool is_productexpr_syntax_candidate_v =
    FieldExpr<std::remove_cvref_t<RHS>> &&
    HasFieldShape<std::remove_cvref_t<LHS>> &&
    HasFieldShape<std::remove_cvref_t<RHS>> &&
-   (product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
-      == ProductKind::ScalarTimes ||
-    product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
-      == ProductKind::MatMat ||
-    (product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
-      == ProductKind::MatVec &&
-     !is_specialized_matvec_syntax_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>));
+	   (product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
+	      == ProductKind::ScalarTimes ||
+	    product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
+	      == ProductKind::MatMat ||
+	    product_kind_v<std::remove_cvref_t<LHS>, std::remove_cvref_t<RHS>>
+	      == ProductKind::MatVec);
 
 // Backward compatibility alias (deprecated, for transition only)
 template<class LHS, class RHS>
