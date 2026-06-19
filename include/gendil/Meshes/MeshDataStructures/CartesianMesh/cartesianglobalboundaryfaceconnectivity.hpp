@@ -81,7 +81,7 @@ struct CartesianBoundaryFaceConnectivity
 };
 
 template < Integer Dim, Integer... I >
-auto make_cartesian_boundary_face_connectivity(
+auto MakeCartesianBoundaryFaceConnectivity(
    const std::array< GlobalIndex, Dim >& sizes,
    std::index_sequence< I... >)
 {
@@ -89,10 +89,10 @@ auto make_cartesian_boundary_face_connectivity(
 }
 
 template < Integer Dim >
-auto make_cartesian_boundary_face_connectivity(
+auto MakeCartesianBoundaryFaceConnectivity(
    const std::array< GlobalIndex, Dim >& sizes)
 {
-   return make_cartesian_boundary_face_connectivity(
+   return MakeCartesianBoundaryFaceConnectivity(
       sizes,
       std::make_index_sequence< 2 * Dim >{});
 }
@@ -100,7 +100,7 @@ auto make_cartesian_boundary_face_connectivity(
 template < Integer Dim >
 using CartesianBoundaryFaceConnectivityTuple =
    decltype(
-      make_cartesian_boundary_face_connectivity(
+      MakeCartesianBoundaryFaceConnectivity(
          std::array< GlobalIndex, Dim >{},
          std::make_index_sequence< 2 * Dim >{}));
 

@@ -187,9 +187,9 @@ bool TestContextStorage()
    auto fe_space = MakeFiniteElementSpace(mesh, finite_element);
 
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<Dim>({n, n});
+      MakeCartesianInteriorFaceConnectivity<Dim>({n, n});
    auto boundary_faces =
-      make_cartesian_boundary_face_connectivity<Dim>({n, n});
+      MakeCartesianBoundaryFaceConnectivity<Dim>({n, n});
 
    auto interior_face_fes =
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
@@ -373,7 +373,7 @@ bool TestInteriorTwoCellSigns()
       MakeIntegrationDomain<"mesh">(fe_space));
 
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<1>({n});
+      MakeCartesianInteriorFaceConnectivity<1>({n});
    auto interior_face_fes =
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
    auto singleton_global_fes =
@@ -500,9 +500,9 @@ bool TestDispatchIndependence()
    static_assert(requires_plus_side_jacobian_v<decltype(form)>);
 
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<Dim>({nx, ny});
+      MakeCartesianInteriorFaceConnectivity<Dim>({nx, ny});
    auto boundary_faces =
-      make_cartesian_boundary_face_connectivity<Dim>({nx, ny});
+      MakeCartesianBoundaryFaceConnectivity<Dim>({nx, ny});
 
    auto interior_face_fes =
       MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);

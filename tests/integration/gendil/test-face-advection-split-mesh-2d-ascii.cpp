@@ -129,11 +129,11 @@ int main(int, char**)
   // --------------------------
   // Face meshes
   // --------------------------
-  auto face_mesh_full = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_full = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{(GlobalIndex)nx_full,(GlobalIndex)ny});
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{(GlobalIndex)nxL,(GlobalIndex)ny});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{(GlobalIndex)nxR,(GlobalIndex)ny});
 
   // Intermesh: lhs=minus=RIGHT, rhs=plus=LEFT (matches operator semantics)

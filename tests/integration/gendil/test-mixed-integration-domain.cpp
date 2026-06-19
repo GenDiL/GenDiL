@@ -737,9 +737,9 @@ auto MakeReferenceData()
    auto fes1 = MakeFiniteElementSpace(mesh, fe1, L2Restriction{ndofs0});
 
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<1>({num_cells});
+      MakeCartesianInteriorFaceConnectivity<1>({num_cells});
    auto boundary_faces =
-      make_cartesian_boundary_face_connectivity<1>({num_cells});
+      MakeCartesianBoundaryFaceConnectivity<1>({num_cells});
 
    using InteriorFaceMesh0 =
       std::tuple_element_t<0, std::remove_cvref_t<decltype(interior_faces)>>;
@@ -834,10 +834,10 @@ bool TestAggregation()
          std::remove_cvref_t<decltype(mixed.GetBoundaryFaceFiniteElementSpace<0>())>,
          std::remove_cvref_t<decltype(std::get<0>(boundary_fes0))>>);
    static_assert(
-      !is_std_tuple_v<
+      !is_tuple_v<
          decltype(mixed.GetInteriorFaceFiniteElementSpace<0>().GetFaceMesh())>);
    static_assert(
-      !is_std_tuple_v<
+      !is_tuple_v<
          decltype(mixed.GetBoundaryFaceFiniteElementSpace<0>().GetFaceMesh())>);
    static_assert(
       std::remove_cvref_t<
@@ -1145,10 +1145,10 @@ bool TestRestrictedFaceContextsKeepFaceFieldBindings()
    using CellSpace0 = std::remove_cvref_t<decltype(fes0)>;
 
    static_assert(!is_face_finite_element_space_v<CellSpace0>);
-   static_assert(is_std_tuple_v<decltype(interior_fes1)>);
-   static_assert(is_std_tuple_v<decltype(boundary_fes1)>);
-   static_assert(!is_std_tuple_v<decltype(interior_fes1_0.GetFaceMesh())>);
-   static_assert(!is_std_tuple_v<decltype(boundary_fes1_0.GetFaceMesh())>);
+   static_assert(is_tuple_v<decltype(interior_fes1)>);
+   static_assert(is_tuple_v<decltype(boundary_fes1)>);
+   static_assert(!is_tuple_v<decltype(interior_fes1_0.GetFaceMesh())>);
+   static_assert(!is_tuple_v<decltype(boundary_fes1_0.GetFaceMesh())>);
    static_assert(is_interior_face_finite_element_space_v<InteriorFaceSpace1>);
    static_assert(is_face_finite_element_space_v<InteriorFaceSpace1>);
    static_assert(is_same_space_interior_face_finite_element_space_v<InteriorFaceSpace1>);
@@ -1317,9 +1317,9 @@ bool TestDuplicateSameTypeBoundaryUsesDescriptorCellIndex()
    static_assert(std::is_same_v<decltype(fes0), decltype(fes1)>);
 
    auto boundary_faces =
-      make_cartesian_boundary_face_connectivity<1>({num_cells});
+      MakeCartesianBoundaryFaceConnectivity<1>({num_cells});
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<1>({num_cells});
+      MakeCartesianInteriorFaceConnectivity<1>({num_cells});
    auto boundary_fes0 =
       MakeGlobalBoundaryFaceFiniteElementSpace(fes0, boundary_faces);
    auto boundary_fes1 =
@@ -1330,7 +1330,7 @@ bool TestDuplicateSameTypeBoundaryUsesDescriptorCellIndex()
       std::get<0>(two_space_same_type_interior_fes);
    using TwoSpaceSameTypeInteriorFaceSpace =
       std::remove_cvref_t<decltype(two_space_same_type_interior_fes_0)>;
-   static_assert(is_std_tuple_v<decltype(two_space_same_type_interior_fes)>);
+   static_assert(is_tuple_v<decltype(two_space_same_type_interior_fes)>);
    static_assert(
       is_two_space_interior_face_finite_element_space_v<
          TwoSpaceSameTypeInteriorFaceSpace>);
@@ -1479,7 +1479,7 @@ bool TestSameSpaceCanonicalGlobalInteriorParity()
       MakeLobattoFiniteElement(FiniteElementOrders<2>{});
    auto scalar_fes = MakeFiniteElementSpace(mesh, scalar_fe);
    auto interior_faces =
-      make_cartesian_interior_face_connectivity<1>({num_cells});
+      MakeCartesianInteriorFaceConnectivity<1>({num_cells});
    auto scalar_face_fes_tuple =
       MakeGlobalInteriorFaceFiniteElementSpace(scalar_fes, interior_faces);
    const auto& scalar_face_fes = std::get<0>(scalar_face_fes_tuple);

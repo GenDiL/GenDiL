@@ -82,21 +82,21 @@ struct CartesianInteriorLocalFaceConnectivity
 };
 
 template < Integer Dim, Integer... I >
-auto make_cartesian_interior_face_connectivity( const std::array< GlobalIndex, Dim > & sizes, std::index_sequence< I...  >)
+auto MakeCartesianInteriorFaceConnectivity( const std::array< GlobalIndex, Dim > & sizes, std::index_sequence< I...  >)
 {
    return std::make_tuple( CartesianInteriorLocalFaceConnectivity< Dim, I >( sizes )... );
 }
 
 template < Integer Dim >
-auto make_cartesian_interior_face_connectivity( const std::array< GlobalIndex, Dim > & sizes )
+auto MakeCartesianInteriorFaceConnectivity( const std::array< GlobalIndex, Dim > & sizes )
 {
-   return make_cartesian_interior_face_connectivity( sizes, std::make_index_sequence< Dim >{} );
+   return MakeCartesianInteriorFaceConnectivity( sizes, std::make_index_sequence< Dim >{} );
 }
 
 template < Integer Dim >
 using CartesianInteriorFaceConnectivity =
    decltype(
-      make_cartesian_interior_face_connectivity(
+      MakeCartesianInteriorFaceConnectivity(
          std::array< GlobalIndex, Dim >{},
          std::make_index_sequence< Dim >{} ) );
 
