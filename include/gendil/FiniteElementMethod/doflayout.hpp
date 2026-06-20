@@ -6,11 +6,17 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/finiteelementorders.hpp"
-#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
+#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/tensorproductdoflayout.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/multiindex.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
+
+#include <array>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -82,15 +88,15 @@ constexpr bool VectorComponentDofShapesMatchFirst()
 
 template < typename DofShapes, size_t ... I >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex DofShapeTupleDofCount( std::index_sequence< I... > )
+constexpr GlobalIndex DofShapeTupleDofCount( std::index_sequence< I... > )
 {
-   return static_cast< LocalIndex >(
-      ( 0 + ... + Product( std::tuple_element_t< I, DofShapes >{} ) ) );
+   return ( GlobalIndex{0} + ... +
+      Product( std::tuple_element_t< I, DofShapes >{} ) );
 }
 
 template < typename ShapeFunctions >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex LocalDofCount()
+constexpr GlobalIndex LocalDofCount()
 {
    if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
    {
@@ -99,14 +105,13 @@ constexpr LocalIndex LocalDofCount()
    }
    else
    {
-      return static_cast< LocalIndex >(
-         Product( finite_element_dof_shape_t< ShapeFunctions >{} ) );
+      return Product( finite_element_dof_shape_t< ShapeFunctions >{} );
    }
 }
 
 template < typename FESpace >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex LocalDofCount( const FESpace & )
+constexpr GlobalIndex LocalDofCount( const FESpace & )
 {
    using ShapeFunctions =
       typename std::remove_cvref_t< FESpace >::finite_element_type::shape_functions;
@@ -115,7 +120,7 @@ constexpr LocalIndex LocalDofCount( const FESpace & )
 
 template < typename ShapeFunctions, size_t Component >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex ComponentLocalDofOffset(
+constexpr GlobalIndex ComponentLocalDofOffset(
    std::integral_constant< size_t, Component > )
 {
    if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
@@ -135,20 +140,32 @@ template <
    size_t Component,
    Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex FlattenLocalDof(
-   std::integral_constant< size_t, Component > component,
+constexpr GlobalIndex FlattenComponentLocalDof(
+   std::integral_constant< size_t, Component >,
    const std::array< GlobalIndex, Dim > & indices )
 {
    using DofShape = component_dof_shape_t< ShapeFunctions, Component >;
+   return FlattenMultiIndex< DofShape >( indices );
+}
+
+template <
+   typename ShapeFunctions,
+   size_t Component,
+   Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr GlobalIndex FlattenLocalDof(
+   std::integral_constant< size_t, Component > component,
+   const std::array< GlobalIndex, Dim > & indices )
+{
    // Local BSR block numbering is element-local and component-major for vector
    // spaces. It is intentionally separate from external FE-vector numbering.
    return ComponentLocalDofOffset< ShapeFunctions >( component ) +
-      static_cast< LocalIndex >( FlattenMultiIndex< DofShape >( indices ) );
+      FlattenComponentLocalDof< ShapeFunctions >( component, indices );
 }
 
 template < typename ShapeFunctions, Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex FlattenLocalDof(
+constexpr GlobalIndex FlattenLocalDof(
    const std::array< GlobalIndex, Dim > & indices )
 {
    static_assert(
@@ -164,7 +181,7 @@ template <
    size_t Component,
    Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex FlattenLocalDof(
+constexpr GlobalIndex FlattenLocalDof(
    const FESpace &,
    std::integral_constant< size_t, Component > component,
    const std::array< GlobalIndex, Dim > & indices )
@@ -176,7 +193,7 @@ constexpr LocalIndex FlattenLocalDof(
 
 template < typename FESpace, Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr LocalIndex FlattenLocalDof(
+constexpr GlobalIndex FlattenLocalDof(
    const FESpace &,
    const std::array< GlobalIndex, Dim > & indices )
 {
@@ -199,24 +216,322 @@ size_t VectorOffset(
       ( num_elements * Product( std::tuple_element_t< I, DofShapes >{} ) ) );
 }
 
+template < typename FESpace >
+GENDIL_HOST_DEVICE
+GlobalIndex ScalarLocalDofCount( const FESpace & )
+{
+   using ShapeFunctions =
+      typename std::remove_cvref_t< FESpace >::finite_element_type::shape_functions;
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "ScalarLocalDofCount supports scalar finite element spaces only." );
+   return LocalDofCount< ShapeFunctions >();
+}
+
+template < typename FESpace >
+GENDIL_HOST_DEVICE
+GlobalIndex ScalarGlobalTopologyDofCount( const FESpace & fe_space )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      static_assert(
+         !is_vector_shape_functions_v< ShapeFunctions >,
+         "ScalarGlobalTopologyDofCount supports scalar L2 finite element spaces only." );
+      return fe_space.GetNumberOfFiniteElements() *
+         ScalarLocalDofCount( fe_space );
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      static_assert(
+         !is_vector_shape_functions_v< ShapeFunctions >,
+         "H1Restriction is scalar-only; use VectorH1Restriction<NComp> for vector H1 spaces." );
+      return fe_space.restriction.num_dofs;
+   }
+   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   {
+      static_assert(
+         is_vector_shape_functions_v< ShapeFunctions >,
+         "VectorH1Restriction requires a vector finite element space." );
+      return fe_space.restriction.scalar_num_dofs;
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      static_assert(
+         !is_vector_shape_functions_v< ShapeFunctions >,
+         "TensorProductRestriction v1 supports scalar finite element spaces only." );
+      return fe_space.restriction.num_dofs;
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "ScalarGlobalTopologyDofCount supports only scalar L2Restriction, scalar H1Restriction, VectorH1Restriction, and scalar TensorProductRestriction." );
+      return 0;
+   }
+}
+
+template < typename ... FactorSpaces >
+auto MakeTensorProductRestriction( const FactorSpaces & ... factor_spaces )
+{
+   using Restriction = TensorProductRestriction<
+      TensorProductRestrictionFactor<
+         typename std::remove_cvref_t< FactorSpaces >::restriction_type,
+         finite_element_dof_shape_t<
+            typename std::remove_cvref_t<
+               FactorSpaces >::finite_element_type::shape_functions > >... >;
+
+   static_assert(
+      ( !is_vector_shape_functions_v<
+           typename std::remove_cvref_t<
+              FactorSpaces >::finite_element_type::shape_functions > && ... ),
+      "TensorProductRestriction v1 supports scalar factor spaces only." );
+
+   const std::array< GlobalIndex, sizeof...( FactorSpaces ) > element_counts{
+      static_cast< GlobalIndex >(
+         factor_spaces.GetNumberOfFiniteElements() )... };
+   const std::array< GlobalIndex, sizeof...( FactorSpaces ) > global_dof_counts{
+      ScalarGlobalTopologyDofCount( factor_spaces )... };
+
+   return Restriction{
+      std::make_tuple( factor_spaces.restriction... ),
+      MakePrefixStrides( element_counts ),
+      MakePrefixStrides( global_dof_counts ),
+      Product( global_dof_counts )
+   };
+}
+
+template <
+   typename FESpace >
+GENDIL_HOST_DEVICE
+Integer FiniteElementDofCount( const FESpace & fe_space )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+      {
+         return fe_space.GetNumberOfFiniteElements() *
+            static_cast< Integer >( LocalDofCount< ShapeFunctions >() );
+      }
+      else
+      {
+         return static_cast< Integer >(
+            ScalarGlobalTopologyDofCount( fe_space ) );
+      }
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      return static_cast< Integer >(
+         ScalarGlobalTopologyDofCount( fe_space ) );
+   }
+   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   {
+      static_assert(
+         is_vector_shape_functions_v< ShapeFunctions >,
+         "VectorH1Restriction requires a vector finite element space." );
+      static_assert(
+         Restriction::num_comp == ShapeFunctions::vector_dim,
+         "VectorH1Restriction<NComp> must match the vector finite element component count." );
+
+      return static_cast< Integer >( Restriction::num_comp ) *
+         static_cast< Integer >(
+            ScalarGlobalTopologyDofCount( fe_space ) );
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      static_assert(
+         !is_vector_shape_functions_v< ShapeFunctions >,
+         "TensorProductRestriction v1 supports scalar finite element spaces only." );
+      return static_cast< Integer >(
+         ScalarGlobalTopologyDofCount( fe_space ) );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "FiniteElementDofCount supports only L2Restriction, scalar H1Restriction, VectorH1Restriction, and scalar TensorProductRestriction." );
+      return 0;
+   }
+}
+
+template < typename FESpace >
+GENDIL_HOST_DEVICE
+GlobalIndex ZeroBasedElementToGlobalDofIndex(
+   const FESpace & fe_space,
+   const GlobalIndex element_index,
+   const GlobalIndex scalar_local_dof_index )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "ZeroBasedElementToGlobalDofIndex supports scalar finite element spaces only." );
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      constexpr GlobalIndex scalar_local_dofs =
+         LocalDofCount< ShapeFunctions >();
+      return element_index * scalar_local_dofs + scalar_local_dof_index;
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      constexpr GlobalIndex scalar_local_dofs =
+         LocalDofCount< ShapeFunctions >();
+      const GlobalIndex restriction_index =
+         element_index * scalar_local_dofs + scalar_local_dof_index;
+      const int global_index = fe_space.restriction.indices[restriction_index];
+      GENDIL_VERIFY(
+         global_index >= 0,
+         "H1Restriction contains a negative element-to-global DoF index." );
+      return static_cast< GlobalIndex >( global_index );
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      return TensorProductElementToGlobalDofIndex(
+         fe_space.restriction,
+         element_index,
+         scalar_local_dof_index );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "ZeroBasedElementToGlobalDofIndex supports only scalar L2Restriction, H1Restriction, and TensorProductRestriction." );
+      return 0;
+   }
+}
+
+template < typename FESpace >
+GENDIL_HOST_DEVICE
+GlobalIndex ScalarElementDofOrdinalToGlobalDofIndex(
+   const FESpace & fe_space,
+   const GlobalIndex flat_element_dof_ordinal )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "ScalarElementDofOrdinalToGlobalDofIndex supports scalar finite element spaces only." );
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      return fe_space.restriction.shift + flat_element_dof_ordinal;
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      const int global_index =
+         fe_space.restriction.indices[flat_element_dof_ordinal];
+      GENDIL_VERIFY(
+         global_index >= 0,
+         "H1Restriction contains a negative element-to-global DoF index." );
+      return static_cast< GlobalIndex >( global_index );
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      constexpr GlobalIndex scalar_local_dofs =
+         LocalDofCount< ShapeFunctions >();
+      const GlobalIndex element_index =
+         flat_element_dof_ordinal / scalar_local_dofs;
+      const GlobalIndex scalar_local_dof_index =
+         flat_element_dof_ordinal - element_index * scalar_local_dofs;
+      return TensorProductElementToGlobalDofIndex(
+         fe_space.restriction,
+         element_index,
+         scalar_local_dof_index );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "ScalarElementDofOrdinalToGlobalDofIndex supports only scalar L2Restriction, H1Restriction, and TensorProductRestriction." );
+      return 0;
+   }
+}
+
+template < typename FESpace >
+GENDIL_HOST_DEVICE
+GlobalIndex GlobalDofIndex(
+   const FESpace & fe_space,
+   const GlobalIndex element_index,
+   const GlobalIndex scalar_local_dof_index )
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   static_assert(
+      !is_vector_shape_functions_v< ShapeFunctions >,
+      "Vector global DoF indexing requires a compile-time component tag." );
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      constexpr GlobalIndex scalar_local_dofs =
+         LocalDofCount< ShapeFunctions >();
+      const GlobalIndex flat_element_dof_ordinal =
+         element_index * scalar_local_dofs + scalar_local_dof_index;
+      return fe_space.restriction.shift + flat_element_dof_ordinal;
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      constexpr GlobalIndex scalar_local_dofs =
+         LocalDofCount< ShapeFunctions >();
+      const GlobalIndex flat_element_dof_ordinal =
+         element_index * scalar_local_dofs + scalar_local_dof_index;
+      const int global_index =
+         fe_space.restriction.indices[flat_element_dof_ordinal];
+      GENDIL_VERIFY(
+         global_index >= 0,
+         "H1Restriction contains a negative element-to-global DoF index." );
+      return static_cast< GlobalIndex >( global_index );
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      return TensorProductElementToGlobalDofIndex(
+         fe_space.restriction,
+         element_index,
+         scalar_local_dof_index );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "GlobalDofIndex supports only scalar L2Restriction, H1Restriction, and TensorProductRestriction." );
+      return 0;
+   }
+}
+
 template <
    typename FESpace,
-   size_t Component,
-   Integer Dim >
+   size_t Component >
 GENDIL_HOST_DEVICE
 GlobalIndex GlobalDofIndex(
    const FESpace & fe_space,
    std::integral_constant< size_t, Component > component,
    const GlobalIndex element_index,
-   const std::array< GlobalIndex, Dim > & indices )
+   const GlobalIndex component_local_dof_index )
 {
    using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
    using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-   static_assert(
-      std::is_same_v< typename Space::restriction_type, L2Restriction >,
-      "GlobalDofIndex currently supports L2Restriction finite element spaces." );
 
-   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   if constexpr ( !is_vector_shape_functions_v< ShapeFunctions > )
+   {
+      static_assert(Component == 0, "Scalar finite element spaces only have component 0.");
+      return GlobalDofIndex(
+         fe_space,
+         element_index,
+         component_local_dof_index );
+   }
+   else if constexpr ( std::is_same_v< Restriction, L2Restriction > )
    {
       using DofShapes = typename ShapeFunctions::dof_shape;
       using ComponentDofShape = component_dof_shape_t< ShapeFunctions, Component >;
@@ -229,75 +544,7 @@ GlobalIndex GlobalDofIndex(
       return fe_space.restriction.shift +
          component_global_offset +
          element_index * component_dofs +
-         static_cast< GlobalIndex >(
-            FlattenMultiIndex< ComponentDofShape >( indices ) );
-   }
-   else
-   {
-      static_assert(Component == 0, "Scalar finite element spaces only have component 0.");
-      using DofShape = finite_element_dof_shape_t< ShapeFunctions >;
-      const GlobalIndex element_dofs = Product( DofShape{} );
-      return fe_space.restriction.shift +
-         element_index * element_dofs +
-         static_cast< GlobalIndex >( FlattenMultiIndex< DofShape >( indices ) );
-   }
-}
-
-template < typename FESpace, Integer Dim >
-GENDIL_HOST_DEVICE
-GlobalIndex GlobalDofIndex(
-   const FESpace & fe_space,
-   const GlobalIndex element_index,
-   const std::array< GlobalIndex, Dim > & indices )
-{
-   using ShapeFunctions =
-      typename std::remove_cvref_t< FESpace >::finite_element_type::shape_functions;
-   static_assert(
-      !is_vector_shape_functions_v< ShapeFunctions >,
-      "Vector global DoF indexing requires a compile-time component tag." );
-   return GlobalDofIndex(
-      fe_space,
-      std::integral_constant< size_t, 0 >{},
-      element_index,
-      indices );
-}
-
-template <
-   typename FESpace,
-   size_t Component,
-   Integer Dim >
-GENDIL_HOST_DEVICE
-GlobalIndex ElementToGlobalDofIndex(
-   const FESpace & fe_space,
-   std::integral_constant< size_t, Component > component,
-   const GlobalIndex element_index,
-   const std::array< GlobalIndex, Dim > & indices )
-{
-   using Space = std::remove_cvref_t< FESpace >;
-   using Restriction = typename Space::restriction_type;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-
-   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
-   {
-      return GlobalDofIndex( fe_space, component, element_index, indices );
-   }
-   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
-   {
-      static_assert(
-         !is_vector_shape_functions_v< ShapeFunctions >,
-         "H1Restriction is scalar-only; use VectorH1Restriction<NComp> for vector H1 spaces." );
-      static_assert(Component == 0, "Scalar H1 finite element spaces only have component 0.");
-
-      constexpr LocalIndex local_dofs = LocalDofCount< ShapeFunctions >();
-      const LocalIndex local_id = FlattenLocalDof( fe_space, component, indices );
-      const GlobalIndex restriction_index =
-         element_index * static_cast< GlobalIndex >( local_dofs ) +
-         static_cast< GlobalIndex >( local_id );
-      const int global_index = fe_space.restriction.indices[restriction_index];
-      GENDIL_VERIFY(
-         global_index >= 0,
-         "H1Restriction contains a negative element-to-global DoF index." );
-      return static_cast< GlobalIndex >( global_index );
+         component_local_dof_index;
    }
    else if constexpr ( is_vector_h1_restriction_v< Restriction > )
    {
@@ -316,14 +563,10 @@ GlobalIndex ElementToGlobalDofIndex(
 
       using ComponentDofShape =
          component_dof_shape_t< ShapeFunctions, Component >;
-      constexpr LocalIndex component_local_dofs =
-         static_cast< LocalIndex >( Product( ComponentDofShape{} ) );
-      const GlobalIndex component_local_id =
-         static_cast< GlobalIndex >(
-            FlattenMultiIndex< ComponentDofShape >( indices ) );
+      constexpr GlobalIndex component_local_dofs =
+         Product( ComponentDofShape{} );
       const GlobalIndex restriction_index =
-         element_index * static_cast< GlobalIndex >( component_local_dofs ) +
-         component_local_id;
+         element_index * component_local_dofs + component_local_dof_index;
       const int scalar_global_index =
          fe_space.restriction.indices[restriction_index];
       GENDIL_VERIFY(
@@ -338,14 +581,36 @@ GlobalIndex ElementToGlobalDofIndex(
    {
       static_assert(
          dependent_false_v< Restriction >,
-         "ElementToGlobalDofIndex supports only L2Restriction, scalar H1Restriction, and VectorH1Restriction." );
+         "GlobalDofIndex supports only L2Restriction, scalar H1Restriction, and VectorH1Restriction." );
       return 0;
    }
 }
 
+template <
+   typename FESpace,
+   size_t Component,
+   Integer Dim >
+GENDIL_HOST_DEVICE
+GlobalIndex GlobalDofIndex(
+   const FESpace & fe_space,
+   std::integral_constant< size_t, Component > component,
+   const GlobalIndex element_index,
+   const std::array< GlobalIndex, Dim > & indices )
+{
+   using ShapeFunctions =
+      typename std::remove_cvref_t< FESpace >::finite_element_type::shape_functions;
+   const GlobalIndex component_local_id =
+      FlattenComponentLocalDof< ShapeFunctions >( component, indices );
+   return GlobalDofIndex(
+      fe_space,
+      component,
+      element_index,
+      component_local_id );
+}
+
 template < typename FESpace, Integer Dim >
 GENDIL_HOST_DEVICE
-GlobalIndex ElementToGlobalDofIndex(
+GlobalIndex GlobalDofIndex(
    const FESpace & fe_space,
    const GlobalIndex element_index,
    const std::array< GlobalIndex, Dim > & indices )
@@ -354,12 +619,13 @@ GlobalIndex ElementToGlobalDofIndex(
       typename std::remove_cvref_t< FESpace >::finite_element_type::shape_functions;
    static_assert(
       !is_vector_shape_functions_v< ShapeFunctions >,
-      "Vector element-to-global DoF indexing requires a compile-time component tag." );
-   return ElementToGlobalDofIndex(
+      "Vector global DoF indexing requires a compile-time component tag." );
+   const GlobalIndex scalar_local_id =
+      FlattenLocalDof< ShapeFunctions >( indices );
+   return GlobalDofIndex(
       fe_space,
-      std::integral_constant< size_t, 0 >{},
       element_index,
-      indices );
+      scalar_local_id );
 }
 
 } // namespace gendil

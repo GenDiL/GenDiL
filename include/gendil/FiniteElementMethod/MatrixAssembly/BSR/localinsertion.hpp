@@ -130,10 +130,10 @@ void AddSparseMatrixEntry(
    using TestShapeFunctions =
       typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
 
-   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
-   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
+   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
 
-   const LocalIndex local_col =
+   const GlobalIndex local_col =
       FlattenLocalDof(
          trial_fe_space,
          typename std::remove_cvref_t< TrialDofDescriptor >::component{},
@@ -157,7 +157,7 @@ void AddSparseMatrixEntry(
       y,
       [&] ( const auto & test_dof, const auto & value )
       {
-         const LocalIndex local_row =
+         const GlobalIndex local_row =
             FlattenLocalDof(
                test_fe_space,
                typename std::remove_cvref_t< decltype(test_dof) >::component{},

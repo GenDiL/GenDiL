@@ -39,10 +39,13 @@ struct IsRawCOOCellAssemblySpace
    }();
 
    static constexpr bool value =
-      std::is_same_v< Restriction, L2Restriction > ||
-      ( std::is_same_v< Restriction, H1Restriction > &&
-        !is_vector_shape_functions_v< ShapeFunctions > ) ||
-      vector_h1_value;
+      restriction_traits< Restriction >::is_direct_index_map &&
+      ( std::is_same_v< Restriction, L2Restriction > ||
+        ( std::is_same_v< Restriction, H1Restriction > &&
+          !is_vector_shape_functions_v< ShapeFunctions > ) ||
+        ( is_tensor_product_restriction_v< Restriction > &&
+          !is_vector_shape_functions_v< ShapeFunctions > ) ||
+        vector_h1_value );
 };
 
 template < typename FESpace >
@@ -110,15 +113,14 @@ auto GenericRawCOOAssembly(
         IsRawCOOFaceAssemblySpace< TrialSpace >::value &&
         IsRawCOOFaceAssemblySpace< TestSpace >::value ),
       "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
-      "scalar/vector H1/CG cell-only terms, and scalar/vector L2/DG conforming "
-      "face terms. H1 face terms, mixed spaces, nonconforming faces, global "
-      "face traversal, and variable-size hp emission are unsupported." );
+      "scalar/vector H1/CG cell-only terms, scalar tensor-product direct-index "
+      "cell-only terms, and scalar/vector L2/DG conforming face terms. H1 face "
+      "terms, mixed spaces, nonconforming faces, global face traversal, and "
+      "variable-size hp emission are unsupported." );
 
-   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
-   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count =
-      static_cast< GlobalIndex >( ntest ) *
-      static_cast< GlobalIndex >( ntrial );
+   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
+   constexpr GlobalIndex block_entry_count = ntest * ntrial;
 
    auto layout =
       MakeRawCOOAssemblyLayout<

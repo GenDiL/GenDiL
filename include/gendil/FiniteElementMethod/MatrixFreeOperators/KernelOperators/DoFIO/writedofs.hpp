@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/FiniteElementMethod/restriction.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
@@ -41,7 +42,8 @@ void WriteDofs( const GlobalIndex element_index,
    );
    
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -84,7 +86,8 @@ void SerialWriteDofs(
       "Mismatching dimensions in ReadDofs."
    );
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
@@ -133,7 +136,8 @@ void ThreadedWriteDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       ThreadLoop< tshape >( thread, [&] ( auto... t )
       {
@@ -201,7 +205,8 @@ void WriteVectorDofsSerial(
    constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
@@ -254,7 +259,8 @@ void WriteVectorDofsThreaded(
       {
          UnitLoop< std::tuple_element_t< i, r_shapes > >( [&] ( auto... k )
          {
-            if constexpr ( !Add && std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+            if constexpr ( !Add && restriction_traits<
+               typename FiniteElementSpace::restriction_type >::is_injective )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else
                AtomicAdd( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );

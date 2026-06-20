@@ -42,7 +42,7 @@ struct DGGatherToBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
 
       GENDIL_VERIFY(
          x_bsr.Size() == static_cast< size_t >( num_elements * block_size ),
@@ -99,7 +99,7 @@ struct DGScatterFromBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
 
       GENDIL_VERIFY(
          y_bsr.Size() == static_cast< size_t >( num_elements * block_size ),
@@ -159,9 +159,9 @@ struct CGGatherToBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
       const GlobalIndex expected_bsr_size =
-         num_elements * static_cast< GlobalIndex >( block_size );
+         num_elements * block_size;
 
       GENDIL_VERIFY(
          x_bsr.Size() == static_cast< size_t >( expected_bsr_size ),
@@ -183,13 +183,12 @@ struct CGGatherToBsr
             finite_element_space,
             [&] ( const auto component, const auto & indices )
             {
-               const LocalIndex local_id =
+               const GlobalIndex local_id =
                   FlattenLocalDof( finite_element_space, component, indices );
                const GlobalIndex bsr_index =
-                  element_index * static_cast< GlobalIndex >( block_size ) +
-                  static_cast< GlobalIndex >( local_id );
+                  element_index * block_size + local_id;
                const GlobalIndex fe_index =
-                  ElementToGlobalDofIndex(
+                  GlobalDofIndex(
                      finite_element_space,
                      component,
                      element_index,
@@ -220,9 +219,9 @@ struct CGScatterFromBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
       const GlobalIndex expected_bsr_size =
-         num_elements * static_cast< GlobalIndex >( block_size );
+         num_elements * block_size;
 
       GENDIL_VERIFY(
          y_bsr.Size() == static_cast< size_t >( expected_bsr_size ),
@@ -251,13 +250,12 @@ struct CGScatterFromBsr
             finite_element_space,
             [&] ( const auto component, const auto & indices )
             {
-               const LocalIndex local_id =
+               const GlobalIndex local_id =
                   FlattenLocalDof( finite_element_space, component, indices );
                const GlobalIndex bsr_index =
-                  element_index * static_cast< GlobalIndex >( block_size ) +
-                  static_cast< GlobalIndex >( local_id );
+                  element_index * block_size + local_id;
                const GlobalIndex fe_index =
-                  ElementToGlobalDofIndex(
+                  GlobalDofIndex(
                      finite_element_space,
                      component,
                      element_index,
@@ -295,9 +293,9 @@ struct VectorCGGatherToBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
       const GlobalIndex expected_bsr_size =
-         num_elements * static_cast< GlobalIndex >( block_size );
+         num_elements * block_size;
       const GlobalIndex expected_fe_size =
          static_cast< GlobalIndex >( Restriction::num_comp ) *
          static_cast< GlobalIndex >(
@@ -323,13 +321,12 @@ struct VectorCGGatherToBsr
             finite_element_space,
             [&] ( const auto component, const auto & indices )
             {
-               const LocalIndex local_id =
+               const GlobalIndex local_id =
                   FlattenLocalDof( finite_element_space, component, indices );
                const GlobalIndex bsr_index =
-                  element_index * static_cast< GlobalIndex >( block_size ) +
-                  static_cast< GlobalIndex >( local_id );
+                  element_index * block_size + local_id;
                const GlobalIndex fe_index =
-                  ElementToGlobalDofIndex(
+                  GlobalDofIndex(
                      finite_element_space,
                      component,
                      element_index,
@@ -367,9 +364,9 @@ struct VectorCGScatterFromBsr
 
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
       const GlobalIndex expected_bsr_size =
-         num_elements * static_cast< GlobalIndex >( block_size );
+         num_elements * block_size;
       const GlobalIndex expected_fe_size =
          static_cast< GlobalIndex >( Restriction::num_comp ) *
          static_cast< GlobalIndex >(
@@ -400,13 +397,12 @@ struct VectorCGScatterFromBsr
             finite_element_space,
             [&] ( const auto component, const auto & indices )
             {
-               const LocalIndex local_id =
+               const GlobalIndex local_id =
                   FlattenLocalDof( finite_element_space, component, indices );
                const GlobalIndex bsr_index =
-                  element_index * static_cast< GlobalIndex >( block_size ) +
-                  static_cast< GlobalIndex >( local_id );
+                  element_index * block_size + local_id;
                const GlobalIndex fe_index =
-                  ElementToGlobalDofIndex(
+                  GlobalDofIndex(
                      finite_element_space,
                      component,
                      element_index,

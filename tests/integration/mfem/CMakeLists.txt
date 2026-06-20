@@ -24,6 +24,7 @@ add_my_test(test-mass-advection-3d test-mass-advection-3d.cpp)
 add_my_test(test-diffusion-3d test-diffusion-3d.cpp)
 add_non_nvcc_test(test-diffusion-3d-unstructured test-diffusion-3d-unstructured.cpp)
 add_non_nvcc_test(test-diffusion-legacy-plus-jacobian test-diffusion-legacy-plus-jacobian.cpp)
+add_non_nvcc_test(test-diffusion-4d-tensor-product-H1 test-diffusion-4d-tensor-product-H1.cpp)
 add_non_nvcc_test(test-vector-interior-orientation-bsr-3d test-vector-interior-orientation-bsr-3d.cpp)
 # Other
 add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
