@@ -18,7 +18,7 @@ namespace gendil {
  * @param mesh The mfem::Mesh from which to extract the restriction indices.
  * @return const int* The C-array containing the restriction indices.
  */
-auto GetRestrictionIndices( const mfem::FiniteElementSpace & finite_element_space )
+inline auto GetRestrictionIndices( const mfem::FiniteElementSpace & finite_element_space )
 {
    HostDevicePointer< const int > indices;
    const mfem::ElementRestriction* restr =
@@ -54,7 +54,7 @@ auto GetRestrictionIndices( const mfem::FiniteElementSpace & finite_element_spac
  * @param mesh The mfem::Mesh from which to extract the restriction indices.
  * @return const int* The C-array containing the restriction indices.
  */
-auto GetRestrictionIndices( mfem::Mesh & mesh )
+inline auto GetRestrictionIndices( mfem::Mesh & mesh )
 {
    mesh.EnsureNodes();
    return GetRestrictionIndices( *(mesh.GetNodalFESpace()) );
@@ -68,7 +68,7 @@ auto GetRestrictionIndices( mfem::Mesh & mesh )
  * 
  * @note This will return an H1Restriction even if the MFEM finite element space is a DG space.
  */
-const H1Restriction GetH1Restriction( const mfem::FiniteElementSpace & finite_element_space )
+inline const H1Restriction GetH1Restriction( const mfem::FiniteElementSpace & finite_element_space )
 {
    return H1Restriction{ GetRestrictionIndices( finite_element_space ), (Integer)finite_element_space.GetNDofs() };
 }

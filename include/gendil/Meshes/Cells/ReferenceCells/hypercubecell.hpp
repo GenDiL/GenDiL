@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 
 namespace gendil {
@@ -52,12 +53,12 @@ struct HyperCubeCell
 
    static constexpr Integer GetNormalDimensionIndex( Integer face_index )
    {
-      return face_index % Dim;
+      return HyperCube< Dim >::GetNormalDimensionIndex( face_index );
    }
 
    static constexpr int GetNormalSign( Integer face_index )
    {
-      return face_index < Dim ? -1 : 1;
+      return HyperCube< Dim >::GetNormalSign( face_index );
    }
 
    GENDIL_HOST_DEVICE

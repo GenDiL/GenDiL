@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 
 namespace gendil {
@@ -16,9 +17,12 @@ struct CartesianInteriorLocalFaceConnectivity
    using geometry = HyperCube< Dim >;
    using orientation_type = IdentityOrientation< Dim >;
    static constexpr Integer local_face_index = LocalFaceIndex;
-   static constexpr Integer neighbor_local_face_index = LocalFaceIndex < Dim ? LocalFaceIndex + Dim : LocalFaceIndex - Dim;
-   static constexpr Integer dim_index = LocalFaceIndex % Dim;
-   static constexpr int sign = LocalFaceIndex < Dim ? -1 : 1;
+   static constexpr Integer neighbor_local_face_index =
+      HyperCube< Dim >::GetOppositeFaceIndex( LocalFaceIndex );
+   static constexpr Integer dim_index =
+      HyperCube< Dim >::GetNormalDimensionIndex( LocalFaceIndex );
+   static constexpr int sign =
+      HyperCube< Dim >::GetNormalSign( LocalFaceIndex );
    using normal_type = CanonicalVector< Dim, dim_index, sign >;
    using face_info_type =
       ConformingCellFaceView<

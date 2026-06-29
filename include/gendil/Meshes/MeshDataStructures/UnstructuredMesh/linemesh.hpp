@@ -8,7 +8,7 @@
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/linecell.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
-#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/LocalFacetConnectivity/unstructuredconformingconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {

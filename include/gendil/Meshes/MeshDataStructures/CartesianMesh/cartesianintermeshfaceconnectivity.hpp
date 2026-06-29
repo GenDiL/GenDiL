@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 
 namespace gendil {
 
@@ -13,7 +14,8 @@ namespace gendil {
  *
  * This type connects the face `LocalFaceIndex` of the "minus" mesh to the
  * opposite face on the "plus" mesh. The interface is orthogonal to
- * `axis = LocalFaceIndex % Dim`; tangential directions (all d ≠ axis)
+ * `axis = HyperCube<Dim>::GetNormalDimensionIndex(LocalFaceIndex)`;
+ * tangential directions (all d ≠ axis)
  * must have identical grid sizes on both meshes.
  *
  * @tparam Dim            Topological dimension of the cells (e.g., 2 or 3).
@@ -41,13 +43,15 @@ struct CartesianIntermeshFaceConnectivity
    using orientation_type = IdentityOrientation<Dim>;
 
    // Derive interface axis and sign from the minus local face index
-   static constexpr Integer axis = LocalFaceIndex % Dim;
-   static constexpr int     sign = (LocalFaceIndex < Dim ? -1 : +1);
+   static constexpr Integer axis =
+      HyperCube<Dim>::GetNormalDimensionIndex(LocalFaceIndex);
+   static constexpr int sign =
+      HyperCube<Dim>::GetNormalSign(LocalFaceIndex);
 
    // Minus = the provided local face; Plus = its opposite face
    static constexpr Integer minus_local_face_index = LocalFaceIndex;
    static constexpr Integer plus_local_face_index  =
-      (LocalFaceIndex < Dim ? LocalFaceIndex + Dim : LocalFaceIndex - Dim);
+      HyperCube<Dim>::GetOppositeFaceIndex(LocalFaceIndex);
 
    using minus_normal_type = CanonicalVector<Dim, axis,  sign>;
    using plus_normal_type  = CanonicalVector<Dim, axis, -sign>;

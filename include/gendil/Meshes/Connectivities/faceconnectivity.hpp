@@ -4,7 +4,12 @@
 
 #pragma once
 
+#include <array>
+#include <concepts>
+#include <type_traits>
+
 #include "orientation.hpp"
+#include "gendil/Meshes/Geometries/point.hpp"
 
 namespace gendil{
 
@@ -125,6 +130,12 @@ struct FaceView
 
    GENDIL_HOST_DEVICE
    const auto & GetReferenceNormal() const { return normal; }
+
+   GENDIL_HOST_DEVICE
+   bool IsBoundary() const { return static_cast< bool >( boundary ); }
+
+   GENDIL_HOST_DEVICE
+   constexpr bool IsConforming() const { return is_conforming; }
 
    GENDIL_HOST_DEVICE
    auto MapReferenceToFaceCoordinates(const Point<dim> & p) const

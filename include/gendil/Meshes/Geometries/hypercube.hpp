@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <type_traits>
+
+#include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/MathHelperFunctions/pow.hpp"
 // #include "tensorgeometry.hpp"
@@ -24,6 +27,22 @@ struct HyperCube //: public TensorGeometry< Segment< 1 >, HyperCube< Dim - 1 > >
    static constexpr Integer num_nodes = Pow< GeometryDim >( 2 );
    static constexpr Integer num_faces = 2 * GeometryDim;
 
+   static constexpr Integer GetOppositeFaceIndex( Integer face_index )
+   {
+      return face_index < geometry_dim ? face_index + geometry_dim
+                                       : face_index - geometry_dim;
+   }
+
+   static constexpr Integer GetNormalDimensionIndex( Integer face_index )
+   {
+      return face_index % geometry_dim;
+   }
+
+   static constexpr int GetNormalSign( Integer face_index )
+   {
+      return face_index < geometry_dim ? -1 : 1;
+   }
+
    Point< space_dim > vertices[ num_nodes ];
 
    // using faces_type = std::tuple< Point< space_dim >, Point< space_dim > >;
@@ -39,5 +58,14 @@ struct HyperCube //: public TensorGeometry< Segment< 1 >, HyperCube< Dim - 1 > >
 // struct HyperCube< 1 > : public Segment< 1 >
 // {
 // };
+
+/**
+ * @brief True when a geometry is a HyperCube specialization.
+ */
+template < typename T >
+struct is_hypercube_geometry : std::false_type {};
+
+template < Integer GeometryDim, Integer SpaceDim >
+struct is_hypercube_geometry< HyperCube< GeometryDim, SpaceDim > > : std::true_type {};
 
 }

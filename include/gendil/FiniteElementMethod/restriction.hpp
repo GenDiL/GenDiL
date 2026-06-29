@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
 #include <array>
 #include <tuple>

@@ -7,6 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 
 namespace gendil
 {
@@ -18,12 +19,15 @@ struct PeriodicCartesianConnectivity
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
@@ -46,9 +50,10 @@ struct PeriodicCartesianConnectivity
          "FaceIndex out of bound."
       );
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % Dim; // HyperCube< Dim >::GetNormalDimensionIndex( face_index ) ?
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1; // HyperCube< Dim >::GetNormalSign( face_index ) ?
+      constexpr Integer Index =
+         HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex );
+      constexpr int Sign =
+         HyperCube< Dim >::GetNormalSign( FaceIndex );
 
       std::array< GlobalIndex, Dim > neighbor_index = GetStructuredSubIndices( cell_index, sizes );
       // TODO: we can forgo computing all of the indices (computing only
@@ -119,12 +124,15 @@ struct PeriodicCartesianConnectivity< 1 >
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = std::integral_constant< bool, false >;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
@@ -147,8 +155,8 @@ struct PeriodicCartesianConnectivity< 1 >
       );
 
       GlobalIndex neighbor_index = cell_index;
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1;
+      constexpr int Sign =
+         HyperCube< Dim >::GetNormalSign( FaceIndex );
 
       if ( size == 1 )
       {

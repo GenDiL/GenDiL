@@ -24,9 +24,11 @@ struct CartesianBoundaryFaceConnectivity
 
    static constexpr Integer local_face_index = LocalFaceIndex;
    static constexpr Integer neighbor_local_face_index =
-      LocalFaceIndex < Dim ? LocalFaceIndex + Dim : LocalFaceIndex - Dim;
-   static constexpr Integer dim_index = LocalFaceIndex % Dim;
-   static constexpr int sign = LocalFaceIndex < Dim ? -1 : 1;
+      HyperCube< Dim >::GetOppositeFaceIndex( LocalFaceIndex );
+   static constexpr Integer dim_index =
+      HyperCube< Dim >::GetNormalDimensionIndex( LocalFaceIndex );
+   static constexpr int sign =
+      HyperCube< Dim >::GetNormalSign( LocalFaceIndex );
 
    using face_info_type =
       ConformingCellFaceView<

@@ -4,9 +4,17 @@
 
 #pragma once
 
+/**
+ * @file
+ * @brief Local/cell-neighbor facet connectivity for conforming unstructured
+ * meshes.
+ */
+
 #include <vector>
 #include "gendil/Meshes/Connectivities/conformingcellconnectivity.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
+#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "gendil/Utilities/MemoryManagement/garbagecollector.hpp"
 
 namespace gendil {
@@ -19,12 +27,15 @@ struct UnstructuredConformingConnectivity
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
    using conformity_type = ConformingFaceMap<dim>;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % dim, int NormalSign = FaceIndex < Geometry::geometry_dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Geometry::geometry_dim ? FaceIndex + Geometry::geometry_dim : FaceIndex - Geometry::geometry_dim >,
+         std::integral_constant< Integer, HyperCube< dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< dim, NormalAxis, NormalSign >,
          CanonicalVector< dim, NormalAxis, -NormalSign >,

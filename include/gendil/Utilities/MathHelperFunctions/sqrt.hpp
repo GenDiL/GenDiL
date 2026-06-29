@@ -4,11 +4,13 @@
 
 #pragma once
 
+#include "gendil/prelude.hpp"
+
 #include <cmath>
 
 namespace gendil {
 
-GENDIL_HOST_DEVICE
+GENDIL_HOST_DEVICE inline
 Real Sqrt( Real val )
 {
    return std::sqrt( val );

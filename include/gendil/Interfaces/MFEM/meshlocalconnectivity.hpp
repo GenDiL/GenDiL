@@ -9,7 +9,8 @@
 #include <vector>
 #include <mfem.hpp>
 #include "gendil/Utilities/types.hpp"
-#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
+#include "gendil/Utilities/debug.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/LocalFacetConnectivity/unstructuredconformingconnectivity.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "orientation.hpp"
@@ -92,10 +93,27 @@ size_t GetLocalFaceIndex( int mfem_local_face_index )
    return local_face_index;
 }
 
+namespace mfem_interface {
+namespace detail {
+
+template < typename Geometry >
+Integer TranslateMFEMFaceIndex( int mfem_local_face_id )
+{
+   const auto face = static_cast< Integer >(
+      GetLocalFaceIndex< Geometry::geometry_dim >( mfem_local_face_id ) );
+   GENDIL_VERIFY(
+      face < Geometry::num_faces,
+      "MFEM global face builder found an invalid local face id." );
+   return face;
+}
+
+} // namespace detail
+} // namespace mfem_interface
+
 // !FIXME inv_orientation is not correct for 1D and 2D
 // TODO: Provide Geometry?
 template < Integer Dim >
-UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshConnectivity( const mfem::Mesh & mesh )
+UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshLocalConnectivity( const mfem::Mesh & mesh )
 {
    const Integer NE = mesh.GetNE();
    UnstructuredConformingConnectivity< HyperCube< Dim > > element_connectivities( NE );
@@ -105,6 +123,9 @@ UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshConnectivity( con
    for (size_t face = 0; face < num_faces; face++)
    {
       const auto face_info = mesh.GetFaceInformation( face );
+      GENDIL_VERIFY(
+         face_info.IsBoundary() || face_info.IsConforming(),
+         "MFEM mesh local connectivity import supports conforming faces only." );
       if ( face_info.IsBoundary() )
       {
          const int elem_index = face_info.element[0].index;

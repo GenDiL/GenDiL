@@ -14,7 +14,8 @@
  * when the "plus" side is a *tangential refinement* of the "minus" side.
  *
  * Key ideas:
- *  - The interface is orthogonal to `axis = LocalFaceIndex % Dim`.
+ *  - The interface is orthogonal to
+ *    `axis = HyperCube<Dim>::GetNormalDimensionIndex(LocalFaceIndex)`.
  *  - Faces `0..Dim-1` carry reference normal `-e_axis` (“minus faces”),
  *    faces `Dim..2*Dim-1` carry `+e_axis` (“plus faces”).
  *  - Tangential directions (all `d != axis`) assume integer refinement ratios
@@ -28,6 +29,7 @@
  */
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 
 namespace gendil {
 
@@ -75,13 +77,15 @@ struct NonconformingCartesianIntermeshFaceConnectivity {
   using orientation_type = IdentityOrientation<Dim>;
 
   // Derive axis/sign from the local-face index
-  static constexpr Integer axis = LocalFaceIndex % Dim;
-  static constexpr int     sign = (LocalFaceIndex < Dim ? -1 : +1);
+  static constexpr Integer axis =
+      HyperCube<Dim>::GetNormalDimensionIndex(LocalFaceIndex);
+  static constexpr int sign =
+      HyperCube<Dim>::GetNormalSign(LocalFaceIndex);
 
   // Minus = the face indicated by LocalFaceIndex; Plus = the opposite face
   static constexpr Integer minus_local_face_index = LocalFaceIndex;
   static constexpr Integer plus_local_face_index  =
-      (LocalFaceIndex < Dim ? LocalFaceIndex + Dim : LocalFaceIndex - Dim);
+      HyperCube<Dim>::GetOppositeFaceIndex(LocalFaceIndex);
 
   using minus_normal_type = CanonicalVector<Dim, axis,  sign>;
   using plus_normal_type  = CanonicalVector<Dim, axis, -sign>;

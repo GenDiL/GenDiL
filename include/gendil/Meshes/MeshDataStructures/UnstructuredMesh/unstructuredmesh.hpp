@@ -13,5 +13,13 @@
 // A 3d unstructured hex mesh.
 #include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/hexmesh.hpp"
 
-// Local face connectivity for conforming unstructured meshes.
-#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
+// Cell-only unstructured meshes for global-facet workflows.
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/cellmesh.hpp"
+
+// LocalFacetConnectivity: local/cell-neighbor facet connectivity for
+// unstructured meshes.
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/LocalFacetConnectivity/unstructuredconformingconnectivity.hpp"
+
+// GlobalFacetConnectivity: materialized global facet execution families and
+// restricted fallback construction.
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/GlobalFacetConnectivity/unstructuredglobalfaceconnectivity.hpp"

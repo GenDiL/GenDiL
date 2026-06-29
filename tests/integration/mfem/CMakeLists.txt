@@ -31,3 +31,7 @@ add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
 add_my_test(test-nested-product-mesh test-nested-product-mesh.cpp)
 add_my_test(test-many-product-mesh test-many-product-mesh.cpp)
 add_my_test(test-projections-6d test-projections-6d.cpp)
+add_my_test(
+  test-mfem-nonconforming-face-decoder
+  test-mfem-nonconforming-face-decoder.cpp
+)
