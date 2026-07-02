@@ -386,7 +386,7 @@ struct NonconformingDofToQuad
    static constexpr Integer num_dofs = ShapeFunctions::num_dofs;
    static constexpr Integer num_quads = IntegrationRule::GetNumPoints();
    Real weights_data[ num_quads ];
-   const Face & face;
+   Face face;
 
    GENDIL_HOST_DEVICE
    constexpr NonconformingDofToQuad( const Face & face ) : face( face )

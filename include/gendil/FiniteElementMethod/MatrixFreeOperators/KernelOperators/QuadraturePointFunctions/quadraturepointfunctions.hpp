@@ -8,6 +8,9 @@
 // Compute the quadrature weight from DofToQuad tuple.
 #include "getweight.hpp"
 
+// Select and map finite-element facet quadrature data.
+#include "facetquaddata.hpp"
+
 // Apply mapping from reference to physical space.
 #include "applymapping.hpp"
 

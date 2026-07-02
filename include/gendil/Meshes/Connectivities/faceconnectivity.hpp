@@ -89,7 +89,7 @@ struct NonconformingHyperCubeFaceMap
          d < Dim,
          "Dimension out of bounds"
       );
-      return Point<1>{origin[d] + size[d] * p[d]};
+      return Point<1>{origin[d] + size[d] * p[0]};
    }
 
    GENDIL_HOST_DEVICE

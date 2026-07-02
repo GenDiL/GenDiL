@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/facetquaddata.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsthreaded.hpp"
 
@@ -81,17 +82,8 @@ auto ApplyTestFunctions(
    const FaceQuadData & face_quad_data,
    const InputTensor & quad_point_values )
 {
-   constexpr Integer local_face_index = Face::local_face_index_type::value;
-   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
-   if constexpr ( Face::is_conforming )
-   {
-      return ApplyTestFunctions( ctx, local_face_quad_data, quad_point_values );
-   }
-   else
-   {
-      auto non_conforming_face_quad_data = MakeNonconformingDofToQuadData( face, local_face_quad_data );
-      return ApplyTestFunctions( ctx, non_conforming_face_quad_data, quad_point_values );
-   }
+   auto&& facet_qd = GetFacetQuadData( face_quad_data, face );
+   return ApplyTestFunctions( ctx, facet_qd, quad_point_values );
 }
 
 /**
@@ -166,9 +158,7 @@ auto ApplyTestFunctions(
    const FaceQuadData & face_quad_data,
    const std::tuple< InputTensors... > & quad_point_values )
 {
-   // Extract THIS face's data first (tuple over components)
-   constexpr Integer local_face_index = Face::local_face_index_type::value;
-   const auto & this_face_data = std::get< local_face_index >( face_quad_data );
+   auto&& this_face_data = GetFacetQuadData( face_quad_data, face );
 
    // Apply component-wise using extracted face data
    return ApplyTestFunctions_ComponentWise(
@@ -299,8 +289,7 @@ void ApplyAddTestFunctions_Tuple_Impl(
    //   face_quad_data = tuple<tuple<comp0,comp1>, tuple<comp0,comp1>, ...>
    // Must extract THIS face first, then apply component-wise.
 
-   constexpr Integer local_face_index = Face::local_face_index_type::value;
-   const auto & this_face_data = std::get< local_face_index >( face_quad_data );
+   auto&& this_face_data = GetFacetQuadData( face_quad_data, face );
 
    // Component-wise application using fold expression
    // Extract component I from THIS face's data

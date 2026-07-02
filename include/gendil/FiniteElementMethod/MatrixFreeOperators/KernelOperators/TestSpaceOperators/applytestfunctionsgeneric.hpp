@@ -113,8 +113,6 @@ void ApplyAddTestFunctions(
    // Test-space quad data is generated in OperatorContext from MakeTestField<TestName>(...)
    const auto& test_qd =
       op_ctx.template finite_element_facet_quad_data<TestName>().MinusSide();
-   // constexpr Integer local_face_index = Face::local_face_index_type::value;
-   // const auto & local_face_quad_data = std::get< local_face_index >( test_qd );
 
    // --- Values test: v(x_q) ---
    if constexpr (need_vals)
