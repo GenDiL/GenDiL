@@ -10,6 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/elementcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/facetcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/computefacetgeometry.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/facetquaddata.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 
 namespace gendil
@@ -171,8 +172,7 @@ auto MakeQuadraturePointContext(
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
    const auto& mesh_quad_data =
       op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
-   const auto& trial_quad_data =
-      op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
+   auto&& mesh_facet_quad_data = GetFacetQuadData(mesh_quad_data, face);
 
    // Types for X and Jacobian from the domain mesh type
    const auto& mesh =
@@ -187,10 +187,15 @@ auto MakeQuadraturePointContext(
 
    // Jacobian J_mesh;
    // element_context.cell.GetValuesAndJacobian(quad_index, mesh_quad_data, qc.X, J_mesh);
-   mesh::ComputePhysicalCoordinatesAndJacobian( element_context.cell, face, quad_index, mesh_quad_data, qc.X, qc.J_mesh );
+   mesh::ComputePhysicalCoordinatesAndJacobian(
+      element_context.cell,
+      quad_index,
+      mesh_facet_quad_data,
+      qc.X,
+      qc.J_mesh);
 
    qc.det_J  = ComputeInverseAndDeterminant(qc.J_mesh, qc.inv_J_mesh);
-   qc.weight = GetWeight( face, quad_index, trial_quad_data );
+   qc.weight = GetWeight(quad_index, mesh_facet_quad_data);
 
    return qc;
 }
@@ -229,9 +234,9 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
       "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
 
    const auto& mesh_quad_data =
-      op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
-   const auto& trial_quad_data =
-      op_ctx.template finite_element_facet_quad_data<TrialName>().MinusSide();
+      op_ctx.template mesh_facet_quad_data<DomainName>();
+   auto&& mesh_minus_quad_data =
+      GetFacetQuadData(mesh_quad_data.MinusSide(), face.MinusSide());
 
    const auto& mesh =
       GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
@@ -243,14 +248,13 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
    qc_minus.quad_index = quad_index;
    mesh::ComputePhysicalCoordinatesAndJacobian(
       element_context.cell,
-      face.MinusSide(),
       quad_index,
-      mesh_quad_data,
+      mesh_minus_quad_data,
       qc_minus.X,
       qc_minus.J_mesh);
 
    qc_minus.det_J  = ComputeInverseAndDeterminant(qc_minus.J_mesh, qc_minus.inv_J_mesh);
-   qc_minus.weight = GetWeight(face.MinusSide(), quad_index, trial_quad_data);
+   qc_minus.weight = GetWeight(quad_index, mesh_minus_quad_data);
 
    auto reference_normal_minus = face.MinusSide().GetReferenceNormal();
    auto facet_geometry_minus = ComputeFacetGeometry(
@@ -263,13 +267,12 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
    if constexpr (NeedPlusSideInvJ)
    {
       QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_plus{};
-      const auto& mesh_quad_data_plus =
-         op_ctx.template mesh_facet_quad_data<DomainName>().PlusSide();
+      auto&& mesh_plus_quad_data =
+         GetFacetQuadData(mesh_quad_data.PlusSide(), face.PlusSide());
       mesh::ComputePhysicalCoordinatesAndJacobian(
          face.plus_cell,
-         face.PlusSide(),
          quad_index,
-         mesh_quad_data_plus,
+         mesh_plus_quad_data,
          qc_plus.X,
          qc_plus.J_mesh);
 
@@ -288,7 +291,8 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
       facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
       facet_qctx.inv_J_mesh_plus = qc_plus.inv_J_mesh;
       facet_qctx.weight = qc_minus.weight;
-      facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
+      facet_qctx.det_J_facet =
+         face.MinusSide().Measure() * facet_geometry_minus.det_J_facet;
       facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
       facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
 
@@ -309,7 +313,8 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
       facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
       facet_qctx.inv_J_mesh_plus = Empty{};
       facet_qctx.weight = qc_minus.weight;
-      facet_qctx.det_J_facet = facet_geometry_minus.det_J_facet;
+      facet_qctx.det_J_facet =
+         face.MinusSide().Measure() * facet_geometry_minus.det_J_facet;
       facet_qctx.inverse_facet_size = facet_geometry_minus.inverse_facet_size;
       facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
 
@@ -437,7 +442,8 @@ auto MakeFacetQuadraturePointContext(
       facet_qctx.weight = base_qctx.weight;
 
       // Set facet-specific fields
-      facet_qctx.det_J_facet = facet_geometry.det_J_facet;
+      facet_qctx.det_J_facet =
+         face.MinusSide().Measure() * facet_geometry.det_J_facet;
       facet_qctx.inverse_facet_size = facet_geometry.inverse_facet_size;
       facet_qctx.physical_normal = facet_geometry.normalized_physical_normal;
 

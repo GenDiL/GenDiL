@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
@@ -143,5 +144,46 @@ inline constexpr bool global_facet_domain_requirements_satisfied_v =
 template<class WFContext>
 inline constexpr bool use_global_facets_operator_v =
    has_global_face_domains_v<WFContext>;
+
+template<class Space>
+consteval bool IsScalarL2OrH1ValueGradientSpace()
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   using FE = typename SpaceType::finite_element_type;
+   using ShapeFunctions = typename FE::shape_functions;
+   using Restriction = typename SpaceType::restriction_type;
+
+   return !is_vector_shape_functions_v<ShapeFunctions> &&
+          (std::is_same_v<Restriction, L2Restriction> ||
+           std::is_same_v<Restriction, H1Restriction>);
+}
+
+template<
+   class FaceSpace,
+   class TrialMinusSpace,
+   class TrialPlusSpace,
+   class TestMinusSpace,
+   class TestPlusSpace>
+consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
+{
+   using FaceMesh = typename std::remove_cvref_t<FaceSpace>::face_mesh_type;
+   using FaceInfo = typename FaceMesh::face_info_type;
+
+   if constexpr (
+      !FaceInfo::minus_side_type::is_conforming ||
+      !FaceInfo::plus_side_type::is_conforming)
+   {
+      static_assert(
+         IsScalarL2OrH1ValueGradientSpace<TrialMinusSpace>() &&
+         IsScalarL2OrH1ValueGradientSpace<TrialPlusSpace>() &&
+         IsScalarL2OrH1ValueGradientSpace<TestMinusSpace>() &&
+         IsScalarL2OrH1ValueGradientSpace<TestPlusSpace>(),
+         "Nonconforming global interior GenericOperator currently supports "
+         "only scalar value/gradient facet semantics on scalar L2 or scalar "
+         "H1 finite element spaces. Vector-valued, Piola, H(div), H(curl), "
+         "and de Rham-style nonconforming facet transforms require separate "
+         "support and tests.");
+   }
+}
 
 } // namespace gendil

@@ -4,12 +4,14 @@
 
 #pragma once
 
+#include <concepts>
 #include <tuple>
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/NumericalIntegration/QuadraturePoints/nonconformingpoints.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 
 namespace gendil
@@ -51,6 +53,66 @@ inline constexpr bool IsSupportedNonconformingFacetDofToQuadTuple_v =
    IsSupportedNonconformingFacetDofToQuadTuple<
       std::remove_cvref_t<T>>::value;
 
+template<class T>
+struct IsStaticPointSetFacetQData1D : std::false_type {};
+
+template<class T>
+   requires requires(Integer q)
+   {
+      { std::remove_cvref_t<T>::GetCoord(q) } -> std::convertible_to<Real>;
+      { std::remove_cvref_t<T>::GetWeight(q) } -> std::convertible_to<Real>;
+   }
+struct IsStaticPointSetFacetQData1D<T> : std::true_type {};
+
+template<class T>
+inline constexpr bool IsStaticPointSetFacetQData1D_v =
+   IsStaticPointSetFacetQData1D<std::remove_cvref_t<T>>::value;
+
+template<class T>
+struct IsStaticPointSetFacetQDataTuple : std::false_type {};
+
+template<class... PointSets>
+struct IsStaticPointSetFacetQDataTuple<std::tuple<PointSets...>>
+   : std::bool_constant<
+        (IsStaticPointSetFacetQData1D_v<PointSets> && ...)> {};
+
+template<class T>
+inline constexpr bool IsStaticPointSetFacetQDataTuple_v =
+   IsStaticPointSetFacetQDataTuple<std::remove_cvref_t<T>>::value;
+
+template<class Face, class... PointSets, size_t... Is>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingMappedPointSetTupleImpl(
+   const Face& face,
+   const std::tuple<PointSets...>&,
+   std::index_sequence<Is...>)
+{
+   using Conformity = typename std::remove_cvref_t<Face>::conformity_type;
+   static_assert(
+      is_embedded_cell_reference_face_map_v<Conformity>,
+      "Nonconforming affine mesh facet qdata requires an embedded "
+      "cell-reference face map. Currently only "
+      "NonconformingHyperCubeFaceMap<Dim> is supported.");
+
+   return std::make_tuple(
+      NonconformingMappedPointSet1D<
+         PointSets,
+         Face,
+         static_cast<Integer>(Is)>{face}...);
+}
+
+template<class Face, class... PointSets>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingMappedPointSetTuple(
+   const Face& face,
+   const std::tuple<PointSets...>& point_sets)
+{
+   return MakeNonconformingMappedPointSetTupleImpl(
+      face,
+      point_sets,
+      std::make_index_sequence<sizeof...(PointSets)>{});
+}
+
 template<class Face, class LocalFaceQData>
 GENDIL_HOST_DEVICE
 auto MakeNonconformingFacetQuadData(
@@ -62,11 +124,17 @@ auto MakeNonconformingFacetQuadData(
    {
       return MakeNonconformingDofToQuadData(face, local_face_qd);
    }
+   else if constexpr (
+      IsStaticPointSetFacetQDataTuple_v<LocalFaceQData>)
+   {
+      return MakeNonconformingMappedPointSetTuple(face, local_face_qd);
+   }
    else
    {
       static_assert(
          dependent_false_v<Face, LocalFaceQData>,
-         "Nonconforming facet qdata is not implemented for this finite-element qdata type.");
+         "Nonconforming facet qdata is not implemented for this "
+         "finite-element or mesh cell/qdata type.");
    }
 }
 

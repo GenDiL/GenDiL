@@ -19,6 +19,7 @@ template<
    typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
+   typename FaceSpace,
    typename TrialMinusSpace,
    typename TrialPlusSpace,
    typename TestMinusSpace,
@@ -34,6 +35,7 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    KernelContext& kernel_context,
    const WeakFormContext& wf_ctx,
    const OperatorContext& op_ctx,
+   const FaceSpace& face_space,
    const TrialMinusSpace& trial_minus_space,
    const TrialPlusSpace& trial_plus_space,
    const TestMinusSpace& test_minus_space,
@@ -45,13 +47,6 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    DofsOutMinusView& dofs_out_minus,
    DofsOutPlusView& dofs_out_plus)
 {
-   using FaceInfoType = std::remove_cvref_t<FaceInfo>;
-   static_assert(
-      FaceInfoType::minus_side_type::is_conforming &&
-      FaceInfoType::plus_side_type::is_conforming,
-      "Two-space global interior GenericOperator canonical lowering is "
-      "currently limited to conforming face maps.");
-
    constexpr auto TestName  = requirements<Integrand>::test_name;
 
    auto u_minus = ReadDofs(
@@ -107,7 +102,7 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    };
    auto face_context =
       MakeGlobalInteriorFacetContext(
-         wf_ctx,
+         face_space,
          integrand,
          channels,
          face_info);
@@ -262,6 +257,7 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
             kernel,
             wf_ctx,
             facet_op_ctx,
+            face_domain,
             trial_minus_space,
             trial_plus_space,
             test_minus_space,
@@ -336,6 +332,13 @@ void GenericGlobalInteriorFaceDomainOperator(
       test_face_space.GetMinusFiniteElementSpace();
    const auto& test_plus_space =
       test_face_space.GetPlusFiniteElementSpace();
+
+   ValidateNonconformingGlobalInteriorFacetTransformSupport<
+      FaceSpace,
+      std::remove_cvref_t<decltype(trial_minus_space)>,
+      std::remove_cvref_t<decltype(trial_plus_space)>,
+      std::remove_cvref_t<decltype(test_minus_space)>,
+      std::remove_cvref_t<decltype(test_plus_space)>>();
 
    auto dofs_in_minus = MakeReadOnlyElementTensorView<KernelPolicy>(
       trial_minus_space,

@@ -51,20 +51,26 @@ inline constexpr bool global_interior_context_requires_plus_side_jacobian_v =
    requires_plus_side_jacobian_v<Integrand> ||
    global_interior_channels_require_plus_side_jacobian_v<Channels>;
 
-template<bool NeedPlusSideInvJ, typename WeakFormContext, typename Integrand, typename FaceInfo>
+template<typename WeakFormContext, typename Integrand, typename FaceInfo>
 GENDIL_HOST_DEVICE
-auto MakeInteriorFacetContextImpl(
+auto MakeLocalInteriorFacetContext(
    const WeakFormContext& wf_ctx,
    const Integrand& /*integrand*/,
    const FaceInfo& face_info)
 {
-   if constexpr (NeedPlusSideInvJ)
+   if constexpr (local_interior_context_requires_plus_side_jacobian_v<Integrand>)
    {
       constexpr auto DomainName = Integrand::domain_type::name;
       const auto& mesh =
          GetFacetContextCellDomainSpace(wf_ctx.template domain<DomainName>());
-      auto plus_cell = mesh.GetCell(face_info.PlusSide().GetCellIndex());
-      ApplyOrientationToCell(face_info.PlusSide().GetOrientation(), plus_cell);
+
+      auto plus_cell =
+         mesh.GetCell(face_info.PlusSide().GetCellIndex());
+
+      ApplyOrientationToCell(
+         face_info.PlusSide().GetOrientation(),
+         plus_cell);
+
       return FacetContext{ face_info, plus_cell };
    }
    else
@@ -73,39 +79,47 @@ auto MakeInteriorFacetContextImpl(
    }
 }
 
-template<typename WeakFormContext, typename Integrand, typename FaceInfo>
-GENDIL_HOST_DEVICE
-auto MakeLocalInteriorFacetContext(
-   const WeakFormContext& wf_ctx,
-   const Integrand& integrand,
-   const FaceInfo& face_info)
-{
-   return MakeInteriorFacetContextImpl<
-      local_interior_context_requires_plus_side_jacobian_v<Integrand>>(
-         wf_ctx,
-         integrand,
-         face_info);
-}
-
 template<
-   typename WeakFormContext,
+   typename FaceSpace,
    typename Integrand,
    typename Channels,
    typename FaceInfo>
 GENDIL_HOST_DEVICE
 auto MakeGlobalInteriorFacetContext(
-   const WeakFormContext& wf_ctx,
-   const Integrand& integrand,
+   const FaceSpace& face_space,
+   const Integrand& /*integrand*/,
    const Channels& /*channels*/,
    const FaceInfo& face_info)
 {
-   return MakeInteriorFacetContextImpl<
+   if constexpr (
       global_interior_context_requires_plus_side_jacobian_v<
          Integrand,
-         Channels>>(
-            wf_ctx,
-            integrand,
-            face_info);
+         Channels>)
+   {
+      static_assert(
+         requires (const FaceSpace& space)
+         {
+            space.GetPlusFiniteElementSpace();
+         },
+         "Global interior facet context requires a face execution space "
+         "that exposes GetPlusFiniteElementSpace() when plus-side geometry "
+         "is needed.");
+
+      const auto& plus_space = face_space.GetPlusFiniteElementSpace();
+
+      auto plus_cell =
+         plus_space.GetCell(face_info.PlusSide().GetCellIndex());
+
+      ApplyOrientationToCell(
+         face_info.PlusSide().GetOrientation(),
+         plus_cell);
+
+      return FacetContext{ face_info, plus_cell };
+   }
+   else
+   {
+      return face_info;
+   }
 }
 
 } // namespace gendil

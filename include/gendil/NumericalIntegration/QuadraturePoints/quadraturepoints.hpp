@@ -17,3 +17,9 @@
 
 // A structure representing a cartesian product of 1D quadrature points.
 #include "tensorpoints.hpp"
+
+// Coordinate access for tuple-shaped quadrature data.
+#include "getcoord.hpp"
+
+// Nonconforming mapped quadrature point sets.
+#include "nonconformingpoints.hpp"

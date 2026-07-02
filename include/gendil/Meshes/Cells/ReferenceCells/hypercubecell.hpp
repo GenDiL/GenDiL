@@ -7,6 +7,7 @@
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
+#include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
 
 namespace gendil {
 
@@ -44,8 +45,7 @@ struct HyperCubeCell
    {
       ConstexprLoop< Dim >( [&] ( auto i )
       {
-         using quad = std::tuple_element_t< i, QuadData >;
-         const auto q_pt = quad::GetCoord( quad_index[i] );
+         const auto q_pt = GetCoord<i>( quad_data, quad_index[i] );
          X[i] = origin[i] + h[i] * q_pt;
          J_mesh[i] = h[i];
       });
