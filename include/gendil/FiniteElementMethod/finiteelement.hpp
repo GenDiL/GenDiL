@@ -7,6 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/getorder.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
 #include "ShapeFunctions/GLLshapefunctions.hpp"
 #include "ShapeFunctions/GLshapefunctions.hpp"
 #include "ShapeFunctions/tensorshapefunctions.hpp"

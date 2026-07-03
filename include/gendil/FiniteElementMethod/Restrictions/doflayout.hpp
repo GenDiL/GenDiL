@@ -5,9 +5,9 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
-#include "gendil/FiniteElementMethod/tensorproductdoflayout.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/tensorproductdoflayout.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/multiindex.hpp"

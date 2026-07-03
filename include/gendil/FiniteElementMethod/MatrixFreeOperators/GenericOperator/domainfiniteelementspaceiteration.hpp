@@ -22,7 +22,7 @@ struct CellExecutionBatch
    static constexpr auto domain_name = Name;
    static constexpr size_t cell_batch_index = CellI;
 
-   const CellSpace& cell_space;
+   CellSpace cell_space;
 
    GENDIL_HOST_DEVICE
    constexpr const CellSpace& GetCellFiniteElementSpace() const
@@ -34,54 +34,84 @@ struct CellExecutionBatch
 template<
    StaticString Name,
    size_t FaceI,
-   class BoundaryFaceSpace>
+   class FacePart,
+   class CellSpace>
 struct BoundaryFaceExecutionBatch
 {
+   using face_part_type = FacePart;
+   using face_mesh_type = typename FacePart::face_mesh_type;
+   using cell_space_type = CellSpace;
+
    static constexpr auto domain_name = Name;
    static constexpr size_t face_batch_index = FaceI;
+   static constexpr size_t cell_part_index = FacePart::cell_index;
 
-   const BoundaryFaceSpace& face_space;
+   FacePart face_part;
+   CellSpace cell_space;
 
    GENDIL_HOST_DEVICE
-   constexpr const BoundaryFaceSpace& GetBoundaryFaceFiniteElementSpace() const
+   constexpr const FacePart& GetBoundaryFacePart() const
    {
-      return face_space;
+      return face_part;
    }
 
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) GetCellFiniteElementSpace() const
+   constexpr const typename FacePart::face_mesh_type& GetFaceMesh() const
    {
-      return face_space.GetMinusFiniteElementSpace();
+      return face_part.face_mesh;
+   }
+
+   GENDIL_HOST_DEVICE
+   constexpr const CellSpace& GetCellFiniteElementSpace() const
+   {
+      return cell_space;
    }
 };
 
 template<
    StaticString Name,
    size_t FaceI,
-   class InteriorFaceSpace>
+   class FacePart,
+   class MinusCellSpace,
+   class PlusCellSpace>
 struct InteriorFaceExecutionBatch
 {
+   using face_part_type = FacePart;
+   using face_mesh_type = typename FacePart::face_mesh_type;
+   using minus_cell_space_type = MinusCellSpace;
+   using plus_cell_space_type = PlusCellSpace;
+
    static constexpr auto domain_name = Name;
    static constexpr size_t face_batch_index = FaceI;
+   static constexpr size_t minus_cell_part_index = FacePart::minus_cell_index;
+   static constexpr size_t plus_cell_part_index = FacePart::plus_cell_index;
 
-   const InteriorFaceSpace& face_space;
+   FacePart face_part;
+   MinusCellSpace minus_cell_space;
+   PlusCellSpace plus_cell_space;
 
    GENDIL_HOST_DEVICE
-   constexpr const InteriorFaceSpace& GetInteriorFaceFiniteElementSpace() const
+   constexpr const FacePart& GetInteriorFacePart() const
    {
-      return face_space;
+      return face_part;
    }
 
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) GetMinusCellFiniteElementSpace() const
+   constexpr const typename FacePart::face_mesh_type& GetFaceMesh() const
    {
-      return face_space.GetMinusFiniteElementSpace();
+      return face_part.face_mesh;
    }
 
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) GetPlusCellFiniteElementSpace() const
+   constexpr const MinusCellSpace& GetMinusCellFiniteElementSpace() const
    {
-      return face_space.GetPlusFiniteElementSpace();
+      return minus_cell_space;
+   }
+
+   GENDIL_HOST_DEVICE
+   constexpr const PlusCellSpace& GetPlusCellFiniteElementSpace() const
+   {
+      return plus_cell_space;
    }
 };
 
@@ -102,12 +132,14 @@ struct is_boundary_face_execution_batch : std::false_type {};
 template<
    StaticString Name,
    size_t FaceI,
-   class BoundaryFaceSpace>
+   class FacePart,
+   class CellSpace>
 struct is_boundary_face_execution_batch<
    BoundaryFaceExecutionBatch<
       Name,
       FaceI,
-      BoundaryFaceSpace>> : std::true_type {};
+      FacePart,
+      CellSpace>> : std::true_type {};
 
 template<class T>
 inline constexpr bool is_boundary_face_execution_batch_v =
@@ -119,12 +151,16 @@ struct is_interior_face_execution_batch : std::false_type {};
 template<
    StaticString Name,
    size_t FaceI,
-   class InteriorFaceSpace>
+   class FacePart,
+   class MinusCellSpace,
+   class PlusCellSpace>
 struct is_interior_face_execution_batch<
    InteriorFaceExecutionBatch<
       Name,
       FaceI,
-      InteriorFaceSpace>> : std::true_type {};
+      FacePart,
+      MinusCellSpace,
+      PlusCellSpace>> : std::true_type {};
 
 template<class T>
 inline constexpr bool is_interior_face_execution_batch_v =
@@ -147,12 +183,12 @@ void ForEachCellFiniteElementSpaceInSpace(
             constexpr size_t I = decltype(index)::value;
             const auto& cell_space = std::get<I>(spaces);
             using CellSpace = std::remove_cvref_t<decltype(cell_space)>;
-            fn(CellExecutionBatch<Name, I, CellSpace>{ cell_space });
+            fn(CellExecutionBatch<Name, I, CellSpace>{ CellSpace{ cell_space } });
          });
    }
    else if constexpr (is_cell_finite_element_space_v<SpaceType>)
    {
-      fn(CellExecutionBatch<Name, 0, SpaceType>{ space });
+      fn(CellExecutionBatch<Name, 0, SpaceType>{ SpaceType{ space } });
    }
    else
    {
@@ -220,36 +256,42 @@ void ForEachInteriorFaceFiniteElementSpaceInDomain(
       using Space = std::remove_cvref_t<decltype(domain.space)>;
       if constexpr (is_mixed_finite_element_space_v<Space>)
       {
-         const auto& spaces = domain.space.InteriorFaceSpaces();
-         using Spaces = std::remove_cvref_t<decltype(spaces)>;
-         constexpr size_t NumSpaces = std::tuple_size_v<Spaces>;
+         const auto& face_parts = domain.space.InteriorFaceParts();
+         using FaceParts = std::remove_cvref_t<decltype(face_parts)>;
+         constexpr size_t NumSpaces = std::tuple_size_v<FaceParts>;
          ConstexprLoop<NumSpaces>(
             [&] (auto index)
             {
                constexpr size_t FaceI = decltype(index)::value;
-               const auto& face_space = std::get<FaceI>(spaces);
-               using FaceSpace = std::remove_cvref_t<decltype(face_space)>;
+               const auto& face_part = std::get<FaceI>(face_parts);
+               using FacePart = std::remove_cvref_t<decltype(face_part)>;
+               constexpr size_t MinusCellI = FacePart::minus_cell_index;
+               constexpr size_t PlusCellI = FacePart::plus_cell_index;
+               const auto& minus_space =
+                  domain.space.template GetCellFiniteElementSpace<MinusCellI>();
+               const auto& plus_space =
+                  domain.space.template GetCellFiniteElementSpace<PlusCellI>();
+               using MinusSpace = std::remove_cvref_t<decltype(minus_space)>;
+               using PlusSpace = std::remove_cvref_t<decltype(plus_space)>;
 
                fn(InteriorFaceExecutionBatch<
                   Name,
                   FaceI,
-                  FaceSpace>{ face_space });
+                  FacePart,
+                  MinusSpace,
+                  PlusSpace>{
+                     FacePart{ face_part },
+                     MinusSpace{ minus_space },
+                     PlusSpace{ plus_space } });
             });
-      }
-      else if constexpr (is_interior_face_finite_element_space_v<Space>)
-      {
-         fn(InteriorFaceExecutionBatch<
-            Name,
-            0,
-            Space>{ domain.space });
       }
       else
       {
          static_assert(
             dependent_false_v<Space>,
             "InteriorFacets<Name> requires InteriorFaceIntegrationDomain<Space> "
-            "to wrap an interior face finite element space or a "
-            "MixedFiniteElementSpace.");
+            "to wrap a MixedFiniteElementSpace with partition-owned interior "
+            "face parts.");
       }
    }
    else
@@ -273,14 +315,14 @@ void ForEachLocalInteriorFaceFiniteElementSpaceInDomain(
       using Space = std::remove_cvref_t<decltype(domain.space)>;
       if constexpr (is_cell_finite_element_space_v<Space>)
       {
-         fn(CellExecutionBatch<Name, 0, Space>{ domain.space });
+         fn(CellExecutionBatch<Name, 0, Space>{ Space{ domain.space } });
       }
       else if constexpr (is_mixed_finite_element_space_v<Space>)
       {
          static_assert(
             dependent_false_v<Space>,
             "InteriorFacets<Name> over a mixed integration domain requires "
-            "interior face finite element spaces registered under the same Name.");
+            "partition-owned interior face parts registered under the same Name.");
       }
       else
       {
@@ -341,35 +383,35 @@ void ForEachBoundaryFaceFiniteElementSpaceInDomain(
       using Space = std::remove_cvref_t<decltype(domain.space)>;
       if constexpr (is_mixed_finite_element_space_v<Space>)
       {
-         const auto& spaces = domain.space.BoundaryFaceSpaces();
-         using Spaces = std::remove_cvref_t<decltype(spaces)>;
-         constexpr size_t NumSpaces = std::tuple_size_v<Spaces>;
+         const auto& face_parts = domain.space.BoundaryFaceParts();
+         using FaceParts = std::remove_cvref_t<decltype(face_parts)>;
+         constexpr size_t NumSpaces = std::tuple_size_v<FaceParts>;
          ConstexprLoop<NumSpaces>(
             [&] (auto index)
             {
                constexpr size_t FaceI = decltype(index)::value;
-               const auto& face_space = std::get<FaceI>(spaces);
-               using FaceSpace = std::remove_cvref_t<decltype(face_space)>;
+               const auto& face_part = std::get<FaceI>(face_parts);
+               using FacePart = std::remove_cvref_t<decltype(face_part)>;
+               constexpr size_t CellI = FacePart::cell_index;
+               const auto& cell_space =
+                  domain.space.template GetCellFiniteElementSpace<CellI>();
+               using CellSpace = std::remove_cvref_t<decltype(cell_space)>;
                fn(BoundaryFaceExecutionBatch<
                   Name,
                   FaceI,
-                  FaceSpace>{ face_space });
+                  FacePart,
+                  CellSpace>{
+                     FacePart{ face_part },
+                     CellSpace{ cell_space } });
             });
-      }
-      else if constexpr (is_boundary_face_finite_element_space_v<Space>)
-      {
-         fn(BoundaryFaceExecutionBatch<
-            Name,
-            0,
-            Space>{ domain.space });
       }
       else
       {
          static_assert(
             dependent_false_v<Space>,
             "BoundaryFacets<Name> requires BoundaryFaceIntegrationDomain<Space> "
-            "to wrap a boundary face finite element space or a "
-            "MixedFiniteElementSpace.");
+            "to wrap a MixedFiniteElementSpace with partition-owned boundary "
+            "face parts.");
       }
    }
    else
@@ -393,14 +435,14 @@ void ForEachLocalBoundaryFaceFiniteElementSpaceInDomain(
       using Space = std::remove_cvref_t<decltype(domain.space)>;
       if constexpr (is_cell_finite_element_space_v<Space>)
       {
-         fn(CellExecutionBatch<Name, 0, Space>{ domain.space });
+         fn(CellExecutionBatch<Name, 0, Space>{ Space{ domain.space } });
       }
       else if constexpr (is_mixed_finite_element_space_v<Space>)
       {
          static_assert(
             dependent_false_v<Space>,
             "BoundaryFacets<Name> over a mixed integration domain requires "
-            "boundary face finite element spaces registered under the same Name.");
+            "partition-owned boundary face parts registered under the same Name.");
       }
       else
       {

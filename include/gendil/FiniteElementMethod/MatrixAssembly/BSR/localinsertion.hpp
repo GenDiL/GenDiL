@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/localdoforientation.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/localdofoperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"

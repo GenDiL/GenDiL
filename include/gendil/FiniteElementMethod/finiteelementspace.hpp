@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/types.hpp"
 

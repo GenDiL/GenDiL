@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticmap.hpp"
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
@@ -27,10 +27,10 @@ constexpr auto MakeFiniteElementQuadData(const SpaceView& space)
 {
    using Space = std::remove_cvref_t<SpaceView>;
    static_assert(
-      !is_boundary_face_finite_element_space_v<Space> &&
-      !is_interior_face_finite_element_space_v<Space>,
+      !is_boundary_face_field_binding_v<Space> &&
+      !is_interior_face_field_binding_v<Space>,
       "MakeFiniteElementQuadData builds cell/volume finite element qdata. "
-      "Face finite element spaces must use the global facet qdata builder "
+      "Face field bindings must use the global facet qdata builder "
       "so minus/plus sides are represented explicitly.");
    (void)space;
    using FE    = typename Space::finite_element_type;

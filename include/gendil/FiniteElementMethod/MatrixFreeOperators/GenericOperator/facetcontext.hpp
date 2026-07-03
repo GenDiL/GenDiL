@@ -80,13 +80,13 @@ auto MakeLocalInteriorFacetContext(
 }
 
 template<
-   typename FaceSpace,
+   typename FaceDomain,
    typename Integrand,
    typename Channels,
    typename FaceInfo>
 GENDIL_HOST_DEVICE
 auto MakeGlobalInteriorFacetContext(
-   const FaceSpace& face_space,
+   const FaceDomain& face_domain,
    const Integrand& /*integrand*/,
    const Channels& /*channels*/,
    const FaceInfo& face_info)
@@ -97,15 +97,15 @@ auto MakeGlobalInteriorFacetContext(
          Channels>)
    {
       static_assert(
-         requires (const FaceSpace& space)
+         requires (const FaceDomain& domain)
          {
-            space.GetPlusFiniteElementSpace();
+            domain.GetPlusCellFiniteElementSpace();
          },
          "Global interior facet context requires a face execution space "
-         "that exposes GetPlusFiniteElementSpace() when plus-side geometry "
+         "that exposes GetPlusCellFiniteElementSpace() when plus-side geometry "
          "is needed.");
 
-      const auto& plus_space = face_space.GetPlusFiniteElementSpace();
+      const auto& plus_space = face_domain.GetPlusCellFiniteElementSpace();
 
       auto plus_cell =
          plus_space.GetCell(face_info.PlusSide().GetCellIndex());

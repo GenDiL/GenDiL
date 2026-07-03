@@ -916,10 +916,10 @@ bool TestMFEMGlobalPartition2D()
                "2D global partition boundary record count matches direct builder" ) && ok;
    ok = Check( mixed.GetNumberOfCellFiniteElementSpaces() == 1,
                "2D global partition mixed FES has one cell space" ) && ok;
-   ok = Check( mixed.GetNumberOfInteriorFaceFiniteElementSpaces() == 2 * Geometry::num_faces,
-               "2D global partition mixed FES has conforming and NC face spaces" ) && ok;
-   ok = Check( mixed.GetNumberOfBoundaryFaceFiniteElementSpaces() == Geometry::num_faces,
-               "2D global partition mixed FES has boundary face spaces" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfInteriorFaceParts() == 2 * Geometry::num_faces,
+               "2D global partition mixed FES exposes partition interior face parts" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfBoundaryFaceParts() == Geometry::num_faces,
+               "2D global partition mixed FES exposes partition boundary face parts" ) && ok;
    return ok;
 }
 
@@ -972,10 +972,10 @@ bool TestMFEMGlobalPartition1D()
                "1D global partition boundary record count matches direct builder" ) && ok;
    ok = Check( mixed.GetNumberOfCellFiniteElementSpaces() == 1,
                "1D global partition mixed FES has one cell space" ) && ok;
-   ok = Check( mixed.GetNumberOfInteriorFaceFiniteElementSpaces() == 2 * Geometry::num_faces,
-               "1D global partition mixed FES has conforming and NC face spaces" ) && ok;
-   ok = Check( mixed.GetNumberOfBoundaryFaceFiniteElementSpaces() == Geometry::num_faces,
-               "1D global partition mixed FES has boundary face spaces" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfInteriorFaceParts() == 2 * Geometry::num_faces,
+               "1D global partition mixed FES exposes partition interior face parts" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfBoundaryFaceParts() == Geometry::num_faces,
+               "1D global partition mixed FES exposes partition boundary face parts" ) && ok;
    return ok;
 }
 
@@ -1031,10 +1031,10 @@ bool TestMFEMGlobalPartition3D()
                "3D global partition boundary record count matches direct builder" ) && ok;
    ok = Check( mixed.GetNumberOfCellFiniteElementSpaces() == 1,
                "3D global partition mixed FES has one cell space" ) && ok;
-   ok = Check( mixed.GetNumberOfInteriorFaceFiniteElementSpaces() == 2 * Geometry::num_faces,
-               "3D global partition mixed FES has conforming and NC face spaces" ) && ok;
-   ok = Check( mixed.GetNumberOfBoundaryFaceFiniteElementSpaces() == Geometry::num_faces,
-               "3D global partition mixed FES has boundary face spaces" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfInteriorFaceParts() == 2 * Geometry::num_faces,
+               "3D global partition mixed FES exposes partition interior face parts" ) && ok;
+   ok = Check( mixed.GetPartition().GetNumberOfBoundaryFaceParts() == Geometry::num_faces,
+               "3D global partition mixed FES exposes partition boundary face parts" ) && ok;
    return ok;
 }
 
@@ -1089,9 +1089,16 @@ bool TestSpecializedAdvectionCompileSpike()
       v[1] = 0.0;
    };
 
-   auto face_space =
-      MakeGlobalInteriorFaceFiniteElementSpace( coarse_fes, fine_fes, connectivity );
-   (void) face_space;
+   auto partition =
+      MakePartition(
+         MakeCellPart( coarse_mesh ),
+         MakeCellPart( fine_mesh ),
+         MakeInteriorFacePart< 0, 1 >( connectivity ) );
+   [[maybe_unused]] auto global_space =
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{ fe, fe },
+         std::tuple{ coarse_restriction, fine_restriction } );
 
    auto face_operator =
       MakeAdvectionFaceOperator< SerialKernelConfiguration >(

@@ -14,32 +14,11 @@
 
 namespace gendil {
 
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetBoundaryFaceOperatorVolumeSpace(
-   const Space& space)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   static_assert(
-      supports_one_sided_face_qdata_v<SpaceType>,
-      "GetBoundaryFaceOperatorVolumeSpace is a one-sided boundary "
-      "compatibility helper and cannot be used with two-space interior face "
-      "finite element spaces.");
-
-   if constexpr (is_face_finite_element_space_v<SpaceType>)
-   {
-      return space.GetMinusFiniteElementSpace();
-   }
-   else
-   {
-      return (space);
-   }
-}
-
 template<
    typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
+   typename FaceDomain,
    typename TrialSpace,
    typename TestSpace,
    typename FaceInfo,
@@ -51,6 +30,7 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
    KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
+   const FaceDomain& face_domain,
    const TrialSpace& trial_space,
    const TestSpace& test_space,
    const FaceInfo& face_info,
@@ -75,7 +55,8 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
 
       ElementContext element_context{
          face_info.MinusSide().GetCellIndex(),
-         trial_space.GetCell(face_info.MinusSide().GetCellIndex())
+         face_domain.GetCellFiniteElementSpace().GetCell(
+            face_info.MinusSide().GetCellIndex())
       };
 
       LocalBoundaryFacetIntegrandOperator(
@@ -101,6 +82,7 @@ template<
    typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
+   typename FaceDomain,
    typename TrialSpace,
    typename TestSpace,
    typename FaceInfo,
@@ -112,6 +94,7 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
    KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
+   const FaceDomain& face_domain,
    const TrialSpace& trial_space,
    const TestSpace& test_space,
    const FaceInfo& face_info,
@@ -131,6 +114,7 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
                      kernel_context,
                      weak_form_context,
                      operator_context,
+                     face_domain,
                      trial_space,
                      test_space,
                      face_info,
@@ -167,33 +151,22 @@ void GenericGlobalBoundaryFacetDomainOperator(
 
    const auto& trial_binding = wf_ctx.template fe_field<TrialName>().space;
    const auto& test_binding  = wf_ctx.template fe_field<TestName>().space;
-   const auto& trial_space =
-      GetBoundaryFaceOperatorVolumeSpace(trial_binding);
-   const auto& test_space =
-      GetBoundaryFaceOperatorVolumeSpace(test_binding);
-   const auto& face_space = face_domain.GetMinusFiniteElementSpace();
-
-   static_assert(
-      std::is_same_v<
-         std::remove_cvref_t<decltype(face_space)>,
-         std::remove_cvref_t<decltype(trial_space)>>,
-      "Global boundary face domains currently require the active trial finite "
-      "element space to match the face-domain finite element space.");
-   static_assert(
-      std::is_same_v<
-         std::remove_cvref_t<decltype(face_space)>,
-         std::remove_cvref_t<decltype(test_space)>>,
-      "Global boundary face domains currently require the active test finite "
-      "element space to match the face-domain finite element space.");
+   const auto& trial_space = trial_binding.GetMinusFiniteElementSpace();
+   const auto& test_space  = test_binding.GetMinusFiniteElementSpace();
 
    constexpr size_t required_shared_mem =
-      global_generic_boundary_facet_required_shared_memory_v<
-         KernelPolicy,
-         std::remove_cvref_t<IntegrationRule>,
-         std::remove_cvref_t<decltype(face_space)>,
-         Integrand,
-         DofsInView,
-         DofsOutView>;
+      Max(
+         generic_operator_integrand_required_shared_memory_v<
+            KernelPolicy,
+            std::remove_cvref_t<IntegrationRule>>,
+         generic_operator_face_read_scratch_requirement_v<
+            KernelPolicy,
+            std::remove_cvref_t<decltype(trial_space)>,
+            DofsInView>,
+         generic_operator_face_write_scratch_requirement_v<
+            KernelPolicy,
+            std::remove_cvref_t<decltype(test_space)>,
+            DofsOutView>);
    constexpr size_t shared_memory_block_size =
       KernelContext<
          KernelPolicy,
@@ -226,6 +199,7 @@ void GenericGlobalBoundaryFacetDomainOperator(
             kernel,
             wf_ctx,
             facet_op_ctx,
+            face_domain,
             trial_space,
             test_space,
             face_info,
@@ -244,7 +218,8 @@ template<
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
-   class FaceSpace,
+   class FacePart,
+   class CellSpace,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -255,29 +230,35 @@ void GenericGlobalBoundaryFaceDomainOperator(
    const BoundaryFaceExecutionBatch<
       DomainName,
       FaceI,
-      FaceSpace>& batch,
+      FacePart,
+      CellSpace>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   const auto& face_space = batch.GetBoundaryFaceFiniteElementSpace();
-   const auto& finite_element_space = batch.GetCellFiniteElementSpace();
    auto batch_ctx =
       MakeRestrictedWeakFormContext<TrialName, TestName>(
          wf_ctx,
          domain_tag,
          batch);
 
+   const auto& trial_binding =
+      batch_ctx.template fe_field<TrialName>().space;
+   const auto& test_binding =
+      batch_ctx.template fe_field<TestName>().space;
+   const auto& trial_space = trial_binding.GetMinusFiniteElementSpace();
+   const auto& test_space = test_binding.GetMinusFiniteElementSpace();
+
    auto dofs_in = MakeReadOnlyElementTensorView<KernelPolicy>(
-      finite_element_space,
+      trial_space,
       dofs_vector_in);
    auto dofs_out = MakeReadWriteElementTensorView<KernelPolicy>(
-      finite_element_space,
+      test_space,
       dofs_vector_out);
 
    GenericGlobalBoundaryFacetDomainOperator<KernelPolicy>(
       batch_ctx,
-      face_space,
+      batch,
       weak_form,
       integration_rule,
       dofs_in,

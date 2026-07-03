@@ -6,7 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/numpoints.hpp"
 
 namespace gendil {

@@ -9,7 +9,7 @@
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Utilities/MathHelperFunctions/min.hpp"
 #include "elementdof.hpp"
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {
@@ -430,14 +430,14 @@ constexpr decltype(auto) GetQuadraturePointContainerVolumeSpace(
       "boundary compatibility helper. Two-space interior face finite element "
       "spaces require side-specific quadrature-point containers.");
 
-   if constexpr (is_boundary_face_finite_element_space_v<SpaceType>)
+   if constexpr (is_boundary_face_field_binding_v<SpaceType>)
    {
       return space.GetMinusFiniteElementSpace();
    }
-   else if constexpr (is_interior_face_finite_element_space_v<SpaceType>)
+   else if constexpr (is_interior_face_field_binding_v<SpaceType>)
    {
       static_assert(
-         is_same_space_interior_face_finite_element_space_v<SpaceType> ||
+         is_same_space_interior_face_field_binding_v<SpaceType> ||
          std::is_same_v<
             std::remove_cvref_t<decltype(space.GetMinusFiniteElementSpace())>,
             std::remove_cvref_t<decltype(space.GetPlusFiniteElementSpace())>>,

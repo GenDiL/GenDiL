@@ -7,7 +7,7 @@
 #ifdef GENDIL_USE_MFEM
 
 #include <mfem.hpp>
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/Utilities/MemoryManagement/garbagecollector.hpp"
 
 namespace gendil {

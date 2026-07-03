@@ -7,7 +7,7 @@
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"

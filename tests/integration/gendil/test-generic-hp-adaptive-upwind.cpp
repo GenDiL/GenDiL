@@ -440,13 +440,16 @@ bool TestFacetOnlyCase(
 
    NonconformingCartesianIntermeshFaceConnectivity<2, 2>
       iface({nxL, nyL}, {nxR, nyR});
-   auto face_space =
-      MakeGlobalInteriorFaceFiniteElementSpace(
-         minus_space,
-         plus_space,
-         iface);
+   auto partition =
+      MakePartition(
+         MakeCellPart(meshL),
+         MakeCellPart(meshR),
+         MakeInteriorFacePart<0, 1>(iface));
    auto mixed =
-      MakeMixedFiniteElementSpace(minus_space, plus_space, face_space);
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{fe_minus, fe_plus},
+         std::tuple{L2Restriction{0}, L2Restriction{ndofs_minus}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -575,13 +578,16 @@ bool TestFullCellAndFacetCase(
 
    NonconformingCartesianIntermeshFaceConnectivity<2, 2>
       iface({nxL, nyL}, {nxR, nyR});
-   auto face_space =
-      MakeGlobalInteriorFaceFiniteElementSpace(
-         minus_space,
-         plus_space,
-         iface);
+   auto partition =
+      MakePartition(
+         MakeCellPart(meshL),
+         MakeCellPart(meshR),
+         MakeInteriorFacePart<0, 1>(iface));
    auto mixed =
-      MakeMixedFiniteElementSpace(minus_space, plus_space, face_space);
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{fe_minus, fe_plus},
+         std::tuple{L2Restriction{0}, L2Restriction{ndofs_minus}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
@@ -13,8 +13,8 @@
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sum.hpp"

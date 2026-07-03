@@ -12,9 +12,6 @@
 // A generic high-dimension finite element space inheriting from a Mesh and a FiniteElement.
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 
-// Homogeneous finite element spaces over Cartesian global face meshes.
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
-
 // Lightweight aggregation of homogeneous finite element spaces.
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 

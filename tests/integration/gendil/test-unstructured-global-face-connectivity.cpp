@@ -360,14 +360,37 @@ bool TestNonconformingFaceInfoAndAliases()
 
    Cartesian2DMesh mesh( 1.0, 1.0, 1, 1, Point< 2 >{ 0.0, 0.0 } );
    auto finite_element = MakeLobattoFiniteElement( FiniteElementOrders< 1, 1 >{} );
-   auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
-   auto face_space = MakeGlobalInteriorFaceFiniteElementSpace( fe_space, connectivity );
+   auto partition =
+      MakePartition(
+         MakeCellPart( mesh ),
+         MakeInteriorFacePart< 0, 0 >( connectivity ) );
+   auto mixed =
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{ finite_element },
+         DGDirectSumNumbering{} );
+   auto wf_ctx =
+      MakeWeakFormContext(
+         MakeTrialField<"u">( mixed ),
+         MakeIntegrationDomain<"mesh">( mixed ) );
    using IntegrationRule =
       decltype( MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} ) );
-   [[maybe_unused]] auto mesh_qd =
-      MakeGlobalFacetMeshQuadData< IntegrationRule >( face_space );
-   [[maybe_unused]] auto fe_qd =
-      MakeGlobalFacetFiniteElementQuadData< IntegrationRule >( face_space );
+   ForEachInteriorFaceFiniteElementSpace(
+      wf_ctx,
+      InteriorFacets<"mesh">{},
+      [&] ( const auto& batch )
+      {
+         [[maybe_unused]] auto mesh_qd =
+            MakeGlobalFacetMeshQuadData< IntegrationRule >( batch );
+         auto restricted =
+            MakeRestrictedWeakFormContext<"u", "u">(
+               wf_ctx,
+               InteriorFacets<"mesh">{},
+               batch );
+         [[maybe_unused]] auto fe_qd =
+            MakeGlobalFacetFiniteElementQuadData< IntegrationRule >(
+               restricted.template fe_field<"u">().space );
+      } );
 
    std::cout << ( ok ? "PASS" : "FAIL" )
              << ": unstructured nonconforming global face contract\n";

@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainfiniteelementspaceiteration.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontextcommon.hpp"
 
 namespace gendil
@@ -207,37 +208,36 @@ constexpr auto MakeSelectedFiniteElementFacetQuadDataForSide(
       static_cast<QD>(qd));
 }
 
-template<class IntegrationRule, class FaceSpace>
-constexpr auto MakeGlobalFacetMeshQuadData(const FaceSpace& face_space)
+template<class IntegrationRule, class FaceDomain>
+constexpr auto MakeGlobalFacetMeshQuadData(const FaceDomain& face_domain)
 {
-   using Space = std::remove_cvref_t<FaceSpace>;
-   using Mesh = std::remove_cvref_t<decltype(face_space.GetFaceMesh())>;
+   using Domain = std::remove_cvref_t<FaceDomain>;
+   using Mesh = std::remove_cvref_t<decltype(face_domain.GetFaceMesh())>;
    static_assert(
       global_face_mesh_has_static_face_family_v<Mesh>,
-      "MakeFacetOperatorContext requires a face finite element space whose "
+      "MakeFacetOperatorContext requires a global face execution domain whose "
       "concrete face mesh type statically fixes its minus/plus local face "
-      "family. Tuple face meshes must be normalized into tuple face finite "
-      "element spaces before global facet execution.");
+      "family.");
 
    constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
    constexpr size_t PlusI = global_face_mesh_plus_local_face_index_v<Mesh>;
 
-   if constexpr (is_boundary_face_finite_element_space_v<Space>)
+   if constexpr (is_boundary_face_execution_batch_v<Domain>)
    {
       auto minus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, MinusI>(
-            face_space.GetMinusFiniteElementSpace());
+            face_domain.GetCellFiniteElementSpace());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       return BoundaryFacetQData<MinusQD>{ static_cast<MinusQD>(minus_qd) };
    }
-   else if constexpr (is_interior_face_finite_element_space_v<Space>)
+   else if constexpr (is_interior_face_execution_batch_v<Domain>)
    {
       auto minus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, MinusI>(
-            face_space.GetMinusFiniteElementSpace());
+            face_domain.GetMinusCellFiniteElementSpace());
       auto plus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, PlusI>(
-            face_space.GetPlusFiniteElementSpace());
+            face_domain.GetPlusCellFiniteElementSpace());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       using PlusQD = std::remove_cvref_t<decltype(plus_qd)>;
       return InteriorFacetQuadratureData<MinusQD, PlusQD>{
@@ -247,54 +247,51 @@ constexpr auto MakeGlobalFacetMeshQuadData(const FaceSpace& face_space)
    else
    {
       static_assert(
-         dependent_false_v<Space>,
+         dependent_false_v<Domain>,
          "MakeFacetOperatorContext requires a boundary or interior face "
-         "finite element space as its execution face space.");
+         "execution batch.");
    }
 }
 
-template<class IntegrationRule, class FieldSpace>
+template<class IntegrationRule, class FieldBinding>
 constexpr auto MakeGlobalFacetFiniteElementQuadData(
-   const FieldSpace& field_space)
+   const FieldBinding& field_binding)
 {
-   using Field = std::remove_cvref_t<FieldSpace>;
+   using Field = std::remove_cvref_t<FieldBinding>;
 
-   if constexpr (is_boundary_face_finite_element_space_v<Field>)
+   if constexpr (is_boundary_face_field_binding_v<Field>)
    {
-      using Mesh = std::remove_cvref_t<decltype(field_space.GetFaceMesh())>;
+      using Mesh = std::remove_cvref_t<decltype(field_binding.GetFaceMesh())>;
       static_assert(
          global_face_mesh_has_static_face_family_v<Mesh>,
-         "MakeFacetOperatorContext requires a face finite element space whose "
-         "concrete face mesh type statically fixes its minus/plus local face "
-         "family. Tuple face meshes must be normalized into tuple face finite "
-         "element spaces before global facet execution.");
+         "MakeFacetOperatorContext requires a boundary face field binding "
+         "whose concrete face mesh type statically fixes its local face family.");
       constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
       auto minus_qd =
          MakeSelectedFiniteElementFacetQuadDataForSide<
             IntegrationRule,
-            MinusI>(field_space.GetMinusFiniteElementSpace());
+            MinusI>(field_binding.GetMinusFiniteElementSpace());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       return BoundaryFacetQData<MinusQD>{ static_cast<MinusQD>(minus_qd) };
    }
-   else if constexpr (is_interior_face_finite_element_space_v<Field>)
+   else if constexpr (is_interior_face_field_binding_v<Field>)
    {
-      using Mesh = std::remove_cvref_t<decltype(field_space.GetFaceMesh())>;
+      using Mesh = std::remove_cvref_t<decltype(field_binding.GetFaceMesh())>;
       static_assert(
          global_face_mesh_has_static_face_family_v<Mesh>,
-         "MakeFacetOperatorContext requires a face finite element space whose "
-         "concrete face mesh type statically fixes its minus/plus local face "
-         "family. Tuple face meshes must be normalized into tuple face finite "
-         "element spaces before global facet execution.");
+         "MakeFacetOperatorContext requires an interior face field binding "
+         "whose concrete face mesh type statically fixes its minus/plus local "
+         "face family.");
       constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
       constexpr size_t PlusI = global_face_mesh_plus_local_face_index_v<Mesh>;
       auto minus_qd =
          MakeSelectedFiniteElementFacetQuadDataForSide<
             IntegrationRule,
-            MinusI>(field_space.GetMinusFiniteElementSpace());
+            MinusI>(field_binding.GetMinusFiniteElementSpace());
       auto plus_qd =
          MakeSelectedFiniteElementFacetQuadDataForSide<
             IntegrationRule,
-            PlusI>(field_space.GetPlusFiniteElementSpace());
+            PlusI>(field_binding.GetPlusFiniteElementSpace());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       using PlusQD = std::remove_cvref_t<decltype(plus_qd)>;
       return InteriorFacetQuadratureData<MinusQD, PlusQD>{
@@ -306,19 +303,19 @@ constexpr auto MakeGlobalFacetFiniteElementQuadData(
       static_assert(
          dependent_false_v<Field>,
          "MakeGlobalFacetFiniteElementQuadData requires a boundary or "
-         "interior face finite element space field binding. Volume finite "
+         "interior face field binding. Volume finite "
          "element spaces are valid only in the local/cell-owned facet path.");
    }
 }
 
-template<class IR, class DomainEntry, class FaceSpace>
+template<class IR, class DomainEntry, class FaceDomain>
 constexpr auto domain_entry_to_global_facet_mesh_qd_tuple(
    const DomainEntry& e,
-   const FaceSpace& face_space)
+   const FaceDomain& face_domain)
 {
    using Key = typename DomainEntry::key_type;
    (void)e;
-   auto qd = MakeGlobalFacetMeshQuadData<IR>(face_space);
+   auto qd = MakeGlobalFacetMeshQuadData<IR>(face_domain);
    using QD = std::remove_cvref_t<decltype(qd)>;
    return std::tuple{ Entry<Key, QD>{ static_cast<QD>(qd) } };
 }
@@ -371,26 +368,24 @@ constexpr auto MakeCellOnlyOperatorContext(
       };
 }
 
-template<class WFContext, class IntegrationRule, class FaceSpace>
+template<class WFContext, class IntegrationRule, class FaceDomain>
 constexpr auto MakeFacetOperatorContext(
    const WFContext& wf_ctx,
    const IntegrationRule& ir,
-   const FaceSpace& face_space)
+   const FaceDomain& face_domain)
 {
    // Invariant: callers pass a restricted global facet context containing the
    // selected face-domain entry and FE fields already restricted to compatible
-   // face FES bindings. Mapping every remaining DomainKey to `face_space`
+   // field face bindings. Mapping every remaining DomainKey to `face_domain`
    // qdata is safe only under that restricted-context invariant; unrestricted
    // weak-form contexts must not call this builder.
    using IR = std::remove_cvref_t<IntegrationRule>;
-   using Mesh = std::remove_cvref_t<decltype(face_space.GetFaceMesh())>;
+   using Mesh = std::remove_cvref_t<decltype(face_domain.GetFaceMesh())>;
    static_assert(
       global_face_mesh_has_static_face_family_v<Mesh>,
-      "MakeFacetOperatorContext(wf_ctx, integration_rule, face_space, "
-      ") requires a face finite element space whose concrete face mesh type "
-      "statically fixes the minus/plus local face family. Tuple face meshes "
-      "must be normalized into tuple face finite element spaces before "
-      "global facet execution.");
+      "MakeFacetOperatorContext(wf_ctx, integration_rule, face_domain) "
+      "requires a global face execution domain whose concrete face mesh type "
+      "statically fixes the minus/plus local face family.");
 
    auto face_ir = GetFaceIntegrationRules(IR{});
 
@@ -400,7 +395,7 @@ constexpr auto MakeFacetOperatorContext(
          return std::tuple_cat(
             domain_entry_to_global_facet_mesh_qd_tuple<IR>(
                dom_entries,
-               face_space)...);
+               face_domain)...);
       },
       wf_ctx.domains.entries
    );

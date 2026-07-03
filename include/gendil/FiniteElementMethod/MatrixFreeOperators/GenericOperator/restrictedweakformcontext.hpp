@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainfiniteelementspaceiteration.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
@@ -37,12 +37,14 @@ struct restricted_execution_batch_traits<
 template<
    StaticString Name,
    size_t FaceI,
-   class BoundaryFaceSpace>
+   class FacePart,
+   class CellSpace>
 struct restricted_execution_batch_traits<
    BoundaryFaceExecutionBatch<
       Name,
       FaceI,
-      BoundaryFaceSpace>>
+      FacePart,
+      CellSpace>>
 {
    static constexpr auto kind = restricted_execution_batch_kind::boundary_face;
    static constexpr size_t index = FaceI;
@@ -51,12 +53,16 @@ struct restricted_execution_batch_traits<
 template<
    StaticString Name,
    size_t FaceI,
-   class InteriorFaceSpace>
+   class FacePart,
+   class MinusCellSpace,
+   class PlusCellSpace>
 struct restricted_execution_batch_traits<
    InteriorFaceExecutionBatch<
       Name,
       FaceI,
-      InteriorFaceSpace>>
+      FacePart,
+      MinusCellSpace,
+      PlusCellSpace>>
 {
    static constexpr auto kind = restricted_execution_batch_kind::interior_face;
    static constexpr size_t index = FaceI;
@@ -106,26 +112,30 @@ constexpr auto MakeRestrictedDomainEntries(
 template<
    StaticString Name,
    size_t FaceI,
-   class InteriorFaceSpace>
+   class FacePart,
+   class MinusCellSpace,
+   class PlusCellSpace>
 constexpr auto MakeRestrictedDomainEntries(
    InteriorFacets<Name>,
    const InteriorFaceExecutionBatch<
       Name,
       FaceI,
-      InteriorFaceSpace>& batch)
+      FacePart,
+      MinusCellSpace,
+      PlusCellSpace>& batch)
 {
    using CellSpace =
       std::remove_cvref_t<decltype(batch.GetMinusCellFiniteElementSpace())>;
    using CellDomain = CellIntegrationDomain<CellSpace>;
-   using FaceSpace = std::remove_cvref_t<InteriorFaceSpace>;
-   using FaceDomain = InteriorFaceIntegrationDomain<FaceSpace>;
+   using FaceDomain =
+      InteriorFaceIntegrationDomain<
+         std::remove_cvref_t<decltype(batch)>>;
    return std::tuple{
       Entry<DomainKey<Name>, CellDomain>{
          MakeRestrictedDomainEntryFromCellSpace(
             batch.GetMinusCellFiniteElementSpace()) },
       Entry<InteriorFaceDomainKey<Name>, FaceDomain>{
-         FaceDomain{
-            FaceSpace{ batch.GetInteriorFaceFiniteElementSpace() } } } };
+         FaceDomain{ std::remove_cvref_t<decltype(batch)>{ batch } } } };
 }
 
 template<StaticString Name, size_t CellI, class CellSpace>
@@ -144,95 +154,90 @@ constexpr auto MakeRestrictedDomainEntries(
 template<
    StaticString Name,
    size_t FaceI,
-   class BoundaryFaceSpace>
+   class FacePart,
+   class CellSpace>
 constexpr auto MakeRestrictedDomainEntries(
    BoundaryFacets<Name>,
    const BoundaryFaceExecutionBatch<
       Name,
       FaceI,
-      BoundaryFaceSpace>& batch)
+      FacePart,
+      CellSpace>& batch)
 {
-   using CellSpace =
+   using SelectedCellSpace =
       std::remove_cvref_t<decltype(batch.GetCellFiniteElementSpace())>;
-   using CellDomain = CellIntegrationDomain<CellSpace>;
-   using FaceSpace = std::remove_cvref_t<BoundaryFaceSpace>;
-   using FaceDomain = BoundaryFaceIntegrationDomain<FaceSpace>;
+   using CellDomain = CellIntegrationDomain<SelectedCellSpace>;
+   using FaceDomain =
+      BoundaryFaceIntegrationDomain<
+         std::remove_cvref_t<decltype(batch)>>;
    return std::tuple{
       Entry<DomainKey<Name>, CellDomain>{
          MakeRestrictedDomainEntryFromCellSpace(
             batch.GetCellFiniteElementSpace()) },
       Entry<BoundaryFaceDomainKey<Name>, FaceDomain>{
-         FaceDomain{
-            FaceSpace{ batch.GetBoundaryFaceFiniteElementSpace() } } } };
+         FaceDomain{ std::remove_cvref_t<decltype(batch)>{ batch } } } };
 }
 
-template<class FieldKey, class FieldFaceSpace, class ExecutionFaceSpace>
-constexpr void ValidateRestrictedGlobalFacetFieldBinding(
-   const FieldFaceSpace& /*field_face_space*/,
-   const ExecutionFaceSpace& /*execution_face_space*/)
+template<class FieldKey, size_t FaceI, class FieldSpace, class Batch>
+constexpr void ValidateInteriorFieldBindingCompatibility(
+   const FieldSpace&,
+   const Batch&)
 {
-   using Field = std::remove_cvref_t<FieldFaceSpace>;
-   using Execution = std::remove_cvref_t<ExecutionFaceSpace>;
-
-   if constexpr (is_boundary_face_finite_element_space_v<Execution>)
+   using Field = std::remove_cvref_t<FieldSpace>;
+   using ExecutionFacePart = typename std::remove_cvref_t<Batch>::face_part_type;
+   static_assert(
+      FaceI < Field::num_interior_face_parts,
+      "FiniteElementField<Name> cannot be restricted to the selected "
+      "InteriorFacets<Name> face batch. The field's MixedFiniteElementSpace "
+      "does not contain the corresponding partition interior face part.");
+   if constexpr (FaceI < Field::num_interior_face_parts)
    {
-      if constexpr (!is_boundary_face_finite_element_space_v<Field>)
-      {
-         static_assert(
-            dependent_false_v<Field>,
-            "FiniteElementField<Name> cannot be restricted to the selected "
-            "BoundaryFacets<Name> face batch. Global facet execution requires "
-            "fields to bind to the corresponding boundary face finite element "
-            "space entry; volume finite element spaces are valid only in the "
-            "local/cell-owned facet path.");
-      }
-      else
-      {
-         static_assert(
-            std::is_same_v<
-               typename Field::face_mesh_type,
-               typename Execution::face_mesh_type>,
-            "FiniteElementField<Name> boundary face finite element space is "
-            "not compatible with the selected BoundaryFacets<Name> execution "
-            "face batch. Stage 1 checks boundary/interior kind and "
-            "face_mesh_type as a static face kind/family compatibility check, "
-            "and relies on shared tuple ordering for batch identity; full "
-            "runtime topology identity is deferred to Partition metadata.");
-      }
-   }
-   else if constexpr (is_interior_face_finite_element_space_v<Execution>)
-   {
-      if constexpr (!is_interior_face_finite_element_space_v<Field>)
-      {
-         static_assert(
-            dependent_false_v<Field>,
-            "FiniteElementField<Name> cannot be restricted to the selected "
-            "InteriorFacets<Name> face batch. Global facet execution requires "
-            "fields to bind to the corresponding interior face finite element "
-            "space entry; volume finite element spaces are valid only in the "
-            "local/cell-owned facet path.");
-      }
-      else
-      {
-         static_assert(
-            std::is_same_v<
-               typename Field::face_mesh_type,
-               typename Execution::face_mesh_type>,
-            "FiniteElementField<Name> interior face finite element space is "
-            "not compatible with the selected InteriorFacets<Name> execution "
-            "face batch. Stage 1 checks boundary/interior kind and "
-            "face_mesh_type as a static face kind/family compatibility check, "
-            "and relies on shared tuple ordering for batch identity; full "
-            "runtime topology identity is deferred to Partition metadata.");
-      }
-   }
-   else
-   {
+      using FieldFacePart =
+         std::tuple_element_t<FaceI, typename Field::interior_face_parts_type>;
       static_assert(
-         dependent_false_v<Execution>,
-         "ValidateRestrictedGlobalFacetFieldBinding requires a boundary or "
-         "interior face finite element space execution batch.");
+         std::is_same_v<FieldFacePart, ExecutionFacePart>,
+         "FiniteElementField<Name> partition interior face part is not "
+         "compatible with the selected InteriorFacets<Name> execution batch. "
+         "Global facet field binding requires the field and execution domain "
+         "to share the same partition face topology at the selected index.");
    }
+   static_assert(
+      std::remove_cvref_t<Batch>::minus_cell_part_index < Field::num_cell_spaces,
+      "FiniteElementField<Name> interior-face minus cell-part index is out "
+      "of bounds for the field's MixedFiniteElementSpace.");
+   static_assert(
+      std::remove_cvref_t<Batch>::plus_cell_part_index < Field::num_cell_spaces,
+      "FiniteElementField<Name> interior-face plus cell-part index is out "
+      "of bounds for the field's MixedFiniteElementSpace.");
+}
+
+template<class FieldKey, size_t FaceI, class FieldSpace, class Batch>
+constexpr void ValidateBoundaryFieldBindingCompatibility(
+   const FieldSpace&,
+   const Batch&)
+{
+   using Field = std::remove_cvref_t<FieldSpace>;
+   using ExecutionFacePart = typename std::remove_cvref_t<Batch>::face_part_type;
+   static_assert(
+      FaceI < Field::num_boundary_face_parts,
+      "FiniteElementField<Name> cannot be restricted to the selected "
+      "BoundaryFacets<Name> face batch. The field's MixedFiniteElementSpace "
+      "does not contain the corresponding partition boundary face part.");
+   if constexpr (FaceI < Field::num_boundary_face_parts)
+   {
+      using FieldFacePart =
+         std::tuple_element_t<FaceI, typename Field::boundary_face_parts_type>;
+      static_assert(
+         std::is_same_v<FieldFacePart, ExecutionFacePart>,
+         "FiniteElementField<Name> partition boundary face part is not "
+         "compatible with the selected BoundaryFacets<Name> execution batch. "
+         "Global facet field binding requires the field and execution domain "
+         "to share the same partition face topology at the selected index.");
+   }
+   static_assert(
+      std::remove_cvref_t<Batch>::cell_part_index < Field::num_cell_spaces,
+      "FiniteElementField<Name> boundary-face cell-part index is out of "
+      "bounds for the field's MixedFiniteElementSpace.");
 }
 
 template<
@@ -260,33 +265,44 @@ constexpr decltype(auto) RestrictFiniteElementFieldSpace(
       }
       else if constexpr (Kind == restricted_execution_batch_kind::interior_face)
       {
-         static_assert(
-            Index < FieldSpaceType::num_interior_face_spaces,
-            "FiniteElementField<Name> cannot be restricted to "
-            "InteriorFacets<Name> face batch Index. Stage 1 requires every "
-            "registered finite element field to be restrictable to every "
-            "selected execution batch.");
-         decltype(auto) selected_space =
-            field_space.template GetInteriorFaceFiniteElementSpace<Index>();
-         ValidateRestrictedGlobalFacetFieldBinding<FieldKey>(
-            selected_space,
-            batch.GetInteriorFaceFiniteElementSpace());
-         return selected_space;
+         ValidateInteriorFieldBindingCompatibility<FieldKey, Index>(
+            field_space,
+            batch);
+         constexpr size_t MinusCellI =
+            std::remove_cvref_t<Batch>::minus_cell_part_index;
+         constexpr size_t PlusCellI =
+            std::remove_cvref_t<Batch>::plus_cell_part_index;
+         const auto& minus_space =
+            field_space.template GetCellFiniteElementSpace<MinusCellI>();
+         const auto& plus_space =
+            field_space.template GetCellFiniteElementSpace<PlusCellI>();
+         using FacePart = typename std::remove_cvref_t<Batch>::face_part_type;
+         using MinusSpace = std::remove_cvref_t<decltype(minus_space)>;
+         using PlusSpace = std::remove_cvref_t<decltype(plus_space)>;
+         return InteriorFaceFieldBinding<
+            FacePart,
+            MinusSpace,
+            PlusSpace>{
+               FacePart{ batch.GetInteriorFacePart() },
+               MinusSpace{ minus_space },
+               PlusSpace{ plus_space } };
       }
       else
       {
-         static_assert(
-            Index < FieldSpaceType::num_boundary_face_spaces,
-            "FiniteElementField<Name> cannot be restricted to "
-            "BoundaryFacets<Name> face batch Index. Stage 1 requires every "
-            "registered finite element field to be restrictable to every "
-            "selected execution batch.");
-         decltype(auto) selected_space =
-            field_space.template GetBoundaryFaceFiniteElementSpace<Index>();
-         ValidateRestrictedGlobalFacetFieldBinding<FieldKey>(
-            selected_space,
-            batch.GetBoundaryFaceFiniteElementSpace());
-         return selected_space;
+         ValidateBoundaryFieldBindingCompatibility<FieldKey, Index>(
+            field_space,
+            batch);
+         constexpr size_t CellI =
+            std::remove_cvref_t<Batch>::cell_part_index;
+         const auto& cell_space =
+            field_space.template GetCellFiniteElementSpace<CellI>();
+         using FacePart = typename std::remove_cvref_t<Batch>::face_part_type;
+         using CellSpace = std::remove_cvref_t<decltype(cell_space)>;
+         return BoundaryFaceFieldBinding<
+            FacePart,
+            CellSpace>{
+               FacePart{ batch.GetBoundaryFacePart() },
+               CellSpace{ cell_space } };
       }
    }
    else if constexpr (is_cell_finite_element_space_v<FieldSpaceType>)
@@ -312,8 +328,8 @@ constexpr decltype(auto) RestrictFiniteElementFieldSpace(
             dependent_false_v<FieldSpaceType>,
             "FiniteElementField<Name> is bound to a volume finite element "
             "space in global facet execution for InteriorFacets<Name> face "
-            "batch Index. Global facet execution requires fields to be "
-            "restricted to the corresponding face finite element space entry. "
+            "batch Index. Global facet execution requires fields to be bound "
+            "to a MixedFiniteElementSpace sharing the selected partition. "
             "Volume finite element spaces are valid only in the "
             "local/cell-owned facet path.");
       }
@@ -323,8 +339,8 @@ constexpr decltype(auto) RestrictFiniteElementFieldSpace(
             dependent_false_v<FieldSpaceType>,
             "FiniteElementField<Name> is bound to a volume finite element "
             "space in global facet execution for BoundaryFacets<Name> face "
-            "batch Index. Global facet execution requires fields to be "
-            "restricted to the corresponding face finite element space entry. "
+            "batch Index. Global facet execution requires fields to be bound "
+            "to a MixedFiniteElementSpace sharing the selected partition. "
             "Volume finite element spaces are valid only in the "
             "local/cell-owned facet path.");
       }

@@ -19,7 +19,7 @@ template<
    typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
-   typename FaceSpace,
+   typename FaceDomain,
    typename TrialMinusSpace,
    typename TrialPlusSpace,
    typename TestMinusSpace,
@@ -35,7 +35,7 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    KernelContext& kernel_context,
    const WeakFormContext& wf_ctx,
    const OperatorContext& op_ctx,
-   const FaceSpace& face_space,
+   const FaceDomain& face_domain,
    const TrialMinusSpace& trial_minus_space,
    const TrialPlusSpace& trial_plus_space,
    const TestMinusSpace& test_minus_space,
@@ -98,11 +98,12 @@ void GenericCanonicalGlobalInteriorChannelOperator(
 
    ElementContext minus_element_context{
       face_info.MinusSide().GetCellIndex(),
-      trial_minus_space.GetCell(face_info.MinusSide().GetCellIndex())
+      face_domain.GetMinusCellFiniteElementSpace().GetCell(
+         face_info.MinusSide().GetCellIndex())
    };
    auto face_context =
       MakeGlobalInteriorFacetContext(
-         face_space,
+         face_domain,
          integrand,
          channels,
          face_info);
@@ -199,18 +200,18 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName  = requirements<Integrand>::test_name;
 
-   const auto& trial_face_space =
+   const auto& trial_binding =
       wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_face_space =
+   const auto& test_binding =
       wf_ctx.template fe_field<TestName>().space;
    const auto& trial_minus_space =
-      trial_face_space.GetMinusFiniteElementSpace();
+      trial_binding.GetMinusFiniteElementSpace();
    const auto& trial_plus_space =
-      trial_face_space.GetPlusFiniteElementSpace();
+      trial_binding.GetPlusFiniteElementSpace();
    const auto& test_minus_space =
-      test_face_space.GetMinusFiniteElementSpace();
+      test_binding.GetMinusFiniteElementSpace();
    const auto& test_plus_space =
-      test_face_space.GetPlusFiniteElementSpace();
+      test_binding.GetPlusFiniteElementSpace();
 
    constexpr size_t required_shared_mem =
       two_space_global_interior_required_shared_memory_v<
@@ -279,7 +280,9 @@ template<
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
-   class FaceSpace,
+   class FacePart,
+   class MinusCellSpace,
+   class PlusCellSpace,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -290,12 +293,13 @@ void GenericGlobalInteriorFaceDomainOperator(
    const InteriorFaceExecutionBatch<
       DomainName,
       FaceI,
-      FaceSpace>& batch,
+      FacePart,
+      MinusCellSpace,
+      PlusCellSpace>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   const auto& face_space = batch.GetInteriorFaceFiniteElementSpace();
    auto batch_ctx =
       MakeRestrictedWeakFormContext<TrialName, TestName>(
          wf_ctx,
@@ -314,27 +318,21 @@ void GenericGlobalInteriorFaceDomainOperator(
       "explicit trace syntax. Use minus(expr), plus(expr), jump(expr), "
       "average(expr), or a trace-aware operator such as upwind(...).");
 
-   static_assert(
-      is_same_space_interior_face_finite_element_space_v<FaceSpace> ||
-      is_two_space_interior_face_finite_element_space_v<FaceSpace>,
-      "GenericGlobalInteriorFaceDomainOperator requires a same-space or "
-      "two-space global interior face finite element space.");
-
-   const auto& trial_face_space =
+   const auto& trial_binding =
       batch_ctx.template fe_field<TrialName>().space;
-   const auto& test_face_space =
+   const auto& test_binding =
       batch_ctx.template fe_field<TestName>().space;
    const auto& trial_minus_space =
-      trial_face_space.GetMinusFiniteElementSpace();
+      trial_binding.GetMinusFiniteElementSpace();
    const auto& trial_plus_space =
-      trial_face_space.GetPlusFiniteElementSpace();
+      trial_binding.GetPlusFiniteElementSpace();
    const auto& test_minus_space =
-      test_face_space.GetMinusFiniteElementSpace();
+      test_binding.GetMinusFiniteElementSpace();
    const auto& test_plus_space =
-      test_face_space.GetPlusFiniteElementSpace();
+      test_binding.GetPlusFiniteElementSpace();
 
    ValidateNonconformingGlobalInteriorFacetTransformSupport<
-      FaceSpace,
+      std::remove_cvref_t<decltype(batch)>,
       std::remove_cvref_t<decltype(trial_minus_space)>,
       std::remove_cvref_t<decltype(trial_plus_space)>,
       std::remove_cvref_t<decltype(test_minus_space)>,
@@ -355,7 +353,7 @@ void GenericGlobalInteriorFaceDomainOperator(
 
    GenericCanonicalGlobalInteriorFacetDomainOperator<KernelPolicy>(
       batch_ctx,
-      face_space,
+      batch,
       weak_form,
       integration_rule,
       dofs_in_minus,

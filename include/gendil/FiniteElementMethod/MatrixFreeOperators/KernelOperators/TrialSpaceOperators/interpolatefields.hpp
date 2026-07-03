@@ -7,7 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontext.hpp"
@@ -362,7 +362,7 @@ constexpr decltype(auto) GetMinusFacetFieldVolumeSpace(const Space& space)
 {
    using SpaceType = std::remove_cvref_t<Space>;
 
-   if constexpr (is_face_finite_element_space_v<SpaceType>)
+   if constexpr (is_face_field_binding_v<SpaceType>)
    {
       return space.GetMinusFiniteElementSpace();
    }
@@ -378,17 +378,16 @@ constexpr decltype(auto) GetPlusFacetFieldVolumeSpace(const Space& space)
 {
    using SpaceType = std::remove_cvref_t<Space>;
    static_assert(
-      !is_boundary_face_finite_element_space_v<SpaceType>,
+      !is_boundary_face_field_binding_v<SpaceType>,
       "Plus-side finite element field interpolation is not defined for "
-      "boundary face finite element spaces.");
+      "boundary face field bindings.");
 
-   if constexpr (is_face_finite_element_space_v<SpaceType>)
+   if constexpr (is_face_field_binding_v<SpaceType>)
    {
       static_assert(
-         is_interior_face_finite_element_space_v<SpaceType>,
+         is_interior_face_field_binding_v<SpaceType>,
          "Plus-side finite element field interpolation requires an interior "
-         "face finite element space or a homogeneous volume finite element "
-         "space.");
+         "face field binding or a homogeneous volume finite element space.");
       return space.GetPlusFiniteElementSpace();
    }
    else
@@ -397,15 +396,15 @@ constexpr decltype(auto) GetPlusFacetFieldVolumeSpace(const Space& space)
    }
 }
 
-template<class FaceContext, class FaceSpace, class QDataWrapper>
+template<class FaceContext, class FieldSpace, class QDataWrapper>
 GENDIL_HOST_DEVICE
 constexpr auto MakeMinusFacetFieldBinding(
    const FaceContext& face_info,
-   const FaceSpace& face_space,
+   const FieldSpace& field_space,
    const QDataWrapper& qdata_wrapper)
 {
    decltype(auto) volume_space =
-      GetMinusFacetFieldVolumeSpace(face_space);
+      GetMinusFacetFieldVolumeSpace(field_space);
    decltype(auto) qdata = qdata_wrapper.MinusSide();
 
    using FaceSide = std::remove_cvref_t<decltype(face_info.MinusSide())>;
@@ -419,15 +418,15 @@ constexpr auto MakeMinusFacetFieldBinding(
    };
 }
 
-template<class FaceContext, class FaceSpace, class QDataWrapper>
+template<class FaceContext, class FieldSpace, class QDataWrapper>
 GENDIL_HOST_DEVICE
 constexpr auto MakePlusFacetFieldBinding(
    const FaceContext& face_info,
-   const FaceSpace& face_space,
+   const FieldSpace& field_space,
    const QDataWrapper& qdata_wrapper)
 {
    decltype(auto) volume_space =
-      GetPlusFacetFieldVolumeSpace(face_space);
+      GetPlusFacetFieldVolumeSpace(field_space);
    decltype(auto) qdata = qdata_wrapper.PlusSide();
 
    using FaceSide = std::remove_cvref_t<decltype(face_info.PlusSide())>;

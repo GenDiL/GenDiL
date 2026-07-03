@@ -53,6 +53,56 @@ void FillPattern(VectorType& x)
    }
 }
 
+template<class Mesh, class FiniteElement, class InteriorFaces>
+auto MakeInteriorGlobalMixedSpace(
+   const Mesh& mesh,
+   const FiniteElement& finite_element,
+   const InteriorFaces& interior_faces)
+{
+   auto partition =
+      MakePartition(
+         MakeCellPart(mesh),
+         MakeInteriorFacePart<0, 0>(interior_faces));
+   return MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{finite_element},
+      DGDirectSumNumbering{});
+}
+
+template<class Mesh, class FiniteElement, class BoundaryFaces>
+auto MakeBoundaryGlobalMixedSpace(
+   const Mesh& mesh,
+   const FiniteElement& finite_element,
+   const BoundaryFaces& boundary_faces)
+{
+   auto partition =
+      MakePartition(
+         MakeCellPart(mesh),
+         MakeBoundaryFacePart<0>(boundary_faces));
+   return MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{finite_element},
+      DGDirectSumNumbering{});
+}
+
+template<class Mesh, class FiniteElement, class InteriorFaces, class BoundaryFaces>
+auto MakeInteriorBoundaryGlobalMixedSpace(
+   const Mesh& mesh,
+   const FiniteElement& finite_element,
+   const InteriorFaces& interior_faces,
+   const BoundaryFaces& boundary_faces)
+{
+   auto partition =
+      MakePartition(
+         MakeCellPart(mesh),
+         MakeInteriorFacePart<0, 0>(interior_faces),
+         MakeBoundaryFacePart<0>(boundary_faces));
+   return MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{finite_element},
+      DGDirectSumNumbering{});
+}
+
 template <typename VectorType>
 bool CheckClose(
    const char* label,
@@ -184,19 +234,18 @@ bool TestContextStorage()
    CartesianMesh<Dim> mesh({n, n}, {h, h}, {0.0, 0.0}, false);
    FiniteElementOrders<1, 1> orders;
    auto finite_element = MakeLobattoFiniteElement(orders);
-   auto fe_space = MakeFiniteElementSpace(mesh, finite_element);
 
    auto interior_faces =
       MakeCartesianInteriorFaceConnectivity<Dim>({n, n});
    auto boundary_faces =
       MakeCartesianBoundaryFaceConnectivity<Dim>({n, n});
 
-   auto interior_face_fes =
-      MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
-   auto boundary_face_fes =
-      MakeGlobalBoundaryFaceFiniteElementSpace(fe_space, boundary_faces);
    auto singleton_global_fes =
-      MakeMixedFiniteElementSpace(fe_space, interior_face_fes, boundary_face_fes);
+      MakeInteriorBoundaryGlobalMixedSpace(
+         mesh,
+         finite_element,
+         interior_faces,
+         boundary_faces);
 
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(singleton_global_fes),
@@ -374,10 +423,8 @@ bool TestInteriorTwoCellSigns()
 
    auto interior_faces =
       MakeCartesianInteriorFaceConnectivity<1>({n});
-   auto interior_face_fes =
-      MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
    auto singleton_global_fes =
-      MakeMixedFiniteElementSpace(fe_space, interior_face_fes);
+      MakeInteriorGlobalMixedSpace(mesh, finite_element, interior_faces);
 
    auto global_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(singleton_global_fes),
@@ -504,16 +551,16 @@ bool TestDispatchIndependence()
    auto boundary_faces =
       MakeCartesianBoundaryFaceConnectivity<Dim>({nx, ny});
 
-   auto interior_face_fes =
-      MakeGlobalInteriorFaceFiniteElementSpace(fe_space, interior_faces);
-   auto boundary_face_fes =
-      MakeGlobalBoundaryFaceFiniteElementSpace(fe_space, boundary_faces);
    auto interior_global_fes =
-      MakeMixedFiniteElementSpace(fe_space, interior_face_fes);
+      MakeInteriorGlobalMixedSpace(mesh, finite_element, interior_faces);
    auto boundary_global_fes =
-      MakeMixedFiniteElementSpace(fe_space, boundary_face_fes);
+      MakeBoundaryGlobalMixedSpace(mesh, finite_element, boundary_faces);
    auto both_global_fes =
-      MakeMixedFiniteElementSpace(fe_space, interior_face_fes, boundary_face_fes);
+      MakeInteriorBoundaryGlobalMixedSpace(
+         mesh,
+         finite_element,
+         interior_faces,
+         boundary_faces);
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),

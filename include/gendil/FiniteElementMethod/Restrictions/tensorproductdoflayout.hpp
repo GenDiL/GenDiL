@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/multiindex.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"

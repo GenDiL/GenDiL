@@ -159,14 +159,14 @@ consteval bool IsScalarL2OrH1ValueGradientSpace()
 }
 
 template<
-   class FaceSpace,
+   class FaceDomain,
    class TrialMinusSpace,
    class TrialPlusSpace,
    class TestMinusSpace,
    class TestPlusSpace>
 consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
 {
-   using FaceMesh = typename std::remove_cvref_t<FaceSpace>::face_mesh_type;
+   using FaceMesh = typename std::remove_cvref_t<FaceDomain>::face_mesh_type;
    using FaceInfo = typename FaceMesh::face_info_type;
 
    if constexpr (

@@ -9,7 +9,6 @@
 #include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
 #include "gendil/Meshes/partition.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
-#include "gendil/FiniteElementMethod/globalfacefiniteelementspace.hpp"
 
 #include <tuple>
 #include <type_traits>
@@ -17,23 +16,24 @@
 
 namespace gendil {
 
-template<class CellSpacesTuple, class InteriorFaceSpacesTuple, class BoundaryFaceSpacesTuple>
+template<class CellSpacesTuple, class Partition>
 struct MixedFiniteElementSpace
 {
    using cell_spaces_type = CellSpacesTuple;
-   using interior_face_spaces_type = InteriorFaceSpacesTuple;
-   using boundary_face_spaces_type = BoundaryFaceSpacesTuple;
+   using partition_type = Partition;
+   using cell_parts_type = typename Partition::cell_parts_type;
+   using interior_face_parts_type = typename Partition::interior_face_parts_type;
+   using boundary_face_parts_type = typename Partition::boundary_face_parts_type;
 
    static constexpr size_t num_cell_spaces =
       std::tuple_size_v<std::remove_cvref_t<CellSpacesTuple>>;
-   static constexpr size_t num_interior_face_spaces =
-      std::tuple_size_v<std::remove_cvref_t<InteriorFaceSpacesTuple>>;
-   static constexpr size_t num_boundary_face_spaces =
-      std::tuple_size_v<std::remove_cvref_t<BoundaryFaceSpacesTuple>>;
+   static constexpr size_t num_interior_face_parts =
+      Partition::num_interior_face_parts;
+   static constexpr size_t num_boundary_face_parts =
+      Partition::num_boundary_face_parts;
 
    CellSpacesTuple cell_spaces;
-   InteriorFaceSpacesTuple interior_face_spaces;
-   BoundaryFaceSpacesTuple boundary_face_spaces;
+   Partition partition;
 
    GENDIL_HOST_DEVICE
    constexpr const CellSpacesTuple& CellSpaces() const
@@ -42,15 +42,27 @@ struct MixedFiniteElementSpace
    }
 
    GENDIL_HOST_DEVICE
-   constexpr const InteriorFaceSpacesTuple& InteriorFaceSpaces() const
+   constexpr const Partition& GetPartition() const
    {
-      return interior_face_spaces;
+      return partition;
    }
 
    GENDIL_HOST_DEVICE
-   constexpr const BoundaryFaceSpacesTuple& BoundaryFaceSpaces() const
+   constexpr decltype(auto) CellParts() const
    {
-      return boundary_face_spaces;
+      return partition.CellParts();
+   }
+
+   GENDIL_HOST_DEVICE
+   constexpr decltype(auto) InteriorFaceParts() const
+   {
+      return partition.InteriorFaceParts();
+   }
+
+   GENDIL_HOST_DEVICE
+   constexpr decltype(auto) BoundaryFaceParts() const
+   {
+      return partition.BoundaryFaceParts();
    }
 
    GENDIL_HOST_DEVICE
@@ -59,37 +71,11 @@ struct MixedFiniteElementSpace
       return num_cell_spaces;
    }
 
-   GENDIL_HOST_DEVICE
-   constexpr size_t GetNumberOfInteriorFaceFiniteElementSpaces() const
-   {
-      return num_interior_face_spaces;
-   }
-
-   GENDIL_HOST_DEVICE
-   constexpr size_t GetNumberOfBoundaryFaceFiniteElementSpaces() const
-   {
-      return num_boundary_face_spaces;
-   }
-
    template<size_t I>
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) GetCellFiniteElementSpace() const
    {
       return std::get<I>(cell_spaces);
-   }
-
-   template<size_t I>
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) GetInteriorFaceFiniteElementSpace() const
-   {
-      return std::get<I>(interior_face_spaces);
-   }
-
-   template<size_t I>
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) GetBoundaryFaceFiniteElementSpace() const
-   {
-      return std::get<I>(boundary_face_spaces);
    }
 
    template<class Fn>
@@ -101,28 +87,6 @@ struct MixedFiniteElementSpace
             (fn(spaces), ...);
          },
          cell_spaces);
-   }
-
-   template<class Fn>
-   constexpr void ForEachInteriorFaceFiniteElementSpace(Fn&& fn) const
-   {
-      std::apply(
-         [&] (const auto&... spaces)
-         {
-            (fn(spaces), ...);
-         },
-         interior_face_spaces);
-   }
-
-   template<class Fn>
-   constexpr void ForEachBoundaryFaceFiniteElementSpace(Fn&& fn) const
-   {
-      std::apply(
-         [&] (const auto&... spaces)
-         {
-            (fn(spaces), ...);
-         },
-         boundary_face_spaces);
    }
 
    Integer GetNumberOfFiniteElements() const
@@ -148,20 +112,20 @@ struct MixedFiniteElementSpace
    Integer GetNumberOfInteriorFaces() const
    {
       return SumMixedFiniteElementSpaceCounts(
-         interior_face_spaces,
-         [] (const auto& face_space)
+         InteriorFaceParts(),
+         [] (const auto& face_part)
          {
-            return GetConcreteFaceMeshNumberOfFaces(face_space.GetFaceMesh());
+            return GetConcreteFaceMeshNumberOfFaces(face_part.face_mesh);
          });
    }
 
    Integer GetNumberOfBoundaryFaces() const
    {
       return SumMixedFiniteElementSpaceCounts(
-         boundary_face_spaces,
-         [] (const auto& face_space)
+         BoundaryFaceParts(),
+         [] (const auto& face_part)
          {
-            return GetConcreteFaceMeshNumberOfFaces(face_space.GetFaceMesh());
+            return GetConcreteFaceMeshNumberOfFaces(face_part.face_mesh);
          });
    }
 };
@@ -169,12 +133,11 @@ struct MixedFiniteElementSpace
 template<class T>
 struct is_mixed_finite_element_space : std::false_type {};
 
-template<class CellSpacesTuple, class InteriorFaceSpacesTuple, class BoundaryFaceSpacesTuple>
+template<class CellSpacesTuple, class Partition>
 struct is_mixed_finite_element_space<
    MixedFiniteElementSpace<
       CellSpacesTuple,
-      InteriorFaceSpacesTuple,
-      BoundaryFaceSpacesTuple>> : std::true_type {};
+      Partition>> : std::true_type {};
 
 template<class T>
 inline constexpr bool is_mixed_finite_element_space_v =
@@ -194,9 +157,7 @@ inline constexpr bool is_cell_finite_element_space_v =
 
 template<class T>
 inline constexpr Integer mixed_finite_element_space_classification_count_v =
-   static_cast<Integer>(is_cell_finite_element_space_v<T>) +
-   static_cast<Integer>(is_interior_face_finite_element_space_v<T>) +
-   static_cast<Integer>(is_boundary_face_finite_element_space_v<T>);
+   static_cast<Integer>(is_cell_finite_element_space_v<T>);
 
 template<class T>
 consteval void ValidateMixedFiniteElementSpaceArgument()
@@ -207,24 +168,13 @@ consteval void ValidateMixedFiniteElementSpaceArgument()
    static_assert(
       num_categories > 0,
       "MakeMixedFiniteElementSpace: every argument must be a cell finite "
-      "element space, an interior face finite element space, or a boundary "
-      "face finite element space.");
+      "element space. Partition-owned face meshes are selected through "
+      "MakeMixedFiniteElementSpace(partition, ...), not persistent face "
+      "finite element spaces.");
    static_assert(
       num_categories < 2,
       "MakeMixedFiniteElementSpace: every argument must classify as exactly "
       "one supported finite element space category.");
-}
-
-template<class FaceMesh>
-Integer GetConcreteFaceMeshNumberOfFaces(const FaceMesh& face_mesh)
-{
-   static_assert(
-      !is_tuple_v<FaceMesh>,
-      "MixedFiniteElementSpace expects each face finite element space to own "
-      "one concrete face mesh. Tuple face meshes must be normalized into "
-      "tuple face finite element spaces by the face FES factory and then "
-      "flattened by MakeMixedFiniteElementSpace.");
-   return face_mesh.GetNumberOfFaces();
 }
 
 template<class Tuple, class CountFn>
@@ -238,6 +188,17 @@ Integer SumMixedFiniteElementSpaceCounts(const Tuple& tuple, CountFn&& count_fn)
       },
       tuple);
    return total;
+}
+
+template<class FaceMesh>
+Integer GetConcreteFaceMeshNumberOfFaces(const FaceMesh& face_mesh)
+{
+   static_assert(
+      !is_tuple_v<FaceMesh>,
+      "MixedFiniteElementSpace expects each partition face part to own one "
+      "concrete face mesh. Tuple face meshes must be expanded by the "
+      "Partition face-part factory.");
+   return face_mesh.GetNumberOfFaces();
 }
 
 template<class T>
@@ -268,86 +229,57 @@ constexpr auto as_mixed_cell_space_tuple(T&& arg)
    }
 }
 
-template<class T>
-constexpr auto as_mixed_interior_face_space_tuple(T&& arg)
-{
-   using Arg = std::remove_cvref_t<T>;
+namespace details {
 
-   if constexpr (is_tuple_v<Arg>)
-   {
-      return std::apply(
-         [] (auto&&... entries)
-         {
-            return std::tuple_cat(
-               as_mixed_interior_face_space_tuple(
-                  std::forward<decltype(entries)>(entries))...);
-         },
-         std::forward<T>(arg));
-   }
-   else if constexpr (is_interior_face_finite_element_space_v<T>)
-   {
-      ValidateMixedFiniteElementSpaceArgument<Arg>();
-      return std::make_tuple(std::forward<T>(arg));
-   }
-   else
-   {
-      ValidateMixedFiniteElementSpaceArgument<Arg>();
-      return std::tuple{};
-   }
+template<class Space>
+constexpr auto MakeCellPartFromFiniteElementSpace(const Space& space)
+{
+   using Mesh = typename std::remove_cvref_t<Space>::mesh_type;
+   return MakeCellPart(static_cast<const Mesh&>(space));
 }
 
-template<class T>
-constexpr auto as_mixed_boundary_face_space_tuple(T&& arg)
+template<class CellSpacesTuple, size_t... I>
+constexpr auto MakeCellOnlyPartitionFromSpacesImpl(
+   const CellSpacesTuple& cell_spaces,
+   std::index_sequence<I...>)
 {
-   using Arg = std::remove_cvref_t<T>;
-
-   if constexpr (is_tuple_v<Arg>)
-   {
-      return std::apply(
-         [] (auto&&... entries)
-         {
-            return std::tuple_cat(
-               as_mixed_boundary_face_space_tuple(
-                  std::forward<decltype(entries)>(entries))...);
-         },
-         std::forward<T>(arg));
-   }
-   else if constexpr (is_boundary_face_finite_element_space_v<T>)
-   {
-      ValidateMixedFiniteElementSpaceArgument<Arg>();
-      return std::make_tuple(std::forward<T>(arg));
-   }
-   else
-   {
-      ValidateMixedFiniteElementSpaceArgument<Arg>();
-      return std::tuple{};
-   }
+   return MakePartition(
+      MakeCellPartFromFiniteElementSpace(std::get<I>(cell_spaces))...);
 }
+
+template<class CellSpacesTuple>
+constexpr auto MakeCellOnlyPartitionFromSpaces(
+   const CellSpacesTuple& cell_spaces)
+{
+   return MakeCellOnlyPartitionFromSpacesImpl(
+      cell_spaces,
+      std::make_index_sequence<
+         std::tuple_size_v<std::remove_cvref_t<CellSpacesTuple>>>{});
+}
+
+} // namespace details
 
 template<class... Spaces>
 constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
 {
    auto cell_spaces =
       std::tuple_cat(as_mixed_cell_space_tuple(std::forward<Spaces>(spaces))...);
-   auto interior_face_spaces =
-      std::tuple_cat(
-         as_mixed_interior_face_space_tuple(std::forward<Spaces>(spaces))...);
-   auto boundary_face_spaces =
-      std::tuple_cat(
-         as_mixed_boundary_face_space_tuple(std::forward<Spaces>(spaces))...);
 
    static_assert(
       std::tuple_size_v<std::remove_cvref_t<decltype(cell_spaces)>> > 0,
       "MakeMixedFiniteElementSpace: at least one cell finite element space is "
       "required.");
 
+   using CellSpaces = std::remove_cvref_t<decltype(cell_spaces)>;
+   auto partition =
+      details::MakeCellOnlyPartitionFromSpaces(cell_spaces);
+   using Partition = std::remove_cvref_t<decltype(partition)>;
+
    return MixedFiniteElementSpace<
-      std::remove_cvref_t<decltype(cell_spaces)>,
-      std::remove_cvref_t<decltype(interior_face_spaces)>,
-      std::remove_cvref_t<decltype(boundary_face_spaces)>>{
+      CellSpaces,
+      Partition>{
          std::move(cell_spaces),
-         std::move(interior_face_spaces),
-         std::move(boundary_face_spaces) };
+         std::move(partition) };
 }
 
 struct DGDirectSumNumbering {};
@@ -426,67 +358,6 @@ constexpr auto MakeDGDirectSumRestrictionTuple(
    }
 }
 
-template<class CellFESTuple, class InteriorFacePart>
-constexpr auto MakePartitionInteriorFaceFiniteElementSpace(
-   const CellFESTuple& cell_fes_tuple,
-   const InteriorFacePart& face_part)
-{
-   using FacePart = std::remove_cvref_t<InteriorFacePart>;
-   constexpr size_t MinusCellI = FacePart::minus_cell_index;
-   constexpr size_t PlusCellI = FacePart::plus_cell_index;
-
-   if constexpr (MinusCellI == PlusCellI)
-   {
-      return MakeGlobalInteriorFaceFiniteElementSpace(
-         std::get<MinusCellI>(cell_fes_tuple),
-         face_part.face_mesh);
-   }
-   else
-   {
-      return MakeGlobalInteriorFaceFiniteElementSpace(
-         std::get<MinusCellI>(cell_fes_tuple),
-         std::get<PlusCellI>(cell_fes_tuple),
-         face_part.face_mesh);
-   }
-}
-
-template<class CellFESTuple, class InteriorFacePartsTuple, size_t... Is>
-constexpr auto MakePartitionInteriorFaceFiniteElementSpaceTuple(
-   const CellFESTuple& cell_fes_tuple,
-   const InteriorFacePartsTuple& interior_face_parts,
-   std::index_sequence<Is...>)
-{
-   return std::tuple{
-      MakePartitionInteriorFaceFiniteElementSpace(
-         cell_fes_tuple,
-         std::get<Is>(interior_face_parts))... };
-}
-
-template<class CellFESTuple, class BoundaryFacePart>
-constexpr auto MakePartitionBoundaryFaceFiniteElementSpace(
-   const CellFESTuple& cell_fes_tuple,
-   const BoundaryFacePart& face_part)
-{
-   using FacePart = std::remove_cvref_t<BoundaryFacePart>;
-   constexpr size_t CellI = FacePart::cell_index;
-
-   return MakeGlobalBoundaryFaceFiniteElementSpace(
-      std::get<CellI>(cell_fes_tuple),
-      face_part.face_mesh);
-}
-
-template<class CellFESTuple, class BoundaryFacePartsTuple, size_t... Is>
-constexpr auto MakePartitionBoundaryFaceFiniteElementSpaceTuple(
-   const CellFESTuple& cell_fes_tuple,
-   const BoundaryFacePartsTuple& boundary_face_parts,
-   std::index_sequence<Is...>)
-{
-   return std::tuple{
-      MakePartitionBoundaryFaceFiniteElementSpace(
-         cell_fes_tuple,
-         std::get<Is>(boundary_face_parts))... };
-}
-
 } // namespace details
 
 template<class PartitionType, class FiniteElementsTuple, class RestrictionsTuple>
@@ -542,37 +413,17 @@ constexpr auto MakeMixedFiniteElementSpace(
             finite_elements,
             restrictions);
 
-      const auto& interior_face_parts = partition.InteriorFaceParts();
-      using InteriorFaceParts =
-         std::remove_cvref_t<decltype(interior_face_parts)>;
-      auto interior_face_fes_tuple =
-         details::MakePartitionInteriorFaceFiniteElementSpaceTuple(
-            cell_fes_tuple,
-            interior_face_parts,
-            std::make_index_sequence<
-               std::tuple_size_v<InteriorFaceParts>>{});
-
-      const auto& boundary_face_parts = partition.BoundaryFaceParts();
-      using BoundaryFaceParts =
-         std::remove_cvref_t<decltype(boundary_face_parts)>;
-      auto boundary_face_fes_tuple =
-         details::MakePartitionBoundaryFaceFiniteElementSpaceTuple(
-            cell_fes_tuple,
-            boundary_face_parts,
-            std::make_index_sequence<
-               std::tuple_size_v<BoundaryFaceParts>>{});
-
-      return MakeMixedFiniteElementSpace(
-         cell_fes_tuple,
-         interior_face_fes_tuple,
-         boundary_face_fes_tuple);
+      return MixedFiniteElementSpace<
+         std::remove_cvref_t<decltype(cell_fes_tuple)>,
+         Partition>{
+            std::move(cell_fes_tuple),
+            Partition{ partition } };
    }
    else
    {
-      return MixedFiniteElementSpace<std::tuple<>, std::tuple<>, std::tuple<>>{
+      return MixedFiniteElementSpace<std::tuple<>, Partition>{
          {},
-         {},
-         {} };
+         Partition{ partition } };
    }
 }
 
@@ -616,10 +467,9 @@ constexpr auto MakeMixedFiniteElementSpace(
    }
    else
    {
-      return MixedFiniteElementSpace<std::tuple<>, std::tuple<>, std::tuple<>>{
+      return MixedFiniteElementSpace<std::tuple<>, Partition>{
          {},
-         {},
-         {} };
+         Partition{ partition } };
    }
 }
 
@@ -721,20 +571,17 @@ constexpr auto MakeMeshQuadData(const CellIntegrationDomain<Space>&)
 template<
    class IntegrationRule,
    class CellSpacesTuple,
-   class InteriorFaceSpacesTuple,
-   class BoundaryFaceSpacesTuple>
+   class Partition>
 constexpr auto MakeFiniteElementQuadData(
    const MixedFiniteElementSpace<
       CellSpacesTuple,
-      InteriorFaceSpacesTuple,
-      BoundaryFaceSpacesTuple>&)
+      Partition>&)
 {
    static_assert(
       dependent_false_v<
          MixedFiniteElementSpace<
             CellSpacesTuple,
-            InteriorFaceSpacesTuple,
-            BoundaryFaceSpacesTuple>>,
+            Partition>>,
       "MakeFiniteElementQuadData requires a selected homogeneous finite "
       "element space. Mixed finite element spaces must be iterated and "
       "restricted to a selected cell batch before qdata construction.");
@@ -743,25 +590,22 @@ constexpr auto MakeFiniteElementQuadData(
 template<
    class IntegrationRule,
    class CellSpacesTuple,
-   class InteriorFaceSpacesTuple,
-   class BoundaryFaceSpacesTuple>
+   class Partition>
 constexpr auto MakeFiniteElementFacetQuadData(
    const MixedFiniteElementSpace<
       CellSpacesTuple,
-      InteriorFaceSpacesTuple,
-      BoundaryFaceSpacesTuple>&)
+      Partition>&)
 {
    static_assert(
       dependent_false_v<
          MixedFiniteElementSpace<
             CellSpacesTuple,
-            InteriorFaceSpacesTuple,
-            BoundaryFaceSpacesTuple>>,
+            Partition>>,
       "MakeFiniteElementFacetQuadData builds local/cell-owned facet qdata "
       "from a homogeneous volume finite element space. Mixed finite element "
       "spaces must be restricted to a selected cell batch before local facet "
-      "context construction; global facet context construction uses face FES "
-      "bindings and MakeGlobalFacetFiniteElementQuadData.");
+      "context construction; global facet context construction uses "
+      "field-specific face bindings and MakeGlobalFacetFiniteElementQuadData.");
 }
 
 } // namespace gendil

@@ -645,16 +645,16 @@ bool TestGenericOperatorP0JumpResidualCancellation()
 
    NonconformingCartesianIntermeshFaceConnectivity<Dim, MeshFaceIndex>
       iface({nxL, nyL}, {nxR, nyR});
-   auto face_fes =
-      MakeGlobalInteriorFaceFiniteElementSpace(
-         fe_space_L,
-         fe_space_R,
-         iface);
+   auto partition =
+      MakePartition(
+         MakeCellPart(meshL),
+         MakeCellPart(meshR),
+         MakeInteriorFacePart<0, 1>(iface));
    auto mixed =
       MakeMixedFiniteElementSpace(
-         fe_space_L,
-         fe_space_R,
-         face_fes);
+         partition,
+         std::tuple{fe, fe},
+         std::tuple{L2Restriction{0}, L2Restriction{ndofsL}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;

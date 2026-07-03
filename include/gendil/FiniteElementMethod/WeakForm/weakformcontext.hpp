@@ -274,9 +274,8 @@ template<StaticString Name, class T>
 constexpr auto MakeIntegrationDomain(T&& x)
 {
    // Homogeneous finite element spaces are the singleton cell/local-facet case.
-   // Mixed/domain-decomposed finite element spaces may also provide global face
-   // topology. Homogeneous global face execution must be modeled with a
-   // singleton domain-decomposed space containing explicit face FES entries.
+   // Mixed/domain-decomposed finite element spaces provide global face topology
+   // through their Partition face parts.
    auto v = to_view(std::forward<T>(x));
    using V = uncvref_t<decltype(v)>;
 
@@ -545,8 +544,8 @@ template<class E>
 constexpr auto ExpandIntegrationDomainEntry(E&& e)
 {
    // Public integration domains always create a cell/local-facet domain. Mixed
-   // spaces additionally create internal global face-domain entries when the
-   // mixed space actually contains face-space batches.
+   // spaces additionally create internal global face-domain entries from their
+   // partition-owned face parts.
    using Key = entry_key_t<E>;
    using Integration = uncvref_t<decltype(e.value)>;
    using Space = uncvref_t<decltype(std::declval<Integration>().space)>;
@@ -557,8 +556,8 @@ constexpr auto ExpandIntegrationDomainEntry(E&& e)
 
    if constexpr (is_mixed_finite_element_space_v<Space>)
    {
-      if constexpr (Space::num_interior_face_spaces > 0 &&
-                    Space::num_boundary_face_spaces > 0)
+      if constexpr (Space::num_interior_face_parts > 0 &&
+                    Space::num_boundary_face_parts > 0)
       {
          using InteriorDomain = InteriorFaceIntegrationDomain<Space>;
          using BoundaryDomain = BoundaryFaceIntegrationDomain<Space>;
@@ -569,7 +568,7 @@ constexpr auto ExpandIntegrationDomainEntry(E&& e)
             Entry<BoundaryFaceDomainKey<Key::name>, BoundaryDomain>{
                BoundaryDomain{ static_cast<Space>(e.value.space) } } };
       }
-      else if constexpr (Space::num_interior_face_spaces > 0)
+      else if constexpr (Space::num_interior_face_parts > 0)
       {
          using InteriorDomain = InteriorFaceIntegrationDomain<Space>;
          return std::tuple{
@@ -577,7 +576,7 @@ constexpr auto ExpandIntegrationDomainEntry(E&& e)
             Entry<InteriorFaceDomainKey<Key::name>, InteriorDomain>{
                InteriorDomain{ static_cast<Space>(e.value.space) } } };
       }
-      else if constexpr (Space::num_boundary_face_spaces > 0)
+      else if constexpr (Space::num_boundary_face_parts > 0)
       {
          using BoundaryDomain = BoundaryFaceIntegrationDomain<Space>;
          return std::tuple{
@@ -594,7 +593,7 @@ constexpr auto ExpandIntegrationDomainEntry(E&& e)
    {
       // Homogeneous integration domains are cell/local-facet topology only;
       // they do not imply global face topology. Global face singleton cases
-      // must use a singleton domain-decomposed FES with face FES entries.
+      // must use a singleton partition-owned mixed space with face parts.
       return std::tuple{ cell_domain };
    }
 }
