@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticmap.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"

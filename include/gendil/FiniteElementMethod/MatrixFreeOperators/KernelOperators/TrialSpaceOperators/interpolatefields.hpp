@@ -7,10 +7,10 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontext.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 
 namespace gendil

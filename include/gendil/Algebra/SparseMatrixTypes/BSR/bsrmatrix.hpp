@@ -5,5 +5,5 @@
 #pragma once
 
 // Public BSR matrix interface: storage plus Apply support.
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrixstorage.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrixapply.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixapply.hpp"

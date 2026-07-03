@@ -5,5 +5,5 @@
 #pragma once
 
 // Public CSR matrix interface: storage plus Apply support.
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrixstorage.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrixapply.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixapply.hpp"

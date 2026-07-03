@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/gendil.hpp>
-#include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/quadraturepointcontext.hpp>
+#include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontext.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp>
 
 #include <cmath>

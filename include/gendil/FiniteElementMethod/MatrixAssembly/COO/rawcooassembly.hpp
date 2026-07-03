@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"

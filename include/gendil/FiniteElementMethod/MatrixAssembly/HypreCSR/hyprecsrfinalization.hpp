@@ -6,8 +6,8 @@
 
 #ifdef GENDIL_USE_HYPRE
 
-#include "gendil/Algebra/SparseMatrixTypes/hyprecsrmatrix.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/rawcoosortreduce.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrix.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
 
 #include <algorithm>
 #include <limits>

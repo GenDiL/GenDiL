@@ -6,7 +6,7 @@
 
 #ifdef GENDIL_USE_HYPRE
 
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixstorage.hpp"
 #include "gendil/Interfaces/Hypre/hypreparcsrview.hpp"
 #include "gendil/Interfaces/Hypre/hypretypes.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"

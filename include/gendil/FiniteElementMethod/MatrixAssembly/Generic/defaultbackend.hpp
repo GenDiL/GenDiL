@@ -4,10 +4,10 @@
 
 #pragma once
 
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp"
 #ifdef GENDIL_USE_HYPRE
 #include "gendil/Interfaces/Hypre/hypretypes.hpp"
 #endif

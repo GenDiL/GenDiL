@@ -5,8 +5,8 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainfiniteelementspaceiteration.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainfiniteelementspaceiteration.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"

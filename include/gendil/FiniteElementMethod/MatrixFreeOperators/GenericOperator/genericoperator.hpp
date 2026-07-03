@@ -6,8 +6,8 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/localfacetsoperator.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacetsoperator.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/LocalFacetOperator/localfacetsoperator.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/GlobalFacetOperator/globalfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {

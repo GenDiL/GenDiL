@@ -9,7 +9,7 @@
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Utilities/MathHelperFunctions/min.hpp"
 #include "elementdof.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/globalfacefieldbinding.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 
 namespace gendil {

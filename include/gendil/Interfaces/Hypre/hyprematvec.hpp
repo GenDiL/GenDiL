@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/SparseMatrixTypes/hyprecsrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrixstorage.hpp"
 #include "gendil/Interfaces/Hypre/hyprevector.hpp"
 
 namespace gendil

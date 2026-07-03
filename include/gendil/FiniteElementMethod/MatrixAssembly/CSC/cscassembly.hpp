@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcooassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/CSC/cscfinalization.hpp"
 

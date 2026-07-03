@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/SGBSR/sgbsrmatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 

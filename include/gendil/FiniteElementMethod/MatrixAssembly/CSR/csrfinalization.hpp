@@ -5,9 +5,9 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/rawcoosortreduce.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
 
 namespace gendil {
 

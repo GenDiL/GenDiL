@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/SparseMatrixTypes/coomatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixstorage.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
@@ -18,17 +18,17 @@ namespace details
 {
 
 template < typename Matrix >
-void CheckCOOApplyDimensions(
+void CheckCSCApplyDimensions(
    const Matrix & matrix,
    const size_t x_size,
    const size_t y_size )
 {
    GENDIL_VERIFY(
       x_size == static_cast< size_t >( matrix.num_cols ),
-      "Apply(COO backend, ...) input vector has the wrong size." );
+      "Apply(CSC backend, ...) input vector has the wrong size." );
    GENDIL_VERIFY(
       y_size == static_cast< size_t >( matrix.num_rows ),
-      "Apply(COO backend, ...) output vector has the wrong size." );
+      "Apply(CSC backend, ...) output vector has the wrong size." );
 }
 
 template <
@@ -36,7 +36,7 @@ template <
    typename Matrix,
    typename InputValue,
    typename OutputValue >
-void ApplyHostCOOToRawPointers(
+void ApplyHostCSCToRawPointers(
    const Backend &,
    const Matrix & matrix,
    const InputValue * x_data,
@@ -55,29 +55,32 @@ void ApplyHostCOOToRawPointers(
       OutputValueType,
       ComputeType >();
 
-   #pragma omp parallel for
    for ( IndexType row = 0; row < matrix.num_rows; ++row )
    {
       y_data[row] = OutputValue( 0 );
    }
 
-   #pragma omp parallel for
-   for ( IndexType entry = 0; entry < matrix.nnz; ++entry )
+   for ( IndexType col = 0; col < matrix.num_cols; ++col )
    {
-      const IndexType row = matrix.rows[entry];
-      const IndexType col = matrix.cols[entry];
-      const ComputeType contribution =
-         static_cast< ComputeType >( matrix.values[entry] ) *
+      const ComputeType x_col =
          static_cast< ComputeType >( x_data[col] );
-      #pragma omp atomic
-      y_data[row] += static_cast< OutputValueType >( contribution );
+
+      for ( IndexType entry = matrix.col_ptr[col];
+            entry < matrix.col_ptr[col + 1];
+            ++entry )
+      {
+         const IndexType row = matrix.row_ind[entry];
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) * x_col;
+         y_data[row] += static_cast< OutputValueType >( contribution );
+      }
    }
 }
 
 #if defined(GENDIL_USE_DEVICE)
 template < typename ValueType, typename IndexType >
 __global__
-void COODeviceZeroKernel(
+void CSCDeviceZeroKernel(
    ValueType * y,
    const IndexType num_rows )
 {
@@ -102,7 +105,7 @@ template <
    typename InputValue,
    typename OutputValue >
 __global__
-void COODeviceApplyKernel(
+void CSCDeviceApplyKernel(
    const Backend backend,
    const Matrix matrix,
    const InputValue * x,
@@ -125,25 +128,30 @@ void COODeviceApplyKernel(
       static_cast< IndexType >( blockDim.x ) *
       static_cast< IndexType >( gridDim.x );
 
-   for ( IndexType entry =
+   for ( IndexType col =
             static_cast< IndexType >( blockIdx.x ) *
             static_cast< IndexType >( blockDim.x ) +
             static_cast< IndexType >( threadIdx.x );
-         entry < matrix.nnz;
-         entry += stride )
+         col < matrix.num_cols;
+         col += stride )
    {
-      const IndexType row = matrix.rows[entry];
-      const IndexType col = matrix.cols[entry];
-      const ComputeType contribution =
-         static_cast< ComputeType >( matrix.values[entry] ) *
+      const ComputeType x_col =
          static_cast< ComputeType >( x[col] );
-      AtomicAdd(
-         y[row],
-         static_cast< OutputValueType >( contribution ) );
+
+      for ( IndexType entry = matrix.col_ptr[col];
+            entry < matrix.col_ptr[col + 1];
+            ++entry )
+      {
+         const ComputeType contribution =
+            static_cast< ComputeType >( matrix.values[entry] ) * x_col;
+         AtomicAdd(
+            y[matrix.row_ind[entry]],
+            static_cast< OutputValueType >( contribution ) );
+      }
    }
 }
 
-inline dim3 MakeCOOApplyGrid(
+inline dim3 MakeCSCApplyGrid(
    const GlobalIndex work_items,
    const char * error_message )
 {
@@ -164,7 +172,7 @@ template <
    typename Matrix,
    typename InputValue,
    typename OutputValue >
-void ApplyDeviceCOOToRawPointers(
+void ApplyDeviceCSCToRawPointers(
    const Backend & backend,
    const Matrix & matrix,
    const InputValue * x_data,
@@ -176,35 +184,35 @@ void ApplyDeviceCOOToRawPointers(
    if ( matrix.num_rows > 0 )
    {
       const dim3 grid_dim =
-         MakeCOOApplyGrid(
+         MakeCSCApplyGrid(
             static_cast< GlobalIndex >( matrix.num_rows ),
-            "Apply(NativeDeviceCOOBackend, ...) zero launch grid is too large." );
+            "Apply(NativeDeviceCSCBackend, ...) zero launch grid is too large." );
       CheckDeviceLaunchConfiguration( grid_dim, block_dim, 0 );
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
-         "Apply(NativeDeviceCOOBackend, ...): before zero launch" );
-      COODeviceZeroKernel<<< grid_dim, block_dim >>>(
+         "Apply(NativeDeviceCSCBackend, ...): before zero launch" );
+      CSCDeviceZeroKernel<<< grid_dim, block_dim >>>(
          y_data,
          matrix.num_rows );
       GENDIL_CHECK_LAST_DEVICE_LAUNCH(
-         "Apply(NativeDeviceCOOBackend, ...) zero" );
+         "Apply(NativeDeviceCSCBackend, ...) zero" );
    }
 
-   if ( matrix.nnz > 0 )
+   if ( matrix.num_cols > 0 )
    {
       const dim3 grid_dim =
-         MakeCOOApplyGrid(
-            static_cast< GlobalIndex >( matrix.nnz ),
-            "Apply(NativeDeviceCOOBackend, ...) apply launch grid is too large." );
+         MakeCSCApplyGrid(
+            static_cast< GlobalIndex >( matrix.num_cols ),
+            "Apply(NativeDeviceCSCBackend, ...) apply launch grid is too large." );
       CheckDeviceLaunchConfiguration( grid_dim, block_dim, 0 );
       GENDIL_CHECK_NO_PENDING_DEVICE_ERROR(
-         "Apply(NativeDeviceCOOBackend, ...): before apply launch" );
-      COODeviceApplyKernel<<< grid_dim, block_dim >>>(
+         "Apply(NativeDeviceCSCBackend, ...): before apply launch" );
+      CSCDeviceApplyKernel<<< grid_dim, block_dim >>>(
          backend,
          matrix,
          x_data,
          y_data );
       GENDIL_CHECK_LAST_DEVICE_LAUNCH(
-         "Apply(NativeDeviceCOOBackend, ...) apply" );
+         "Apply(NativeDeviceCSCBackend, ...) apply" );
    }
 }
 #endif
@@ -217,12 +225,12 @@ template <
    typename MatrixBackend,
    typename BackendComputeType >
 void Apply(
-   const HostCOOBackend< BackendComputeType > & backend,
-   const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
+   const HostCSCBackend< BackendComputeType > & backend,
+   const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
 {
-   details::CheckCOOApplyDimensions(
+   details::CheckCSCApplyDimensions(
       matrix,
       x.Size(),
       y.Size() );
@@ -230,7 +238,7 @@ void Apply(
    const auto * x_data = x.ReadHostData();
    auto * y_data = y.WriteHostData();
 
-   details::ApplyHostCOOToRawPointers( backend, matrix, x_data, y_data );
+   details::ApplyHostCSCToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
@@ -239,13 +247,13 @@ template <
    typename MatrixBackend,
    typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend< BackendComputeType > & backend,
-   const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
+   const NativeDeviceCSCBackend< BackendComputeType > & backend,
+   const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const Vector & x,
    Vector & y )
 {
 #if defined(GENDIL_USE_DEVICE)
-   details::CheckCOOApplyDimensions(
+   details::CheckCSCApplyDimensions(
       matrix,
       x.Size(),
       y.Size() );
@@ -253,12 +261,12 @@ void Apply(
    const auto * x_data = x.ReadDeviceData();
    auto * y_data = y.WriteDeviceData();
 
-   details::ApplyDeviceCOOToRawPointers( backend, matrix, x_data, y_data );
+   details::ApplyDeviceCSCToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
-      dependent_false_v< COOMatrix< ValueType, IndexType, MatrixBackend > >,
-      "Apply(NativeDeviceCOOBackend, ...) requires GENDIL_USE_DEVICE "
-      "(CUDA or HIP). Use COOMatrix::operator() for CPU execution." );
+      dependent_false_v< CSCMatrix< ValueType, IndexType, MatrixBackend > >,
+      "Apply(NativeDeviceCSCBackend, ...) requires GENDIL_USE_DEVICE "
+      "(CUDA or HIP). Use CSCMatrix::operator() for CPU execution." );
 #endif
 }
 
@@ -269,12 +277,12 @@ template <
    typename MatrixBackend,
    typename BackendComputeType >
 void Apply(
-   const HostCOOBackend< BackendComputeType > & backend,
-   const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
+   const HostCSCBackend< BackendComputeType > & backend,
+   const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
 {
-   details::CheckCOOApplyDimensions(
+   details::CheckCSCApplyDimensions(
       matrix,
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
@@ -282,7 +290,7 @@ void Apply(
    const auto * x_data = x.HostRead();
    auto * y_data = y.HostWrite();
 
-   details::ApplyHostCOOToRawPointers( backend, matrix, x_data, y_data );
+   details::ApplyHostCSCToRawPointers( backend, matrix, x_data, y_data );
 }
 
 template <
@@ -291,13 +299,13 @@ template <
    typename MatrixBackend,
    typename BackendComputeType >
 void Apply(
-   const NativeDeviceCOOBackend< BackendComputeType > & backend,
-   const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
+   const NativeDeviceCSCBackend< BackendComputeType > & backend,
+   const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const mfem::Vector & x,
    mfem::Vector & y )
 {
 #if defined(GENDIL_USE_DEVICE)
-   details::CheckCOOApplyDimensions(
+   details::CheckCSCApplyDimensions(
       matrix,
       static_cast< size_t >( x.Size() ),
       static_cast< size_t >( y.Size() ) );
@@ -305,11 +313,11 @@ void Apply(
    const auto * x_data = x.Read();
    auto * y_data = y.Write();
 
-   details::ApplyDeviceCOOToRawPointers( backend, matrix, x_data, y_data );
+   details::ApplyDeviceCSCToRawPointers( backend, matrix, x_data, y_data );
 #else
    static_assert(
-      dependent_false_v< COOMatrix< ValueType, IndexType, MatrixBackend > >,
-      "Apply(NativeDeviceCOOBackend, mfem::Vector, ...) requires "
+      dependent_false_v< CSCMatrix< ValueType, IndexType, MatrixBackend > >,
+      "Apply(NativeDeviceCSCBackend, mfem::Vector, ...) requires "
       "GENDIL_USE_DEVICE (CUDA or HIP)." );
 #endif
 }
@@ -320,7 +328,7 @@ template <
    typename IndexType,
    typename MatrixBackend >
 template < typename InputVector, typename OutputVector >
-void COOMatrix< ValueType, IndexType, MatrixBackend >::operator()(
+void CSCMatrix< ValueType, IndexType, MatrixBackend >::operator()(
    const InputVector & x,
    OutputVector & y ) const
 {
@@ -336,18 +344,18 @@ template <
    typename OutputVector >
 void Apply(
    const Backend &,
-   const COOMatrix< ValueType, IndexType, MatrixBackend > &,
+   const CSCMatrix< ValueType, IndexType, MatrixBackend > &,
    const InputVector &,
    OutputVector & )
 {
    static_assert(
       dependent_false_v<
          Backend,
-         COOMatrix< ValueType, IndexType, MatrixBackend >,
+         CSCMatrix< ValueType, IndexType, MatrixBackend >,
          InputVector,
          OutputVector >,
-      "No COOMatrix Apply overload is available for this backend/vector "
-      "combination. Include coomatrixapply.hpp and use a supported COO "
+      "No CSCMatrix Apply overload is available for this backend/vector "
+      "combination. Include cscmatrixapply.hpp and use a supported CSC "
       "backend/vector type." );
 }
 

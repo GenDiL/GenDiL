@@ -6,8 +6,8 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainfiniteelementspaceiteration.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/operatorcontextcommon.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainfiniteelementspaceiteration.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontextcommon.hpp"
 
 namespace gendil
 {

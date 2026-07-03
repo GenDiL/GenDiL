@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixstorage.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"

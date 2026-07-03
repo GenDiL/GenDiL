@@ -5,5 +5,5 @@
 #pragma once
 
 // Public COO matrix interface: storage plus Apply support.
-#include "gendil/Algebra/SparseMatrixTypes/coomatrixstorage.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/coomatrixapply.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/coomatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/coomatrixapply.hpp"

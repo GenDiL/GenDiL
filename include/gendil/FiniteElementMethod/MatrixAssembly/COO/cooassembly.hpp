@@ -5,7 +5,7 @@
 #pragma once
 
 // Canonical COO storage and RawCOO host sort/reduce finalization.
-#include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/coofinalization.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcooassembly.hpp"
