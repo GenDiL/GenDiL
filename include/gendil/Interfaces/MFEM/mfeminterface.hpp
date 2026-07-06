@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+#pragma once
 
 // Factories to build gendil unstructured meshes from MFEM meshes.
 #include "meshfactories.hpp"
