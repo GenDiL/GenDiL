@@ -68,6 +68,7 @@ struct AverageExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    AverageExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -134,6 +135,7 @@ std::ostream& operator<<(std::ostream& os, const AverageExpr<Expr>& average)
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto average(const Expr& expr)
 {
    return AverageExpr<Expr>(expr);

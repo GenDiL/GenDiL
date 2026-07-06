@@ -16,6 +16,7 @@ struct MultFieldExpr : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    MultFieldExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -47,6 +48,7 @@ std::ostream& operator<<(std::ostream& os, const MultFieldExpr<LHS, RHS>& prod)
  */
 template < FieldExpr LHS, FieldExpr RHS >
    requires (!is_productexpr_syntax_candidate_v<LHS, RHS>)
+GENDIL_HOST_DEVICE
 auto operator*(const LHS& lhs, const RHS& rhs)
 {
    return MultFieldExpr<LHS, RHS>(lhs, rhs);

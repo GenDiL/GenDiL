@@ -61,6 +61,7 @@ struct DotExpr : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    DotExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -80,6 +81,7 @@ struct DotExpr< LHS, GradientExpr< TestSpace<Name, Shape> > > : FieldBase
    using RHS = GradientExpr< TestSpace<Name, Shape> >;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    DotExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -113,6 +115,7 @@ struct DotExpr< GradientExpr< TestSpace<Name, Shape> >, RHS > : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    DotExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -146,6 +149,7 @@ std::ostream& operator<<(std::ostream& os, const DotExpr<LHS, RHS>& dot)
 }
 
 template < FieldExpr LHS, FieldExpr RHS >
+GENDIL_HOST_DEVICE
 auto dot(const LHS& lhs, const RHS& rhs)
 {
    return DotExpr<LHS, RHS>(lhs, rhs);

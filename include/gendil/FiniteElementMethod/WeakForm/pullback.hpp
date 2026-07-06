@@ -857,38 +857,45 @@ namespace details
 {
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const Expr& expr)
 {
    return minus(expr);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const Expr& expr)
 {
    return plus(expr);
 }
 
+GENDIL_HOST_DEVICE
 inline auto TraceToMinusSide(const ScaleExpr& expr)
 {
    return expr;
 }
 
+GENDIL_HOST_DEVICE
 inline auto TraceToPlusSide(const ScaleExpr& expr)
 {
    return expr;
 }
 
+GENDIL_HOST_DEVICE
 inline auto TraceToMinusSide(const Normal& expr)
 {
    return expr;
 }
 
+GENDIL_HOST_DEVICE
 inline auto TraceToPlusSide(const Normal& expr)
 {
    return expr;
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const MinusTraceExpr<Expr>&)
 {
    static_assert(
@@ -899,6 +906,7 @@ auto TraceToMinusSide(const MinusTraceExpr<Expr>&)
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const PlusTraceExpr<Expr>&)
 {
    static_assert(
@@ -909,6 +917,7 @@ auto TraceToMinusSide(const PlusTraceExpr<Expr>&)
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const MinusTraceExpr<Expr>&)
 {
    static_assert(
@@ -919,6 +928,7 @@ auto TraceToPlusSide(const MinusTraceExpr<Expr>&)
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const PlusTraceExpr<Expr>&)
 {
    static_assert(
@@ -929,22 +939,25 @@ auto TraceToPlusSide(const PlusTraceExpr<Expr>&)
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const NegExpr<Expr>& expr)
 {
    return -TraceToMinusSide(expr.expr);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const NegExpr<Expr>& expr)
 {
    return -TraceToPlusSide(expr.expr);
 }
 
 template<FieldExpr Head, FieldExpr... Tail>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const SumExpr<Head, Tail...>& expr)
 {
    return std::apply(
-      [] (const auto&... terms)
+      [] GENDIL_HOST_DEVICE (const auto&... terms)
       {
          return (TraceToMinusSide(terms) + ...);
       },
@@ -952,10 +965,11 @@ auto TraceToMinusSide(const SumExpr<Head, Tail...>& expr)
 }
 
 template<FieldExpr Head, FieldExpr... Tail>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const SumExpr<Head, Tail...>& expr)
 {
    return std::apply(
-      [] (const auto&... terms)
+      [] GENDIL_HOST_DEVICE (const auto&... terms)
       {
          return (TraceToPlusSide(terms) + ...);
       },
@@ -963,72 +977,84 @@ auto TraceToPlusSide(const SumExpr<Head, Tail...>& expr)
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const DotExpr<LHS, RHS>& expr)
 {
    return dot(TraceToMinusSide(expr.lhs), TraceToMinusSide(expr.rhs));
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const DotExpr<LHS, RHS>& expr)
 {
    return dot(TraceToPlusSide(expr.lhs), TraceToPlusSide(expr.rhs));
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const InnerExpr<LHS, RHS>& expr)
 {
    return inner(TraceToMinusSide(expr.lhs), TraceToMinusSide(expr.rhs));
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const InnerExpr<LHS, RHS>& expr)
 {
    return inner(TraceToPlusSide(expr.lhs), TraceToPlusSide(expr.rhs));
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const ProductExpr<LHS, RHS>& expr)
 {
    return TraceToMinusSide(expr.lhs) * TraceToMinusSide(expr.rhs);
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const ProductExpr<LHS, RHS>& expr)
 {
    return TraceToPlusSide(expr.lhs) * TraceToPlusSide(expr.rhs);
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const MultFieldExpr<LHS, RHS>& expr)
 {
    return TraceToMinusSide(expr.lhs) * TraceToMinusSide(expr.rhs);
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const MultFieldExpr<LHS, RHS>& expr)
 {
    return TraceToPlusSide(expr.lhs) * TraceToPlusSide(expr.rhs);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const JumpExpr<Expr>& expr)
 {
    return TraceToMinusSide(expr.expr);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const JumpExpr<Expr>& expr)
 {
    return - TraceToPlusSide(expr.expr);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const AverageExpr<Expr>& expr)
 {
    return 0.5 * TraceToMinusSide(expr.expr);
 }
 
 template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const AverageExpr<Expr>& expr)
 {
    return 0.5 * TraceToPlusSide(expr.expr);

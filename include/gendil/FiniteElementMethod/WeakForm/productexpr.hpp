@@ -70,6 +70,7 @@ struct ProductExpr : FieldBase
          (MatrixExpr<LHS> && MatrixExpr<RHS>),
       "MatMat requires Matrix × Matrix");
 
+   GENDIL_HOST_DEVICE
    constexpr ProductExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}

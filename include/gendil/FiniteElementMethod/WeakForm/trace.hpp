@@ -16,6 +16,7 @@ struct MinusTraceExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    MinusTraceExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -57,6 +58,7 @@ struct PlusTraceExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    PlusTraceExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -106,12 +108,14 @@ std::ostream& operator<<(std::ostream& os, const PlusTraceExpr<Expr>& expr)
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto minus(const Expr& expr)
 {
    return MinusTraceExpr<Expr>(expr);
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto plus(const Expr& expr)
 {
    return PlusTraceExpr<Expr>(expr);

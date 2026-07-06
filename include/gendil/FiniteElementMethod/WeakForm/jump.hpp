@@ -17,6 +17,7 @@ struct JumpExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    JumpExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -69,6 +70,7 @@ std::ostream& operator<<(std::ostream& os, const JumpExpr<Expr>& jump)
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto jump(const Expr& expr)
 {
    return JumpExpr<Expr>(expr);

@@ -16,6 +16,7 @@ struct NegExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    NegExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -47,18 +48,21 @@ std::ostream& operator<<(std::ostream& os, const NegExpr<Expr>& neg)
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto MakeNegExpr(const Expr& expr)
 {
    return NegExpr<Expr>(expr);
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto MakeNegExpr(const NegExpr<Expr>& neg)
 {
    return neg.expr;
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto operator-(const Expr& expr)
 {
    return MakeNegExpr<Expr>(expr);
