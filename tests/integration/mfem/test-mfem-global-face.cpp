@@ -542,7 +542,7 @@ void AddElementResidualP2(
    const Point<2> & p,
    Real scale )
 {
-   auto * data = y.WriteHostData();
+   auto * data = y.ReadWriteHostData();
    for ( GlobalIndex i = 0; i < 3; ++i )
    {
       for ( GlobalIndex j = 0; j < 3; ++j )
@@ -762,11 +762,12 @@ bool CheckVectorNearMFEM(
    bool ok = Check(
       a.Size() == static_cast< size_t >( b.Size() ),
       "vector size mismatch" );
+   const Real * b_data = b.HostRead();
    Real err2 = 0.0;
    Real ref2 = 0.0;
    for ( Integer i = 0; i < a.Size(); ++i )
    {
-      const Real b_i = b[ static_cast< int >( i ) ];
+      const Real b_i = b_data[ i ];
       const Real diff = a[i] - b_i;
       err2 += diff * diff;
       ref2 += b_i * b_i;
