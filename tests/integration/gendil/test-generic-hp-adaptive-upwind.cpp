@@ -15,9 +15,11 @@ namespace
 {
 
 #if defined(GENDIL_USE_DEVICE)
+template <Integer NumQuad1D>
 using GlobalFaceKernelPolicy =
-   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+   DeviceKernelConfiguration<ThreadBlockLayout<NumQuad1D>, 1, 2>;
 #else
+template <Integer>
 using GlobalFaceKernelPolicy = SerialKernelConfiguration;
 #endif
 
@@ -489,7 +491,7 @@ bool TestFacetOnlyCase(
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<q1d, q1d>{});
    auto op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<q1d>>(
          weak_form,
          wf_context,
          integration_rule);
@@ -629,7 +631,7 @@ bool TestFullCellAndFacetCase(
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<q1d, q1d>{});
    auto op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<q1d>>(
          weak_form,
          wf_context,
          integration_rule);

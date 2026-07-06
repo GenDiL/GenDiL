@@ -16,9 +16,11 @@ namespace
 {
 
 #if defined(GENDIL_USE_DEVICE)
+template <Integer NumQuad1D>
 using GlobalFaceKernelPolicy =
-   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+   DeviceKernelConfiguration<ThreadBlockLayout<NumQuad1D>, 1, 2>;
 #else
+template <Integer>
 using GlobalFaceKernelPolicy = SerialKernelConfiguration;
 #endif
 
@@ -672,10 +674,12 @@ bool TestGenericOperatorP0JumpResidualCancellation()
          MakeTrialField<"u">(mixed),
          MakeIntegrationDomain<"mesh">(mixed));
 
+   constexpr Integer num_quad_1d = 1;
    auto integration_rule =
-      MakeIntegrationRule(IntegrationRuleNumPoints<1, 1>{});
+      MakeIntegrationRule(
+         IntegrationRuleNumPoints<num_quad_1d, num_quad_1d>{});
    auto op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          weak_form,
          wf_context,
          integration_rule);

@@ -12,9 +12,11 @@ using namespace gendil;
 namespace {
 
 #if defined(GENDIL_USE_DEVICE)
+template <Integer NumQuad1D>
 using GlobalFaceKernelPolicy =
-   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+   DeviceKernelConfiguration<ThreadBlockLayout<NumQuad1D>, 1, 2>;
 #else
+template <Integer>
 using GlobalFaceKernelPolicy = SerialKernelConfiguration;
 #endif
 
@@ -288,9 +290,10 @@ bool TestPartitionMixedGenericOperatorSmoke()
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(mixed),
       MakeIntegrationDomain<"mesh">(mixed));
-   auto ir = MakeIntegrationRule(IntegrationRuleNumPoints<4>{});
+   constexpr Integer num_quad_1d = 4;
+   auto ir = MakeIntegrationRule(IntegrationRuleNumPoints<num_quad_1d>{});
    auto op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          form,
          ctx,
          ir);

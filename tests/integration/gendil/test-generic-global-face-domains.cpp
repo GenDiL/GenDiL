@@ -15,9 +15,11 @@ namespace
 {
 
 #if defined(GENDIL_USE_DEVICE)
+template <Integer NumQuad1D>
 using GlobalFaceKernelPolicy =
-   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+   DeviceKernelConfiguration<ThreadBlockLayout<NumQuad1D>, 1, 2>;
 #else
+template <Integer>
 using GlobalFaceKernelPolicy = SerialKernelConfiguration;
 #endif
 
@@ -410,7 +412,7 @@ bool TestInteriorTwoCellSigns()
          IntegrationRule,
          FESpace>);
    using BatchedKernelPolicy =
-      DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+      DeviceKernelConfiguration<ThreadBlockLayout<num_quad_1d>, 1, 2>;
    static_assert(
       !is_unbatched_operator_configuration_allowed_v<BatchedKernelPolicy>);
 
@@ -451,12 +453,12 @@ bool TestInteriorTwoCellSigns()
          local_ctx,
          integration_rule);
    auto global_op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          sign_sensitive_form,
          global_ctx,
          integration_rule);
    auto canonical_global_op =
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          canonical_sign_sensitive_form,
          global_ctx,
          integration_rule);
@@ -527,7 +529,8 @@ bool TestDispatchIndependence()
    auto local_mu_view =
       MakeReadOnlyElementTensorView<LocalKernelPolicy>(fe_space, mu_h);
    auto global_mu_view =
-      MakeReadOnlyElementTensorView<GlobalFaceKernelPolicy>(fe_space, mu_h);
+      MakeReadOnlyElementTensorView<
+         GlobalFaceKernelPolicy<num_quad_1d>>(fe_space, mu_h);
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -651,7 +654,7 @@ bool TestDispatchIndependence()
       MakeGenericOperator<LocalKernelPolicy>(form, local_ctx, integration_rule),
       u_h);
    const Vector y_interior = ApplyOperator(
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          interior_form,
          interior_ctx,
          integration_rule),
@@ -663,7 +666,7 @@ bool TestDispatchIndependence()
          integration_rule),
       u_h);
    const Vector y_boundary = ApplyOperator(
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          boundary_form,
          boundary_ctx,
          integration_rule),
@@ -675,13 +678,13 @@ bool TestDispatchIndependence()
          integration_rule),
       u_h);
    const Vector y_both = ApplyOperator(
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          form,
          both_ctx,
          integration_rule),
       u_h);
    const Vector y_cell = ApplyOperator(
-      MakeGenericOperator<GlobalFaceKernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
          cell_form,
          interior_ctx,
          integration_rule),
