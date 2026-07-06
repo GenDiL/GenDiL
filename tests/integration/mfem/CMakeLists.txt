@@ -31,6 +31,24 @@ add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
 add_my_test(test-nested-product-mesh test-nested-product-mesh.cpp)
 add_my_test(test-many-product-mesh test-many-product-mesh.cpp)
 add_my_test(test-projections-6d test-projections-6d.cpp)
+
+# MFEM global-face connectivity
+set(mfem_global_face_source test-mfem-global-face.cpp)
+
+add_non_nvcc_test(test-mfem-global-face-quad-connectivity ${mfem_global_face_source})
+target_compile_definitions(test-mfem-global-face-quad-connectivity PRIVATE TEST_QUAD_CONNECTIVITY)
+
+add_non_nvcc_test(test-mfem-global-face-hex-connectivity ${mfem_global_face_source})
+target_compile_definitions(test-mfem-global-face-hex-connectivity PRIVATE TEST_HEX_CONNECTIVITY)
+
+add_non_nvcc_test(test-mfem-global-face-generic-operator ${mfem_global_face_source})
+target_compile_definitions(test-mfem-global-face-generic-operator PRIVATE TEST_GENERIC_OPERATOR)
+
+add_non_nvcc_test(test-mfem-global-face-file-sipdg ${mfem_global_face_source})
+target_compile_definitions(test-mfem-global-face-file-sipdg PRIVATE TEST_FILE_SIPDG_LOCAL_VS_GLOBAL)
+
+add_non_nvcc_test(test-mfem-global-boundary-connectivity ${mfem_global_face_source})
+target_compile_definitions(test-mfem-global-boundary-connectivity PRIVATE TEST_BOUNDARY)
 add_my_test(
   test-mfem-nonconforming-face-decoder
   test-mfem-nonconforming-face-decoder.cpp
