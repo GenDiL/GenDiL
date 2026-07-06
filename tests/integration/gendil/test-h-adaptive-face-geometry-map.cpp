@@ -684,13 +684,12 @@ bool TestGenericOperatorP0JumpResidualCancellation()
          wf_context,
          integration_rule);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
-   x = 0.0;
-   Real* x_data = x.WriteHostData();
-   for (Integer i = 0; i < ndofsL; ++i)
-   {
-      x_data[i] = 1.0;
-   }
+   Vector x(
+      mixed.GetNumberOfFiniteElementDofs(),
+      [=] GENDIL_HOST_DEVICE (Integer i) -> Real
+      {
+         return i < ndofsL ? 1.0 : 0.0;
+      });
 
    Vector y(mixed.GetNumberOfFiniteElementDofs());
    y = 0.0;
