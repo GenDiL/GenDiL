@@ -6,8 +6,9 @@
 <!-- toc -->
 - [Overview](#overview)
 - [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
+- [Getting Started](#getting-started)
+- [Benchmarks, tests, and examples](#benchmarks-tests-and-examples)
+- [Weak Form DSL](#weak-form-dsl)
 - [Citing GenDiL](#citing-gendil)
 - [Contributing](#contributing)
 - [License](#license)
@@ -30,11 +31,13 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - Continuous and Discontinuous Galerkin methods
 - Arbitrary dimension hypercube finite elements
 - Anisotropic polynomial orders and quadrature rules
-- Matrix-free operator evaluation and sparse-matrix assembly
+- h-adaptivity and p-adaptivity support
+- Matrix-free operator evaluation
+- Sparse matrix assembly for BSR, COO, CSC, CSR, and optional HypreCSR formats
 - Weak-form expression templates for high-level operator specification
 
 ### Third-Party Integrations & Parallelization Support
-- Interfaces with the [MFEM](https://github.com/mfem/mfem), [RAJA](https://github.com/LLNL/RAJA), and [Caliper](https://github.com/LLNL/Caliper) libraries.
+- Interfaces with the [MFEM](https://github.com/mfem/mfem), [HYPRE](https://github.com/hypre-space/hypre), [RAJA](https://github.com/LLNL/RAJA), and [Caliper](https://github.com/LLNL/Caliper) libraries.
 - Support for OpenMP, CUDA, HIP parallelization models
 
 ## Getting Started
@@ -42,23 +45,47 @@ GenDiL is a header-only C++ library providing flexible and efficient discretizat
 - C++20 or higher
 
 ### Installation
-Simply add the `include` folder to your project's include path. The GenDiL project also ships with `CMakeLists.txt` files for building with CMake. The `scripts` directory contains examples scripts for building and using GenDiL.
+GenDiL is header-only, so the simplest integration path is to add the
+`include` folder to your project's include path. For CMake projects, the
+recommended workflow is to configure, build, test, and install GenDiL out of
+source.
 
-The following script will use CMake to configure, build, run the tests, and install the library:
+Minimal CMake install:
 ```sh
-mkdir -p build
-cd build
+cmake -S . -B build \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D CMAKE_INSTALL_PREFIX="$PWD/install"
 
-cmake -D CMAKE_BUILD_TYPE=Release \
-      -D CMAKE_INSTALL_PREFIX=../install \
-      -D USE_MFEM=ON \
-      -D MFEM_DIR=../mfem/build \
-      ..
-
-make -j 8 && make test && make install
-
-cd ..
+cmake --build build --parallel
+ctest --test-dir build
+cmake --install build
 ```
+
+OpenMP support is enabled by default. If OpenMP is not available or not
+desired, add `-D USE_OPENMP=OFF` when configuring.
+
+With optional integrations:
+```sh
+cmake -S . -B build-deps \
+      -D CMAKE_BUILD_TYPE=Release \
+      -D CMAKE_INSTALL_PREFIX="$PWD/install-deps" \
+      -D USE_MFEM=ON \
+      -D MFEM_DIR=/path/to/mfem/install \
+      -D USE_HYPRE=ON \
+      -D HYPRE_DIR=/path/to/hypre/install \
+      -D USE_RAJA=ON \
+      -D RAJA_DIR=/path/to/raja/install \
+      -D USE_CALIPER=ON \
+      -D caliper_DIR=/path/to/caliper/install
+
+cmake --build build-deps --parallel
+ctest --test-dir build-deps
+cmake --install build-deps
+```
+
+CUDA and HIP support are enabled separately with `-D USE_CUDA=ON` or
+`-D USE_HIP=ON`. HypreCSR device support requires a matching CUDA- or
+HIP-enabled HYPRE build.
 
 ### Usage
 Include the main header file in your project:
@@ -76,6 +103,85 @@ Executables are organized in three categories: benchmarks, tests, and examples.
 - Examples show standard use cases of the library.
 - Tests verify the correctness of the library.
 - Benchmarks measure the performance of the library.
+
+## Weak Form DSL
+GenDiL weak forms are expression templates built from trial/test fields,
+integration domains, and algebraic operators. A typical weak form declares
+`TrialSpace` and `TestSpace` symbols, selects `Cells`, `InteriorFacets`, and
+`BoundaryFacets` domains, then combines `integrate` with operators such as
+`grad`, `jump`, `average`, `upwind`, `dot`, and `Normal`.
+
+For an upwind DG advection operator, the weak form can be written directly from
+the cell and interior-facet terms:
+
+```cpp
+TrialSpace<"u"> u;
+TestSpace<"u"> v;
+Cells<"mesh"> cells;
+InteriorFacets<"mesh"> interior_facets;
+
+auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+
+auto upwind_dg_form =
+   integrate(cells, -u * dot(beta, grad(v)))
+   + integrate(interior_facets, upwind(beta, u) * jump(v));
+```
+
+For SIPDG diffusion, the same DSL captures cell, interior-facet, and
+boundary-facet contributions:
+
+```cpp
+TrialSpace<"u"> u;
+TestSpace<"u"> v;
+Cells<"mesh"> cells;
+InteriorFacets<"mesh"> interior_facets;
+BoundaryFacets<"mesh"> boundary_facets;
+
+auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(mu_fn);
+auto tau = MakeCoefficient<"penalty", InverseFacetSize>(tau_fn);
+
+auto sipdg_form =
+   integrate(cells, mu * dot(grad(u), grad(v)))
+   + integrate(
+        interior_facets,
+        -average(mu * dot(grad(u), Normal{})) * jump(v)
+        + jump(u) * average(mu * dot(grad(v), Normal{}))
+        + tau * mu * jump(u) * jump(v))
+   + integrate(
+        boundary_facets,
+        -mu * dot(grad(u), Normal{}) * v
+        + u * mu * dot(grad(v), Normal{})
+        + tau * mu * u * v);
+```
+
+The same weak form can create a matrix-free operator or an assembled sparse
+matrix. Here `weak_form` is either form above, and `fe_space` and
+`integration_rule` are the finite element space and quadrature rule for the
+domain named `"mesh"`:
+
+```cpp
+using KernelPolicy = SerialKernelConfiguration;
+
+auto context = MakeWeakFormContext(
+   MakeTrialField<"u">(fe_space),
+   MakeIntegrationDomain<"mesh">(fe_space));
+
+auto op =
+   MakeGenericOperator<KernelPolicy>(
+      weak_form,
+      context,
+      integration_rule);
+
+auto matrix =
+   GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
+      weak_form,
+      context,
+      integration_rule);
+```
+
+Use `MatrixAssemblyType::COO`, `MatrixAssemblyType::CSR`,
+`MatrixAssemblyType::CSC`, or, when GenDiL is configured with HYPRE,
+`MatrixAssemblyType::HypreCSR` to assemble other sparse formats.
 
 ## Citing GenDiL
 
