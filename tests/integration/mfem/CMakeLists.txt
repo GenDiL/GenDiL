@@ -35,20 +35,41 @@ add_my_test(test-projections-6d test-projections-6d.cpp)
 # MFEM global-face connectivity
 set(mfem_global_face_source test-mfem-global-face.cpp)
 
-add_non_nvcc_test(test-mfem-global-face-quad-connectivity ${mfem_global_face_source})
-target_compile_definitions(test-mfem-global-face-quad-connectivity PRIVATE TEST_QUAD_CONNECTIVITY)
+function(add_mfem_global_face_test target_name compile_definition)
+  add_non_nvcc_test(${target_name} ${mfem_global_face_source})
+  if(TARGET ${target_name})
+    target_compile_definitions(${target_name} PRIVATE ${compile_definition})
+  endif()
+endfunction()
 
-add_non_nvcc_test(test-mfem-global-face-hex-connectivity ${mfem_global_face_source})
-target_compile_definitions(test-mfem-global-face-hex-connectivity PRIVATE TEST_HEX_CONNECTIVITY)
+add_mfem_global_face_test(
+  test-mfem-global-face-quad-connectivity
+  TEST_QUAD_CONNECTIVITY)
 
-add_non_nvcc_test(test-mfem-global-face-generic-operator ${mfem_global_face_source})
-target_compile_definitions(test-mfem-global-face-generic-operator PRIVATE TEST_GENERIC_OPERATOR)
+add_mfem_global_face_test(
+  test-mfem-global-face-hex-connectivity
+  TEST_HEX_CONNECTIVITY)
 
-add_non_nvcc_test(test-mfem-global-face-file-sipdg ${mfem_global_face_source})
-target_compile_definitions(test-mfem-global-face-file-sipdg PRIVATE TEST_FILE_SIPDG_LOCAL_VS_GLOBAL)
+add_mfem_global_face_test(
+  test-mfem-global-face-generic-operator
+  TEST_GENERIC_OPERATOR)
 
-add_non_nvcc_test(test-mfem-global-boundary-connectivity ${mfem_global_face_source})
-target_compile_definitions(test-mfem-global-boundary-connectivity PRIVATE TEST_BOUNDARY)
+add_mfem_global_face_test(
+  test-mfem-global-face-file-sipdg
+  TEST_FILE_SIPDG_LOCAL_VS_GLOBAL)
+
+add_mfem_global_face_test(
+  test-mfem-global-boundary-connectivity
+  TEST_BOUNDARY)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-smoke
+  TEST_SMOKE)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-periodic
+  TEST_PERIODIC)
+
 add_my_test(
   test-mfem-nonconforming-face-decoder
   test-mfem-nonconforming-face-decoder.cpp
