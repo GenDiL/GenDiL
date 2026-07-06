@@ -465,6 +465,8 @@ void GenericLocalDomainOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
+   GENDIL_REQUIRE_UNBATCHED_OPERATOR(KernelPolicy);
+
    using DomainNames = generic_operator_local_domain_names_t<WeakForm>;
 
    ForEachGenericOperatorLocalDomainName(

@@ -22,6 +22,13 @@ using namespace gendil;
 namespace
 {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 Real TestTolerance( Real scale = Real(4.0e6) )
 {
    return scale * std::numeric_limits< Real >::epsilon();
@@ -1091,7 +1098,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       MakeTrialField<"u">( global_space ),
       MakeIntegrationDomain<"mesh">( global_space ) );
    auto ir = MakeIntegrationRule( IntegrationRuleNumPoints<5, 5>{} );
-   auto op = MakeGenericOperator< SerialKernelConfiguration >( form, ctx, ir );
+   auto op = MakeGenericOperator< GlobalFaceKernelPolicy >( form, ctx, ir );
 
    Vector x( fe_space.GetNumberOfFiniteElementDofs() );
    FillNonsymmetricDofs( fe_space, x );
@@ -1209,13 +1216,22 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       MakeIntegrationRule(
          IntegrationRuleNumPoints< num_quad_1d, num_quad_1d >{} );
 
+#if defined(GENDIL_USE_DEVICE)
+   using LocalKernelPolicy =
+      ThreadFirstKernelConfiguration<
+         ThreadBlockLayout<num_quad_1d, num_quad_1d>,
+         2>;
+#else
+   using LocalKernelPolicy = SerialKernelConfiguration;
+#endif
+
    auto local_op =
-      MakeGenericOperator< SerialKernelConfiguration >(
+      MakeGenericOperator< LocalKernelPolicy >(
          diffusion_form,
          local_ctx,
          ir );
    auto global_op =
-      MakeGenericOperator< SerialKernelConfiguration >(
+      MakeGenericOperator< GlobalFaceKernelPolicy >(
          diffusion_form,
          global_ctx,
          ir );
@@ -1359,7 +1375,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       MakeTrialField<"u">( global_space ),
       MakeIntegrationDomain<"mesh">( global_space ) );
    auto ir = MakeIntegrationRule( IntegrationRuleNumPoints<5, 5>{} );
-   auto op = MakeGenericOperator< SerialKernelConfiguration >( form, ctx, ir );
+   auto op = MakeGenericOperator< GlobalFaceKernelPolicy >( form, ctx, ir );
 
    Vector x1( fe_space.GetNumberOfFiniteElementDofs() );
    FillNonsymmetricDofs( fe_space, x1 );

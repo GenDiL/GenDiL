@@ -11,6 +11,13 @@ using namespace gendil;
 
 namespace {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 template<class T, class = void>
 struct has_interior_face_spaces : std::false_type {};
 
@@ -283,7 +290,7 @@ bool TestPartitionMixedGenericOperatorSmoke()
       MakeIntegrationDomain<"mesh">(mixed));
    auto ir = MakeIntegrationRule(IntegrationRuleNumPoints<4>{});
    auto op =
-      MakeGenericOperator<SerialKernelConfiguration>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          form,
          ctx,
          ir);

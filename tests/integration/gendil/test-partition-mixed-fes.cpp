@@ -12,6 +12,13 @@ using namespace gendil;
 
 namespace {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 bool TestOneCellPartPartition()
 {
    constexpr GlobalIndex num_cells = 3;
@@ -314,7 +321,7 @@ bool TestPartitionBuiltGenericOperator()
       MakeIntegrationRule(IntegrationRuleNumPoints<5>{});
 
    auto op =
-      MakeGenericOperator<SerialKernelConfiguration>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          form,
          ctx,
          integration_rule);

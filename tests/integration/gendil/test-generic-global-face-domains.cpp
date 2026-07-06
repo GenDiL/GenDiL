@@ -14,6 +14,13 @@ using namespace gendil;
 namespace
 {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 template <typename VectorType>
 Real AbsoluteL2Error(const VectorType& a, const VectorType& b)
 {
@@ -287,7 +294,12 @@ bool TestInteriorTwoCellSigns()
    IntegrationRuleNumPoints<num_quad_1d> num_quads;
    auto integration_rule = MakeIntegrationRule(num_quads);
 
-   using KernelPolicy = SerialKernelConfiguration;
+#if defined(GENDIL_USE_DEVICE)
+   using LocalKernelPolicy =
+      ThreadFirstKernelConfiguration<ThreadBlockLayout<num_quad_1d>, 1>;
+#else
+   using LocalKernelPolicy = SerialKernelConfiguration;
+#endif
    using FESpace = std::remove_cvref_t<decltype(fe_space)>;
    using IntegrationRule = decltype(integration_rule);
    using SmallIntegrationRule =
@@ -398,7 +410,7 @@ bool TestInteriorTwoCellSigns()
          IntegrationRule,
          FESpace>);
    using BatchedKernelPolicy =
-      DeviceKernelConfiguration<ThreadBlockLayout<>, 0, 2>;
+      DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
    static_assert(
       !is_unbatched_operator_configuration_allowed_v<BatchedKernelPolicy>);
 
@@ -434,17 +446,17 @@ bool TestInteriorTwoCellSigns()
       MakeIntegrationDomain<"mesh">(singleton_global_fes));
 
    auto local_op =
-      MakeGenericOperator<KernelPolicy>(
+      MakeGenericOperator<LocalKernelPolicy>(
          sign_sensitive_form,
          local_ctx,
          integration_rule);
    auto global_op =
-      MakeGenericOperator<KernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          sign_sensitive_form,
          global_ctx,
          integration_rule);
    auto canonical_global_op =
-      MakeGenericOperator<KernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          canonical_sign_sensitive_form,
          global_ctx,
          integration_rule);
@@ -498,14 +510,24 @@ bool TestDispatchIndependence()
    IntegrationRuleNumPoints<num_quad_1d, num_quad_1d> num_quads;
    auto integration_rule = MakeIntegrationRule(num_quads);
 
-   using KernelPolicy = SerialKernelConfiguration;
+#if defined(GENDIL_USE_DEVICE)
+   using LocalKernelPolicy =
+      ThreadFirstKernelConfiguration<
+         ThreadBlockLayout<num_quad_1d, num_quad_1d>,
+         Dim>;
+#else
+   using LocalKernelPolicy = SerialKernelConfiguration;
+#endif
 
    Vector u_h(fe_space.GetNumberOfFiniteElementDofs());
    FillPattern(u_h);
 
    Vector mu_h(fe_space.GetNumberOfFiniteElementDofs());
    FillPattern(mu_h);
-   auto mu_view = MakeReadOnlyElementTensorView<KernelPolicy>(fe_space, mu_h);
+   auto local_mu_view =
+      MakeReadOnlyElementTensorView<LocalKernelPolicy>(fe_space, mu_h);
+   auto global_mu_view =
+      MakeReadOnlyElementTensorView<GlobalFaceKernelPolicy>(fe_space, mu_h);
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -567,22 +589,22 @@ bool TestDispatchIndependence()
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeFiniteElementField<"mu">(fe_space, mu_view),
+      MakeFiniteElementField<"mu">(fe_space, local_mu_view),
       MakeIntegrationDomain<"mesh">(fe_space));
 
    auto interior_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(interior_global_fes),
-      MakeFiniteElementField<"mu">(interior_global_fes, mu_view),
+      MakeFiniteElementField<"mu">(interior_global_fes, global_mu_view),
       MakeIntegrationDomain<"mesh">(interior_global_fes));
 
    auto boundary_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(boundary_global_fes),
-      MakeFiniteElementField<"mu">(boundary_global_fes, mu_view),
+      MakeFiniteElementField<"mu">(boundary_global_fes, global_mu_view),
       MakeIntegrationDomain<"mesh">(boundary_global_fes));
 
    auto both_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(both_global_fes),
-      MakeFiniteElementField<"mu">(both_global_fes, mu_view),
+      MakeFiniteElementField<"mu">(both_global_fes, global_mu_view),
       MakeIntegrationDomain<"mesh">(both_global_fes));
 
    static_assert(!use_global_facets_operator_v<decltype(local_ctx)>);
@@ -618,7 +640,7 @@ bool TestDispatchIndependence()
       + integrate(interior_facets_b, jump(u) * jump(v));
    auto mesh_a_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(interior_global_fes),
-      MakeFiniteElementField<"mu">(interior_global_fes, mu_view),
+      MakeFiniteElementField<"mu">(interior_global_fes, global_mu_view),
       MakeIntegrationDomain<"mesh_a">(interior_global_fes));
    static_assert(
       !global_facet_domain_requirements_satisfied_v<
@@ -626,28 +648,49 @@ bool TestDispatchIndependence()
          decltype(mesh_a_ctx)>);
 
    const Vector y_local = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(form, local_ctx, integration_rule),
+      MakeGenericOperator<LocalKernelPolicy>(form, local_ctx, integration_rule),
       u_h);
    const Vector y_interior = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(interior_form, interior_ctx, integration_rule),
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
+         interior_form,
+         interior_ctx,
+         integration_rule),
       u_h);
    const Vector y_interior_ref = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(interior_form, local_ctx, integration_rule),
+      MakeGenericOperator<LocalKernelPolicy>(
+         interior_form,
+         local_ctx,
+         integration_rule),
       u_h);
    const Vector y_boundary = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(boundary_form, boundary_ctx, integration_rule),
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
+         boundary_form,
+         boundary_ctx,
+         integration_rule),
       u_h);
    const Vector y_boundary_ref = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(boundary_form, local_ctx, integration_rule),
+      MakeGenericOperator<LocalKernelPolicy>(
+         boundary_form,
+         local_ctx,
+         integration_rule),
       u_h);
    const Vector y_both = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(form, both_ctx, integration_rule),
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
+         form,
+         both_ctx,
+         integration_rule),
       u_h);
    const Vector y_cell = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(cell_form, interior_ctx, integration_rule),
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
+         cell_form,
+         interior_ctx,
+         integration_rule),
       u_h);
    const Vector y_cell_ref = ApplyOperator(
-      MakeGenericOperator<KernelPolicy>(cell_form, local_ctx, integration_rule),
+      MakeGenericOperator<LocalKernelPolicy>(
+         cell_form,
+         local_ctx,
+         integration_rule),
       u_h);
 
    bool success = true;

@@ -26,8 +26,6 @@ void GenericExplicitOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR(KernelPolicy);
-
    using I = std::remove_cvref_t<WeakForm>;
 
    constexpr auto TrialName = requirements<I>::trial_name;

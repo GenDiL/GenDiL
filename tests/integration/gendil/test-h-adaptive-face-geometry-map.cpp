@@ -15,6 +15,13 @@ using namespace gendil;
 namespace
 {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 constexpr Real tol = 1.0e-11;
 
 bool CheckNear(const std::string& label, const Real got, const Real expected)
@@ -667,9 +674,8 @@ bool TestGenericOperatorP0JumpResidualCancellation()
 
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<1, 1>{});
-   using KernelPolicy = SerialKernelConfiguration;
    auto op =
-      MakeGenericOperator<KernelPolicy>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          weak_form,
          wf_context,
          integration_rule);

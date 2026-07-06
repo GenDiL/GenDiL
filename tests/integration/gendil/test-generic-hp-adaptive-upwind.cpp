@@ -14,6 +14,13 @@ using namespace gendil;
 namespace
 {
 
+#if defined(GENDIL_USE_DEVICE)
+using GlobalFaceKernelPolicy =
+   DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 2>;
+#else
+using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+#endif
+
 constexpr GlobalIndex nxL = 2;
 constexpr GlobalIndex nyL = 2;
 constexpr GlobalIndex nxR = 2;
@@ -482,7 +489,7 @@ bool TestFacetOnlyCase(
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<q1d, q1d>{});
    auto op =
-      MakeGenericOperator<SerialKernelConfiguration>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          weak_form,
          wf_context,
          integration_rule);
@@ -622,7 +629,7 @@ bool TestFullCellAndFacetCase(
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<q1d, q1d>{});
    auto op =
-      MakeGenericOperator<SerialKernelConfiguration>(
+      MakeGenericOperator<GlobalFaceKernelPolicy>(
          weak_form,
          wf_context,
          integration_rule);

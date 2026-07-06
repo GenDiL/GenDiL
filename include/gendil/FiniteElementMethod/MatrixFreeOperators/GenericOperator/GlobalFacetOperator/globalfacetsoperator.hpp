@@ -70,6 +70,10 @@ void GenericCellDomainOperator(
          WeakForm,
          DofsInView,
          DofsOutView>;
+   constexpr size_t shared_memory_block_size =
+      KernelContext<
+         KernelPolicy,
+         required_shared_mem>::shared_memory_block_size;
 
    mesh::CellIterator<KernelPolicy>(
       cell_space,
@@ -79,7 +83,10 @@ void GenericCellDomainOperator(
          (void)batch_op_ctx;
          (void)weak_form;
 
-         GENDIL_SHARED Real _shared_mem[required_shared_mem];
+         GENDIL_SHARED Real _shared_mem[
+            shared_memory_block_size == 0
+               ? 1
+               : shared_memory_block_size];
          KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
 
          auto u_elem = ReadDofs(kernel, cell_space, element_index, dofs_in);
