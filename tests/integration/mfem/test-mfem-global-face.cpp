@@ -1557,6 +1557,16 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
 
 int main()
 {
+#if defined(GENDIL_USE_CUDA)
+   const char device_config[] = "cuda";
+#elif defined(GENDIL_USE_HIP)
+   const char device_config[] = "hip";
+#else
+   const char device_config[] = "cpu";
+#endif
+   mfem::Device device(device_config);
+   device.Print();
+
 #if defined(TEST_QUAD_CONNECTIVITY)
    return TestQuadConnectivity() ? 0 : 1;
 #elif defined(TEST_HEX_CONNECTIVITY)
