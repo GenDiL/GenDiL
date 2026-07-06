@@ -144,9 +144,12 @@ std::vector<Real> BuildDenseMatrix(
 
    for (Integer col = 0; col < size; ++col)
    {
-      x = 0.0;
+      // Initialize basis vector entirely on host
+      Real* x_data = x.WriteHostData();
+      std::fill(x_data, x_data + size, 0.0);
+      x_data[col] = 1.0;
+
       y = 0.0;
-      x.WriteHostData()[col] = 1.0;
       op(x, y);
 
       for (Integer row = 0; row < size; ++row)

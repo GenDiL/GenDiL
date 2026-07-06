@@ -332,8 +332,10 @@ std::vector<Real> BuildDenseMatrix(const Integer size, const Apply& apply)
    for (Integer col = 0; col < size; ++col)
    {
       Vector basis(size);
-      basis = 0.0;
-      basis.WriteHostData()[col] = 1.0;
+      // Initialize basis vector entirely on host
+      Real* basis_data = basis.WriteHostData();
+      std::fill(basis_data, basis_data + size, 0.0);
+      basis_data[col] = 1.0;
 
       const Vector y = apply(basis);
       const Real* y_data = y.ReadHostData();
@@ -376,14 +378,22 @@ bool CheckDenseClose(
 {
    GENDIL_VERIFY(got.size() == expected.size(), "Dense matrix sizes do not match.");
    Real max_err = 0.0;
+   size_t max_err_index = 0;
    for (size_t i = 0; i < got.size(); ++i)
    {
-      max_err = std::max(max_err, std::abs(got[i] - expected[i]));
+      const Real err = std::abs(got[i] - expected[i]);
+      if (err > max_err) {
+         max_err = err;
+         max_err_index = i;
+      }
    }
    std::cout << label << " | dense max error = " << max_err << "\n";
    if (max_err > tol)
    {
       std::cerr << "FAILED: " << label << "\n";
+      std::cerr << "  Max error: " << max_err << " at flat index " << max_err_index << "\n";
+      std::cerr << "  Expected: " << expected[max_err_index]
+                << ", Got: " << got[max_err_index] << "\n";
       return false;
    }
    return true;
