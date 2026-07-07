@@ -54,7 +54,7 @@ concept CellFaceView =
       { v.GetReferenceNormal() };
    };
 
-template <int Dim>
+template <Integer Dim>
 struct ConformingFaceMap {
    static constexpr bool is_conforming = true;
 
@@ -68,7 +68,7 @@ struct ConformingFaceMap {
    Real Measure() const { return 1.0; }
 };
 
-template <int Dim>
+template <Integer Dim>
 struct NonconformingHyperCubeFaceMap
 {
    static constexpr bool is_conforming = false;
