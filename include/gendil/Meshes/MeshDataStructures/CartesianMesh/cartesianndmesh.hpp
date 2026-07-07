@@ -21,12 +21,15 @@ struct CartesianMesh
    using orientation_type = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,

@@ -332,7 +332,7 @@ int TestInteriorCoefficientFieldInputsDG()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
       MakeFiniteElementField<"w_dg">(fe_space, w_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto avg_value_form =
       integrate(interior_facets, average(value_coeff) * jump(u) * jump(v));

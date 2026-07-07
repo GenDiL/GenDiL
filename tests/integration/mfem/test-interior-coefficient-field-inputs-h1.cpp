@@ -283,7 +283,7 @@ Real RelativeL2Error(const VectorType& a, const VectorType& b)
 template <Integer order>
 int TestInteriorCoefficientFieldInputsH1()
 {
-   std::cout << "\n=== Interior coefficient field-input H1 exception test, order = "
+   std::cout << "\n=== Interior coefficient field-input H1 explicit-trace test, order = "
              << order << " ===\n";
 
    constexpr GlobalIndex nx = 3;
@@ -338,10 +338,10 @@ int TestInteriorCoefficientFieldInputsH1()
             return 1.0 + grad_w[0] - 0.5 * grad_w[1];
          });
 
-   auto unqualified_form =
-      integrate(interior_facets, value_coeff * jump(u) * jump(v));
    auto average_form =
       integrate(interior_facets, average(value_coeff) * jump(u) * jump(v));
+   auto unqualified_form =
+      integrate(interior_facets, value_coeff * jump(u) * jump(v));
    auto unqualified_gradient_form =
       integrate(interior_facets, gradient_coeff * jump(u) * jump(v));
 
@@ -352,18 +352,13 @@ int TestInteriorCoefficientFieldInputsH1()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(dg_space),
       MakeFiniteElementField<"w_cg">(h1_space, w_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(dg_space));
 
-   auto unqualified_op = MakeGenericOperator<KernelPolicy>(
-      unqualified_form,
-      wf_ctx,
-      integration_rule);
    auto average_op = MakeGenericOperator<KernelPolicy>(
       average_form,
       wf_ctx,
       integration_rule);
 
-   const Vector y_unqualified = ApplyOperator(unqualified_op, u_h);
    const Vector y_average = ApplyOperator(average_op, u_h);
 
    Real max_trace_difference = 0.0;
@@ -379,20 +374,17 @@ int TestInteriorCoefficientFieldInputsH1()
          },
          max_trace_difference);
 
-   const Real unqualified_err = RelativeL2Error(y_unqualified, y_ref);
    const Real average_err = RelativeL2Error(y_average, y_ref);
 
-   std::cout << "  unqualified H1 FieldValue error = " << unqualified_err << "\n";
    std::cout << "  average H1 FieldValue error     = " << average_err << "\n";
    std::cout << "  max H1 minus/plus trace diff    = "
              << max_trace_difference << "\n";
 
    const Real tol = 1e-12;
-   if (unqualified_err > tol ||
-       average_err > tol ||
+   if (average_err > tol ||
        max_trace_difference > 50.0 * tol)
    {
-      std::cerr << "FAILED: H1 interior FieldValue exception mismatch.\n";
+      std::cerr << "FAILED: H1 interior explicit average FieldValue mismatch.\n";
       return 1;
    }
 

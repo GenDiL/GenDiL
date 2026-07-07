@@ -7,11 +7,6 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 
-// Forward declarations for expression types
-namespace gendil {
-   template<typename, typename> struct MatVecExpr;
-}
-
 namespace gendil
 {
 
@@ -111,6 +106,18 @@ struct test_linearity<GradientExpr<E>> {
 
 template<FieldExpr E>
 struct test_linearity<JumpExpr<E>> {
+   static constexpr TestLinearity value = test_linearity<E>::value;
+   static constexpr auto test_name = test_linearity<E>::test_name;
+};
+
+template<FieldExpr E>
+struct test_linearity<MinusTraceExpr<E>> {
+   static constexpr TestLinearity value = test_linearity<E>::value;
+   static constexpr auto test_name = test_linearity<E>::test_name;
+};
+
+template<FieldExpr E>
+struct test_linearity<PlusTraceExpr<E>> {
    static constexpr TestLinearity value = test_linearity<E>::value;
    static constexpr auto test_name = test_linearity<E>::test_name;
 };
@@ -573,22 +580,6 @@ template<DomainExpr Domain, FieldExpr Expr>
 struct test_linearity<Integrand<Domain, Expr>> {
    static constexpr TestLinearity value = test_linearity<Expr>::value;
    static constexpr auto test_name = test_linearity<Expr>::test_name;
-};
-
-// ============================================================================
-// MatVecExpr - Rank-2 × Rank-1 Matrix-Vector Product
-// ============================================================================
-
-template<typename MatrixExpr, typename VectorExpr>
-struct test_linearity<MatVecExpr<MatrixExpr, VectorExpr>> {
-   // Vector must be test-free (e.g., Normal, prescribed direction)
-   static_assert(is_test_free_v<VectorExpr>,
-      "VectorExpr in MatVecExpr must be test-free. "
-      "Matrix-vector contraction with test-dependent vector is nonlinear or unsupported.");
-
-   // Propagate linearity from matrix expression
-   static constexpr TestLinearity value = test_linearity<MatrixExpr>::value;
-   static constexpr auto test_name = test_linearity<MatrixExpr>::test_name;
 };
 
 // ============================================================================

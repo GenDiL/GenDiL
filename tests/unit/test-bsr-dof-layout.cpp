@@ -35,6 +35,19 @@ using AnisotropicVectorShape = typename AnisotropicVectorFE::shape_functions;
 using AnisotropicComponent1DofShape =
    component_dof_shape_t< AnisotropicVectorShape, 1 >;
 
+struct UnknownRestriction {};
+
+template < typename Restriction, typename = void >
+struct HasRestrictionTraits : std::false_type {};
+
+template < typename Restriction >
+struct HasRestrictionTraits<
+   Restriction,
+   std::void_t<
+      decltype( restriction_traits< Restriction >::is_direct_index_map ),
+      decltype( restriction_traits< Restriction >::is_injective ) > >
+   : std::true_type {};
+
 static_assert( LocalDofCount< ScalarShape0 >() == 4 );
 static_assert(
    FlattenLocalDof< ScalarShape0 >( std::array< GlobalIndex, 2 >{ 1, 1 } ) == 3 );
@@ -67,6 +80,13 @@ static_assert(
    std::is_same_v< ZeroVectorType, ExpectedVectorDofsType >,
    "MakeZeroElementVector must return the same tuple-of-component container as MakeVectorDofs." );
 
+static_assert( HasRestrictionTraits< L2Restriction >::value );
+static_assert( HasRestrictionTraits< H1Restriction >::value );
+static_assert( HasRestrictionTraits< VectorH1Restriction< 2 > >::value );
+static_assert(
+   !HasRestrictionTraits< UnknownRestriction >::value,
+   "Unknown restrictions must fail closed until they provide explicit traits." );
+
 bool Check( const bool condition, const char * message )
 {
    if ( !condition )
@@ -74,6 +94,38 @@ bool Check( const bool condition, const char * message )
       std::cout << message << '\n';
    }
    return condition;
+}
+
+bool TestRestrictionTraits()
+{
+   bool success = true;
+
+   success = Check(
+      restriction_traits< L2Restriction >::is_direct_index_map,
+      "L2Restriction should be a direct index map." ) && success;
+   success = Check(
+      restriction_traits< L2Restriction >::is_injective,
+      "L2Restriction should be injective." ) && success;
+   success = Check(
+      restriction_traits< H1Restriction >::is_direct_index_map,
+      "H1Restriction should be a direct index map." ) && success;
+   success = Check(
+      !restriction_traits< H1Restriction >::is_injective,
+      "H1Restriction should not be injective." ) && success;
+   success = Check(
+      restriction_traits< VectorH1Restriction< 2 > >::is_direct_index_map,
+      "VectorH1Restriction should preserve direct-index view support." ) && success;
+   success = Check(
+      !restriction_traits< VectorH1Restriction< 2 > >::is_injective,
+      "VectorH1Restriction should not be injective." ) && success;
+   success = Check(
+      restriction_supports_contiguous_element_view_v< L2Restriction >,
+      "L2Restriction should keep the contiguous element-view fast path." ) && success;
+   success = Check(
+      !restriction_supports_contiguous_element_view_v< H1Restriction >,
+      "H1Restriction should use canonical mapped element views." ) && success;
+
+   return success;
 }
 
 bool TestScalarFlattenLocalDof()
@@ -115,23 +167,23 @@ bool TestVectorFlattenLocalDof()
    const std::array< GlobalIndex, 2 > c1_i00{ 0, 0 };
    const std::array< GlobalIndex, 2 > c1_i21{ 2, 1 };
 
-   const LocalIndex c0_offset = ComponentLocalDofOffset< VectorShape >( c0 );
-   const LocalIndex c1_offset = ComponentLocalDofOffset< VectorShape >( c1 );
+   const GlobalIndex c0_offset = ComponentLocalDofOffset< VectorShape >( c0 );
+   const GlobalIndex c1_offset = ComponentLocalDofOffset< VectorShape >( c1 );
 
    success = Check( c0_offset == 0, "Unexpected vector component 0 local offset." ) && success;
    success = Check( c1_offset == Product( Component0DofShape{} ), "Unexpected vector component 1 local offset." ) && success;
 
    success = Check(
       FlattenLocalDof< VectorShape >( c0, c0_i11 ) ==
-         c0_offset + static_cast< LocalIndex >( FlattenMultiIndex< Component0DofShape >( c0_i11 ) ),
+         c0_offset + FlattenMultiIndex< Component0DofShape >( c0_i11 ),
       "Vector component 0 local index is not component-major." ) && success;
    success = Check(
       FlattenLocalDof< VectorShape >( c1, c1_i00 ) ==
-         c1_offset + static_cast< LocalIndex >( FlattenMultiIndex< Component1DofShape >( c1_i00 ) ),
+         c1_offset + FlattenMultiIndex< Component1DofShape >( c1_i00 ),
       "Vector component 1 first local index is not component-major." ) && success;
    success = Check(
       FlattenLocalDof< VectorShape >( c1, c1_i21 ) ==
-         c1_offset + static_cast< LocalIndex >( FlattenMultiIndex< Component1DofShape >( c1_i21 ) ),
+         c1_offset + FlattenMultiIndex< Component1DofShape >( c1_i21 ),
       "Vector component 1 last local index is not component-major." ) && success;
 
    success = Check(
@@ -145,33 +197,105 @@ bool TestScalarGlobalDofIndex()
 {
    Cartesian2DMesh mesh( 1.0, 2, 1 );
    auto scalar_space = MakeFiniteElementSpace( mesh, ScalarFE0{} );
+   auto shifted_space =
+      MakeFiniteElementSpace( mesh, ScalarFE0{}, L2Restriction{ 7 } );
 
    bool success = true;
    const GlobalIndex element_index = 1;
    const std::array< GlobalIndex, 2 > i11{ 1, 1 };
    const GlobalIndex element_dofs = Product( ScalarDofShape0{} );
+   const GlobalIndex local_id = FlattenLocalDof( scalar_space, i11 );
+   const GlobalIndex zero_based_index =
+      element_index * element_dofs + local_id;
+
+   success = Check(
+      ScalarLocalDofCount( scalar_space ) == element_dofs,
+      "Unexpected scalar local DoF count." ) && success;
+   success = Check(
+      ScalarGlobalTopologyDofCount( scalar_space ) ==
+         scalar_space.GetNumberOfFiniteElements() * element_dofs,
+      "Unexpected scalar L2 global topology DoF count." ) && success;
+   success = Check(
+      scalar_space.GetNumberOfFiniteElementDofs() ==
+         scalar_space.GetNumberOfFiniteElements() * element_dofs,
+      "Unexpected scalar L2 final finite-element DoF count." ) && success;
 
    success = Check(
       GlobalDofIndex(
          scalar_space,
          element_index,
-         i11 ) == element_index * element_dofs + FlattenLocalDof< ScalarShape0 >( i11 ),
+         i11 ) == zero_based_index,
       "Unexpected scalar L2 global DoF index." ) && success;
    success = Check(
-      ElementToGlobalDofIndex(
+      ZeroBasedElementToGlobalDofIndex(
          scalar_space,
          element_index,
-         i11 ) ==
+         local_id ) == zero_based_index,
+      "Scalar L2 zero-based topology index is wrong." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         scalar_space,
+         element_index,
+         local_id ) ==
          GlobalDofIndex(
             scalar_space,
             element_index,
             i11 ),
-      "Scalar L2 ElementToGlobalDofIndex does not delegate to GlobalDofIndex." ) && success;
+      "Scalar L2 scalar-flat GlobalDofIndex disagrees with tensor-index mapping." ) && success;
+   success = Check(
+      ScalarElementDofOrdinalToGlobalDofIndex(
+         scalar_space,
+         zero_based_index ) == zero_based_index,
+      "Scalar L2 ordinal mapping is wrong." ) && success;
+
+   success = Check(
+      ScalarGlobalTopologyDofCount( shifted_space ) ==
+         scalar_space.GetNumberOfFiniteElements() * element_dofs,
+      "Shifted scalar L2 global topology count should not include the FE-space shift." ) && success;
+   success = Check(
+      ZeroBasedElementToGlobalDofIndex(
+         shifted_space,
+         element_index,
+         local_id ) == zero_based_index,
+      "Shifted scalar L2 zero-based topology index should not include the FE-space shift." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         shifted_space,
+         element_index,
+         local_id ) == shifted_space.restriction.shift + zero_based_index,
+      "Shifted scalar L2 final global index should include the FE-space shift." ) && success;
+   success = Check(
+      ScalarElementDofOrdinalToGlobalDofIndex(
+         shifted_space,
+         zero_based_index ) == shifted_space.restriction.shift + zero_based_index,
+      "Shifted scalar L2 ordinal mapping should include the FE-space shift." ) && success;
+
+   std::vector< Real > data(
+      shifted_space.restriction.shift +
+      shifted_space.GetNumberOfFiniteElementDofs() );
+   for ( GlobalIndex i = 0; i < data.size(); ++i )
+   {
+      data[i] = static_cast< Real >( i );
+   }
+
+   auto element_view =
+      MakeScalarElementTensorView( shifted_space, data.data() );
+   const GlobalIndex shifted_global_index =
+      GlobalDofIndex( shifted_space, element_index, local_id );
+   success = Check(
+      element_view( i11[0], i11[1], element_index ) ==
+         data[shifted_global_index],
+      "Shifted scalar L2 ElementTensorView read disagrees with canonical mapping." ) && success;
+
+   element_view( i11[0], i11[1], element_index ) = -3.0;
+   success = Check(
+      data[shifted_global_index] == -3.0,
+      "Shifted scalar L2 ElementTensorView write disagrees with canonical mapping." ) && success;
 
    return success;
 }
 
-bool TestScalarH1ElementToGlobalDofIndex()
+bool TestScalarH1GlobalDofIndex()
 {
    Cartesian2DMesh mesh( 1.0, 2, 1 );
 
@@ -192,6 +316,16 @@ bool TestScalarH1ElementToGlobalDofIndex()
    bool success = true;
 
    success = Check(
+      ScalarLocalDofCount( h1_space ) == 4,
+      "Unexpected scalar H1 local DoF count." ) && success;
+   success = Check(
+      ScalarGlobalTopologyDofCount( h1_space ) == 6,
+      "Unexpected scalar H1 topology DoF count." ) && success;
+   success = Check(
+      h1_space.GetNumberOfFiniteElementDofs() == 6,
+      "Unexpected scalar H1 final finite-element DoF count." ) && success;
+
+   success = Check(
       FlattenLocalDof( h1_space, i00 ) == 0,
       "Q1 local ordering for (0,0) should be local id 0." ) && success;
    success = Check(
@@ -205,35 +339,332 @@ bool TestScalarH1ElementToGlobalDofIndex()
       "Q1 local ordering for (1,1) should be local id 3." ) && success;
 
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 0, i00 ) == 0,
+      GlobalDofIndex( h1_space, 0, i00 ) == 0,
       "H1 element 0 local id 0 should map to global DoF 0." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 0, i10 ) == 1,
+      GlobalDofIndex( h1_space, 0, i10 ) == 1,
       "H1 element 0 local id 1 should map to global DoF 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 0, i01 ) == 3,
+      GlobalDofIndex( h1_space, 0, i01 ) == 3,
       "H1 element 0 local id 2 should map to global DoF 3." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 0, i11 ) == 4,
+      GlobalDofIndex( h1_space, 0, i11 ) == 4,
       "H1 element 0 local id 3 should map to global DoF 4." ) && success;
 
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 1, i00 ) == 1,
+      GlobalDofIndex( h1_space, 1, i00 ) == 1,
       "H1 element 1 local id 0 should map to global DoF 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 1, i10 ) == 2,
+      GlobalDofIndex( h1_space, 1, i10 ) == 2,
       "H1 element 1 local id 1 should map to global DoF 2." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 1, i01 ) == 4,
+      GlobalDofIndex( h1_space, 1, i01 ) == 4,
       "H1 element 1 local id 2 should map to global DoF 4." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( h1_space, 1, i11 ) == 5,
+      GlobalDofIndex( h1_space, 1, i11 ) == 5,
       "H1 element 1 local id 3 should map to global DoF 5." ) && success;
+
+   const GlobalIndex local00 = FlattenLocalDof( h1_space, i00 );
+   const GlobalIndex local10 = FlattenLocalDof( h1_space, i10 );
+   const GlobalIndex local01 = FlattenLocalDof( h1_space, i01 );
+   const GlobalIndex local11 = FlattenLocalDof( h1_space, i11 );
+
+   success = Check(
+      GlobalDofIndex( h1_space, 0, local00 ) ==
+         GlobalDofIndex( h1_space, 0, i00 ),
+      "Scalar H1 scalar-flat mapping disagrees for element 0 local id 0." ) && success;
+   success = Check(
+      GlobalDofIndex( h1_space, 0, local10 ) ==
+         GlobalDofIndex( h1_space, 0, i10 ),
+      "Scalar H1 scalar-flat mapping disagrees for element 0 local id 1." ) && success;
+   success = Check(
+      GlobalDofIndex( h1_space, 1, local01 ) ==
+         GlobalDofIndex( h1_space, 1, i01 ),
+      "Scalar H1 scalar-flat mapping disagrees for element 1 local id 2." ) && success;
+   success = Check(
+      GlobalDofIndex( h1_space, 1, local11 ) ==
+         GlobalDofIndex( h1_space, 1, i11 ),
+      "Scalar H1 scalar-flat mapping disagrees for element 1 local id 3." ) && success;
+   success = Check(
+      ZeroBasedElementToGlobalDofIndex( h1_space, 0, local11 ) ==
+         GlobalDofIndex( h1_space, 0, local11 ),
+      "Scalar H1 zero-based topology index should already be the final global DoF." ) && success;
+
+   const GlobalIndex element0_local01_ordinal =
+      0 * ScalarLocalDofCount( h1_space ) +
+      static_cast< GlobalIndex >( local01 );
+   const GlobalIndex element1_local00_ordinal =
+      1 * ScalarLocalDofCount( h1_space ) +
+      static_cast< GlobalIndex >( local00 );
+
+   success = Check(
+      ScalarElementDofOrdinalToGlobalDofIndex(
+         h1_space,
+         element0_local01_ordinal ) ==
+         GlobalDofIndex( h1_space, 0, local01 ),
+      "Scalar H1 ordinal mapping disagrees for element 0 local id 2." ) && success;
+   success = Check(
+      ScalarElementDofOrdinalToGlobalDofIndex(
+         h1_space,
+         element1_local00_ordinal ) ==
+         GlobalDofIndex( h1_space, 1, local00 ),
+      "Scalar H1 ordinal mapping disagrees for element 1 local id 0." ) && success;
+
+   std::vector< Real > data( h1_space.GetNumberOfFiniteElementDofs() );
+   for ( GlobalIndex i = 0; i < data.size(); ++i )
+   {
+      data[i] = 10.0 + static_cast< Real >( i );
+   }
+
+   auto element_view =
+      MakeScalarElementTensorView( h1_space, data.data() );
+   success = Check(
+      element_view( i01[0], i01[1], 0 ) ==
+         data[ScalarElementDofOrdinalToGlobalDofIndex(
+            h1_space,
+            element0_local01_ordinal )],
+      "Scalar H1 ElementTensorView read disagrees with canonical mapping." ) && success;
+   success = Check(
+      element_view( i00[0], i00[1], 1 ) ==
+         data[ScalarElementDofOrdinalToGlobalDofIndex(
+            h1_space,
+            element1_local00_ordinal )],
+      "Scalar H1 ElementTensorView read disagrees with shared-node mapping." ) && success;
+
+   element_view( i10[0], i10[1], 0 ) = 42.0;
+   success = Check(
+      data[GlobalDofIndex( h1_space, 0, local10 )] == 42.0,
+      "Scalar H1 ElementTensorView write disagrees with canonical mapping." ) && success;
 
    return success;
 }
 
-bool TestVectorH1ElementToGlobalDofIndex()
+bool TestTensorProductH1ElementTensorView()
+{
+   Cartesian2DMesh mesh0( 1.0, 2, 1 );
+   Cartesian2DMesh mesh1( 1.0, 1, 2 );
+
+   const std::array< int, 8 > restriction_map0{
+      0, 1, 3, 4,
+      1, 2, 4, 5
+   };
+   const std::array< int, 8 > restriction_map1{
+      0, 1, 2, 3,
+      2, 3, 4, 5
+   };
+
+   HostDevicePointer< const int > restriction_indices0{};
+   restriction_indices0.host_pointer = restriction_map0.data();
+   HostDevicePointer< const int > restriction_indices1{};
+   restriction_indices1.host_pointer = restriction_map1.data();
+
+   H1Restriction restriction0{ restriction_indices0, 6 };
+   H1Restriction restriction1{ restriction_indices1, 6 };
+   auto factor_space0 =
+      MakeFiniteElementSpace( mesh0, ScalarFE0{}, restriction0 );
+   auto factor_space1 =
+      MakeFiniteElementSpace( mesh1, ScalarFE0{}, restriction1 );
+   auto product_mesh = MakeCartesianProductMesh( mesh0, mesh1 );
+   auto product_restriction =
+      MakeTensorProductRestriction( factor_space0, factor_space1 );
+   using ProductRestriction =
+      std::remove_cvref_t< decltype( product_restriction ) >;
+   auto product_space =
+      MakeFiniteElementSpace(
+         product_mesh,
+         GLFiniteElement< 1, 1, 1, 1 >{},
+         product_restriction );
+
+   static_assert( is_tensor_product_restriction_v< ProductRestriction > );
+   static_assert(
+      restriction_traits< ProductRestriction >::is_direct_index_map );
+   static_assert(
+      !restriction_traits< ProductRestriction >::is_injective );
+
+   constexpr GlobalIndex e0 = 1;
+   constexpr GlobalIndex e1 = 1;
+   constexpr GlobalIndex ne0 = 2;
+   constexpr GlobalIndex product_element = e0 + ne0 * e1;
+   const std::array< GlobalIndex, 2 > factor0_indices{ 0, 1 };
+   const std::array< GlobalIndex, 2 > factor1_indices{ 1, 0 };
+   const std::array< GlobalIndex, 4 > product_indices{
+      factor0_indices[0],
+      factor0_indices[1],
+      factor1_indices[0],
+      factor1_indices[1]
+   };
+
+   const GlobalIndex local0 =
+      FlattenLocalDof< ScalarShape0 >( factor0_indices );
+   const GlobalIndex local1 =
+      FlattenLocalDof< ScalarShape0 >( factor1_indices );
+   const GlobalIndex g0 =
+      GlobalDofIndex( factor_space0, e0, local0 );
+   const GlobalIndex g1 =
+      GlobalDofIndex( factor_space1, e1, local1 );
+   const GlobalIndex n0 = ScalarGlobalTopologyDofCount( factor_space0 );
+   const GlobalIndex expected_global = g0 + n0 * g1;
+
+   bool success = true;
+   success = Check(
+      product_space.GetNumberOfFiniteElementDofs() ==
+         ScalarGlobalTopologyDofCount( factor_space0 ) *
+         ScalarGlobalTopologyDofCount( factor_space1 ),
+      "Tensor-product H1 DoF count should be the product of factor topology counts." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         product_space,
+         product_element,
+         FlattenLocalDof( product_space, product_indices ) ) ==
+         expected_global,
+      "Tensor-product H1 scalar-flat mapping did not match factor recombination." ) && success;
+
+   std::vector< Real > data( product_space.GetNumberOfFiniteElementDofs() );
+   for ( GlobalIndex i = 0; i < data.size(); ++i )
+   {
+      data[i] = 100.0 + static_cast< Real >( i );
+   }
+
+   auto element_view =
+      MakeScalarElementTensorView( product_space, data.data() );
+   success = Check(
+      element_view(
+         product_indices[0],
+         product_indices[1],
+         product_indices[2],
+         product_indices[3],
+         product_element ) == data[expected_global],
+      "Tensor-product H1 element view did not slice local DoF indices by factor." ) && success;
+
+   element_view(
+      product_indices[0],
+      product_indices[1],
+      product_indices[2],
+      product_indices[3],
+      product_element ) = -17.0;
+   success = Check(
+      data[expected_global] == -17.0,
+      "Tensor-product H1 element view write did not hit the recombined factor DoF." ) && success;
+
+   return success;
+}
+
+bool TestTensorProductThreeFactorElementTensorView()
+{
+   using Factor0FE = GLFiniteElement< 1 >;
+   using Factor1FE = GLFiniteElement< 1, 2 >;
+   using Factor2FE = GLFiniteElement< 2 >;
+   using Factor0DofShape =
+      finite_element_dof_shape_t< typename Factor0FE::shape_functions >;
+   using Factor1DofShape =
+      finite_element_dof_shape_t< typename Factor1FE::shape_functions >;
+   using Factor2DofShape =
+      finite_element_dof_shape_t< typename Factor2FE::shape_functions >;
+
+   Cartesian1DMesh mesh0( 1.0, 3 );
+   Cartesian2DMesh mesh1( 1.0, 2, 2 );
+   Cartesian1DMesh mesh2( 1.0, 2 );
+
+   auto factor_space0 =
+      MakeFiniteElementSpace( mesh0, Factor0FE{}, L2Restriction{ 100 } );
+   auto factor_space1 =
+      MakeFiniteElementSpace( mesh1, Factor1FE{}, L2Restriction{ 200 } );
+   auto factor_space2 =
+      MakeFiniteElementSpace( mesh2, Factor2FE{}, L2Restriction{ 300 } );
+   auto product_mesh = MakeCartesianProductMesh( mesh0, mesh1, mesh2 );
+   auto product_restriction =
+      MakeTensorProductRestriction(
+         factor_space0,
+         factor_space1,
+         factor_space2 );
+   auto product_space =
+      MakeFiniteElementSpace(
+         product_mesh,
+         GLFiniteElement< 1, 1, 2, 2 >{},
+         product_restriction );
+
+   constexpr GlobalIndex e0 = 2;
+   constexpr GlobalIndex e1 = 3;
+   constexpr GlobalIndex e2 = 1;
+   constexpr GlobalIndex ne0 = 3;
+   constexpr GlobalIndex ne1 = 4;
+   constexpr GlobalIndex product_element =
+      e0 + ne0 * e1 + ne0 * ne1 * e2;
+   const std::array< GlobalIndex, 1 > factor0_indices{ 1 };
+   const std::array< GlobalIndex, 2 > factor1_indices{ 1, 2 };
+   const std::array< GlobalIndex, 1 > factor2_indices{ 2 };
+   const std::array< GlobalIndex, 4 > product_indices{
+      factor0_indices[0],
+      factor1_indices[0],
+      factor1_indices[1],
+      factor2_indices[0]
+   };
+
+   const GlobalIndex n0 = ScalarGlobalTopologyDofCount( factor_space0 );
+   const GlobalIndex n1 = ScalarGlobalTopologyDofCount( factor_space1 );
+   const GlobalIndex local0 =
+      FlattenMultiIndex< Factor0DofShape >( factor0_indices );
+   const GlobalIndex local1 =
+      FlattenMultiIndex< Factor1DofShape >( factor1_indices );
+   const GlobalIndex local2 =
+      FlattenMultiIndex< Factor2DofShape >( factor2_indices );
+   const GlobalIndex g0 =
+      e0 * Product( Factor0DofShape{} ) + local0;
+   const GlobalIndex g1 =
+      e1 * Product( Factor1DofShape{} ) + local1;
+   const GlobalIndex g2 =
+      e2 * Product( Factor2DofShape{} ) + local2;
+   const GlobalIndex expected_global = g0 + n0 * g1 + n0 * n1 * g2;
+
+   bool success = true;
+   success = Check(
+      product_space.GetNumberOfFiniteElementDofs() == n0 * n1 *
+         ScalarGlobalTopologyDofCount( factor_space2 ),
+      "Three-factor tensor-product DoF count should ignore shifted factor offsets." ) && success;
+   success = Check(
+      expected_global + 1 ==
+         static_cast< GlobalIndex >(
+            product_space.GetNumberOfFiniteElementDofs() ),
+      "Three-factor test should exercise the highest product topology index." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         product_space,
+         product_element,
+         FlattenLocalDof( product_space, product_indices ) ) ==
+         expected_global,
+      "Three-factor tensor-product scalar-flat mapping used the wrong factor stride." ) && success;
+
+   std::vector< Real > data( product_space.GetNumberOfFiniteElementDofs() );
+   for ( GlobalIndex i = 0; i < data.size(); ++i )
+   {
+      data[i] = static_cast< Real >( i );
+   }
+
+   auto element_view =
+      MakeScalarElementTensorView( product_space, data.data() );
+   success = Check(
+      element_view(
+         product_indices[0],
+         product_indices[1],
+         product_indices[2],
+         product_indices[3],
+         product_element ) == data[expected_global],
+      "Three-factor tensor-product element view did not ignore factor L2 shifts." ) && success;
+
+   element_view(
+      product_indices[0],
+      product_indices[1],
+      product_indices[2],
+      product_indices[3],
+      product_element ) = -29.0;
+   success = Check(
+      data[expected_global] == -29.0,
+      "Three-factor tensor-product element view write used the wrong product topology index." ) && success;
+
+   return success;
+}
+
+bool TestVectorH1GlobalDofIndex()
 {
    const Integer n = 2;
    const Real h = 1.0 / static_cast< Real >( n );
@@ -280,6 +711,9 @@ bool TestVectorH1ElementToGlobalDofIndex()
    success = Check(
       vector_h1_space.GetNumberOfFiniteElementDofs() == 6,
       "Vector H1 total true-DoF count should be component-major scalar_count * NComp." ) && success;
+   success = Check(
+      ScalarGlobalTopologyDofCount( vector_h1_space ) == 3,
+      "Vector H1 scalar topology DoF count should match the underlying scalar restriction." ) && success;
 
    success = Check(
       FlattenLocalDof( vector_h1_space, c0, i0 ) == 0,
@@ -295,43 +729,60 @@ bool TestVectorH1ElementToGlobalDofIndex()
       "Vector H1 component 1 local node 1 should flatten after component 0." ) && success;
 
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i0 ) == 0,
+      GlobalDofIndex( vector_h1_space, c0, 0, i0 ) == 0,
       "Vector H1 component 0 element 0 left node should map to true DoF 0." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i1 ) == 1,
+      GlobalDofIndex( vector_h1_space, c0, 0, i1 ) == 1,
       "Vector H1 component 0 element 0 right node should map to true DoF 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 1, i0 ) == 1,
+      GlobalDofIndex( vector_h1_space, c0, 1, i0 ) == 1,
       "Vector H1 component 0 shared node should map to true DoF 1 from element 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 1, i1 ) == 2,
+      GlobalDofIndex( vector_h1_space, c0, 1, i1 ) == 2,
       "Vector H1 component 0 element 1 right node should map to true DoF 2." ) && success;
 
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i0 ) == 3,
+      GlobalDofIndex( vector_h1_space, c1, 0, i0 ) == 3,
       "Vector H1 component 1 true DoFs should begin after all component 0 DoFs." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i1 ) == 4,
+      GlobalDofIndex( vector_h1_space, c1, 0, i1 ) == 4,
       "Vector H1 component 1 element 0 right node should map to true DoF 4." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c1, 1, i0 ) == 4,
+      GlobalDofIndex( vector_h1_space, c1, 1, i0 ) == 4,
       "Vector H1 component 1 shared node should map to true DoF 4 from element 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c1, 1, i1 ) == 5,
+      GlobalDofIndex( vector_h1_space, c1, 1, i1 ) == 5,
       "Vector H1 component 1 element 1 right node should map to true DoF 5." ) && success;
 
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i1 ) ==
-         ElementToGlobalDofIndex( vector_h1_space, c0, 1, i0 ),
+      GlobalDofIndex( vector_h1_space, c0, 0, i1 ) ==
+         GlobalDofIndex( vector_h1_space, c0, 1, i0 ),
       "Vector H1 shared node should be shared within component 0." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c1, 0, i1 ) ==
-         ElementToGlobalDofIndex( vector_h1_space, c1, 1, i0 ),
+      GlobalDofIndex( vector_h1_space, c1, 0, i1 ) ==
+         GlobalDofIndex( vector_h1_space, c1, 1, i0 ),
       "Vector H1 shared node should be shared within component 1." ) && success;
    success = Check(
-      ElementToGlobalDofIndex( vector_h1_space, c0, 0, i0 ) !=
-         ElementToGlobalDofIndex( vector_h1_space, c1, 0, i0 ),
+      GlobalDofIndex( vector_h1_space, c0, 0, i0 ) !=
+         GlobalDofIndex( vector_h1_space, c1, 0, i0 ),
       "Vector H1 components must not alias each other." ) && success;
+
+   success = Check(
+      GlobalDofIndex(
+         vector_h1_space,
+         c0,
+         0,
+         FlattenComponentLocalDof< VectorH1Shape >( c0, i1 ) ) ==
+         GlobalDofIndex( vector_h1_space, c0, 0, i1 ),
+      "Vector H1 component-flat wrapper changed component 0 behavior." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         vector_h1_space,
+         c1,
+         1,
+         FlattenComponentLocalDof< VectorH1Shape >( c1, i0 ) ) ==
+         GlobalDofIndex( vector_h1_space, c1, 1, i0 ),
+      "Vector H1 component-flat wrapper changed component 1 behavior." ) && success;
 
    return success;
 }
@@ -376,6 +827,31 @@ bool TestVectorGlobalDofIndex()
          c1_global_offset + element_index * c1_ndofs + FlattenMultiIndex< Component1DofShape >( c1_i21 ),
       "Unexpected vector component 1 L2 global DoF index." ) && success;
 
+   success = Check(
+      GlobalDofIndex(
+         vector_space,
+         c0,
+         element_index,
+         FlattenComponentLocalDof< VectorShape >( c0, c0_i11 ) ) ==
+         GlobalDofIndex(
+            vector_space,
+            c0,
+            element_index,
+            c0_i11 ),
+      "Vector L2 component-flat wrapper changed component 0 behavior." ) && success;
+   success = Check(
+      GlobalDofIndex(
+         vector_space,
+         c1,
+         element_index,
+         FlattenComponentLocalDof< VectorShape >( c1, c1_i21 ) ) ==
+         GlobalDofIndex(
+            vector_space,
+            c1,
+            element_index,
+            c1_i21 ),
+      "Vector L2 component-flat wrapper changed component 1 behavior." ) && success;
+
    std::vector< Real > data( vector_space.GetNumberOfFiniteElementDofs() );
    for ( GlobalIndex i = 0; i < data.size(); ++i )
    {
@@ -406,7 +882,7 @@ bool TestVectorTrialTraversalAndSetLocalDof()
    auto vector_space = MakeFiniteElementSpace( mesh, VectorFE{} );
    auto local_dofs = MakeZeroElementVector( kernel_context, vector_space );
 
-   LocalIndex count = 0;
+   GlobalIndex count = 0;
    ForEachLocalTrialDof( kernel_context, vector_space, [&] ( const auto & dof )
    {
       const Real value = static_cast< Real >(
@@ -529,11 +1005,14 @@ bool TestAnisotropicDescriptorOrientationMapping()
 int main()
 {
    bool success = true;
+   success = TestRestrictionTraits() && success;
    success = TestScalarFlattenLocalDof() && success;
    success = TestVectorFlattenLocalDof() && success;
    success = TestScalarGlobalDofIndex() && success;
-   success = TestScalarH1ElementToGlobalDofIndex() && success;
-   success = TestVectorH1ElementToGlobalDofIndex() && success;
+   success = TestScalarH1GlobalDofIndex() && success;
+   success = TestTensorProductH1ElementTensorView() && success;
+   success = TestTensorProductThreeFactorElementTensorView() && success;
+   success = TestVectorH1GlobalDofIndex() && success;
    success = TestVectorGlobalDofIndex() && success;
    success = TestVectorTrialTraversalAndSetLocalDof() && success;
    success = TestDescriptorThreadRegisterSplit() && success;

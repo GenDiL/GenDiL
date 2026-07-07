@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/SGBSR/sgbsrmatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 
@@ -54,6 +54,12 @@ auto GenericSGBSRAssembly(
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericAssembly<SGBSR>: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
+
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
 
@@ -70,16 +76,16 @@ auto GenericSGBSRAssembly(
       std::is_same_v< TrialSpace, TestSpace >,
       "SGBSR GenericAssembly currently requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported." );
 
-   constexpr bool trial_is_cg =
+   constexpr bool trial_uses_h1_restriction =
       is_h1_restriction_v< typename TrialSpace::restriction_type >;
-   constexpr bool test_is_cg =
+   constexpr bool test_uses_h1_restriction =
       is_h1_restriction_v< typename TestSpace::restriction_type >;
    constexpr bool has_facet_terms =
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I >;
 
    static_assert(
-      !( ( trial_is_cg || test_is_cg ) && has_facet_terms ),
+      !( ( trial_uses_h1_restriction || test_uses_h1_restriction ) && has_facet_terms ),
       "SGBSR GenericAssembly currently supports H1Restriction/VectorH1Restriction cell terms only; H1/vector H1 boundary/interior facet terms are unsupported." );
 
    auto bsr_matrix = MakeSGBSRInternalPattern< I >( trial_space, backend );

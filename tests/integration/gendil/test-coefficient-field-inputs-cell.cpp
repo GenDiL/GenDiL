@@ -155,11 +155,11 @@ int TestCoefficientFieldInputsCell()
       MakeFiniteElementField<"w">(fe_space, w_view),
       MakeFiniteElementField<"z">(fe_space, z_view),
       MakeFiniteElementField<"g">(fe_space, g_view),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto ref_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeDomain<"mesh">(mesh));
+      MakeIntegrationDomain<"mesh">(fe_space));
 
    auto ref_25_op = MakeGenericOperator<KernelPolicy>(
       integrate(cells, constant_25 * u * v),

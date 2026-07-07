@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"

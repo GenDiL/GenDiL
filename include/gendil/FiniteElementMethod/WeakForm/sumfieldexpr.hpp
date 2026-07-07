@@ -24,10 +24,12 @@ struct SumExpr : FieldBase
 {
    std::tuple<Head, Tail...> terms;
 
+   GENDIL_HOST_DEVICE
    constexpr SumExpr(const Head& head, const Tail&... tail)
       : terms(head, tail...)
    {}
 
+   GENDIL_HOST_DEVICE
    constexpr SumExpr(Head&& head, Tail&&... tail)
       : terms(std::move(head), std::move(tail)...)
    {}
@@ -37,7 +39,7 @@ struct SumExpr : FieldBase
    constexpr auto operator()(Args&&... args) const
    {
       return std::apply(
-         [&](auto const&... ts)
+         [&] GENDIL_HOST_DEVICE (auto const&... ts)
          {
             return (ts(std::forward<Args>(args)...) + ...);
          },
@@ -56,6 +58,7 @@ template < class T >
 inline constexpr bool is_sum_expr_v = is_sum_expr<std::remove_cvref_t<T>>::value;
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 constexpr auto AsSumTuple(Expr&& expr)
 {
    using E = std::remove_cvref_t<Expr>;
@@ -71,10 +74,11 @@ constexpr auto AsSumTuple(Expr&& expr)
 }
 
 template < class Tuple >
+GENDIL_HOST_DEVICE
 constexpr auto MakeSumExprFromTuple(Tuple&& tuple)
 {
    return std::apply(
-      [](auto&&... xs)
+      [] GENDIL_HOST_DEVICE (auto&&... xs)
       {
          using Sum = SumExpr<std::remove_cvref_t<decltype(xs)>...>;
          return Sum(std::forward<decltype(xs)>(xs)...);
@@ -105,6 +109,7 @@ std::ostream& operator<<(std::ostream& os, const SumExpr<Terms...>& sum)
 //   Expr + SumExpr           -> SumExpr<...>
 //   SumExpr + SumExpr        -> SumExpr<...>
 template < FieldExpr LHS, FieldExpr RHS >
+GENDIL_HOST_DEVICE
 constexpr auto operator+(LHS&& lhs, RHS&& rhs)
 {
    auto lhs_terms = AsSumTuple(std::forward<LHS>(lhs));
@@ -114,6 +119,7 @@ constexpr auto operator+(LHS&& lhs, RHS&& rhs)
 }
 
 template < FieldExpr LHS, FieldExpr RHS >
+GENDIL_HOST_DEVICE
 constexpr auto operator-(LHS&& lhs, RHS&& rhs)
 {
    auto lhs_terms = AsSumTuple(std::forward<LHS>(lhs));

@@ -466,7 +466,7 @@ inline constexpr bool is_matrix_coefficient_v = is_matrix_coefficient<std::remov
  * - Vector/matrix coefficients
  * - Normal (geometry vector, not a scalar)
  * - Trial/test spaces (field references, not scalar values)
- * - GradientExpr, JumpExpr, AverageExpr, MatVecExpr
+ * - GradientExpr, JumpExpr, AverageExpr, matrix-vector ProductExpr
  * - MultFieldExpr
  */
 template<typename T>

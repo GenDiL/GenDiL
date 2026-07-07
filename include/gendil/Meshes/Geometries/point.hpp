@@ -5,7 +5,9 @@
 #pragma once
 
 #include <ostream>
+
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/MathHelperFunctions/sqrt.hpp"
 
 namespace gendil {
 

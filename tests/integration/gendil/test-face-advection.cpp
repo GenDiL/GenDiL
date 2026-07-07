@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
    static_assert(Dim == 3, "This test is set up for 3D. Switch mesh for 2D runs.");
 
    std::array<GlobalIndex, Dim> sizes{(GlobalIndex)nx, (GlobalIndex)ny, (GlobalIndex)nz};
-   auto face_mesh = make_cartesian_interior_face_connectivity<Dim>(sizes);
+   auto face_mesh = MakeCartesianInteriorFaceConnectivity<Dim>(sizes);
 
    // --------------------------
    // Advection field and (placeholder) boundary field

@@ -38,7 +38,7 @@ namespace gendil {
  * The face indexing convention follows axis-aligned HyperCubes:
  *  - Faces `0..Dim-1` have reference normal `-e_axis`,
  *  - Faces `Dim..2*Dim-1` have reference normal `+e_axis`,
- *  with `axis = FaceIndex % Dim`.
+ *  with `axis = HyperCube<Dim>::GetNormalDimensionIndex(FaceIndex)`.
  *
  * @tparam Dim  Topological dimension (e.g., 2 or 3).
  *
@@ -60,12 +60,15 @@ struct CartesianLocalFaceConnectivity
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
@@ -97,8 +100,8 @@ struct CartesianLocalFaceConnectivity
     * conditions are detected on the first/last slices along the face axis.
     *
     * Face semantics (Hypercube convention):
-    *  - `Index  = FaceIndex % Dim` selects the axis,
-    *  - `Sign   = (FaceIndex < Dim ? -1 : +1)` selects the side (minus/plus).
+    *  - `Index  = HyperCube<Dim>::GetNormalDimensionIndex(FaceIndex)` selects the axis,
+    *  - `Sign   = HyperCube<Dim>::GetNormalSign(FaceIndex)` selects the side (minus/plus).
     *
     * @tparam FaceIndex  Compile-time local face id in `[0, 2*Dim)`.
     * @param cell_index  Linear index of the current cell.
@@ -125,9 +128,10 @@ struct CartesianLocalFaceConnectivity
          "FaceIndex out of bound."
       );
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr Integer Index = FaceIndex % Dim; // HyperCube< Dim >::GetNormalDimensionIndex( face_index ) ?
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1; // HyperCube< Dim >::GetNormalSign( face_index ) ?
+      constexpr Integer Index =
+         HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex );
+      constexpr int Sign =
+         HyperCube< Dim >::GetNormalSign( FaceIndex );
 
       std::array< GlobalIndex, Dim > neighbor_index = GetStructuredSubIndices( cell_index, sizes );
       // TODO: we can forgo computing all of the indices (computing only
@@ -219,12 +223,15 @@ struct CartesianLocalFaceConnectivity< 1 >
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
-   template < Integer FaceIndex, Integer NormalAxis = FaceIndex % Dim, int NormalSign = FaceIndex < Dim ? -1 : 1 >
+   template <
+      Integer FaceIndex,
+      Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
+      int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
       ConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
-         std::integral_constant< Integer, FaceIndex < Dim ? FaceIndex + Dim : FaceIndex - Dim >,
+         std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
@@ -246,8 +253,8 @@ struct CartesianLocalFaceConnectivity< 1 >
          "FaceIndex out of bound."
       );
 
-      // !FIXME: This is magic and specific to HyperCube
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1;
+      constexpr int Sign =
+         HyperCube< Dim >::GetNormalSign( FaceIndex );
 
       GlobalIndex neighbor_index = cell_index;
       bool boundary = false;

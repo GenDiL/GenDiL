@@ -490,7 +490,7 @@ int TestUpwindVectorCoefficientFieldInputs()
    auto cell_form =
       integrate(cells, -u * dot(beta, grad(v)));
    auto facet_form =
-      integrate(interior_facets, upwind(average(beta), u) * v);
+      integrate(interior_facets, upwind(average(beta), u) * jump(v));
    auto advection_form = cell_form + facet_form;
 
    static_assert(!requires_plus_side_jacobian_v<decltype(facet_form)>);
@@ -499,7 +499,7 @@ int TestUpwindVectorCoefficientFieldInputs()
       MakeWeakFormContext(
          MakeTrialField<"u">(scalar_fe_space),
          MakeFiniteElementField<"beta_field">(vector_fe_space, beta_view),
-         MakeDomain<"mesh">(mesh));
+         MakeIntegrationDomain<"mesh">(scalar_fe_space));
 
    auto op =
       MakeGenericOperator<KernelPolicy>(

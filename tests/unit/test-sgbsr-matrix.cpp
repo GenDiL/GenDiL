@@ -254,7 +254,7 @@ bool TestScalarH1GatherScatterMapping()
    H1Restriction restriction{ MakeManualH1RestrictionIndices(), 6 };
    auto h1_space = MakeFiniteElementSpace( mesh, ScalarFE0{}, restriction );
 
-   constexpr LocalIndex block_size = LocalDofCount< ScalarShape0 >();
+   constexpr GlobalIndex block_size = LocalDofCount< ScalarShape0 >();
    const GlobalIndex num_elements = h1_space.GetNumberOfFiniteElements();
 
    Vector x_fe( h1_space.GetNumberOfFiniteElementDofs() );
@@ -319,7 +319,7 @@ bool TestVectorGatherScatterMapping()
 
    constexpr Component0Tag c0{};
    constexpr Component1Tag c1{};
-   constexpr LocalIndex block_size = LocalDofCount< VectorShape >();
+   constexpr GlobalIndex block_size = LocalDofCount< VectorShape >();
 
    Vector x_fe( vector_space.GetNumberOfFiniteElementDofs() );
    Real * x_fe_data = x_fe.WriteHostData();
@@ -459,7 +459,7 @@ bool TestVectorH1GatherScatterMapping()
 
    using VectorH1Space = std::remove_cvref_t< decltype( vector_h1_space ) >;
    using ShapeFunctions = typename VectorH1Space::finite_element_type::shape_functions;
-   constexpr LocalIndex block_size = LocalDofCount< ShapeFunctions >();
+   constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
    const GlobalIndex num_elements =
       vector_h1_space.GetNumberOfFiniteElements();
 
@@ -526,7 +526,7 @@ bool TestVectorSGBSRPermutationApply()
    Cartesian2DMesh mesh( 1.0, 2, 1 );
    auto vector_space = MakeFiniteElementSpace( mesh, VectorFE{} );
 
-   constexpr LocalIndex block_size = LocalDofCount< VectorShape >();
+   constexpr GlobalIndex block_size = LocalDofCount< VectorShape >();
    auto identity_bsr =
       MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >(
          vector_space.GetNumberOfFiniteElements(),
@@ -595,7 +595,7 @@ bool TestVectorH1SGBSRCellMass()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( vector_h1_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( vector_h1_space ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;

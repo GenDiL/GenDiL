@@ -967,7 +967,7 @@ void RunGlobalFaceAdvectionKernelPolicy(
       MakeCartesianBenchmarkMeshFromGlobalExtents< Dim >( extents );
    auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
    auto face_meshes =
-      make_cartesian_interior_face_connectivity< Dim >( extents );
+      MakeCartesianInteriorFaceConnectivity< Dim >( extents );
    auto num_quads = MakeNumQuads< Dim, num_quad_1d >();
    auto integration_rule = MakeIntegrationRule( num_quads );
 

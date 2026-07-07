@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
@@ -41,7 +42,8 @@ void WriteDofs( const GlobalIndex element_index,
    );
    
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -84,7 +86,8 @@ void SerialWriteDofs(
       "Mismatching dimensions in ReadDofs."
    );
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
@@ -133,7 +136,8 @@ void ThreadedWriteDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       ThreadLoop< tshape >( thread, [&] ( auto... t )
       {
@@ -201,7 +205,8 @@ void WriteVectorDofsSerial(
    constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   if constexpr ( restriction_traits<
+      typename FiniteElementSpace::restriction_type >::is_injective )
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
@@ -254,7 +259,8 @@ void WriteVectorDofsThreaded(
       {
          UnitLoop< std::tuple_element_t< i, r_shapes > >( [&] ( auto... k )
          {
-            if constexpr ( !Add && std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+            if constexpr ( !Add && restriction_traits<
+               typename FiniteElementSpace::restriction_type >::is_injective )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else
                AtomicAdd( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
@@ -475,6 +481,166 @@ template <
    typename LocalDofsType,
    typename GlobalDofsType >
 GENDIL_HOST_DEVICE
+void SerialWriteVectorFaceDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
+      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
+         orientation );
+
+      constexpr size_t data_size = Product( ComponentDofShape{} );
+      Real data[ data_size ];
+      const auto dofs_sizes = to_array( ComponentDofShape{} );
+      auto reference_view = MakeFIFOView( data, dofs_sizes );
+      auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+      const auto & local_component = std::get< i >( local_dofs );
+      auto & global_component = std::get< i >( global_dofs );
+
+      UnitLoop< ComponentDofShape >( [&]( auto... indices )
+      {
+         reference_view( indices... ) = local_component( indices... );
+      });
+
+      UnitLoop< ComponentDofShape >( [&]( auto... indices )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               global_component( indices..., element_index ),
+               oriented_view( indices... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               global_component( indices..., element_index ),
+               -oriented_view( indices... ) );
+         }
+         else
+         {
+            global_component( indices..., element_index ) =
+               oriented_view( indices... );
+         }
+      });
+   });
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void ThreadedWriteVectorFaceDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
+      using tshape =
+         subsequence_t<
+            ComponentDofShape,
+            typename KernelContext::template threaded_dimensions<
+               ComponentDofShape::size() > >;
+      using rshape =
+         subsequence_t<
+            ComponentDofShape,
+            typename KernelContext::template register_dimensions<
+               ComponentDofShape::size() > >;
+
+      static_assert(
+         threaded_shape_covered_v< KernelContext, ComponentDofShape >,
+         "Under-threaded strided coverage is not supported by this threaded "
+         "helper yet." );
+      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
+         orientation );
+
+      constexpr size_t data_size = Product( ComponentDofShape{} );
+      GENDIL_CHECK_MEMORY_ARENA_REQUEST( thread.SharedAllocator, data_size );
+      Real * data = thread.SharedAllocator.allocate( data_size );
+
+      const auto dofs_sizes = to_array( ComponentDofShape{} );
+      auto reference_view = MakeFixedFIFOView( data, ComponentDofShape{} );
+      auto oriented_view = MakeOrientedView( data, dofs_sizes, orientation );
+      const auto & local_component = std::get< i >( local_dofs );
+      auto & global_component = std::get< i >( global_dofs );
+
+      ThreadLoop< tshape >( thread, [&]( auto... t )
+      {
+         UnitLoop< rshape >( [&]( auto... k )
+         {
+            reference_view( t..., k... ) = local_component( k... );
+         });
+      });
+
+      thread.Synchronize();
+
+      ThreadLoop< tshape >( thread, [&]( auto... t )
+      {
+         UnitLoop< rshape >( [&]( auto... k )
+         {
+            if constexpr ( Op == WriteAdd )
+            {
+               AtomicAdd(
+                  global_component( t..., k..., element_index ),
+                  oriented_view( t..., k... ) );
+            }
+            else if constexpr ( Op == WriteSub )
+            {
+               AtomicAdd(
+                  global_component( t..., k..., element_index ),
+                  -oriented_view( t..., k... ) );
+            }
+            else
+            {
+               global_component( t..., k..., element_index ) =
+                  oriented_view( t..., k... );
+            }
+         });
+      });
+
+      thread.Synchronize();
+      thread.SharedAllocator.reset();
+   });
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
 void DirectGlobalSerialWriteDofs(
    KernelContext & thread,
    const FiniteElementSpace & fe_space,
@@ -605,6 +771,150 @@ void DirectGlobalThreadedWriteDofs(
 }
 
 template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalSerialWriteVectorFaceDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
+      const auto dofs_sizes = to_array( ComponentDofShape{} );
+      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
+         orientation );
+
+      const auto & local_component = std::get< i >( local_dofs );
+      auto & global_component = std::get< i >( global_dofs );
+      auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            global_component,
+            element_index,
+            dofs_sizes,
+            orientation );
+
+      UnitLoop< ComponentDofShape >( [&]( auto... indices )
+      {
+         if constexpr ( Op == WriteAdd )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               local_component( indices... ) );
+         }
+         else if constexpr ( Op == WriteSub )
+         {
+            AtomicAdd(
+               oriented_global_dofs( indices... ),
+               -local_component( indices... ) );
+         }
+         else
+         {
+            oriented_global_dofs( indices... ) =
+               local_component( indices... );
+         }
+      });
+   });
+}
+
+template <
+   WriteOp Op,
+   typename KernelContext,
+   typename FiniteElementSpace,
+   CellFaceView Face,
+   typename LocalDofsType,
+   typename GlobalDofsType >
+GENDIL_HOST_DEVICE
+void DirectGlobalThreadedWriteVectorFaceDofs(
+   KernelContext & thread,
+   const FiniteElementSpace & fe_space,
+   const Face & face_info,
+   const LocalDofsType & local_dofs,
+   GlobalDofsType & global_dofs )
+{
+   constexpr Integer v_dim =
+      FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
+   using dof_shape =
+      typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
+
+   const GlobalIndex element_index = face_info.GetCellIndex();
+   Permutation< FiniteElementSpace::Dim > orientation =
+      face_info.GetOrientation();
+
+   ConstexprLoop< v_dim >( [&]( auto i )
+   {
+      using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
+      using tshape =
+         subsequence_t<
+            ComponentDofShape,
+            typename KernelContext::template threaded_dimensions<
+               ComponentDofShape::size() > >;
+      using rshape =
+         subsequence_t<
+            ComponentDofShape,
+            typename KernelContext::template register_dimensions<
+               ComponentDofShape::size() > >;
+
+      static_assert(
+         threaded_shape_covered_v< KernelContext, ComponentDofShape >,
+         "Under-threaded strided coverage is not supported by this threaded "
+         "helper yet." );
+      const auto dofs_sizes = to_array( ComponentDofShape{} );
+      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
+         orientation );
+
+      const auto & local_component = std::get< i >( local_dofs );
+      auto & global_component = std::get< i >( global_dofs );
+      auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            global_component,
+            element_index,
+            dofs_sizes,
+            orientation );
+
+      ThreadLoop< tshape >( thread, [&]( auto... t )
+      {
+         UnitLoop< rshape >( [&]( auto... k )
+         {
+            if constexpr ( Op == WriteAdd )
+            {
+               AtomicAdd(
+                  oriented_global_dofs( t..., k... ),
+                  local_component( k... ) );
+            }
+            else if constexpr ( Op == WriteSub )
+            {
+               AtomicAdd(
+                  oriented_global_dofs( t..., k... ),
+                  -local_component( k... ) );
+            }
+            else
+            {
+               oriented_global_dofs( t..., k... ) =
+                  local_component( k... );
+            }
+         });
+      });
+   });
+}
+
+template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
@@ -623,15 +933,36 @@ void WriteDofs(
    using FaceWritePolicy =
       face_write_dofs_policy_t<
          typename KernelContext::kernel_configuration_type >;
+   constexpr bool vector_dofs = is_vector_shape_functions_v< ShapeFunctions >;
    constexpr bool use_direct_global =
-      !is_vector_shape_functions_v< ShapeFunctions > &&
       std::is_same_v<
          FaceWritePolicy,
          DirectGlobalFaceWriteDofsPolicy >;
 
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalSerialWriteVectorFaceDofs<Write>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            SerialWriteVectorFaceDofs<Write>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalSerialWriteDofs<Write>(
             thread,
@@ -652,7 +983,28 @@ void WriteDofs(
    }
    else
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalThreadedWriteVectorFaceDofs<Write>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            ThreadedWriteVectorFaceDofs<Write>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalThreadedWriteDofs<Write>(
             thread,
@@ -692,15 +1044,36 @@ void WriteAddDofs(
    using FaceWritePolicy =
       face_write_dofs_policy_t<
          typename KernelContext::kernel_configuration_type >;
+   constexpr bool vector_dofs = is_vector_shape_functions_v< ShapeFunctions >;
    constexpr bool use_direct_global =
-      !is_vector_shape_functions_v< ShapeFunctions > &&
       std::is_same_v<
          FaceWritePolicy,
          DirectGlobalFaceWriteDofsPolicy >;
 
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalSerialWriteVectorFaceDofs<WriteAdd>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            SerialWriteVectorFaceDofs<WriteAdd>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalSerialWriteDofs<WriteAdd>(
             thread,
@@ -721,7 +1094,28 @@ void WriteAddDofs(
    }
    else
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalThreadedWriteVectorFaceDofs<WriteAdd>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            ThreadedWriteVectorFaceDofs<WriteAdd>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalThreadedWriteDofs<WriteAdd>(
             thread,
@@ -761,15 +1155,36 @@ void WriteSubDofs(
    using FaceWritePolicy =
       face_write_dofs_policy_t<
          typename KernelContext::kernel_configuration_type >;
+   constexpr bool vector_dofs = is_vector_shape_functions_v< ShapeFunctions >;
    constexpr bool use_direct_global =
-      !is_vector_shape_functions_v< ShapeFunctions > &&
       std::is_same_v<
          FaceWritePolicy,
          DirectGlobalFaceWriteDofsPolicy >;
 
    if constexpr ( !is_threaded_v< KernelContext > )
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalSerialWriteVectorFaceDofs<WriteSub>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            SerialWriteVectorFaceDofs<WriteSub>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalSerialWriteDofs<WriteSub>(
             thread,
@@ -790,7 +1205,28 @@ void WriteSubDofs(
    }
    else
    {
-      if constexpr ( use_direct_global )
+      if constexpr ( vector_dofs )
+      {
+         if constexpr ( use_direct_global )
+         {
+            DirectGlobalThreadedWriteVectorFaceDofs<WriteSub>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+         else
+         {
+            ThreadedWriteVectorFaceDofs<WriteSub>(
+               thread,
+               fe_space,
+               face_info,
+               local_dofs,
+               global_dofs );
+         }
+      }
+      else if constexpr ( use_direct_global )
       {
          DirectGlobalThreadedWriteDofs<WriteSub>(
             thread,

@@ -9,24 +9,24 @@
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 
 // A block sparse row (BSR) sparse matrix type and action.
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrix.hpp"
 
 // Algebraic scatter/gather wrapper for BSR sparse matrix application.
-#include "gendil/Algebra/SparseMatrixTypes/sgbsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/SGBSR/sgbsrmatrix.hpp"
 
 // Raw duplicated unsorted COO triplet assembly buffer.
-#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
 
 // Canonical sorted and duplicate-reduced COO sparse matrix type and action.
-#include "gendil/Algebra/SparseMatrixTypes/coomatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"
 
 // Canonical compressed sparse row sparse matrix type and action.
-#include "gendil/Algebra/SparseMatrixTypes/csrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp"
 
 // Canonical compressed sparse column sparse matrix type and action.
-#include "gendil/Algebra/SparseMatrixTypes/cscmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrix.hpp"
 
 #ifdef GENDIL_USE_HYPRE
 // Hypre-compatible compressed sparse row sparse matrix type and action.
-#include "gendil/Algebra/SparseMatrixTypes/hyprecsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrix.hpp"
 #endif

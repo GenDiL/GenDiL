@@ -190,6 +190,20 @@ auto GetTrialOperators( const AverageExpr<Expr> & expr )
    return GetTrialOperators( expr.expr );
 }
 
+template < FieldExpr Expr >
+auto GetTrialOperators( const MinusTraceExpr<Expr> & expr )
+   // -> decltype(GetTrialOperators( std::declval<Expr>() ))
+{
+   return GetTrialOperators( expr.expr );
+}
+
+template < FieldExpr Expr >
+auto GetTrialOperators( const PlusTraceExpr<Expr> & expr )
+   // -> decltype(GetTrialOperators( std::declval<Expr>() ))
+{
+   return GetTrialOperators( expr.expr );
+}
+
 template <StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs>
 auto GetTrialOperators( const Coefficient<Name, Shape, Fn, Inputs...> & expr )
    // -> Empty

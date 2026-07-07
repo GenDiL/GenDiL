@@ -6,8 +6,12 @@
 
 #ifdef GENDIL_USE_MFEM
 
+#include <array>
+
 #include "restriction.hpp"
-#include "meshconnectivity.hpp"
+#include "meshlocalconnectivity.hpp"
+#include "gendil/Utilities/View/view.hpp"
+#include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/linemesh.hpp"
 #include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/quadmesh.hpp"
 #include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/hexmesh.hpp"
@@ -27,7 +31,7 @@ LineMesh< MeshOrder > MakeLineMesh( mfem::Mesh & mesh )
    return LineMesh< MeshOrder >{
       MakeFIFOView( mesh.GetNodes()->Read(), (GlobalIndex)mesh.GetNodalFESpace()->GetNDofs() ),
       MakeFIFOView( GetRestrictionIndices( mesh ), D1D, (GlobalIndex)mesh.GetNE() ),
-      MakeMeshConnectivity< Dim >( mesh ),
+      MakeMeshLocalConnectivity< Dim >( mesh ),
       (GlobalIndex)mesh.GetNE()
    };
 }
@@ -49,7 +53,7 @@ QuadMesh< MeshOrder > MakeQuadMesh( mfem::Mesh & mesh )
    return QuadMesh< MeshOrder >{
       MakeStridedView( mesh.GetNodes()->Read(), sizes, permutation ),
       MakeFIFOView( GetRestrictionIndices( mesh ), D1D, D1D, (GlobalIndex)mesh.GetNE() ),
-      MakeMeshConnectivity< Dim >( mesh ),
+      MakeMeshLocalConnectivity< Dim >( mesh ),
       (GlobalIndex)mesh.GetNE()
    };
 }
@@ -71,7 +75,7 @@ HexMesh< MeshOrder > MakeHexMesh( mfem::Mesh & mesh )
    return HexMesh< MeshOrder >{
       MakeStridedView( mesh.GetNodes()->Read(), sizes, permutation ),
       MakeFIFOView( GetRestrictionIndices( mesh ), D1D, D1D, D1D, (GlobalIndex)mesh.GetNE() ),
-      MakeMeshConnectivity< Dim >( mesh ),
+      MakeMeshLocalConnectivity< Dim >( mesh ),
       (GlobalIndex)mesh.GetNE()
    };
 }

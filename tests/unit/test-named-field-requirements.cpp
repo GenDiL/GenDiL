@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/gendil.hpp>
-#include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/quadraturepointcontext.hpp>
+#include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontext.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp>
 
 #include <cmath>
@@ -212,14 +212,24 @@ int main()
       auto coeff = MakeCoefficient<"k", FieldValue<"w">>(
          [] (const auto&) { return 1.0; });
       auto unqualified = integrate(interior_facets, coeff * jump(u) * jump(v));
+      auto minus_selected = integrate(interior_facets, minus(coeff) * jump(u) * jump(v));
+      auto plus_selected = integrate(interior_facets, plus(coeff) * jump(u) * jump(v));
       auto averaged = integrate(interior_facets, average(coeff) * jump(u) * jump(v));
       auto jumped = integrate(interior_facets, jump(coeff) * jump(u) * jump(v));
 
       static_assert(has_unqualified_side_dependent_inputs_v<decltype(unqualified)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(minus_selected)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(plus_selected)>);
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(averaged)>);
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(jumped)>);
+      static_assert(
+         has_invalid_unqualified_interior_side_dependencies_v<
+            decltype(unqualified), Empty, Empty>);
+      static_assert(
+         !has_invalid_unqualified_interior_side_dependencies_v<
+            decltype(averaged), Empty, Empty>);
 
-      std::cout << "  [PASS] average/jump clear unqualified side dependency for side-evaluable coefficient expressions\n";
+      std::cout << "  [PASS] explicit traces clear unqualified side dependency for side-evaluable coefficient expressions\n";
    }
 
    {
@@ -230,9 +240,13 @@ int main()
       auto coeff = MakeCoefficient<"k", FieldGradient<"w">>(
          [] (const auto&) { return 1.0; });
       auto unqualified = integrate(interior_facets, coeff * jump(u) * jump(v));
+      auto minus_selected = integrate(interior_facets, minus(coeff) * jump(u) * jump(v));
+      auto plus_selected = integrate(interior_facets, plus(coeff) * jump(u) * jump(v));
       auto averaged = integrate(interior_facets, average(coeff) * jump(u) * jump(v));
 
       static_assert(has_unqualified_side_dependent_inputs_v<decltype(unqualified)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(minus_selected)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(plus_selected)>);
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(averaged)>);
 
       using Reqs =
@@ -248,6 +262,15 @@ int main()
       TrialSpace<"u"> u;
       TestSpace<"u"> v;
       InteriorFacets<"mesh"> interior_facets;
+
+      auto side_independent_coeff = MakeCoefficient<"c">(
+         [] () { return 2.0; });
+      auto minus_single_valued =
+         integrate(interior_facets, minus(side_independent_coeff) * jump(u) * jump(v));
+      auto plus_single_valued =
+         integrate(interior_facets, plus(side_independent_coeff) * jump(u) * jump(v));
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(minus_single_valued)>);
+      static_assert(!has_unqualified_side_dependent_inputs_v<decltype(plus_single_valued)>);
 
       auto coeff = MakeCoefficient<"k", FieldValue<"w">>(
          [] (const auto&) { return 1.0; });

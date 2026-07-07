@@ -81,7 +81,7 @@ void FillComponentInput(
             static_cast< GlobalIndex >( k )... };
          const GlobalIndex fe_index =
             GlobalDofIndex( fe_space, component, element, indices );
-         const LocalIndex local_index =
+         const GlobalIndex local_index =
             FlattenLocalDof( fe_space, component, indices );
 
          x_data[fe_index] =
@@ -160,7 +160,7 @@ int TestVectorCellMassBsrAction()
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( vector_fe_space ),
-      MakeDomain< "mesh1" >( mesh ) );
+      MakeIntegrationDomain< "mesh1" >( vector_fe_space ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

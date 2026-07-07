@@ -4,8 +4,9 @@
 
 #pragma once
 
+#include "gendil/Utilities/getorder.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/makeindexsequencewithout.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
 
 namespace gendil {
 

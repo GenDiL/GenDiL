@@ -45,19 +45,16 @@ struct UpwindExpr : FieldBase
          auto adv_value = adv_expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields );
          const auto & physical_normal = quad_pt_context.physical_normal;
          
-         Real dot = Dot( adv_value, physical_normal );
-         
-         Real result = 0.0;
+         auto dot = Dot( adv_value, physical_normal );
+
          if( dot >= 0 )
          {
-            result = dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.minus_fields );
+            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.minus_fields );
          }
          else
          {
-            result = dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.plus_fields );
+            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.plus_fields );
          }
-
-         return result;
       }
       else
       {
@@ -66,19 +63,16 @@ struct UpwindExpr : FieldBase
          const auto reference_normal = GetReferenceNormal( face_context );
          const auto physical_normal = ComputePhysicalNormal( quad_pt_context.inv_J_mesh, reference_normal );
          
-         Real dot = Dot( adv_value, physical_normal );
-         
-         Real result = 0.0;
+         auto dot = Dot( adv_value, physical_normal );
+
          if( dot >= 0 )
          {
-            result = dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.minus_fields );
+            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.minus_fields );
          }
          else
          {
-            result = dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.plus_fields );
+            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.plus_fields );
          }
-
-         return result;
       }
    }
 };

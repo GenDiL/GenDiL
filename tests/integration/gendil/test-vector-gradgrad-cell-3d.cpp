@@ -136,7 +136,7 @@ int TestVectorGradGrad()
 
    auto vector_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(vector_fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(vector_fe_space));
 
    auto generic_vector_operator =
       MakeGenericOperator<KernelPolicy>(
@@ -149,7 +149,7 @@ int TestVectorGradGrad()
 
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(scalar_fe_space));
 
    auto generic_scalar_operator =
       MakeGenericOperator<KernelPolicy>(
@@ -345,7 +345,7 @@ int TestVectorGradGrad_vdim2()
    auto vector_weak_form = integrate(domain, inner(grad(u), grad(v)));
    auto vector_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(vector_fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(vector_fe_space));
    auto vector_operator =
       MakeGenericOperator<KernelPolicy>(
          vector_weak_form,
@@ -356,7 +356,7 @@ int TestVectorGradGrad_vdim2()
    auto scalar_weak_form = integrate(domain, inner(grad(u), grad(v)));
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(scalar_fe_space));
    auto scalar_operator =
       MakeGenericOperator<KernelPolicy>(
          scalar_weak_form,

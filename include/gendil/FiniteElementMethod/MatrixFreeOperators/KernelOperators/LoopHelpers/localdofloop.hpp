@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofdescriptor.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/subsequence.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"

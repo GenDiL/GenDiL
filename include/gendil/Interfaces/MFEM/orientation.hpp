@@ -25,7 +25,7 @@ struct mfem_orientation
 };
 
 // !FIXME is there two possible cases?
-Permutation<1> TranslateMFEMOrientation( mfem_orientation<1> const & orientation )
+inline Permutation<1> TranslateMFEMOrientation( mfem_orientation<1> const & orientation )
 {
    // We start from 1 to be able to use -
    Permutation<1> basis{ { 1 } };
@@ -42,7 +42,7 @@ Permutation<1> TranslateMFEMOrientation( mfem_orientation<1> const & orientation
  * @param mfem_element_face_id 
  * @return Permutation<2> 
  */
-Permutation<2> ToFaceOrientation( Permutation<2> element_orientation, int mfem_element_face_id )
+inline Permutation<2> ToFaceOrientation( Permutation<2> element_orientation, int mfem_element_face_id )
 {
    Permutation<2> face_orientation = element_orientation;
    switch (mfem_element_face_id)
@@ -78,7 +78,7 @@ Permutation<2> ToFaceOrientation( Permutation<2> element_orientation, int mfem_e
  * @param mfem_face_orientation 
  * @return Permutation<2> 
  */
-Permutation<2> ToNeighborFaceOrientation( Permutation<2> face_orientation, int mfem_face_orientation )
+inline Permutation<2> ToNeighborFaceOrientation( Permutation<2> face_orientation, int mfem_face_orientation )
 {
    Permutation<2> neighbor_face_orientation = face_orientation;
    // Check mfem geom.cpp file for definition of these face orientations.
@@ -107,7 +107,7 @@ Permutation<2> ToNeighborFaceOrientation( Permutation<2> face_orientation, int m
  * @param mfem_face_id 
  * @return Permutation<2> 
  */
-Permutation<2> ToElementOrientation( Permutation<2> face_orientation, int mfem_face_id )
+inline Permutation<2> ToElementOrientation( Permutation<2> face_orientation, int mfem_face_id )
 {
    Permutation<2> orientation = face_orientation;
    switch (mfem_face_id)
@@ -135,7 +135,7 @@ Permutation<2> ToElementOrientation( Permutation<2> face_orientation, int mfem_f
    return orientation;
 }
 
-Permutation<2> TranslateMFEMOrientation( mfem_orientation<2> const & orientation )
+inline Permutation<2> TranslateMFEMOrientation( mfem_orientation<2> const & orientation )
 {
    // We start from 1 to be able to use -
    Permutation<2> basis{ { 1, 2 } };
@@ -157,7 +157,7 @@ Permutation<2> TranslateMFEMOrientation( mfem_orientation<2> const & orientation
  * @param mfem_element_face_id 
  * @return Permutation<3> 
  */
-Permutation<3> ToFaceOrientation( Permutation<3> element_orientation, int mfem_element_face_id )
+inline Permutation<3> ToFaceOrientation( Permutation<3> element_orientation, int mfem_element_face_id )
 {
    Permutation<3> face_orientation = element_orientation;
    switch (mfem_element_face_id)
@@ -207,7 +207,7 @@ Permutation<3> ToFaceOrientation( Permutation<3> element_orientation, int mfem_e
  * @param mfem_face_orientation 
  * @return Permutation<3> 
  */
-Permutation<3> ToNeighborFaceOrientation( Permutation<3> face_orientation, int mfem_face_orientation )
+inline Permutation<3> ToNeighborFaceOrientation( Permutation<3> face_orientation, int mfem_face_orientation )
 {
    Permutation<3> neighbor_face_orientation = face_orientation;
    // Check mfem geom.cpp file for definition of these face orientations.
@@ -268,7 +268,7 @@ Permutation<3> ToNeighborFaceOrientation( Permutation<3> face_orientation, int m
  * @param mfem_face_id 
  * @return Permutation<3> 
  */
-Permutation<3> ToElementOrientation( Permutation<3> face_orientation, int mfem_face_id )
+inline Permutation<3> ToElementOrientation( Permutation<3> face_orientation, int mfem_face_id )
 {
    Permutation<3> orientation = face_orientation;
    switch (mfem_face_id)
@@ -320,7 +320,7 @@ Permutation<3> ToElementOrientation( Permutation<3> face_orientation, int mfem_f
  * @return Permutation<3> 
  */
 // Permutation<3> TranslateMFEMOrientation( int mfem_element_face_id, int mfem_neighbor_face_id, int mfem_face_orientation )
-Permutation<3> TranslateMFEMOrientation( mfem_orientation<3> const & orientation )
+inline Permutation<3> TranslateMFEMOrientation( mfem_orientation<3> const & orientation )
 {
    // std::cout
    //    << "face elem 0: " << mfem_element_face_id

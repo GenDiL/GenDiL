@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
 
 namespace gendil {
 

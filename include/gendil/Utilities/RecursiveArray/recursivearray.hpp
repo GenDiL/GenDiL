@@ -420,6 +420,19 @@ SerialRecursiveArray< T, Dims... > operator-(
 
 template< typename T, size_t... Dims >
 GENDIL_HOST_DEVICE
+SerialRecursiveArray< T, Dims... > operator-(
+   const SerialRecursiveArray< T, Dims... > & x )
+{
+   SerialRecursiveArray< T, Dims... > res;
+   UnitLoop< Dims... >( [&]( auto... indices )
+   {
+      res( indices... ) = -x( indices... );
+   });
+   return res;
+}
+
+template< typename T, size_t... Dims >
+GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > operator*( const T & a, const SerialRecursiveArray< T, Dims... > & x )
 {
    SerialRecursiveArray< T, Dims... > res;

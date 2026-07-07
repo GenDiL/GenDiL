@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
+#include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
 
 namespace gendil {
 
@@ -64,12 +65,9 @@ struct CubeCell
                                physical_coordinates & X,
                                jacobian & J_mesh ) const
     {
-        using quad_x = std::tuple_element_t< 0, QuadData >;
-        using quad_y = std::tuple_element_t< 1, QuadData >;
-        using quad_z = std::tuple_element_t< 2, QuadData >;
-        const auto q_pt_x = quad_x::GetCoord( qx );
-        const auto q_pt_y = quad_y::GetCoord( qy );
-        const auto q_pt_z = quad_z::GetCoord( qz );
+        const auto q_pt_x = GetCoord<0>( quad_data, qx );
+        const auto q_pt_y = GetCoord<1>( quad_data, qy );
+        const auto q_pt_z = GetCoord<2>( quad_data, qz );
         X[0] = origin[0] + h_x * q_pt_x;
         X[1] = origin[1] + h_y * q_pt_y;
         X[2] = origin[2] + h_z * q_pt_z;

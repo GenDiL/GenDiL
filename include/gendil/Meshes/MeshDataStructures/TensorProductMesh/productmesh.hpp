@@ -12,6 +12,7 @@
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/NumericalIntegration/integrationrule.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/productcell.hpp"
 
 namespace gendil
@@ -95,9 +96,10 @@ namespace details
       Permutation< Dim > orientation = MakeReferencePermutation< Dim >();
       bool boundary;
 
-      // !FIXME: This is magic
-      constexpr Integer Index = FaceIndex % Dim;
-      constexpr int Sign = FaceIndex < Dim ? -1 : 1;
+      constexpr Integer Index =
+         HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex );
+      constexpr int Sign =
+         HyperCube< Dim >::GetNormalSign( FaceIndex );
 
       GlobalIndex neighbor_index;
 
@@ -143,7 +145,7 @@ namespace details
          ConformingCellFaceView <
             geometry,
             std::integral_constant< Integer, face_id >,
-            std::integral_constant< Integer, face_id < Dim ? face_id + Dim : face_id - Dim >,
+            std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( face_id ) >,
             orientation_type,
             CanonicalVector< Dim, Index, Sign >,
             CanonicalVector< Dim, Index, -Sign >,

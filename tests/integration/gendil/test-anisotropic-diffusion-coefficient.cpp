@@ -394,13 +394,13 @@ int TestAnisotropicDiffusionCoefficient()
    auto base_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">(fe_space),
-         MakeDomain<"mesh">(mesh));
+         MakeIntegrationDomain<"mesh">(fe_space));
 
    auto named_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">(fe_space),
          MakeFiniteElementField<"a">(fe_space, a_view),
-         MakeDomain<"mesh">(mesh));
+         MakeIntegrationDomain<"mesh">(fe_space));
 
    auto primal_op =
       MakeGenericOperator<KernelPolicy>(

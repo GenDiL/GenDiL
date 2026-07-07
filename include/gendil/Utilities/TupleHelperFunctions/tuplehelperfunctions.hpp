@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 
+// Common tuple type traits.
+#include "tupletraits.hpp"
+
 // Replace an element in a tuple with another element.
 #include "tuplereplace.hpp"
 

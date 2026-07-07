@@ -185,7 +185,7 @@ int TestVectorMass()
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(vector_fe_space),  // Vector shape comes from FE space
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(vector_fe_space));
 
    auto vector_mass_operator =
       MakeGenericOperator<KernelPolicy>(
@@ -246,7 +246,7 @@ int TestVectorMass()
 
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
-      MakeDomain<"mesh1">(mesh));
+      MakeIntegrationDomain<"mesh1">(scalar_fe_space));
 
    auto scalar_mass_operator =
       MakeGenericOperator<KernelPolicy>(

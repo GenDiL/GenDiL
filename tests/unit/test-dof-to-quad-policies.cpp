@@ -306,7 +306,7 @@ bool TestGlobalFaceAdvectionEquivalence()
 
    auto mesh = Cartesian2DMesh( 1.0, extents[ 0 ], extents[ 1 ] );
    auto face_meshes =
-      make_cartesian_interior_face_connectivity< 2 >( extents );
+      MakeCartesianInteriorFaceConnectivity< 2 >( extents );
    auto finite_element =
       MakeLegendreFiniteElement( FiniteElementOrders< order, order >{} );
    auto fe_space = MakeFiniteElementSpace( mesh, finite_element );

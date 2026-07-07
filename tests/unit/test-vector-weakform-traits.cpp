@@ -4,7 +4,6 @@
 
 #include <gendil/gendil.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp>
-#include <gendil/FiniteElementMethod/WeakForm/matvec.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/productkind.hpp>
 
@@ -227,25 +226,28 @@ int main()
       std::cout << "  [PASS] Nonlinear test expressions classified correctly\n";
    }
 
-   // Test 11: MatVecExpr - grad(VectorField) * Normal{} creates MatVecExpr
+   // Test 11: grad(VectorField) * Normal{} creates ProductExpr MatVec
    {
       VectorTestSpace<"v"> v;
       Normal n;
 
-      // grad(VectorTestSpace) * Normal{} produces MatVecExpr via operator* overload
       auto grad_v_normal = grad(v) * n;
       using GradVNormal = decltype(grad_v_normal);
 
+      static_assert(is_product_expr_v<GradVNormal>);
+      static_assert(GradVNormal::product_kind == ProductKind::MatVec);
       static_assert(is_test_linear_v<GradVNormal>,
-         "grad(VectorTestSpace) * Normal{} should be test-linear via MatVecExpr");
+         "grad(VectorTestSpace) * Normal{} should be test-linear via ProductExpr MatVec");
 
       // Similarly for trial side
       VectorTrialSpace<"u"> u;
       auto grad_u_normal = grad(u) * n;
+      static_assert(is_product_expr_v<decltype(grad_u_normal)>);
+      static_assert(decltype(grad_u_normal)::product_kind == ProductKind::MatVec);
       static_assert(is_test_free_v<decltype(grad_u_normal)>,
-         "grad(VectorTrialSpace) * Normal{} should be test-free via MatVecExpr");
+         "grad(VectorTrialSpace) * Normal{} should be test-free via ProductExpr MatVec");
 
-      std::cout << "  [PASS] grad(VectorField) * Normal{} creates MatVecExpr\n";
+      std::cout << "  [PASS] grad(VectorField) * Normal{} creates ProductExpr MatVec\n";
    }
 
    // Test 12: Complex SIPDG test-side expression
@@ -253,12 +255,11 @@ int main()
       VectorTestSpace<"v"> v;
       Normal n;
 
-      // average(grad(VectorTestSpace) * Normal{}) - uses MatVecExpr
       auto complex_test = average(grad(v) * n);
       using ComplexTest = decltype(complex_test);
 
       static_assert(is_test_linear_v<ComplexTest>,
-         "average(grad(VectorTestSpace) * Normal{}) should be test-linear via MatVecExpr");
+         "average(grad(VectorTestSpace) * Normal{}) should be test-linear via ProductExpr MatVec");
 
       std::cout << "  [PASS] average(grad(VectorTestSpace) * Normal{}) classified as TestLinear\n";
       std::cout << "  [INFO] average(mu * (grad(v) * Normal{})) may still be Unsupported without ScalarMulExpr\n";
@@ -307,47 +308,52 @@ int main()
       std::cout << "  (Type names are mangled, this is informational only)\n";
    }
 
-   // Test 15: MatVecExpr explicit construction and classification
+   // Test 15: ProductExpr MatVec explicit construction and classification
    {
       VectorTestSpace<"v"> v;
       VectorTrialSpace<"u"> u;
       Normal n;
 
-      std::cout << "\n  === MatVecExpr Explicit Construction ===\n";
+      std::cout << "\n  === ProductExpr MatVec Explicit Construction ===\n";
 
-      // Explicit construction (now with VectorTestSpace/VectorTrialSpace)
-      auto mat_vec_test_explicit = MatVecExpr<GradientExpr<VectorTestSpace<"v">>, Normal>(grad(v), n);
-      auto mat_vec_trial_explicit = MatVecExpr<GradientExpr<VectorTrialSpace<"u">>, Normal>(grad(u), n);
+      auto mat_vec_test_explicit =
+         ProductExpr<GradientExpr<VectorTestSpace<"v">>, Normal>(grad(v), n);
+      auto mat_vec_trial_explicit =
+         ProductExpr<GradientExpr<VectorTrialSpace<"u">>, Normal>(grad(u), n);
 
       static_assert(is_test_linear_v<decltype(mat_vec_test_explicit)>,
-         "MatVecExpr<grad(VectorTestSpace), Normal> explicit should be test-linear");
+         "ProductExpr<grad(VectorTestSpace), Normal> explicit should be test-linear");
       static_assert(is_test_free_v<decltype(mat_vec_trial_explicit)>,
-         "MatVecExpr<grad(VectorTrialSpace), Normal> explicit should be test-free");
+         "ProductExpr<grad(VectorTrialSpace), Normal> explicit should be test-free");
+      static_assert(decltype(mat_vec_test_explicit)::product_kind == ProductKind::MatVec);
+      static_assert(decltype(mat_vec_trial_explicit)::product_kind == ProductKind::MatVec);
 
-      std::cout << "  [PASS] MatVecExpr explicit construction classified correctly\n";
+      std::cout << "  [PASS] ProductExpr MatVec explicit construction classified correctly\n";
    }
 
-   // Test 16: MatVecExpr syntax-level operator* 
+   // Test 16: ProductExpr MatVec syntax-level operator*
    {
       VectorTestSpace<"v"> v;
       VectorTrialSpace<"u"> u;
       Normal n;
 
-      std::cout << "\n  === MatVecExpr Syntax-Level Operator ===\n";
+      std::cout << "\n  === ProductExpr MatVec Syntax-Level Operator ===\n";
 
-      // Syntax: grad(VectorField) * Normal{} creates MatVecExpr
       auto test_expr = grad(v) * n;
       auto trial_expr = grad(u) * n;
 
+      static_assert(is_product_expr_v<decltype(test_expr)>);
+      static_assert(is_product_expr_v<decltype(trial_expr)>);
+      static_assert(decltype(test_expr)::product_kind == ProductKind::MatVec);
+      static_assert(decltype(trial_expr)::product_kind == ProductKind::MatVec);
       static_assert(is_test_linear_v<decltype(test_expr)>,
-         "grad(VectorTestSpace) * Normal{} should be test-linear via MatVecExpr");
+         "grad(VectorTestSpace) * Normal{} should be test-linear via ProductExpr MatVec");
       static_assert(is_test_free_v<decltype(trial_expr)>,
-         "grad(VectorTrialSpace) * Normal{} should be test-free via MatVecExpr");
+         "grad(VectorTrialSpace) * Normal{} should be test-free via ProductExpr MatVec");
 
-      // Verify node type (should be MatVecExpr, not MultFieldExpr)
       std::cout << "  Type of grad(VectorTestSpace) * Normal{}: " << typeid(test_expr).name() << "\n";
 
-      std::cout << "  [PASS] grad(VectorField) * Normal{} syntax creates MatVecExpr\n";
+      std::cout << "  [PASS] grad(VectorField) * Normal{} syntax creates ProductExpr MatVec\n";
       std::cout << "  [INFO] DSL policy: VectorTestSpace means vector-valued field\n";
       std::cout << "  [INFO] For scalar fields, use plain TestSpace and dot(grad(v), Normal{})\n";
    }
@@ -412,26 +418,30 @@ int main()
    }
 
    // ==========================================================================
-   // Test 19: MatVecExpr with vector field references
+   // Test 19: ProductExpr MatVec with vector field references
    // ==========================================================================
    {
-      std::cout << "\n=== Test 19: MatVecExpr with vector field references ===\n";
+      std::cout << "\n=== Test 19: ProductExpr MatVec with vector field references ===\n";
 
       VectorTestSpace<"v"> vv;
       VectorTrialSpace<"u"> vu;
       Normal n;
 
-      // grad(VectorTestSpace) * Normal → MatVecExpr
+      // grad(VectorTestSpace) * Normal → ProductExpr MatVec
       auto test_flux = grad(vv) * n;
+      static_assert(is_product_expr_v<decltype(test_flux)>);
+      static_assert(decltype(test_flux)::product_kind == ProductKind::MatVec);
       static_assert(is_test_linear_v<decltype(test_flux)>,
          "grad(VectorTestSpace) * Normal should be test-linear");
 
-      // grad(VectorTrialSpace) * Normal → MatVecExpr
+      // grad(VectorTrialSpace) * Normal → ProductExpr MatVec
       auto trial_flux = grad(vu) * n;
+      static_assert(is_product_expr_v<decltype(trial_flux)>);
+      static_assert(decltype(trial_flux)::product_kind == ProductKind::MatVec);
       static_assert(is_test_free_v<decltype(trial_flux)>,
          "grad(VectorTrialSpace) * Normal should be test-free");
 
-      std::cout << "  [PASS] MatVecExpr with vector field references\n";
+      std::cout << "  [PASS] ProductExpr MatVec with vector field references\n";
    }
 
    // ==========================================================================
@@ -625,10 +635,12 @@ int main()
       static_assert(field_shape_v<decltype(grad(u_vector))> == FieldShape::Matrix,
          "grad(vector trial) should be matrix");
 
-      // MatVecExpr shape (matrix-vector product → vector)
-      auto flux_vector = grad(v_vector) * n;  // grad(vector) * Normal → MatVecExpr
+      // ProductExpr MatVec shape (matrix-vector product → vector)
+      auto flux_vector = grad(v_vector) * n;  // grad(vector) * Normal → ProductExpr MatVec
+      static_assert(is_product_expr_v<decltype(flux_vector)>);
+      static_assert(decltype(flux_vector)::product_kind == ProductKind::MatVec);
       static_assert(field_shape_v<decltype(flux_vector)> == FieldShape::Vector,
-         "MatVecExpr (grad(vector) * Normal) should have Vector shape");
+         "ProductExpr MatVec (grad(vector) * Normal) should have Vector shape");
 
       // DotExpr shape (dot product → scalar)
       auto dot_scalar = dot(grad(v_scalar), n);
@@ -1494,8 +1506,10 @@ int main()
       static_assert(is_test_linear_v<decltype(mu_grad_vv)>);
 
       // 5. Scalar multiplier × vector normal flux
-      //    First verify flux itself uses existing MatVecExpr path
+      //    First verify flux itself uses ProductExpr MatVec.
       auto flux = grad(vv) * n;
+      static_assert(is_product_expr_v<decltype(flux)>);
+      static_assert(decltype(flux)::product_kind == ProductKind::MatVec);
       static_assert(field_shape_v<decltype(flux)> == FieldShape::Vector);
       static_assert(is_test_linear_v<decltype(flux)>);
       // Then verify scalar multiplier × flux → ProductExpr
@@ -1541,7 +1555,7 @@ int main()
       std::cout << "  [PASS] v × μ → ProductExpr (ScalarTimes, Scalar, TestLinear)\n";
       std::cout << "  [PASS] μ × grad(v) → ProductExpr (ScalarTimes, Vector, TestLinear)\n";
       std::cout << "  [PASS] μ × grad(vᵥ) → ProductExpr (ScalarTimes, Matrix, TestLinear)\n";
-      std::cout << "  [PASS] grad(vᵥ) × n preserves existing MatVecExpr path\n";
+      std::cout << "  [PASS] grad(vᵥ) × n → ProductExpr (MatVec, Vector, TestLinear)\n";
       std::cout << "  [PASS] μ × (grad(vᵥ) × n) → ProductExpr (ScalarTimes, Vector, TestLinear)\n";
       std::cout << "  [PASS] β × μ → ProductExpr (ScalarTimes, Vector, TestFree)\n";
       std::cout << "  [PASS] A × μ → ProductExpr (ScalarTimes, Matrix, TestFree)\n";
@@ -1638,16 +1652,14 @@ int main()
       static_assert(decltype(grad_vv_u)::field_shape == FieldShape::Matrix);
       static_assert(is_test_linear_v<decltype(grad_vv_u)>);
 
-      // ===== Preservation Tests =====
+      // ===== ProductExpr MatVec Tests =====
 
-      // 8. MatVecExpr preservation: grad(vector test) × Normal
+      // 8. grad(vector test) × Normal
       auto flux = grad(vv) * n;
-      // Should NOT be ProductExpr; should remain MatVecExpr
+      static_assert(is_product_expr_v<decltype(flux)>);
+      static_assert(decltype(flux)::product_kind == ProductKind::MatVec);
       static_assert(field_shape_v<decltype(flux)> == FieldShape::Vector);
       static_assert(is_test_linear_v<decltype(flux)>);
-      // Check that it's NOT a ProductExpr by trying to call is_product_expr
-      // If flux were ProductExpr, this would compile; since it's not, we can't directly test
-      // Just verify the shape/linearity is correct
 
       auto A_beta = A * beta;
       static_assert(is_product_expr_v<decltype(A_beta)>);
@@ -1667,8 +1679,8 @@ int main()
       std::cout << "  [PASS] grad(v) × u → ProductExpr (ScalarTimes, Vector, TestLinear)\n";
       std::cout << "  [PASS] u × grad(vᵥ) → ProductExpr (ScalarTimes, Matrix, TestLinear)\n";
       std::cout << "  [PASS] grad(vᵥ) × u → ProductExpr (ScalarTimes, Matrix, TestLinear)\n";
-      std::cout << "  [PASS] grad(vᵥ) × n preserves MatVecExpr (not ProductExpr)\n";
-      std::cout << "  [PASS] A × β not ProductExpr (MatVec, legacy path)\n";
+      std::cout << "  [PASS] grad(vᵥ) × n → ProductExpr (MatVec, Vector, TestLinear)\n";
+      std::cout << "  [PASS] A × β → ProductExpr (MatVec, Vector, TestFree)\n";
       std::cout << "  [INFO] ProductExpr now handles all ProductKind::ScalarTimes products\n";
       std::cout << "  [INFO] Scalar-multiplier cases from Test 31 continue to work\n";
       std::cout << "  [INFO] A × A tested as legacy in Test 32, becomes ProductExpr in Test 33\n";
@@ -1735,16 +1747,14 @@ int main()
       static_assert(!is_test_free_v<decltype(grad_vv_grad_vv)>);
       // Algebraically valid MatMat, nonlinear in test (both operands are test-linear)
 
-      // ===== Preservation Tests =====
+      // ===== ProductExpr MatVec Tests =====
 
-      // 5. MatVecExpr preservation: grad(vector test) × Normal
+      // 5. grad(vector test) × Normal
       auto flux = grad(vv) * n;
-      // Should NOT be ProductExpr; should remain MatVecExpr
+      static_assert(is_product_expr_v<decltype(flux)>);
+      static_assert(decltype(flux)::product_kind == ProductKind::MatVec);
       static_assert(field_shape_v<decltype(flux)> == FieldShape::Vector);
       static_assert(is_test_linear_v<decltype(flux)>);
-      // Check that it's NOT a ProductExpr
-      static_assert(!std::is_same_v<decltype(flux),
-         ProductExpr<GradientExpr<decltype(vv)>, Normal>>);
 
       // 6. Matrix × Vector is ProductExpr
       auto A_beta = A * beta;
@@ -1772,8 +1782,8 @@ int main()
       std::cout << "  [PASS] A × grad(vᵥ) → ProductExpr (MatMat, Matrix, TestLinear)\n";
       std::cout << "  [PASS] grad(vᵥ) × A → ProductExpr (MatMat, Matrix, TestLinear)\n";
       std::cout << "  [PASS] grad(vᵥ) × grad(vᵥ) → ProductExpr (MatMat, Matrix, NonlinearInTest)\n";
-      std::cout << "  [PASS] grad(vᵥ) × n preserves MatVecExpr (not ProductExpr)\n";
-      std::cout << "  [PASS] A × β not ProductExpr (MatVec, legacy path)\n";
+      std::cout << "  [PASS] grad(vᵥ) × n → ProductExpr (MatVec, Vector, TestLinear)\n";
+      std::cout << "  [PASS] A × β → ProductExpr (MatVec, Vector, TestFree)\n";
       std::cout << "  [PASS] β × A not ProductExpr (Unsupported, legacy path)\n";
       std::cout << "  [PASS] β × β not ProductExpr (Unsupported, legacy path)\n";
       std::cout << "  [INFO] ProductExpr now handles ScalarTimes and MatMat products\n";
@@ -1899,24 +1909,27 @@ int main()
       std::cout << "  [PASS] A × Normal → ProductExpr (MatVec, Vector, TestFree)\n";
 
       // Case 6: Matrix coefficient × (grad(vector test) × Normal)
-      // flux = grad(vv) * n is MatVecExpr (specialized), then A * flux
+      // flux = grad(vv) * n is ProductExpr MatVec, then A * flux is MatVec.
       auto flux = grad(vv) * n;
       auto A_flux = A * flux;
-      static_assert(!is_product_expr_v<decltype(flux)>); // flux is MatVecExpr, NOT ProductExpr
+      static_assert(is_product_expr_v<decltype(flux)>);
+      static_assert(decltype(flux)::product_kind == ProductKind::MatVec);
       static_assert(is_product_expr_v<decltype(A_flux)>); // A_flux is ProductExpr
       static_assert(decltype(A_flux)::product_kind == ProductKind::MatVec);
       static_assert(decltype(A_flux)::field_shape == FieldShape::Vector);
       static_assert(is_test_linear_v<decltype(A_flux)>);
-      std::cout << "  [PASS] A × (grad(vv) × Normal) → ProductExpr, flux is MatVecExpr\n";
+      std::cout << "  [PASS] A × (grad(vv) × Normal) → ProductExpr MatVec chain\n";
 
       // --- Preservation tests ---
 
-      // Preservation 1: grad(VectorTestSpace) * Normal remains MatVecExpr
-      auto specialized_flux = grad(vv) * n;
-      static_assert(!is_product_expr_v<decltype(specialized_flux)>); // NOT ProductExpr
-      static_assert(field_shape_v<decltype(specialized_flux)> == FieldShape::Vector);
-      static_assert(is_test_linear_v<decltype(specialized_flux)>);
-      std::cout << "  [PASS] grad(vv) × Normal → MatVecExpr (NOT ProductExpr)\n";
+      // Preservation 1: grad(VectorTestSpace) * Normal remains MatVec syntax,
+      // represented by ProductExpr.
+      auto normal_flux = grad(vv) * n;
+      static_assert(is_product_expr_v<decltype(normal_flux)>);
+      static_assert(decltype(normal_flux)::product_kind == ProductKind::MatVec);
+      static_assert(field_shape_v<decltype(normal_flux)> == FieldShape::Vector);
+      static_assert(is_test_linear_v<decltype(normal_flux)>);
+      std::cout << "  [PASS] grad(vv) × Normal → ProductExpr (MatVec)\n";
 
       // Preservation 2: Existing ScalarTimes ProductExpr still works
       auto v_v = v * v;
@@ -1928,8 +1941,7 @@ int main()
       static_assert(is_product_expr_v<decltype(A_A)>);
       std::cout << "  [PASS] A × A → ProductExpr (MatMat still works)\n";
 
-      std::cout << "  [INFO] Generic MatVec products now route through ProductExpr\n";
-      std::cout << "  [INFO] Specialized grad(VectorField) × Normal remains MatVecExpr\n";
+      std::cout << "  [INFO] Matrix-vector products route through ProductExpr\n";
    }
 
    // Test 36: FieldShape propagation for wrapper expressions
@@ -1997,13 +2009,14 @@ int main()
       // --- 4. Normal-contraction wrapper case ---
 
       auto flux = grad(vv) * n;
-      static_assert(!is_product_expr_v<decltype(flux)>);
+      static_assert(is_product_expr_v<decltype(flux)>);
+      static_assert(decltype(flux)::product_kind == ProductKind::MatVec);
       static_assert(field_shape_v<decltype(flux)> == FieldShape::Vector);
 
       auto avg_flux = average(flux);
       static_assert(field_shape_v<decltype(avg_flux)> == FieldShape::Vector);
       static_assert(VectorExpr<decltype(avg_flux)>);
-      std::cout << "  [PASS] average(grad(vv) × Normal) → Vector (wrapping MatVecExpr)\n";
+      std::cout << "  [PASS] average(grad(vv) × Normal) → Vector (wrapping ProductExpr MatVec)\n";
 
       // --- 5. ProductExpr with wrapper expression ---
 
@@ -2103,7 +2116,7 @@ int main()
 
       // --- 7. ProductExpr term inside SumExpr (homogeneous TestLinear) ---
 
-      auto flux = grad(vv) * n;          // MatVecExpr, Vector, TestLinear
+      auto flux = grad(vv) * n;          // ProductExpr MatVec, Vector, TestLinear
       auto avg_flux = average(flux);     // AverageExpr, Vector, TestLinear
       auto scaled_flux = mu * avg_flux;  // ProductExpr, Vector, TestLinear
 

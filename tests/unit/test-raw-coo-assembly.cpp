@@ -69,13 +69,13 @@ bool CheckScalar1DRawCellSlotCoordinates(
       {
          const std::array< GlobalIndex, 1 > col_indices{ local_col };
          const GlobalIndex expected_col =
-            ElementToGlobalDofIndex( fe_space, element, col_indices );
+            GlobalDofIndex( fe_space, element, col_indices );
 
          for ( GlobalIndex local_row = 0; local_row < local_dofs; ++local_row )
          {
             const std::array< GlobalIndex, 1 > row_indices{ local_row };
             const GlobalIndex expected_row =
-               ElementToGlobalDofIndex( fe_space, element, row_indices );
+               GlobalDofIndex( fe_space, element, row_indices );
             const GlobalIndex raw_index =
                element * local_dofs * local_dofs +
                local_col * local_dofs +
@@ -129,7 +129,7 @@ bool CheckVectorRawCellSlotCoordinates(
          fe_space,
          [&] ( const auto component, const auto & indices )
          {
-            const LocalIndex local_id =
+            const GlobalIndex local_id =
                FlattenLocalDof( fe_space, component, indices );
             success = Check(
                local_id < local_dofs,
@@ -138,7 +138,7 @@ bool CheckVectorRawCellSlotCoordinates(
             if ( local_id < local_dofs )
             {
                expected_globals[static_cast< size_t >( local_id )] =
-                  ElementToGlobalDofIndex(
+                  GlobalDofIndex(
                      fe_space,
                      component,
                      element,
@@ -484,7 +484,7 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;
@@ -590,7 +590,7 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -711,7 +711,7 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -829,7 +829,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;
@@ -952,7 +952,7 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;
@@ -1052,7 +1052,7 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -1158,7 +1158,7 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -1328,7 +1328,7 @@ bool TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< order + 2, order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -1406,7 +1406,7 @@ bool TestScalarInteriorJumpCOOAgainstGenericAndBSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< order + 2, order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -1491,7 +1491,7 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );

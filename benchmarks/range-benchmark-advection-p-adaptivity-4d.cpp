@@ -69,9 +69,9 @@ void bench_face_components_once_4D(Integer nx_full, Integer ny, Integer nz, Inte
 
   auto int_rules = MakeIntegrationRule(IntegrationRuleNumPoints<q1d,q1d,q1d,q1d>{});
 
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<4>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<4>(
       std::array<GlobalIndex,4>{(GlobalIndex)nxL,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<4>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<4>(
       std::array<GlobalIndex,4>{(GlobalIndex)nxR,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw});
 
   // LocalFaceIndex = +x face of minus side in 4D → Axis(0) + Dim(4) = 4

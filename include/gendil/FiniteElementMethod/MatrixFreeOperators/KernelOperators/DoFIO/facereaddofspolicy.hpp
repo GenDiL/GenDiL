@@ -254,26 +254,52 @@ auto MakeOrientedGlobalDofView(
             global_dofs.layout.strides[ Dim ] ),
       {} };
 
-   for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
+   if constexpr ( Dim == 1 )
    {
-      const LocalIndex o = orientation( native_dim );
-      const Integer reference_axis =
-         static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
+      const LocalIndex o = orientation( 0 );
+      GENDIL_ASSERT(
+         o == 1 || o == -1,
+         "Invalid 1D face orientation." );
+
       const FaceReadDofsSignedIndex native_stride =
          static_cast< FaceReadDofsSignedIndex >(
-            global_dofs.layout.strides[ native_dim ] );
-
+            global_dofs.layout.strides[ 0 ] );
       if ( o < 0 )
       {
          view.base_offset +=
             static_cast< FaceReadDofsSignedIndex >(
-               sizes[ native_dim ] - 1 ) *
+               sizes[ 0 ] - 1 ) *
             native_stride;
-         view.strides[ reference_axis ] = -native_stride;
       }
-      else
+      view.strides[ 0 ] = o < 0 ? -native_stride : native_stride;
+   }
+   else
+   {
+      for ( Integer native_dim = 0; native_dim < Dim; ++native_dim )
       {
-         view.strides[ reference_axis ] = native_stride;
+         const LocalIndex o = orientation( native_dim );
+         const Integer reference_axis =
+            static_cast< Integer >( o > 0 ? o - 1 : -o - 1 );
+         const FaceReadDofsSignedIndex native_stride =
+            static_cast< FaceReadDofsSignedIndex >(
+               global_dofs.layout.strides[ native_dim ] );
+
+         GENDIL_ASSERT(
+            reference_axis >= 0 && reference_axis < static_cast< Integer >( Dim ),
+            "Invalid face orientation axis." );
+
+         if ( o < 0 )
+         {
+            view.base_offset +=
+               static_cast< FaceReadDofsSignedIndex >(
+                  sizes[ native_dim ] - 1 ) *
+               native_stride;
+            view.strides[ reference_axis ] = -native_stride;
+         }
+         else
+         {
+            view.strides[ reference_axis ] = native_stride;
+         }
       }
    }
 

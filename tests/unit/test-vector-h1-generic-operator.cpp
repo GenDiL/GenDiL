@@ -138,7 +138,7 @@ bool TestVectorH1GenericOperatorCellMass()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;

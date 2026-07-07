@@ -4,8 +4,9 @@
 
 #pragma once
 
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/types.hpp"
 
@@ -49,35 +50,7 @@ public:
    GENDIL_HOST_DEVICE
    Integer GetNumberOfFiniteElementDofs() const
    {
-      using ShapeFunctions = typename FiniteElement::shape_functions;
-
-      if constexpr ( std::is_same_v< restriction_type, L2Restriction > )
-      {
-         return this->GetNumberOfCells() * FiniteElement::GetNumDofs();
-      }
-      else if constexpr ( std::is_same_v< restriction_type, H1Restriction > )
-      {
-         return restriction.num_dofs;
-      }
-      else if constexpr ( is_vector_h1_restriction_v< restriction_type > )
-      {
-         static_assert(
-            is_vector_shape_functions_v< ShapeFunctions >,
-            "VectorH1Restriction requires a vector finite element space." );
-         static_assert(
-            restriction_type::num_comp == ShapeFunctions::vector_dim,
-            "VectorH1Restriction<NComp> must match the vector finite element component count." );
-
-         return static_cast< Integer >( restriction_type::num_comp ) *
-            restriction.scalar_num_dofs;
-      }
-      else
-      {
-         static_assert(
-            dependent_false_v< restriction_type >,
-            "FiniteElementSpace supports only L2Restriction, H1Restriction, and VectorH1Restriction." );
-         return 0;
-      }
+      return FiniteElementDofCount( *this );
    }
 };
 

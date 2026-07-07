@@ -42,6 +42,12 @@ auto GenericAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericAssembly: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
+
    if constexpr ( Type == MatrixAssemblyType::BSR )
    {
       return GenericBSRAssembly<KernelPolicy>(

@@ -24,9 +24,53 @@ add_my_test(test-mass-advection-3d test-mass-advection-3d.cpp)
 add_my_test(test-diffusion-3d test-diffusion-3d.cpp)
 add_non_nvcc_test(test-diffusion-3d-unstructured test-diffusion-3d-unstructured.cpp)
 add_non_nvcc_test(test-diffusion-legacy-plus-jacobian test-diffusion-legacy-plus-jacobian.cpp)
+add_non_nvcc_test(test-diffusion-4d-tensor-product-H1 test-diffusion-4d-tensor-product-H1.cpp)
 add_non_nvcc_test(test-vector-interior-orientation-bsr-3d test-vector-interior-orientation-bsr-3d.cpp)
 # Other
 add_my_test(test-periodic-mesh test-periodic-mesh.cpp)
 add_my_test(test-nested-product-mesh test-nested-product-mesh.cpp)
 add_my_test(test-many-product-mesh test-many-product-mesh.cpp)
 add_my_test(test-projections-6d test-projections-6d.cpp)
+
+# MFEM global-face connectivity
+set(mfem_global_face_source test-mfem-global-face.cpp)
+
+function(add_mfem_global_face_test target_name compile_definition)
+  add_non_nvcc_test(${target_name} ${mfem_global_face_source})
+  if(TARGET ${target_name})
+    target_compile_definitions(${target_name} PRIVATE ${compile_definition})
+  endif()
+endfunction()
+
+add_mfem_global_face_test(
+  test-mfem-global-face-quad-connectivity
+  TEST_QUAD_CONNECTIVITY)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-hex-connectivity
+  TEST_HEX_CONNECTIVITY)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-generic-operator
+  TEST_GENERIC_OPERATOR)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-file-sipdg
+  TEST_FILE_SIPDG_LOCAL_VS_GLOBAL)
+
+add_mfem_global_face_test(
+  test-mfem-global-boundary-connectivity
+  TEST_BOUNDARY)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-smoke
+  TEST_SMOKE)
+
+add_mfem_global_face_test(
+  test-mfem-global-face-periodic
+  TEST_PERIODIC)
+
+add_my_test(
+  test-mfem-nonconforming-face-decoder
+  test-mfem-nonconforming-face-decoder.cpp
+)

@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/facetquaddata.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsthreaded.hpp"
 
@@ -107,17 +108,8 @@ auto ApplyGradientTestFunctions(
    const GradientsInput & DGuq,
    Output & dofs_out )
 {
-   constexpr Integer local_face_index = Face::local_face_index_type::value;
-   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
-   if constexpr ( Face::is_conforming )
-   {
-      return ApplyGradientTestFunctions< Add >( ctx, local_face_quad_data, DGuq, dofs_out );
-   }
-   else
-   {
-      auto non_conforming_face_quad_data = MakeNonconformingDofToQuadData( face, local_face_quad_data );
-      return ApplyGradientTestFunctions< Add >( ctx, non_conforming_face_quad_data, DGuq, dofs_out );
-   }
+   auto&& facet_qd = GetFacetQuadData( face_quad_data, face );
+   return ApplyGradientTestFunctions< Add >( ctx, facet_qd, DGuq, dofs_out );
 }
 
 }

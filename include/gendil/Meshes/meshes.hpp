@@ -9,6 +9,9 @@
 // The common functions to all face meshes
 #include "facemesh.hpp"
 
+// Geometric Cell/face partition topology.
+#include "partition.hpp"
+
 // The common functions to all cells
 #include "cell.hpp"
 

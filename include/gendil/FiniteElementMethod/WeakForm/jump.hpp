@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 
 namespace gendil
 {
@@ -16,6 +17,7 @@ struct JumpExpr : FieldBase
 {
    Expr expr;
 
+   GENDIL_HOST_DEVICE
    JumpExpr(const Expr& expr_)
       : expr(expr_)
    {}
@@ -38,20 +40,20 @@ struct JumpExpr : FieldBase
    {
       if constexpr ( is_side_evaluable_v<Expr> )
       {
-         return expr(
+         return minus(expr)(
             kernel_context,
             weak_form_context,
             operator_context,
             element_context,
-            quad_pt_context.MinusSide(),
-            fields.minus_fields
-         ) - expr(
+            quad_pt_context,
+            fields
+         ) - plus(expr)(
             kernel_context,
             weak_form_context,
             operator_context,
             element_context,
-            quad_pt_context.PlusSide(),
-            fields.plus_fields
+            quad_pt_context,
+            fields
          );
       }
       else
@@ -68,6 +70,7 @@ std::ostream& operator<<(std::ostream& os, const JumpExpr<Expr>& jump)
 }
 
 template < FieldExpr Expr >
+GENDIL_HOST_DEVICE
 auto jump(const Expr& expr)
 {
    return JumpExpr<Expr>(expr);

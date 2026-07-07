@@ -71,10 +71,10 @@ void bench_face_components_once_5D(Integer nx_full, Integer ny, Integer nz, Inte
 
   auto int_rules = MakeIntegrationRule(IntegrationRuleNumPoints<q1d,q1d,q1d,q1d,q1d>{});
 
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<5>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<5>(
       std::array<GlobalIndex,5>{
         (GlobalIndex)nxL,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw,(GlobalIndex)nt});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<5>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<5>(
       std::array<GlobalIndex,5>{
         (GlobalIndex)nxR,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw,(GlobalIndex)nt});
 

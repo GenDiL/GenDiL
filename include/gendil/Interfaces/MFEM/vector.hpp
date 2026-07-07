@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #ifdef GENDIL_USE_MFEM
+#include <functional>
 #include <mfem.hpp>
 
 namespace gendil

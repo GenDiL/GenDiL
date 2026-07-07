@@ -25,6 +25,22 @@ void GetValuesAndJacobian(
 {
    cell.GetValuesAndJacobian( quad_index, quad_data, X, J_mesh );
 }
+
+template <
+   typename Cell,
+   typename QuadData
+>
+GENDIL_HOST_DEVICE
+void ComputePhysicalCoordinatesAndJacobian(
+   const Cell & cell,
+   TensorIndex< Cell::Dim > const & quad_index,
+   QuadData const & quad_data,
+   typename Cell::physical_coordinates & X,
+   typename Cell::jacobian & J_mesh )
+{
+   cell.GetValuesAndJacobian( quad_index, quad_data, X, J_mesh );
+}
+
 template <
    typename Cell,
    CellFaceView Face,

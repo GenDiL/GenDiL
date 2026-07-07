@@ -43,7 +43,7 @@ int main(int, char**)
    constexpr Integer Dim = decltype(fes)::Dim;
    static_assert(Dim == 2, "This test assumes 2D.");
    std::array<GlobalIndex, Dim> sizes{(GlobalIndex)nx, (GlobalIndex)ny};
-   auto face_mesh = make_cartesian_interior_face_connectivity<Dim>(sizes);
+   auto face_mesh = MakeCartesianInteriorFaceConnectivity<Dim>(sizes);
 
    // ---- Advection a=(1,0); tangent to all faces (n=(0,±1)) -> zero flux ----
    auto adv = [] GENDIL_HOST_DEVICE (const std::array<Real,Dim>&, Real(&v)[Dim]) {

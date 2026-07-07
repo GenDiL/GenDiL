@@ -4,11 +4,45 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 
 namespace gendil {
+
+namespace details
+{
+
+template<class QData1D>
+GENDIL_HOST_DEVICE
+Real GetWeight1D(const QData1D& qdata, Integer q)
+{
+   using QData = std::remove_cvref_t<QData1D>;
+   if constexpr (requires { qdata.weights(q); })
+   {
+      return qdata.weights(q);
+   }
+   else if constexpr (requires { QData::GetWeight(q); })
+   {
+      return QData::GetWeight(q);
+   }
+   else if constexpr (requires { qdata.GetWeight(q); })
+   {
+      return qdata.GetWeight(q);
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v<QData1D>,
+         "GetWeight(q, qdata) requires 1D qdata with weights(q) or "
+         "a static GetWeight(q) point-set interface.");
+   }
+}
+
+} // namespace details
 
 /**
  * @brief Get the quadrature weight at a given quadrature point.
@@ -45,7 +79,8 @@ Real GetWeight( const TensorIndex< Dim > & index,
                 const std::tuple< DofToQuads... > & quad_data,
                 std::index_sequence< Is... > )
 {
-   return Product( std::get< Is >( quad_data ).weights( index[ Is ] )... );
+   return Product(
+      details::GetWeight1D( std::get< Is >( quad_data ), index[ Is ] )... );
 }
 
 template < Integer Dim, typename... DofToQuads >

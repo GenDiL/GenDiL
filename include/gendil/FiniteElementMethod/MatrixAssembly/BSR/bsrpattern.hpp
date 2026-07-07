@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/bsrmatrix.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrix.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
 

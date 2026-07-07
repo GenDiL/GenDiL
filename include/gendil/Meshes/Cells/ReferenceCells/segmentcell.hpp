@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
+#include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
 
 namespace gendil {
 
@@ -52,8 +53,7 @@ struct SegmentCell
                               physical_coordinates & X,
                               jacobian & J_mesh ) const
    {
-      using QuadType = std::tuple_element_t<0, QuadData>;
-      X[0] = cell_origin + h * QuadType::GetCoord( qx );
+      X[0] = cell_origin + h * GetCoord<0>( quad_data, qx );
       J_mesh[0] = h;
    }
 

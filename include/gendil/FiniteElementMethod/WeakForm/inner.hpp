@@ -48,6 +48,7 @@ struct InnerExpr : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    InnerExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -84,6 +85,7 @@ struct InnerExpr<LHS, GradientExpr<TestSpace<Name, Shape>>> : FieldBase
    using RHS = GradientExpr<TestSpace<Name, Shape>>;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    InnerExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -125,6 +127,7 @@ struct InnerExpr<GradientExpr<TestSpace<Name, Shape>>, RHS> : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    InnerExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}
@@ -158,6 +161,7 @@ std::ostream& operator<<(std::ostream& os, const InnerExpr<LHS, RHS>& inner)
 }
 
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto inner(const LHS& lhs, const RHS& rhs)
 {
    return InnerExpr<LHS, RHS>(lhs, rhs);

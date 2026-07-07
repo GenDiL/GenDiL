@@ -4,7 +4,12 @@
 
 #pragma once
 
+#include <array>
+#include <concepts>
+#include <type_traits>
+
 #include "orientation.hpp"
+#include "gendil/Meshes/Geometries/point.hpp"
 
 namespace gendil{
 
@@ -49,7 +54,7 @@ concept CellFaceView =
       { v.GetReferenceNormal() };
    };
 
-template <int Dim>
+template <Integer Dim>
 struct ConformingFaceMap {
    static constexpr bool is_conforming = true;
 
@@ -63,7 +68,7 @@ struct ConformingFaceMap {
    Real Measure() const { return 1.0; }
 };
 
-template <int Dim>
+template <Integer Dim>
 struct NonconformingHyperCubeFaceMap
 {
    static constexpr bool is_conforming = false;
@@ -84,7 +89,7 @@ struct NonconformingHyperCubeFaceMap
          d < Dim,
          "Dimension out of bounds"
       );
-      return Point<1>{origin[d] + size[d] * p[d]};
+      return Point<1>{origin[d] + size[d] * p[0]};
    }
 
    GENDIL_HOST_DEVICE
@@ -125,6 +130,12 @@ struct FaceView
 
    GENDIL_HOST_DEVICE
    const auto & GetReferenceNormal() const { return normal; }
+
+   GENDIL_HOST_DEVICE
+   bool IsBoundary() const { return static_cast< bool >( boundary ); }
+
+   GENDIL_HOST_DEVICE
+   constexpr bool IsConforming() const { return is_conforming; }
 
    GENDIL_HOST_DEVICE
    auto MapReferenceToFaceCoordinates(const Point<dim> & p) const

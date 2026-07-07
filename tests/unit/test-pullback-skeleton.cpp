@@ -11,6 +11,16 @@
 
 using namespace gendil;
 
+template<class T>
+struct is_product_expr : std::false_type {};
+
+template<class L, class R>
+struct is_product_expr<ProductExpr<L, R>> : std::true_type {};
+
+template<class T>
+inline constexpr bool is_product_expr_v =
+   is_product_expr<std::remove_cvref_t<T>>::value;
+
 // This test verifies the pullback skeleton implementation:
 // - Channel-set deduction with shape-compatible seeds
 // - Compile-time channel presence queries
@@ -109,6 +119,30 @@ int main()
       [[maybe_unused]] auto& gradient_seed = result_grad_vv.template get<GradientChannel>();
 
       std::cout << "  [PASS] pullback(grad(TestSpace<Vector>), matrix_seed) → GradientChannel\n";
+   }
+
+   // Test 4b: vector normal-flux ProductExpr + vector seed → GradientChannel
+   {
+      auto normal_flux = grad(vv) * Normal{};
+      static_assert(is_product_expr_v<decltype(normal_flux)>);
+      static_assert(decltype(normal_flux)::product_kind == ProductKind::MatVec);
+
+      auto result_flux = pullback(normal_flux, beta);
+
+      static_assert(decltype(result_flux)::contains<GradientChannel>(),
+         "pullback(grad(VectorTestSpace) * Normal{}, vector_seed) should have GradientChannel");
+      static_assert(!decltype(result_flux)::contains<ValueChannel>(),
+         "pullback(grad(VectorTestSpace) * Normal{}, vector_seed) should NOT have ValueChannel");
+
+      [[maybe_unused]] auto& gradient_seed =
+         result_flux.template get<GradientChannel>();
+      using GradientSeed = std::remove_cvref_t<decltype(gradient_seed)>;
+      static_assert(field_shape_v<GradientSeed> == FieldShape::Matrix,
+         "MatVec ProductExpr pullback should seed vector test gradients with a matrix-shaped expression.");
+      static_assert(is_test_free_v<GradientSeed>,
+         "MatVec ProductExpr pullback gradient seed should be test-free.");
+
+      std::cout << "  [PASS] pullback(grad(TestSpace<Vector>) * Normal{}, vector_seed) → GradientChannel\n";
    }
 
    // Test 5: dot(beta, vv) → ValueChannel
@@ -420,11 +454,8 @@ int main()
    // Should fail: nonlinear in test
    // auto invalid_nonlinear = pullback(v * v, c);
 
-   // Should fail: ProductKind::MatVec with a test-dependent matrix is unsupported
-   // auto invalid_matvec = pullback(grad(vv) * beta, beta);
-
-   // Should fail: specialized MatVecExpr normal contraction is intentionally separate
-   // auto invalid_normal = pullback(grad(vv) * Normal{}, beta);
+   // Should fail: nonlinear MatVec ProductExpr with two test-linear operands
+   // auto invalid_matvec = pullback(grad(vv) * vv, beta);
 
    // Should fail: seed shape mismatch
    // auto invalid_seed = pullback(u * v, beta);
@@ -581,8 +612,8 @@ int main()
    // Should fail: unsupported term InnerExpr pullback not implemented
    // auto invalid_inner = pullback(inner(grad(u), grad(v)) + (u * v), c);
 
-   // Should fail: unsupported ProductExpr MatVec pullback not implemented
-   // auto invalid_matvec = pullback((A * vv) + dot(beta, vv), c);
+   // Should fail: seed shape mismatch for MatVec ProductExpr
+   // auto invalid_matvec_seed = pullback(A * vv, c);
 
    // Should fail: seed shape mismatch
    // auto invalid_seed = pullback((u * v) + dot(grad(u), grad(v)), beta);
@@ -591,7 +622,7 @@ int main()
    std::cout << "Verified:\n";
    std::cout << "  - Primitive pullback rules with shape-compatible seeds\n";
    std::cout << "  - DotExpr pullback with bilinear adjoint rule\n";
-   std::cout << "  - ProductExpr ScalarTimes pullback with scalar coefficients\n";
+   std::cout << "  - ProductExpr ScalarTimes and MatVec pullback adjoints\n";
    std::cout << "  - SumExpr pullback with channel merge\n";
 
    return 0;

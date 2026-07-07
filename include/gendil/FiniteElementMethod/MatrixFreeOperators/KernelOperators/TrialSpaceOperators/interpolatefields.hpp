@@ -7,8 +7,10 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 
 namespace gendil
@@ -41,10 +43,9 @@ namespace gendil
  * The facet path intentionally preserves the current face-aware interpolation
  * model:
  *
- * - the operator context supplies the **full per-face quadrature-data
- *   container**,
- * - the facet-side object (`fc.MinusSide()` / `fc.PlusSide()`) is passed into
- *   the interpolation routines,
+ * - the face interpolation call site selects one coherent side binding:
+ *   FaceView side, side volume finite element space, and side qdata,
+ * - boundary facets use the minus-side binding by convention,
  * - selection of the local-face entry and conforming / non-conforming handling
  *   are delegated to the existing overloads of `InterpolateValues` and
  *   `InterpolateGradient`.
@@ -347,6 +348,98 @@ auto MakeFacetTrialInterpolatedEntry(
    };
 }
 
+template<class FaceSide, class VolumeSpace, class FaceQuadData>
+struct FacetFieldSideBinding
+{
+   FaceSide side;
+   const VolumeSpace& volume_space;
+   const FaceQuadData& qdata;
+};
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetMinusFacetFieldVolumeSpace(const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+
+   if constexpr (is_face_field_binding_v<SpaceType>)
+   {
+      return space.GetMinusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetPlusFacetFieldVolumeSpace(const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      !is_boundary_face_field_binding_v<SpaceType>,
+      "Plus-side finite element field interpolation is not defined for "
+      "boundary face field bindings.");
+
+   if constexpr (is_face_field_binding_v<SpaceType>)
+   {
+      static_assert(
+         is_interior_face_field_binding_v<SpaceType>,
+         "Plus-side finite element field interpolation requires an interior "
+         "face field binding or a homogeneous volume finite element space.");
+      return space.GetPlusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
+
+template<class FaceContext, class FieldSpace, class QDataWrapper>
+GENDIL_HOST_DEVICE
+constexpr auto MakeMinusFacetFieldBinding(
+   const FaceContext& face_info,
+   const FieldSpace& field_space,
+   const QDataWrapper& qdata_wrapper)
+{
+   decltype(auto) volume_space =
+      GetMinusFacetFieldVolumeSpace(field_space);
+   decltype(auto) qdata = qdata_wrapper.MinusSide();
+
+   using FaceSide = std::remove_cvref_t<decltype(face_info.MinusSide())>;
+   using VolumeSpace = std::remove_cvref_t<decltype(volume_space)>;
+   using FaceQuadData = std::remove_cvref_t<decltype(qdata)>;
+
+   return FacetFieldSideBinding<FaceSide, VolumeSpace, FaceQuadData>{
+      face_info.MinusSide(),
+      volume_space,
+      qdata
+   };
+}
+
+template<class FaceContext, class FieldSpace, class QDataWrapper>
+GENDIL_HOST_DEVICE
+constexpr auto MakePlusFacetFieldBinding(
+   const FaceContext& face_info,
+   const FieldSpace& field_space,
+   const QDataWrapper& qdata_wrapper)
+{
+   decltype(auto) volume_space =
+      GetPlusFacetFieldVolumeSpace(field_space);
+   decltype(auto) qdata = qdata_wrapper.PlusSide();
+
+   using FaceSide = std::remove_cvref_t<decltype(face_info.PlusSide())>;
+   using VolumeSpace = std::remove_cvref_t<decltype(volume_space)>;
+   using FaceQuadData = std::remove_cvref_t<decltype(qdata)>;
+
+   return FacetFieldSideBinding<FaceSide, VolumeSpace, FaceQuadData>{
+      face_info.PlusSide(),
+      volume_space,
+      qdata
+   };
+}
+
 /**
  * @brief Build a masked interpolated entry associated with a supplied named
  *        finite-element field on one side of a facet.
@@ -360,33 +453,48 @@ template<
    OperatorMask Mask,
    class KernelContext,
    class WeakFormContext,
-   class FaceSide,
-   class FaceQuadData>
+   class Binding>
 GENDIL_HOST_DEVICE
 auto MakeFacetCoeffInterpolatedEntryWithMask(
    KernelContext& k,
    const WeakFormContext& wf,
-   const FaceSide& side,
-   const FaceQuadData& face_qd)
+   const Binding& binding)
 {
    constexpr bool need_vals  = need_values(Mask);
    constexpr bool need_grads = need_gradients(Mask);
 
    const auto& fev = wf.template fe_field<Name>();
-   auto elem_dofs  = ReadDofs(k, fev.space, side.GetCellIndex(), fev.dofs);
+   auto elem_dofs  =
+      ReadDofs(k, binding.volume_space, binding.side.GetCellIndex(), fev.dofs);
 
    using ValuesT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, elem_dofs))>;
+      decltype(details::InterpolateFacetValuesIfNeeded<need_vals>(
+         k,
+         binding.side,
+         binding.qdata,
+         elem_dofs))>;
 
    using GradsT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, elem_dofs))>;
+      decltype(details::InterpolateFacetGradientIfNeeded<need_grads>(
+         k,
+         binding.side,
+         binding.qdata,
+         elem_dofs))>;
 
    using IF = InterpolatedField<ValuesT, GradsT>;
 
    return Entry<NameTag<Name>, IF>{
       IF{
-         details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, elem_dofs),
-         details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, elem_dofs)
+         details::InterpolateFacetValuesIfNeeded<need_vals>(
+            k,
+            binding.side,
+            binding.qdata,
+            elem_dofs),
+         details::InterpolateFacetGradientIfNeeded<need_grads>(
+            k,
+            binding.side,
+            binding.qdata,
+            elem_dofs)
       }
    };
 }
@@ -404,14 +512,14 @@ template<
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
-   class FaceSide,
+   class FaceContext,
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
-auto MakeFacetNamedFieldInterpolatedEntry(
+auto MakeMinusFacetNamedFieldInterpolatedEntry(
    KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
-   const FaceSide&        side,
+   const FaceContext&     face_info,
    const ElementDofsIn&   dofs_in)
 {
    constexpr auto Name = Req::name;
@@ -424,19 +532,83 @@ auto MakeFacetNamedFieldInterpolatedEntry(
          "InterpolateFields(facet): active trial field name conflicts with a "
          "FiniteElementField expression name.");
 
+      const auto& fev = wf.template fe_field<TrialName>();
+      const auto& qd_wrapper =
+         op.template finite_element_facet_quad_data<TrialName>();
+      const auto binding =
+         MakeMinusFacetFieldBinding(face_info, fev.space, qd_wrapper);
+
       return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
          k,
-         side,
-         op.template finite_element_facet_quad_data<TrialName>(),
+         binding.side,
+         binding.qdata,
          dofs_in);
    }
    else
    {
+      const auto& fev = wf.template fe_field<Name>();
+      const auto& qd_wrapper =
+         op.template finite_element_facet_quad_data<Name>();
+      const auto binding =
+         MakeMinusFacetFieldBinding(face_info, fev.space, qd_wrapper);
+
       return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
          k,
          wf,
-         side,
-         op.template finite_element_facet_quad_data<Name>());
+         binding);
+   }
+}
+
+template<
+   StaticString TrialName,
+   class Req,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceContext,
+   class ElementDofsIn>
+GENDIL_HOST_DEVICE
+auto MakePlusFacetNamedFieldInterpolatedEntry(
+   KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const FaceContext&     face_info,
+   const ElementDofsIn&   dofs_in)
+{
+   constexpr auto Name = Req::name;
+   constexpr auto Mask = Req::mask;
+
+   if constexpr (Name == TrialName)
+   {
+      static_assert(
+         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
+         "InterpolateFields(facet): active trial field name conflicts with a "
+         "FiniteElementField expression name.");
+
+      const auto& fev = wf.template fe_field<TrialName>();
+      const auto& qd_wrapper =
+         op.template finite_element_facet_quad_data<TrialName>();
+      const auto binding =
+         MakePlusFacetFieldBinding(face_info, fev.space, qd_wrapper);
+
+      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
+         k,
+         binding.side,
+         binding.qdata,
+         dofs_in);
+   }
+   else
+   {
+      const auto& fev = wf.template fe_field<Name>();
+      const auto& qd_wrapper =
+         op.template finite_element_facet_quad_data<Name>();
+      const auto binding =
+         MakePlusFacetFieldBinding(face_info, fev.space, qd_wrapper);
+
+      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
+         k,
+         wf,
+         binding);
    }
 }
 
@@ -571,21 +743,21 @@ template<
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
-   class FaceSide,
+   class FaceContext,
    class ElementDofsIn,
    class... Reqs>
 GENDIL_HOST_DEVICE
-auto MakeFacetNamedFieldsMap(
+auto MakeMinusFacetNamedFieldsMap(
    KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
-   const FaceSide&        side,
+   const FaceContext&     face_info,
    const ElementDofsIn&   dofs_in,
    type_list<Reqs...>)
 {
    return make_map(
-      MakeFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, side, dofs_in)...
+      MakeMinusFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
+         k, wf, op, face_info, dofs_in)...
    );
 }
 
@@ -594,8 +766,30 @@ template<
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
-   class FaceSideMinus,
-   class FaceSidePlus,
+   class FaceContext,
+   class ElementDofsIn,
+   class... Reqs>
+GENDIL_HOST_DEVICE
+auto MakePlusFacetNamedFieldsMap(
+   KernelContext&   k,
+   const WeakFormContext& wf,
+   const OperatorContext& op,
+   const FaceContext&     face_info,
+   const ElementDofsIn&   dofs_in,
+   type_list<Reqs...>)
+{
+   return make_map(
+      MakePlusFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
+         k, wf, op, face_info, dofs_in)...
+   );
+}
+
+template<
+   StaticString TrialName,
+   class KernelContext,
+   class WeakFormContext,
+   class OperatorContext,
+   class FaceContext,
    class ElementDofsInMinus,
    class ElementDofsInPlus,
    class... Reqs>
@@ -604,19 +798,18 @@ auto InterpolateFieldsInteriorFacetImpl(
    KernelContext&      k,
    const WeakFormContext&    wf,
    const OperatorContext&    op,
-   const FaceSideMinus&      minus_side,
-   const FaceSidePlus&       plus_side,
+   const FaceContext&        face_info,
    const ElementDofsInMinus& dofs_in_minus,
    const ElementDofsInPlus&  dofs_in_plus,
    type_list<Reqs...> deps)
 {
    auto minus_fields =
-      MakeFacetNamedFieldsMap<TrialName>(
-         k, wf, op, minus_side, dofs_in_minus, deps);
+      MakeMinusFacetNamedFieldsMap<TrialName>(
+         k, wf, op, face_info, dofs_in_minus, deps);
 
    auto plus_fields =
-      MakeFacetNamedFieldsMap<TrialName>(
-         k, wf, op, plus_side, dofs_in_plus, deps);
+      MakePlusFacetNamedFieldsMap<TrialName>(
+         k, wf, op, face_info, dofs_in_plus, deps);
 
    return FaceFields<
       std::remove_cvref_t<decltype(minus_fields)>,
@@ -755,15 +948,11 @@ auto InterpolateFields(
                  "InterpolateFields(facet): trial_name == \"Error\". "
                  "Integrand must contain a TrialSpace.");
 
-   // Store the side objects by value so this remains correct whether
-   // MinusSide()/PlusSide() return references or proxy temporaries.
-   const auto minus_side = fc.MinusSide();
-   const auto plus_side  = fc.PlusSide();
-
    static_assert(
       !has_invalid_unqualified_interior_side_dependencies_v<I, WeakFormContext, FaceContext>,
       "Side-dependent expression appears on an interior facet without side "
-      "selection. Use average(expr), jump(expr), or future minus(expr)/plus(expr).");
+      "selection. Use minus(expr), plus(expr), average(expr), jump(expr), "
+      "or a trace-aware operator such as upwind(...).");
 
    using Deps = interpolation_named_field_requirements_t<I>;
 
@@ -771,8 +960,7 @@ auto InterpolateFields(
       k,
       wf,
       op,
-      minus_side,
-      plus_side,
+      fc,
       dofs_in_minus,
       dofs_in_plus,
       Deps{});
@@ -792,14 +980,14 @@ template<
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
-   class FaceSide,
+   class FaceContext,
    class ElementDofsIn>
 GENDIL_HOST_DEVICE
 auto MakeBoundaryFacetNamedFieldInterpolatedEntry(
    KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
-   const FaceSide&        minus_side,
+   const FaceContext&     face_info,
    const ElementDofsIn&   dofs_in)
 {
    constexpr auto Name = Req::name;
@@ -812,19 +1000,30 @@ auto MakeBoundaryFacetNamedFieldInterpolatedEntry(
          "InterpolateFields(boundary facet): active trial field name conflicts with a "
          "FiniteElementField expression name.");
 
+      const auto& fev = wf.template fe_field<TrialName>();
+      const auto binding =
+         MakeMinusFacetFieldBinding(
+            face_info,
+            fev.space,
+            op.template finite_element_facet_quad_data<TrialName>());
       return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
          k,
-         minus_side,
-         op.template finite_element_facet_quad_data<TrialName>(),
+         binding.side,
+         binding.qdata,
          dofs_in);
    }
    else
    {
+      const auto& fev = wf.template fe_field<Name>();
+      const auto binding =
+         MakeMinusFacetFieldBinding(
+            face_info,
+            fev.space,
+            op.template finite_element_facet_quad_data<Name>());
       return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
          k,
          wf,
-         minus_side,
-         op.template finite_element_facet_quad_data<Name>());
+         binding);
    }
 }
 
@@ -833,7 +1032,7 @@ template<
    class KernelContext,
    class WeakFormContext,
    class OperatorContext,
-   class FaceSide,
+   class FaceContext,
    class ElementDofsIn,
    class... Reqs>
 GENDIL_HOST_DEVICE
@@ -841,13 +1040,13 @@ auto InterpolateFieldsBoundaryFacetImpl(
    KernelContext&   k,
    const WeakFormContext& wf,
    const OperatorContext& op,
-   const FaceSide&        minus_side,
+   const FaceContext&     face_info,
    const ElementDofsIn&   dofs_in,
    type_list<Reqs...>)
 {
    return make_map(
       MakeBoundaryFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, minus_side, dofs_in)...
+         k, wf, op, face_info, dofs_in)...
    );
 }
 
@@ -907,11 +1106,8 @@ auto InterpolateFields(
 
    using Deps = interpolation_named_field_requirements_t<I>;
 
-   // Boundary facets are one-sided: use minus side only
-   const auto minus_side = fc.MinusSide();
-
    return InterpolateFieldsBoundaryFacetImpl<
-      requirements<I>::trial_name>(k, wf, op, minus_side, dofs_in, Deps{});
+      requirements<I>::trial_name>(k, wf, op, fc, dofs_in, Deps{});
 }
 
 } // namespace gendil

@@ -261,7 +261,7 @@ bool TestScalarH1CSCAssemblyAgainstCSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -330,7 +330,7 @@ bool TestVectorH1CSCAssemblyAgainstCSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -397,7 +397,7 @@ bool TestScalarP0InteriorJumpCSCAssembly()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeDomain< "mesh" >( mesh ) );
+         MakeIntegrationDomain< "mesh" >( fe_space ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );

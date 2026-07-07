@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
@@ -13,11 +13,15 @@
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/FiniteElementMethod/finiteelementorders.hpp"
-#include "gendil/FiniteElementMethod/restriction.hpp"
+#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sum.hpp"
+
+#include <array>
+#include <tuple>
+#include <utility>
 
 namespace gendil {
 
@@ -142,14 +146,34 @@ auto MakeScalarElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
-   if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+   using Restriction = typename FiniteElementSpace::restriction_type;
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
    {
       const GlobalIndex dof_shift = finite_element_space.restriction.shift;
       return MakeTensor( finite_element_space, data + dof_shift );
    }
-   else // H1Restriction
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
    {
       return MakeIndirectedTensor( finite_element_space, data );
+   }
+   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   {
+      using ShapeFunctions =
+         typename FiniteElementSpace::finite_element_type::shape_functions;
+      using ProductDofShape = finite_element_dof_shape_t< ShapeFunctions >;
+      static_assert(
+         !is_vector_shape_functions_v< ShapeFunctions >,
+         "TensorProductRestriction v1 supports scalar finite element spaces only." );
+      return MakeView(
+         data,
+         MakeTensorProductLayout< ProductDofShape >(
+            finite_element_space.restriction ) );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< Restriction >,
+         "MakeScalarElementTensorView supports only scalar L2Restriction, H1Restriction, and TensorProductRestriction." );
    }
 }
 

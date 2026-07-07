@@ -4,7 +4,9 @@
 
 #pragma once
 
+#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/pullback.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/quadraturemeasure.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writequadraturelocalvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymappingtranspose.hpp"
 
@@ -116,7 +118,7 @@ template<
    typename QuadIndex,
    typename DuType>
 GENDIL_HOST_DEVICE
-void WriteChannelContributions(
+void WriteOrdinaryChannelContributions(
    const KernelContext& kernel_context,
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
@@ -128,6 +130,11 @@ void WriteChannelContributions(
    DuType& Du)
 {
    using C = std::remove_cvref_t<Channels>;
+   static_assert(
+      !contains_side_qualified_interior_test_channel_v<C>,
+      "Ordinary cell/local-facet/boundary channel writers consume only "
+      "ValueChannel and GradientChannel. Canonical global interior facets "
+      "must use WriteGlobalInteriorFacetChannelContributions.");
 
    // ValueChannel: evaluate coefficient expression, write to Du.values
    if constexpr (C::template contains<ValueChannel>())
@@ -188,6 +195,239 @@ void WriteChannelContributions(
          quad_index,
          grad_coeff_q,
          Du.gradients);
+   }
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename QuadPtContext,
+   typename Fields,
+   typename Channels,
+   typename QuadIndex,
+   typename DuType>
+GENDIL_HOST_DEVICE
+void WriteCellChannelContributions(
+   const KernelContext& kernel_context,
+   const WeakFormContext& weak_form_context,
+   const OperatorContext& operator_context,
+   const ElementContext& element_context,
+   const QuadPtContext& quad_pt_context,
+   const Fields& fields,
+   const Channels& channels,
+   const QuadIndex& quad_index,
+   DuType& Du)
+{
+   using C = std::remove_cvref_t<Channels>;
+   static_assert(
+      !contains_side_qualified_interior_test_channel_v<C>,
+      "WriteCellChannelContributions consumes ordinary ValueChannel and "
+      "GradientChannel only. Side-qualified interior facet channels belong to "
+      "WriteGlobalInteriorFacetChannelContributions.");
+
+   WriteOrdinaryChannelContributions(
+      kernel_context,
+      weak_form_context,
+      operator_context,
+      element_context,
+      quad_pt_context,
+      fields,
+      channels,
+      quad_index,
+      Du);
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename QuadPtContext,
+   typename Fields,
+   typename Channels,
+   typename QuadIndex,
+   typename DuType>
+GENDIL_HOST_DEVICE
+void WriteLocalFacetChannelContributions(
+   const KernelContext& kernel_context,
+   const WeakFormContext& weak_form_context,
+   const OperatorContext& operator_context,
+   const ElementContext& element_context,
+   const QuadPtContext& quad_pt_context,
+   const Fields& fields,
+   const Channels& channels,
+   const QuadIndex& quad_index,
+   DuType& Du)
+{
+   using C = std::remove_cvref_t<Channels>;
+   static_assert(
+      !contains_side_qualified_interior_test_channel_v<C>,
+      "WriteLocalFacetChannelContributions consumes ordinary current-row "
+      "ValueChannel and GradientChannel only. Canonical global interior "
+      "channels must stay side-qualified.");
+
+   WriteOrdinaryChannelContributions(
+      kernel_context,
+      weak_form_context,
+      operator_context,
+      element_context,
+      quad_pt_context,
+      fields,
+      channels,
+      quad_index,
+      Du);
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename QuadPtContext,
+   typename Fields,
+   typename Channels,
+   typename QuadIndex,
+   typename DuType>
+GENDIL_HOST_DEVICE
+void WriteGlobalBoundaryFacetChannelContributions(
+   const KernelContext& kernel_context,
+   const WeakFormContext& weak_form_context,
+   const OperatorContext& operator_context,
+   const ElementContext& element_context,
+   const QuadPtContext& quad_pt_context,
+   const Fields& fields,
+   const Channels& channels,
+   const QuadIndex& quad_index,
+   DuType& Du)
+{
+   using C = std::remove_cvref_t<Channels>;
+   static_assert(
+      !contains_side_qualified_interior_test_channel_v<C>,
+      "WriteGlobalBoundaryFacetChannelContributions consumes ordinary "
+      "one-sided boundary ValueChannel and GradientChannel only. Boundary "
+      "facets must not receive side-qualified interior channels.");
+
+   WriteOrdinaryChannelContributions(
+      kernel_context,
+      weak_form_context,
+      operator_context,
+      element_context,
+      quad_pt_context,
+      fields,
+      channels,
+      quad_index,
+      Du);
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename ElementContext,
+   typename FacetQuadPtContext,
+   typename Fields,
+   typename Channels,
+   typename QuadIndex,
+   typename DuMinusType,
+   typename DuPlusType>
+GENDIL_HOST_DEVICE
+void WriteGlobalInteriorFacetChannelContributions(
+   const KernelContext& kernel_context,
+   const WeakFormContext& weak_form_context,
+   const OperatorContext& operator_context,
+   const ElementContext& element_context,
+   const FacetQuadPtContext& facet_quad_pt_context,
+   const Fields& fields,
+   const Channels& channels,
+   const QuadIndex& quad_index,
+   DuMinusType& Du_minus,
+   DuPlusType& Du_plus)
+{
+   using C = std::remove_cvref_t<Channels>;
+   static_assert(
+      !contains_ordinary_test_channel_v<C>,
+      "Canonical global interior facet channels must be side-qualified. "
+      "ValueChannel and GradientChannel are reserved for cells, boundary "
+      "facets, and local/current-row facet compatibility.");
+
+   if constexpr (C::template contains<ValueMinusChannel>())
+   {
+      const auto& value_coeff_expr =
+         channels.template get<ValueMinusChannel>();
+      auto value_coeff_q = value_coeff_expr(
+         kernel_context,
+         weak_form_context,
+         operator_context,
+         element_context,
+         facet_quad_pt_context,
+         fields);
+      WriteQuadratureLocalValues(
+         kernel_context,
+         quad_index,
+         value_coeff_q,
+         Du_minus.values);
+   }
+
+   if constexpr (C::template contains<ValuePlusChannel>())
+   {
+      const auto& value_coeff_expr =
+         channels.template get<ValuePlusChannel>();
+      auto value_coeff_q = value_coeff_expr(
+         kernel_context,
+         weak_form_context,
+         operator_context,
+         element_context,
+         facet_quad_pt_context,
+         fields);
+      WriteQuadratureLocalValues(
+         kernel_context,
+         quad_index,
+         value_coeff_q,
+         Du_plus.values);
+   }
+
+   if constexpr (C::template contains<GradientMinusChannel>())
+   {
+      const auto& grad_coeff_expr =
+         channels.template get<GradientMinusChannel>();
+      auto grad_coeff_q = grad_coeff_expr(
+         kernel_context,
+         weak_form_context,
+         operator_context,
+         element_context,
+         facet_quad_pt_context,
+         fields);
+      ApplyMappingTranspose(
+         facet_quad_pt_context.MinusSide().inv_J_mesh,
+         grad_coeff_q);
+      WriteQuadratureLocalValues(
+         kernel_context,
+         quad_index,
+         grad_coeff_q,
+         Du_minus.gradients);
+   }
+
+   if constexpr (C::template contains<GradientPlusChannel>())
+   {
+      const auto& grad_coeff_expr =
+         channels.template get<GradientPlusChannel>();
+      auto grad_coeff_q = grad_coeff_expr(
+         kernel_context,
+         weak_form_context,
+         operator_context,
+         element_context,
+         facet_quad_pt_context,
+         fields);
+      ApplyMappingTranspose(
+         facet_quad_pt_context.PlusSide().inv_J_mesh,
+         grad_coeff_q);
+      WriteQuadratureLocalValues(
+         kernel_context,
+         quad_index,
+         grad_coeff_q,
+         Du_plus.gradients);
    }
 }
 
@@ -255,9 +495,43 @@ GENDIL_HOST_DEVICE
 auto LowerInteriorFacetIntegrandToPullbackChannels(
    const Integrand<InteriorFacets<DomainName>, Expr>& integrand)
 {
+   static_assert(
+      !has_unqualified_interior_test_trace_v<Expr>,
+      "Interior facet test dependencies must use explicit trace syntax. "
+      "Use minus(v), plus(v), jump(v), average(v), minus(grad(v)), "
+      "plus(grad(v)), jump(grad(v)), or average(grad(v)); unqualified v or "
+      "grad(v) is invalid on interior facets.");
+   static_assert(
+      !has_unqualified_side_dependent_inputs_v<Expr>,
+      "Interior facet trial/coefficient finite-element dependencies must use "
+      "explicit trace syntax. Use minus(expr), plus(expr), jump(expr), "
+      "average(expr), or a trace-aware operator such as upwind(...).");
+
    const auto& field_expr = integrand.expr;  // Extract field expression (e.g., jump(u) * jump(v))
    FacetQuadratureMeasureExpr measure;       // Facet measure seed (same as boundary)
    return pullback(field_expr, measure);
+}
+
+template<StaticString DomainName, FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto LowerGlobalInteriorFacetIntegrandToPullbackChannels(
+   const Integrand<InteriorFacets<DomainName>, Expr>& integrand)
+{
+   static_assert(
+      !has_unqualified_interior_test_trace_v<Expr>,
+      "Interior facet test dependencies must use explicit trace syntax. "
+      "Use minus(v), plus(v), jump(v), average(v), minus(grad(v)), "
+      "plus(grad(v)), jump(grad(v)), or average(grad(v)); unqualified v or "
+      "grad(v) is invalid on interior facets.");
+   static_assert(
+      !has_unqualified_side_dependent_inputs_v<Expr>,
+      "Interior facet trial/coefficient finite-element dependencies must use "
+      "explicit trace syntax. Use minus(expr), plus(expr), jump(expr), "
+      "average(expr), or a trace-aware operator such as upwind(...).");
+
+   const auto& field_expr = integrand.expr;
+   FacetQuadratureMeasureExpr measure;
+   return pullback_global_interior(field_expr, measure);
 }
 
 template<
@@ -286,7 +560,7 @@ void ComputeContributions(
    {
       auto channels = LowerCellIntegrandToPullbackChannels(integrand);
 
-      WriteChannelContributions(
+      WriteCellChannelContributions(
          kernel_context,
          weak_form_context,
          operator_context,
@@ -301,7 +575,7 @@ void ComputeContributions(
    {
       auto channels = LowerBoundaryFacetIntegrandToPullbackChannels(integrand);
 
-      WriteChannelContributions(
+      WriteLocalFacetChannelContributions(
          kernel_context,
          weak_form_context,
          operator_context,
@@ -316,7 +590,7 @@ void ComputeContributions(
    {
       auto channels = LowerInteriorFacetIntegrandToPullbackChannels(integrand);
 
-      WriteChannelContributions(
+      WriteLocalFacetChannelContributions(
          kernel_context,
          weak_form_context,
          operator_context,

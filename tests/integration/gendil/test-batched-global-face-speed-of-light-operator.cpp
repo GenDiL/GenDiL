@@ -177,7 +177,7 @@ Vector ApplyGlobalFaceSpeedOfLightForExtents(
 {
    auto mesh = MakeCartesianMeshForExtents< Dim >( extents );
    auto face_meshes =
-      make_cartesian_interior_face_connectivity< Dim >( extents );
+      MakeCartesianInteriorFaceConnectivity< Dim >( extents );
 
    auto orders = MakeRepeatedFiniteElementOrders< Dim, Order >();
    auto finite_element = MakeLobattoFiniteElement( orders );
@@ -211,7 +211,7 @@ GlobalIndex GetNumberOfFacesForExtents(
    const std::array< GlobalIndex, Dim > & extents )
 {
    auto face_meshes =
-      make_cartesian_interior_face_connectivity< Dim >( extents );
+      MakeCartesianInteriorFaceConnectivity< Dim >( extents );
    return CountGlobalFaces( face_meshes );
 }
 

@@ -86,10 +86,10 @@ int main(int, char**)
   auto int_rules = MakeIntegrationRule(IntegrationRuleNumPoints<q1d,q1d,q1d>{});
 
   // Interior face meshes (each block)
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{
         (GlobalIndex)nxL,(GlobalIndex)nyL,(GlobalIndex)nzL});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{
         (GlobalIndex)nxR,(GlobalIndex)nyR,(GlobalIndex)nzR});
 
@@ -182,7 +182,7 @@ int main(int, char**)
 
     auto face_R1_pos   = MakeAdvectionFaceOperator<KernelPolicy>(
                             fe_space_R1,
-                            make_cartesian_interior_face_connectivity<Dim>(
+                            MakeCartesianInteriorFaceConnectivity<Dim>(
                               std::array<GlobalIndex,Dim>{
                                 (GlobalIndex)nxR,(GlobalIndex)nyL,(GlobalIndex)nzL}),
                             int_rules, adv_pos);

@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/facetquaddata.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesserial.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TrialSpaceOperators/interpolatevaluesthreaded.hpp"
 
@@ -85,17 +86,8 @@ auto InterpolateValues( KernelContext & ctx,
                         const FaceQuadData & face_quad_data,
                         const DofTensor & u )
 {
-   constexpr Integer local_face_index = Face::local_face_index_type::value;
-   const auto & local_face_quad_data = std::get< local_face_index >( face_quad_data );
-   if constexpr ( Face::is_conforming )
-   {
-      return InterpolateValues( ctx, local_face_quad_data, u );
-   }
-   else
-   {
-      auto non_conforming_face_quad_data = MakeNonconformingDofToQuadData( face, local_face_quad_data );
-      return InterpolateValues( ctx, non_conforming_face_quad_data, u );
-   }
+   auto&& facet_qd = GetFacetQuadData( face_quad_data, face );
+   return InterpolateValues( ctx, facet_qd, u );
 }
 
 } // namespace gendil

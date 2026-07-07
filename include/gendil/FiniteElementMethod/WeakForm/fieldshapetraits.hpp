@@ -137,6 +137,18 @@ struct field_shape_impl<NegExpr<Expr>>
    static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
 };
 
+template<FieldExpr Expr>
+struct field_shape_impl<MinusTraceExpr<Expr>>
+{
+   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
+};
+
+template<FieldExpr Expr>
+struct field_shape_impl<PlusTraceExpr<Expr>>
+{
+   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
+};
+
 /**
  * @brief AverageExpr preserves the field shape of its operand.
  *
@@ -172,19 +184,6 @@ template<FieldExpr AdvExpr, FieldExpr Expr>
 struct field_shape_impl<UpwindExpr<AdvExpr, Expr>>
 {
    static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
-
-// =============================================================================
-// MatVecExpr shape specialization
-// =============================================================================
-
-// Forward declaration (not in dslbase.hpp)
-template<typename, typename> struct MatVecExpr;
-
-// Matrix-vector product always returns vector
-template<typename MatrixExpr, typename VectorExpr>
-struct field_shape_impl<MatVecExpr<MatrixExpr, VectorExpr>> {
-   static constexpr FieldShape value = FieldShape::Vector;
 };
 
 // =============================================================================

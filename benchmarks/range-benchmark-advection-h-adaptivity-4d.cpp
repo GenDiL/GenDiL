@@ -85,9 +85,9 @@ void bench_face_components_once_4D(int nx_half, int nyL, int nzL, int nwL,
   auto int_rules = MakeIntegrationRule(IntegrationRuleNumPoints<q1d,q1d,q1d,q1d>{});
 
   // interior face meshes
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{(GlobalIndex)nxL,(GlobalIndex)nyL,(GlobalIndex)nzL,(GlobalIndex)nwL});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<Dim>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<Dim>(
       std::array<GlobalIndex,Dim>{(GlobalIndex)nxR,(GlobalIndex)nyR,(GlobalIndex)nzR,(GlobalIndex)nwR});
 
   // nonconforming interface: minus = L coarse on +x face (LocalFaceIndex = Dim)

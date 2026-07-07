@@ -7,7 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/quadcell.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
-#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/unstructuredconformingconnectivity.hpp"
+#include "gendil/Meshes/MeshDataStructures/UnstructuredMesh/LocalFacetConnectivity/unstructuredconformingconnectivity.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {

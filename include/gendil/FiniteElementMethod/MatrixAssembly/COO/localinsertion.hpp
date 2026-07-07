@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoolayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 
@@ -38,11 +38,9 @@ void AddRawCOOBlockEntries(
       typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
    using TrialDescriptor = std::remove_cvref_t< TrialDofDescriptor >;
 
-   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
-   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count =
-      static_cast< GlobalIndex >( ntest ) *
-      static_cast< GlobalIndex >( ntrial );
+   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
+   constexpr GlobalIndex block_entry_count = ntest * ntrial;
 
    GENDIL_VERIFY(
       IsActiveRawCOOOffset(
@@ -51,13 +49,13 @@ void AddRawCOOBlockEntries(
          static_cast< GlobalIndex >( coo_buffer.nnz_raw ) ),
       "Raw COO emission received an inactive or out-of-range block offset." );
 
-   const LocalIndex local_col =
+   const GlobalIndex local_col =
       FlattenLocalDof(
          trial_fe_space,
          typename TrialDescriptor::component{},
          trial_dof.indices );
    const GlobalIndex global_col =
-      ElementToGlobalDofIndex(
+      GlobalDofIndex(
          trial_fe_space,
          typename TrialDescriptor::component{},
          col_element_index,
@@ -72,22 +70,21 @@ void AddRawCOOBlockEntries(
       [&] ( const auto & test_dof, const auto & value )
       {
          using TestDescriptor = std::remove_cvref_t< decltype(test_dof) >;
-         const LocalIndex local_row =
+         const GlobalIndex local_row =
             FlattenLocalDof(
                test_fe_space,
                typename TestDescriptor::component{},
                test_dof.indices );
          const GlobalIndex global_row =
-            ElementToGlobalDofIndex(
+            GlobalDofIndex(
                test_fe_space,
                typename TestDescriptor::component{},
                row_element_index,
                test_dof.indices );
          const GlobalIndex raw_index =
             raw_entry_base +
-            static_cast< GlobalIndex >( local_col ) *
-               static_cast< GlobalIndex >( ntest ) +
-            static_cast< GlobalIndex >( local_row );
+            local_col * ntest +
+            local_row;
 
          GENDIL_VERIFY(
             raw_index < static_cast< GlobalIndex >( coo_buffer.nnz_raw ),

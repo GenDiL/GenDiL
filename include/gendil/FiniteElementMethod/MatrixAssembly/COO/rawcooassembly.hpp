@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
@@ -39,10 +39,13 @@ struct IsRawCOOCellAssemblySpace
    }();
 
    static constexpr bool value =
-      std::is_same_v< Restriction, L2Restriction > ||
-      ( std::is_same_v< Restriction, H1Restriction > &&
-        !is_vector_shape_functions_v< ShapeFunctions > ) ||
-      vector_h1_value;
+      restriction_traits< Restriction >::is_direct_index_map &&
+      ( std::is_same_v< Restriction, L2Restriction > ||
+        ( std::is_same_v< Restriction, H1Restriction > &&
+          !is_vector_shape_functions_v< ShapeFunctions > ) ||
+        ( is_tensor_product_restriction_v< Restriction > &&
+          !is_vector_shape_functions_v< ShapeFunctions > ) ||
+        vector_h1_value );
 };
 
 template < typename FESpace >
@@ -66,6 +69,12 @@ auto GenericRawCOOAssembly(
 {
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
+
+   static_assert(
+      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
+      "GenericAssembly<RawCOO>: mixed sparse assembly for "
+      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
+      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
 
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
@@ -104,15 +113,14 @@ auto GenericRawCOOAssembly(
         IsRawCOOFaceAssemblySpace< TrialSpace >::value &&
         IsRawCOOFaceAssemblySpace< TestSpace >::value ),
       "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
-      "scalar/vector H1/CG cell-only terms, and scalar/vector L2/DG conforming "
-      "face terms. H1 face terms, mixed spaces, nonconforming faces, global "
-      "face traversal, and variable-size hp emission are unsupported." );
+      "scalar/vector H1/CG cell-only terms, scalar tensor-product direct-index "
+      "cell-only terms, and scalar/vector L2/DG conforming face terms. H1 face "
+      "terms, mixed spaces, nonconforming faces, global face traversal, and "
+      "variable-size hp emission are unsupported." );
 
-   constexpr LocalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
-   constexpr LocalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count =
-      static_cast< GlobalIndex >( ntest ) *
-      static_cast< GlobalIndex >( ntrial );
+   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
+   constexpr GlobalIndex block_entry_count = ntest * ntrial;
 
    auto layout =
       MakeRawCOOAssemblyLayout<

@@ -75,9 +75,9 @@ void bench_face_components_once_6D(Integer nx_full, Integer ny, Integer nz, Inte
 
   auto int_rules = MakeIntegrationRule(IntegrationRuleNumPoints<q1d,q1d,q1d,q1d,q1d,q1d>{});
 
-  auto face_mesh_L = make_cartesian_interior_face_connectivity<6>(
+  auto face_mesh_L = MakeCartesianInteriorFaceConnectivity<6>(
       std::array<GlobalIndex,6>{(GlobalIndex)nxL,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw,(GlobalIndex)nt,(GlobalIndex)nu});
-  auto face_mesh_R = make_cartesian_interior_face_connectivity<6>(
+  auto face_mesh_R = MakeCartesianInteriorFaceConnectivity<6>(
       std::array<GlobalIndex,6>{(GlobalIndex)nxR,(GlobalIndex)ny,(GlobalIndex)nz,(GlobalIndex)nw,(GlobalIndex)nt,(GlobalIndex)nu});
 
   // LocalFaceIndex = +x face of minus side in 6D → Axis(0) + Dim(6) = 6

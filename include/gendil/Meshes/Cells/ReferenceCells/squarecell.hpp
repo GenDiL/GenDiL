@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
+#include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
 
 namespace gendil {
 
@@ -59,10 +60,8 @@ struct SquareCell
                               physical_coordinates & X,
                               jacobian & J_mesh ) const
    {
-      using quad_x = std::tuple_element_t< 0, QuadData >;
-      using quad_y = std::tuple_element_t< 1, QuadData >;
-      X[0] = origin[0] + h_x * quad_x::GetCoord( qx );
-      X[1] = origin[1] + h_y * quad_y::GetCoord( qy );
+      X[0] = origin[0] + h_x * GetCoord<0>( quad_data, qx );
+      X[1] = origin[1] + h_y * GetCoord<1>( quad_data, qy );
       J_mesh[0] = h_x;
       J_mesh[1] = h_y;
    }
