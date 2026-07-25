@@ -113,7 +113,8 @@ template <
 GENDIL_HOST_DEVICE
 auto MakeQuadraturePointValuesContainer(
    const KernelContext & kernel_conf,
-   const std::tuple<DofToQuads...> & element_quad_data )
+   const TensorProductData<DofToQuads...>&
+      element_quad_data )
 {
    using quad_shape = std::index_sequence< DofToQuads::num_quads... >;
    static constexpr Integer Dim = sizeof...( DofToQuads );

@@ -175,7 +175,7 @@ int TestLegacyPlusJacobian(int fp1, int fp2)
    InteriorFacets<"mesh"> interior_facets;
    BoundaryFacets<"mesh"> boundary_facets;
 
-   auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(diffusivity);
+   auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(diffusivity);
 
    auto weak_form =
       integrate(cells, mu * dot(grad(u), grad(v)))
@@ -188,7 +188,7 @@ int TestLegacyPlusJacobian(int fp1, int fp2)
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeIntegrationDomain<"mesh">(fe_space));
+      MakeIntegrationDomain<"mesh">(mesh));
 
    auto generic_operator =
       MakeGenericOperator<KernelPolicy>(

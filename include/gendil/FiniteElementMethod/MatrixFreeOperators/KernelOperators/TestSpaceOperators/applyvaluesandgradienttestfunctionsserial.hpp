@@ -147,7 +147,7 @@ inline auto ApplyValuesAndGradientTestFunctionsImpl( ElementDofToQuad const & el
    constexpr Integer Rank = get_rank_v< UTensor >;
    constexpr bool SumReduce = (ActiveDim == 0);
 
-   auto& B = std::get< ActiveDim >( element_quad_data );
+   auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
    if constexpr ( ActiveDim+1 == Rank )
       return FusedAdjointGradInterpContraction< ActiveDim, SumReduce >( u_and_Du, B );
@@ -164,8 +164,8 @@ inline auto ApplyValuesAndGradientTestFunctionsImpl( ElementDofToQuad const & el
  * @tparam Add Specify if values should be accumulated or overwritten.
  * @tparam FiniteElementSpace The finite element space.
  * @tparam IntegrationRule The integration rule.
- * @tparam ElementDofToQuad A tuple of DofToQuad types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @tparam ElementDofToQuad TensorProductDofToQuad data.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param Duq The values at quadrature point.
  * @param dofs_out The contribution to the degrees-of-freed4.
  * 
@@ -175,10 +175,10 @@ template < bool Add,
            Integer Rank,
            typename FiniteElementSpace,
            typename IntegrationRule,
-           typename ElementDofToQuad >
+           typename ... Entries >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctions(
-   const ElementDofToQuad & element_quad_data,
+   const TensorProductData<Entries...>& element_quad_data,
    const QuadraturePointValues< IntegrationRule > & Duq,
    const QuadraturePointValues< IntegrationRule, Rank > & DGuq,
    ElementDoF< FiniteElementSpace > & dofs_out )
@@ -200,7 +200,7 @@ void ApplyValuesAndGradientTestFunctions(
  * @tparam ValueViewTypes Component value view types.
  * @tparam GradientViewTypes Component gradient view types.
  * @tparam OutputViewTypes Component output view types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @param element_quad_data VectorDofToQuad data indexed by component.
  * @param values_tuple Tuple of value views at quadrature points (one per component).
  * @param gradients_tuple Tuple of gradient views at quadrature points (one per component).
  * @param output_tuple Tuple of output DOF views (one per component).
@@ -209,13 +209,13 @@ void ApplyValuesAndGradientTestFunctions(
  */
 template <
    bool Add,
-   typename ElementDofToQuad,
+   typename ... ScalarMaps,
    typename... ValueViewTypes,
    typename... GradientViewTypes,
    typename... OutputViewTypes >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctions(
-   const ElementDofToQuad & element_quad_data,
+   const VectorDofToQuad<ScalarMaps...>& element_quad_data,
    const std::tuple<ValueViewTypes...> & values_tuple,
    const std::tuple<GradientViewTypes...> & gradients_tuple,
    std::tuple<OutputViewTypes...> & output_tuple )
@@ -225,6 +225,10 @@ void ApplyValuesAndGradientTestFunctions(
 
    static_assert(sizeof...(ValueViewTypes) == sizeof...(OutputViewTypes),
       "Vector ApplyValuesAndGradientTestFunctions: output must have the same number of components as input.");
+   static_assert(
+      sizeof...(ScalarMaps) == sizeof...(ValueViewTypes),
+      "Vector ApplyValuesAndGradientTestFunctions requires one value, "
+      "gradient, and output per VectorDofToQuad component.");
 
    constexpr Integer NumComponents = sizeof...(ValueViewTypes);
 
@@ -233,9 +237,9 @@ void ApplyValuesAndGradientTestFunctions(
       // For each component c, extract component-specific data and apply scalar path
       // c is std::integral_constant<size_t, C>, access value with c.value
 
-      // For vector FE, element_quad_data is tuple-of-tuples (one tuple per component)
-      // Each component has its own tuple of DofToQuad objects (one per spatial dimension)
-      const auto& component_quad_data = std::get<c.value>(element_quad_data);
+      // Each vector component owns its tensor-product DoF-to-quadrature data.
+      const auto& component_quad_data =
+         GetVectorComponent<c.value>(element_quad_data);
 
       auto component_pair = std::tie(
          std::get<c.value>(values_tuple),
@@ -254,13 +258,13 @@ void ApplyValuesAndGradientTestFunctions(
 
 template <
    bool Add,
-   typename ElementDofToQuad,
+   typename ... Entries,
    typename ValuesInput,
    typename GradientsInput,
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctions(
-   const ElementDofToQuad & element_quad_data,
+   const TensorProductData<Entries...>& element_quad_data,
    const ValuesInput & Duq,
    const GradientsInput & DGuq,
    Output & dofs_out )

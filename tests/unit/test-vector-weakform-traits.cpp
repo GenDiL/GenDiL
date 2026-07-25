@@ -490,9 +490,9 @@ int main()
          return result;
       };
 
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       static_assert(is_coefficient_v<decltype(mu)>, "mu should be coefficient");
       static_assert(is_scalar_coefficient_v<decltype(mu)>, "mu should be scalar coefficient");
@@ -538,9 +538,9 @@ int main()
          return result;
       };
 
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // Scalar coefficient is a scalar multiplier
       static_assert(is_scalar_multiplier_expr_v<decltype(mu)>,
@@ -605,9 +605,9 @@ int main()
          return result;
       };
 
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       static_assert(field_shape_v<decltype(mu)> == FieldShape::Scalar,
          "Scalar coefficient should have Scalar shape");
@@ -668,13 +668,13 @@ int main()
       VectorTestSpace<"vv"> v_vector;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -683,7 +683,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // Test has_field_shape_v (positive cases)
       static_assert(has_field_shape_v<decltype(v_scalar)>,
@@ -772,13 +772,13 @@ int main()
       VectorTestSpace<"vv"> v_vector;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -787,7 +787,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // ScalarTimes result shapes
 
@@ -878,13 +878,13 @@ int main()
       VectorTrialSpace<"vu"> u_vector;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -893,7 +893,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // HasFieldShape concept
       static_assert(HasFieldShape<decltype(v_scalar)>,
@@ -1007,13 +1007,13 @@ int main()
       VectorTestSpace<"vv"> v_vector;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1022,7 +1022,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // Type aliases for ProductExpr instances
       using ScalarScalarProduct =
@@ -1121,13 +1121,13 @@ int main()
       VectorTestSpace<"vv"> vv;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1136,7 +1136,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // 1. TestFree × TestFree → TestFree
       using MuU = ProductExpr<decltype(mu), decltype(u)>;
@@ -1238,13 +1238,13 @@ int main()
       VectorTestSpace<"vv"> vv;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1253,7 +1253,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // ProductExpr type aliases
       using MuV = ProductExpr<decltype(mu), decltype(v)>;
@@ -1364,13 +1364,13 @@ int main()
       (void)u; (void)n; // Used only in decltype
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1379,7 +1379,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // ProductExpr type aliases covering all ProductKind values
       using ScalarScalarProduct = ProductExpr<decltype(mu), decltype(v)>;
@@ -1458,13 +1458,13 @@ int main()
       Normal n;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1473,7 +1473,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // 1. Scalar multiplier × scalar test → ProductExpr
       auto mu_v = mu * v;
@@ -1577,14 +1577,14 @@ int main()
       Normal n;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
       (void)mu; // Used only in decltype
 
       auto beta_fn = [](const auto& x) {
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1593,7 +1593,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // ===== ScalarTimes Products: Scalar Trial/Test Fields =====
 
@@ -1701,7 +1701,7 @@ int main()
          std::array<Real, 3> result = {Real{1.0}, Real{0.0}, Real{0.0}};
          return result;
       };
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
       auto A_fn = [](const auto& x) {
          std::array<std::array<Real, 3>, 3> result = {};
@@ -1710,7 +1710,7 @@ int main()
          result[2][2] = Real{1.0};
          return result;
       };
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(A_fn);
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(A_fn);
 
       // ===== MatMat Products: Matrix × Matrix =====
 
@@ -1800,7 +1800,7 @@ int main()
       TrialSpace<"u"> u;
 
       auto mu_fn = [](const auto& x) { return Real{1.0}; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       // 1. Explicit ProductExpr construction
       ProductExpr mu_v{mu, v};
@@ -1851,12 +1851,12 @@ int main()
       VectorTestSpace<"vv"> vv;
       Normal n;
 
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(
          [](const auto&) {
             return std::array<Real, 3>{Real{1.0}, Real{0.0}, Real{0.0}};
          });
 
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(
          [](const auto&) {
             std::array<std::array<Real, 3>, 3> result = {};
             result[0][0] = Real{1.0};
@@ -1953,7 +1953,7 @@ int main()
       VectorTestSpace<"vv"> vv;
       Normal n;
 
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(
          [](const auto&) { return Real{1.0}; });
 
       // --- 1. NegExpr shape propagation ---
@@ -2043,15 +2043,15 @@ int main()
       Normal n;
       (void)vu; // Used only in decltype
 
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(
          [](const auto&) { return Real{1.0}; });
 
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(
          [](const auto&) {
             return std::array<Real, 3>{Real{1.0}, Real{0.0}, Real{0.0}};
          });
 
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(
          [](const auto&) {
             std::array<std::array<Real, 3>, 3> result = {};
             result[0][0] = Real{1.0};
@@ -2183,12 +2183,12 @@ int main()
       Normal n;
       (void)vv; // Used only in decltype
 
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(
          [](const auto&) {
             return std::array<Real, 3>{Real{1.0}, Real{0.0}, Real{0.0}};
          });
 
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(
          [](const auto&) {
             std::array<std::array<Real, 3>, 3> result = {};
             result[0][0] = Real{1.0};
@@ -2255,12 +2255,12 @@ int main()
       VectorTestSpace<"vv"> vv;
       VectorTrialSpace<"vu"> vu;
 
-      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(
+      auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(
          [](const auto&) {
             return std::array<Real, 3>{Real{1.0}, Real{0.0}, Real{0.0}};
          });
 
-      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(
+      auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(
          [](const auto&) {
             std::array<std::array<Real, 3>, 3> result = {};
             result[0][0] = Real{1.0};

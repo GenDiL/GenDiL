@@ -55,7 +55,8 @@ namespace details
    struct MaxContractionSize;
 
    template < typename... Op1D >
-   struct MaxContractionSize< std::tuple< Op1D... > >
+   struct MaxContractionSize<
+      TensorProductData<Op1D...>>
    {
       static constexpr Integer value = ( 1 * ... * std::max( domain_dim_v< Op1D >, range_dim_v< Op1D > ) );
    };
@@ -66,7 +67,7 @@ namespace details
    template < size_t Dim, typename ProductOp, size_t... ContractedDims >
    struct ContractionShape< Dim, ProductOp, std::index_sequence< ContractedDims... > >
    {
-      using Op1D = std::tuple_element_t< Dim, ProductOp >;
+      using Op1D = tensor_product_entry_t<Dim, ProductOp>;
       static constexpr size_t value = ( (Dim == ContractedDims) || ... || false ) ? range_dim_v< Op1D > : domain_dim_v< Op1D >;
    };
 
@@ -76,7 +77,9 @@ namespace details
    template < typename ProductOp, size_t... I >
    struct ContractionInputShape< ProductOp, std::index_sequence<I...> >
    {
-      using type = std::index_sequence< domain_dim_v< std::tuple_element_t< I, ProductOp > >... >;
+      using type =
+         std::index_sequence<
+            domain_dim_v<tensor_product_entry_t<I, ProductOp>>...>;
    };
 
    template < typename ProductOp, typename Is >
@@ -85,15 +88,25 @@ namespace details
    template < typename ProductOp, size_t... I >
    struct ContractionOutputShape< ProductOp, std::index_sequence<I...> >
    {
-      using type = std::index_sequence< range_dim_v< std::tuple_element_t< I, ProductOp > >... >;
+      using type =
+         std::index_sequence<
+            range_dim_v<tensor_product_entry_t<I, ProductOp>>...>;
    };
 } // namespace details
 
 template < typename ProductOp >
-using make_contraction_input_shape = typename details::ContractionInputShape< ProductOp, std::make_index_sequence< std::tuple_size_v< ProductOp > > >::type;
+using make_contraction_input_shape =
+   typename details::ContractionInputShape<
+      ProductOp,
+      std::make_index_sequence<
+         tensor_product_entry_count_v<ProductOp>>>::type;
 
 template < typename ProductOp >
-using make_contraction_output_shape = typename details::ContractionOutputShape< ProductOp, std::make_index_sequence< std::tuple_size_v< ProductOp > > >::type;
+using make_contraction_output_shape =
+   typename details::ContractionOutputShape<
+      ProductOp,
+      std::make_index_sequence<
+         tensor_product_entry_count_v<ProductOp>>>::type;
 
 template < size_t Dimension, typename Container, typename Sizes, Integer... Strides, typename... Indices >
 GENDIL_HOST_DEVICE GENDIL_INLINE

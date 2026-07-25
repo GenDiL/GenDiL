@@ -318,7 +318,7 @@ bool TestPartitionBuiltGenericOperator()
    auto form = integrate(interior_facets, jump(u) * jump(v));
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(mixed),
-      MakeIntegrationDomain<"solid">(mixed));
+      MakeIntegrationDomain<"solid">(partition));
    constexpr Integer num_quad_1d = 5;
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<num_quad_1d>{});

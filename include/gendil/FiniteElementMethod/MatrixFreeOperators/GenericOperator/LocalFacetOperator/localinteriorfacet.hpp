@@ -163,6 +163,7 @@ template<
    typename WeakFormContext,
    typename OperatorContext,
    typename ElementContext,
+   typename DomainMesh,
    typename TrialSpace,
    typename Integrand,
    typename DofsInView,
@@ -174,6 +175,7 @@ void LocalInteriorFacetOperator(
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
+   const DomainMesh& domain_mesh,
    const TrialSpace& trial_space,
    const Integrand& integrand,
    const DofsInView& dofs_in,
@@ -183,7 +185,7 @@ void LocalInteriorFacetOperator(
    if constexpr (has_interior_facet_contributions_v<Integrand>)
    {
       InteriorFaceLoop(
-         trial_space,
+         domain_mesh,
          element_context.element_index,
          [&] (auto const & face_info)
          {

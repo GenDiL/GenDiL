@@ -576,7 +576,7 @@ int TestSIPDGCoefficientFieldInputs()
       MakeWeakFormContext(
          MakeTrialField<"u">(fe_space),
          MakeFiniteElementField<"mu">(fe_space, mu_view),
-         MakeIntegrationDomain<"mesh">(fe_space));
+         MakeIntegrationDomain<"mesh">(mesh));
 
    auto op =
       MakeGenericOperator<KernelPolicy>(

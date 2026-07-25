@@ -34,7 +34,8 @@ void InterpolateValuesAndGradientsThreaded(
    constexpr bool face_interp = is_face_interpolation_v< ProductOperator >;
    if constexpr ( face_interp )
    {
-      constexpr Integer Rank = std::tuple_size_v< ProductOperator >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ProductOperator>;
       ConstexprLoop< Rank >( [&] ( auto ActiveDim )
       {
          auto gu = InterpolateValuesThreaded< ActiveDim >( thread, element_quad_data, u );

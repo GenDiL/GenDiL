@@ -21,13 +21,18 @@ struct SerialKernel
 using Shape1D = GaussLobattoLegendreShapeFunctions<1>;
 using Points1D = GaussLegendrePoints<2>;
 using DofToQuad1D = CachedDofToQuad<Shape1D, Points1D>;
-using LocalFaceQData = std::tuple<DofToQuad1D, DofToQuad1D>;
+using LocalFaceQData =
+   TensorProductDofToQuad<DofToQuad1D, DofToQuad1D>;
 using SparseFaceQData =
    std::tuple<Empty, LocalFaceQData, Empty, Empty>;
-using StaticSquareFaceQData0 = std::tuple<ZeroPoint, Points1D>;
-using StaticSquareFaceQData1 = std::tuple<Points1D, OnePoint>;
-using StaticCubeFaceQData0 = std::tuple<ZeroPoint, Points1D, Points1D>;
-using StaticCubeFaceQData2 = std::tuple<Points1D, Points1D, OnePoint>;
+using StaticSquareFaceQData0 =
+   TensorProductData<ZeroPoint, Points1D>;
+using StaticSquareFaceQData1 =
+   TensorProductData<Points1D, OnePoint>;
+using StaticCubeFaceQData0 =
+   TensorProductData<ZeroPoint, Points1D, Points1D>;
+using StaticCubeFaceQData2 =
+   TensorProductData<Points1D, Points1D, OnePoint>;
 
 using Geometry = HyperCube<2>;
 using FaceIndex = std::integral_constant<Integer, 1>;
@@ -70,7 +75,9 @@ SparseFaceQData MakeSparseFaceQData()
 {
    return SparseFaceQData{
       Empty{},
-      LocalFaceQData{DofToQuad1D{}, DofToQuad1D{}},
+      MakeTensorProductData(
+         DofToQuad1D{},
+         DofToQuad1D{}),
       Empty{},
       Empty{}};
 }
@@ -150,7 +157,8 @@ bool TestNonconformingFacetQuadDataMappingAndLifetime()
    auto mapped_qd = GetFacetQuadData(face_quad_data, MakeNonconformingFace());
 
    using MappedQData = std::remove_cvref_t<decltype(mapped_qd)>;
-   using FirstMappedDofToQuad = std::tuple_element_t<0, MappedQData>;
+   using FirstMappedDofToQuad =
+      tensor_product_entry_t<0, MappedQData>;
    static_assert(
       !std::is_reference_v<typename FirstMappedDofToQuad::face_type>,
       "Nonconforming mapped qdata face_type must be an owned value type.");
@@ -165,19 +173,19 @@ bool TestNonconformingFacetQuadDataMappingAndLifetime()
    bool success = true;
    success =
       CheckClose(
-         std::get<0>(mapped_qd).values(0, 1),
+         GetTensorProductEntry<0>(mapped_qd).values(0, 1),
          mapped_x,
          "mapped basis value in x") &&
       success;
    success =
       CheckClose(
-         std::get<1>(mapped_qd).values(0, 1),
+         GetTensorProductEntry<1>(mapped_qd).values(0, 1),
          mapped_y,
          "mapped basis value in y") &&
       success;
    success =
       CheckClose(
-         std::get<0>(mapped_qd).gradients(0, 1),
+         GetTensorProductEntry<0>(mapped_qd).gradients(0, 1),
          1.0,
          "unscaled mapped reference gradient") &&
       success;
@@ -226,7 +234,8 @@ auto MakeSparseStaticQData(LocalQData qdata)
 bool TestAffineMappedQDataFixedCoordinateFirst()
 {
    auto face_quad_data =
-      MakeSparseStaticQData(StaticSquareFaceQData0{ZeroPoint{}, Points1D{}});
+      MakeSparseStaticQData(
+         MakeTensorProductData(ZeroPoint{}, Points1D{}));
    auto face =
       MakeEmbeddedMapFace(
          Point<2>{0.0, 0.25},
@@ -262,7 +271,8 @@ bool TestAffineMappedQDataFixedCoordinateFirst()
 bool TestAffineMappedQDataFixedCoordinateLast()
 {
    auto face_quad_data =
-      MakeSparseStaticQData(StaticSquareFaceQData1{Points1D{}, OnePoint{}});
+      MakeSparseStaticQData(
+         MakeTensorProductData(Points1D{}, OnePoint{}));
    auto face =
       MakeEmbeddedMapFace(
          Point<2>{0.125, 0.0},
@@ -321,7 +331,10 @@ bool TestAffineMappedQData3D()
       };
 
    auto qd0 = MakeSparseStaticQData(
-      StaticCubeFaceQData0{ZeroPoint{}, Points1D{}, Points1D{}});
+      MakeTensorProductData(
+         ZeroPoint{},
+         Points1D{},
+         Points1D{}));
    auto face0 =
       make_face(
          Point<3>{0.0, 0.1, 0.2},
@@ -329,7 +342,10 @@ bool TestAffineMappedQData3D()
    auto mapped0 = GetFacetQuadData(qd0, face0);
 
    auto qd2 = MakeSparseStaticQData(
-      StaticCubeFaceQData2{Points1D{}, Points1D{}, OnePoint{}});
+      MakeTensorProductData(
+         Points1D{},
+         Points1D{},
+         OnePoint{}));
    auto face2 =
       make_face(
          Point<3>{0.2, 0.3, 0.0},
@@ -377,6 +393,45 @@ bool TestAffineMappedQData3D()
    return success;
 }
 
+bool TestTensorProductWeight()
+{
+   using FlatMeshQData =
+      TensorProductData<
+         Points1D,
+         Points1D,
+         Points1D>;
+   using NestedMeshQData =
+      TensorProductData<
+         TensorProductData<Points1D>,
+         TensorProductData<
+            TensorProductData<Points1D>,
+            TensorProductData<Points1D>>>;
+
+   const TensorIndex<3> qi{
+      GlobalIndex{0},
+      GlobalIndex{1},
+      GlobalIndex{0}};
+   const Real expected =
+      Points1D::GetWeight(0) *
+      Points1D::GetWeight(1) *
+      Points1D::GetWeight(0);
+
+   bool success = true;
+   success =
+      CheckClose(
+         GetWeight(qi, FlatMeshQData{}),
+         expected,
+         "flat mesh qdata weight") &&
+      success;
+   success =
+      CheckClose(
+         GetWeight(qi, NestedMeshQData{}),
+         expected,
+         "nested product mesh qdata weight") &&
+      success;
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -390,6 +445,7 @@ int main()
    success = TestAffineMappedQDataFixedCoordinateFirst() && success;
    success = TestAffineMappedQDataFixedCoordinateLast() && success;
    success = TestAffineMappedQData3D() && success;
+   success = TestTensorProductWeight() && success;
 
    if (!success)
    {

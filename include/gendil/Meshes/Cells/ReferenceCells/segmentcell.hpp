@@ -5,8 +5,10 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
+#include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {
 
@@ -17,6 +19,7 @@ namespace gendil {
 struct SegmentCell
 {
    static constexpr Integer Dim = 1;
+   using geometry = HyperCube< Dim >;
 
    const Real h; // element size
    const Point<1> cell_origin; // cell origin.
@@ -31,9 +34,10 @@ struct SegmentCell
    using physical_coordinates = std::array< Real, Dim >;
    using jacobian = std::array< Real, Dim >;
    template < typename IntRule >
-   using QuadData =  std::tuple<
-                        std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
-                     >;
+   using QuadData = TensorProductData<
+      std::tuple_element_t<
+         0,
+         typename IntRule::points::points_1d_tuple>>;
 
    template < typename QuadData >
    GENDIL_HOST_DEVICE

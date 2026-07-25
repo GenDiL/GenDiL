@@ -186,7 +186,7 @@ int TestDiffusionSIPDG()
    Cells<"mesh1"> cells;
    InteriorFacets<"mesh1"> interior_facets;
 
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(diffusivity);
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(diffusivity);
 
    auto tau = MakeCoefficient<"penalty", InverseFacetSize>(
       [=] GENDIL_HOST_DEVICE (const Real& h_inv) -> Real {
@@ -205,7 +205,7 @@ int TestDiffusionSIPDG()
 
    auto diffusion_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_diffusion_operator =

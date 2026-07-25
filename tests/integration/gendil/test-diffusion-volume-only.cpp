@@ -150,14 +150,14 @@ int TestDiffusionVolumeOnly()
    TestSpace<"displacement"> v;
    Cells<"mesh1"> cells;
 
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(velocity);
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(velocity);
 
    // ONLY the volume term - no face integrals
    auto diffusion_wf = integrate(cells, mu * dot(grad(u), grad(v)));
 
    auto diffusion_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_diffusion_operator =

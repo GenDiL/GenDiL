@@ -168,6 +168,64 @@ int main()
       TrialSpace<"u"> u;
       TestSpace<"v"> v;
       Cells<"mesh"> cells;
+      FiniteElementField<"rho"> rho;
+      auto eta = MakeCoefficient<"eta_coeff", FieldGradient<"eta">>(
+         [] (const auto&) { return 1.0; });
+      auto form = integrate(cells, u * v + rho * v + eta * v);
+
+      using Active =
+         active_finite_element_field_requirements_t<decltype(form)>;
+      static_assert(contains_named_field_requirement_v<Active, "u">);
+      static_assert(contains_named_field_requirement_v<Active, "v">);
+      static_assert(contains_named_field_requirement_v<Active, "rho">);
+      static_assert(contains_named_field_requirement_v<Active, "eta">);
+      using VReq = find_named_field_requirement_t<Active, "v">;
+      static_assert(
+         has_provenance(
+            VReq::provenance,
+            NamedFieldProvenance::ActiveTest));
+
+      std::cout << "  [PASS] active FE requirements merge trial, test, explicit, and coefficient fields\n";
+   }
+
+   {
+      TestSpace<"v"> v;
+      Cells<"mesh"> cells;
+      auto test_only = integrate(cells, v);
+      using TestOnly =
+         active_finite_element_field_requirements_t<decltype(test_only)>;
+      static_assert(contains_named_field_requirement_v<TestOnly, "v">);
+      static_assert(
+         !contains_named_field_requirement_v<TestOnly, "u">);
+
+      auto rho = MakeCoefficient<"rho_coeff", FieldValue<"rho">>(
+         [] (const auto&) { return 1.0; });
+      auto eta = MakeCoefficient<"eta_coeff", FieldGradient<"eta">>(
+         [] (const auto&) { return 1.0; });
+      auto coefficient_only = integrate(cells, rho + eta);
+      using CoefficientOnly =
+         active_finite_element_field_requirements_t<
+            decltype(coefficient_only)>;
+      static_assert(
+         contains_named_field_requirement_v<CoefficientOnly, "rho">);
+      static_assert(
+         contains_named_field_requirement_v<CoefficientOnly, "eta">);
+
+      auto geometry = MakeCoefficient<"geometry", PhysicalCoordinates>(
+         [] (const auto&) { return 1.0; });
+      auto geometry_only = integrate(cells, geometry);
+      using GeometryOnly =
+         active_finite_element_field_requirements_t<
+            decltype(geometry_only)>;
+      static_assert(std::is_same_v<GeometryOnly, type_list<>>);
+
+      std::cout << "  [PASS] test-only, coefficient-only, and geometry-only requirements are independent of trial fields\n";
+   }
+
+   {
+      TrialSpace<"u"> u;
+      TestSpace<"v"> v;
+      Cells<"mesh"> cells;
 
       auto coeff = MakeCoefficient<"k", FieldGradient<"u">>(
          [] (const auto&) { return 1.0; });
@@ -193,7 +251,7 @@ int main()
    }
 
    {
-      auto geom_coeff = MakeCoefficient<"k", PhysicalCoordinate>(
+      auto geom_coeff = MakeCoefficient<"k", PhysicalCoordinates>(
          [] (const auto&) { return 1.0; });
 
       static_assert(!has_side_dependent_named_field_inputs_v<decltype(geom_coeff)>);
@@ -363,7 +421,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto gradient_coeff = MakeCoefficient<"k_gradient", FieldGradient<"w">>(
          [] (const auto&) { return 1.0; });
-      auto coordinate_coeff = MakeCoefficient<"k_x", PhysicalCoordinate>(
+      auto coordinate_coeff = MakeCoefficient<"k_x", PhysicalCoordinates>(
          [] (const auto&) { return 1.0; });
       auto inverse_size_coeff = MakeCoefficient<"k_h", InverseFacetSize>(
          [] (const auto&) { return 1.0; });

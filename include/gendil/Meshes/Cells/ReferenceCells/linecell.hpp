@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
@@ -21,6 +22,7 @@ template < int D1D >
 struct LineCell
 {
    static constexpr Integer Dim = 1;
+   using geometry = HyperCube< Dim >;
 
    Real nodes[D1D];
 
@@ -29,12 +31,12 @@ struct LineCell
 
    using basis = std::tuple< GaussLobattoLegendreShapeFunctions<D1D-1> >;
    template < typename IntRule >
-   using QuadData =  std::tuple<
-                        CachedDofToQuad<
-                           std::tuple_element_t<0, basis>,
-                           std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
-                        >
-                     >;
+   using QuadData = TensorProductData<
+      CachedDofToQuad<
+         std::tuple_element_t<0, basis>,
+         std::tuple_element_t<
+            0,
+            typename IntRule::points::points_1d_tuple>>>;
 
    GENDIL_HOST_DEVICE
    LineCell( const StridedView<1, const Real> & mesh_nodes,
@@ -75,8 +77,8 @@ struct LineCell
       }
       for (LocalIndex dx = 0; dx < D1D; ++dx)
       {
-         const Real bx = std::get<0>(basis).values(qx,dx);
-         const Real gx = std::get<0>(basis).gradients(qx,dx);
+         const Real bx = GetTensorProductEntry<0>(basis).values(qx,dx);
+         const Real gx = GetTensorProductEntry<0>(basis).gradients(qx,dx);
          Real x = nodes[ dx ];
          const Real b = bx;
          X[0] += b * x;

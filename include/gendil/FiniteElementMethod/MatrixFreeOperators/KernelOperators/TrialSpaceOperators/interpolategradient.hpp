@@ -14,38 +14,59 @@ namespace gendil {
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors,
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
 {
-   return std::make_tuple( InterpolateGradient( ctx, std::get< I >( quad_data ), std::get< I>( u ) )... );
+   return std::make_tuple(
+      InterpolateGradient(
+         ctx,
+         GetVectorComponent<I>(quad_data),
+         std::get<I>(u))...);
 }
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto InterpolateGradient(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
-   return InterpolateGradient( ctx, quad_data, u, std::make_index_sequence< sizeof...( ScalarDofTensors ) >{} );
+   static_assert(
+      sizeof...(ScalarMaps) == sizeof...(ScalarDofTensors),
+      "InterpolateGradient requires one input DoF tensor per "
+      "VectorDofToQuad component.");
+   return InterpolateGradient(
+      ctx,
+      quad_data,
+      u,
+      std::make_index_sequence<sizeof...(ScalarDofTensors)>{});
 }
 
-template < typename KernelContext, typename ProductOperator, typename InputTensor >
+template <
+   typename KernelContext,
+   typename ... Entries,
+   typename InputTensor >
 GENDIL_HOST_DEVICE
-auto InterpolateGradient( KernelContext & thread, const ProductOperator & element_quad_data, const InputTensor & u )
+auto InterpolateGradient(
+   KernelContext& thread,
+   const TensorProductData<Entries...>& element_quad_data,
+   const InputTensor& u)
 {
-   constexpr Integer dim = std::tuple_size_v< ProductOperator >;
-   using quad_shape = make_contraction_output_shape< ProductOperator >;
+   using ProductOperator =
+      TensorProductData<Entries...>;
+   constexpr Integer dim =
+      tensor_product_entry_count_v<ProductOperator>;
+   using quad_shape = make_contraction_output_shape<ProductOperator>;
    using rdims = typename KernelContext::template register_dimensions< dim >;
    using rshape = subsequence_t< quad_shape, rdims >;
    using shape = cat_t< rshape, std::index_sequence< dim > >;

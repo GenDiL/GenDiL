@@ -152,7 +152,7 @@ int TestDiffusionSymmetryOnly()
    TestSpace<"displacement"> v;
    InteriorFacets<"mesh1"> interior_facets;
 
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(velocity);
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(velocity);
 
    // ONLY the symmetry term: σ [[u]] {{μ ∇v · n}}
    // This is the most complex term involving test gradients
@@ -163,7 +163,7 @@ int TestDiffusionSymmetryOnly()
 
    auto diffusion_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_diffusion_operator =

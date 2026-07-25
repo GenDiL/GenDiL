@@ -372,10 +372,10 @@ bool TestNonconformingFaceInfoAndAliases()
    auto wf_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">( mixed ),
-         MakeIntegrationDomain<"mesh">( mixed ) );
+         MakeIntegrationDomain<"mesh">( partition ) );
    using IntegrationRule =
       decltype( MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} ) );
-   ForEachInteriorFaceFiniteElementSpace(
+   ForEachInteriorFaceExecutionDomain(
       wf_ctx,
       InteriorFacets<"mesh">{},
       [&] ( const auto& batch )
@@ -383,7 +383,10 @@ bool TestNonconformingFaceInfoAndAliases()
          [[maybe_unused]] auto mesh_qd =
             MakeGlobalFacetMeshQuadData< IntegrationRule >( batch );
          auto restricted =
-            MakeRestrictedWeakFormContext<"u", "u">(
+            MakeRestrictedWeakFormContext<decltype(
+               integrate(
+                  InteriorFacets<"mesh">{},
+                  jump(TrialSpace<"u">{}) * jump(TestSpace<"u">{})))>(
                wf_ctx,
                InteriorFacets<"mesh">{},
                batch );

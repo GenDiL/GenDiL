@@ -15,113 +15,168 @@ namespace gendil {
 /**
  * @brief Iterate on each face and apply the provided lambda by giving it face information.
  * 
- * @tparam FiniteElementSpace The finite element space type.
+ * @tparam Mesh The mesh type.
  * @tparam InteriorLambda The function type for interior faces.
  * @tparam BoundaryLambda The function type for boundary faces.
  * @param interior_lambda The function to apply on each interior face.
  * @param boundary_lambda The function to apply on each boundary face.
  */
 template <
-   typename FiniteElementSpace,
+   typename Mesh,
    typename InteriorLambda,
    typename BoundaryLambda
 >
 GENDIL_HOST_DEVICE
 void FaceLoop(
-   const FiniteElementSpace & fe_space,
+   const Mesh & mesh,
    const GlobalIndex & element_index,
    InteriorLambda && interior_lambda,
    BoundaryLambda && boundary_lambda )
 {
-   constexpr Integer num_faces = FiniteElementSpace::finite_element_type::geometry::num_faces;
-   ConstexprLoop< num_faces >(
-      [&](auto face_index)
-      {
-         auto face = mesh::GetLocalFaceInfo( fe_space, element_index, face_index );
+   static_assert(
+      mesh::LocalFaceConnectivity<Mesh>,
+      "FaceLoop requires local face connectivity.");
+   static_assert(
+      !mesh::LocalFaceConnectivity<Mesh> ||
+         mesh::LocalFaceGeometryCompatible<Mesh>,
+      "FaceLoop: local face connectivity reference geometry must match "
+      "Mesh::cell_type::geometry.");
 
-         if ( IsBoundaryFace( face ) )
+   if constexpr (
+      mesh::LocalFaceConnectivity<Mesh> &&
+      mesh::LocalFaceGeometryCompatible<Mesh>)
+   {
+      using Geometry = mesh::mesh_geometry_t<Mesh>;
+      ConstexprLoop< Geometry::num_faces >(
+         [&](auto face_index)
          {
-            boundary_lambda( face );
+            auto face =
+               mesh::GetLocalFaceInfo(mesh, element_index, face_index);
+
+            if ( IsBoundaryFace( face ) )
+            {
+               boundary_lambda( face );
+            }
+            if ( !IsBoundaryFace( face ) )
+            {
+               interior_lambda( face );
+            }
          }
-         if ( !IsBoundaryFace( face ) )
-         {
-            interior_lambda( face );
-         }
-      }
-   );
+      );
+   }
 }
 
 /**
  * @brief Iterate on each face and apply the provided lambda by giving it face information.
  * 
- * @tparam FiniteElementSpace The finite element space type.
+ * @tparam Mesh The mesh type.
  * @tparam Lambda The function type.
  * @param lambda The function to apply on each face.
  */
 template <
-   typename FiniteElementSpace,
+   typename Mesh,
    typename Lambda
 >
 GENDIL_HOST_DEVICE
 void FaceLoop(
-   const FiniteElementSpace & fe_space,
+   const Mesh & mesh,
    const GlobalIndex & element_index,
    Lambda && lambda )
 {
-   FaceLoop( fe_space, element_index, std::forward< Lambda >( lambda ), [](const auto face_info){} );
+   FaceLoop(
+      mesh,
+      element_index,
+      std::forward< Lambda >( lambda ),
+      [](const auto face_info){});
 }
 
 /**
  * @brief Iterate on each interior face and apply the provided lambda by giving it face information.
  * 
- * @tparam FiniteElementSpace The finite element space type.
+ * @tparam Mesh The mesh type.
  * @tparam InteriorLambda The function type for interior faces.
  * @param interior_lambda The function to apply on each interior face.
  */
 template <
-   typename FiniteElementSpace,
+   typename Mesh,
    typename InteriorLambda
 >
 GENDIL_HOST_DEVICE
 void InteriorFaceLoop(
-   const FiniteElementSpace & fe_space,
+   const Mesh & mesh,
    const GlobalIndex & element_index,
    InteriorLambda && interior_lambda )
 {
-   constexpr Integer num_faces = FiniteElementSpace::finite_element_type::geometry::num_faces;
-   ConstexprLoop< num_faces >(
-      [&](auto face_index)
-      {
-         auto face = mesh::GetLocalFaceInfo( fe_space, element_index, face_index );
+   static_assert(
+      mesh::LocalFaceConnectivity<Mesh>,
+      "InteriorFacets<Name> on MeshIntegrationDomain requires local face "
+      "connectivity.");
+   static_assert(
+      !mesh::LocalFaceConnectivity<Mesh> ||
+         mesh::LocalFaceGeometryCompatible<Mesh>,
+      "InteriorFacets<Name> on MeshIntegrationDomain requires local face "
+      "connectivity whose reference geometry matches "
+      "Mesh::cell_type::geometry.");
 
-         if ( !IsBoundaryFace( face ) )
+   if constexpr (
+      mesh::LocalFaceConnectivity<Mesh> &&
+      mesh::LocalFaceGeometryCompatible<Mesh>)
+   {
+      using Geometry = mesh::mesh_geometry_t<Mesh>;
+      ConstexprLoop< Geometry::num_faces >(
+         [&](auto face_index)
          {
-            interior_lambda( face );
+            auto face =
+               mesh::GetLocalFaceInfo(mesh, element_index, face_index);
+
+            if ( !IsBoundaryFace( face ) )
+            {
+               interior_lambda( face );
+            }
          }
-      }
-   );
+      );
+   }
 }
 
-/// Loop over boundary faces only
-template <typename FiniteElementSpace, typename BoundaryLambda>
+template <
+   typename Mesh,
+   typename BoundaryLambda
+>
 GENDIL_HOST_DEVICE
 void BoundaryFaceLoop(
-   const FiniteElementSpace & fe_space,
+   const Mesh & mesh,
    const GlobalIndex & element_index,
    BoundaryLambda && boundary_lambda )
 {
-   constexpr Integer num_faces = FiniteElementSpace::finite_element_type::geometry::num_faces;
-   ConstexprLoop< num_faces >(
-      [&](auto face_index)
-      {
-         auto face = mesh::GetLocalFaceInfo( fe_space, element_index, face_index );
+   static_assert(
+      mesh::LocalFaceConnectivity<Mesh>,
+      "BoundaryFacets<Name> on MeshIntegrationDomain requires local face "
+      "connectivity.");
+   static_assert(
+      !mesh::LocalFaceConnectivity<Mesh> ||
+         mesh::LocalFaceGeometryCompatible<Mesh>,
+      "BoundaryFacets<Name> on MeshIntegrationDomain requires local face "
+      "connectivity whose reference geometry matches "
+      "Mesh::cell_type::geometry.");
 
-         if ( IsBoundaryFace( face ) )
+   if constexpr (
+      mesh::LocalFaceConnectivity<Mesh> &&
+      mesh::LocalFaceGeometryCompatible<Mesh>)
+   {
+      using Geometry = mesh::mesh_geometry_t<Mesh>;
+      ConstexprLoop< Geometry::num_faces >(
+         [&](auto face_index)
          {
-            boundary_lambda( face );
+            auto face =
+               mesh::GetLocalFaceInfo(mesh, element_index, face_index);
+
+            if ( IsBoundaryFace( face ) )
+            {
+               boundary_lambda( face );
+            }
          }
-      }
-   );
+      );
+   }
 }
 
 }

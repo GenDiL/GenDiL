@@ -11,6 +11,7 @@
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sqrt.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
+#include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {
 
@@ -104,6 +105,154 @@ concept DofToQuadMapping =
       { a.quad_gradients(i, j) } -> std::convertible_to<Real>;
       { a.weights(q) }           -> std::convertible_to<Real>;
    };
+
+template<DofToQuadMapping... Maps>
+using TensorProductDofToQuad =
+   TensorProductData<Maps...>;
+
+namespace dof_to_quad_detail
+{
+
+template<class T>
+struct QuadratureSignature;
+
+template<class T>
+struct QuadratureLeafSignature
+{
+   using type = std::remove_cvref_t<T>;
+};
+
+template<class T>
+   requires requires
+   {
+      typename std::remove_cvref_t<T>::points;
+   }
+struct QuadratureLeafSignature<T>
+{
+   using type = typename std::remove_cvref_t<T>::points;
+};
+
+template<class T>
+   requires (
+      !requires
+      {
+         typename std::remove_cvref_t<T>::points;
+      } &&
+      requires
+      {
+         typename std::remove_cvref_t<T>::integration_rule;
+      })
+struct QuadratureLeafSignature<T>
+{
+   using type = typename std::remove_cvref_t<T>::integration_rule;
+};
+
+template<class T>
+struct QuadratureSignature : QuadratureLeafSignature<T>
+{
+};
+
+template<class... Entries>
+struct QuadratureSignature<TensorProductData<Entries...>>
+{
+   using type =
+      std::tuple<typename QuadratureSignature<Entries>::type...>;
+};
+
+template<class T>
+using quadrature_signature_t =
+   typename QuadratureSignature<std::remove_cvref_t<T>>::type;
+
+} // namespace dof_to_quad_detail
+
+template<class... ScalarMaps>
+struct VectorDofToQuad
+{
+   static_assert(
+      sizeof...(ScalarMaps) > 0,
+      "VectorDofToQuad requires at least one component.");
+
+   using components_type = std::tuple<ScalarMaps...>;
+   using first_component_type =
+      std::tuple_element_t<0, components_type>;
+
+   static_assert(
+      (std::is_same_v<
+         dof_to_quad_detail::quadrature_signature_t<first_component_type>,
+         dof_to_quad_detail::quadrature_signature_t<ScalarMaps>> && ...),
+      "VectorDofToQuad requires all components to use the same quadrature "
+      "points.");
+
+   components_type components;
+};
+
+template<class... ScalarMaps>
+GENDIL_HOST_DEVICE
+constexpr auto MakeVectorDofToQuad(ScalarMaps&&... maps)
+{
+   using Data = VectorDofToQuad<std::remove_cvref_t<ScalarMaps>...>;
+   using Tuple = typename Data::components_type;
+   return Data{
+      Tuple{std::forward<ScalarMaps>(maps)...}};
+}
+
+template<size_t I, class... ScalarMaps>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetVectorComponent(
+   VectorDofToQuad<ScalarMaps...>& data)
+{
+   return std::get<I>(data.components);
+}
+
+template<size_t I, class... ScalarMaps>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetVectorComponent(
+   const VectorDofToQuad<ScalarMaps...>& data)
+{
+   return std::get<I>(data.components);
+}
+
+template<size_t I, class... ScalarMaps>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetVectorComponent(
+   VectorDofToQuad<ScalarMaps...>&& data)
+{
+   return std::get<I>(std::move(data.components));
+}
+
+template<size_t I, class... ScalarMaps>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetVectorComponent(
+   const VectorDofToQuad<ScalarMaps...>&& data)
+{
+   return std::get<I>(std::move(data.components));
+}
+
+template<class T>
+struct is_vector_dof_to_quad : std::false_type
+{
+};
+
+template<class... ScalarMaps>
+struct is_vector_dof_to_quad<VectorDofToQuad<ScalarMaps...>>
+   : std::true_type
+{
+};
+
+template<class T>
+inline constexpr bool is_vector_dof_to_quad_v =
+   is_vector_dof_to_quad<std::remove_cvref_t<T>>::value;
+
+template<size_t I, class QData>
+using vector_component_t =
+   std::tuple_element_t<
+      I,
+      typename std::remove_cvref_t<QData>::components_type>;
+
+template<class QData>
+inline constexpr size_t vector_component_count_v =
+   std::tuple_size_v<
+      typename std::remove_cvref_t<QData>::components_type>;
 
 /**
  * @brief Structure storing the quadrature weights, the values of the shape functions
@@ -213,12 +362,12 @@ struct ComputedDofToQuad
 };
 
 /**
- * @brief Creates a tuple of DofToQuad objects corresponding to the 1D shape functions
- * evaluated at the 1D quadrature rule.
+ * @brief Creates strongly typed tensor or vector DoF-to-quadrature data.
  * 
  * @tparam FiniteElement The type of the finite element.
  * @tparam IntRule The type of the integration rule.
- * @return A tuple of DofToQuad for each dimension of the finite element.
+ * @return TensorProductDofToQuad for scalar tensor elements, or
+ * VectorDofToQuad for vector elements.
  * 
  * @note Currently assumes tensor finite element and tensor integration rule.
  */
@@ -232,17 +381,21 @@ auto MakeDofToQuadForPolicy( );
 template < typename Policy, typename ShapeFunctions, typename IntRule, size_t... Is >
 auto MakeTensorDofToQuadForPolicy( std::index_sequence< Is... > )
 {
-   return std::make_tuple(
-             MakeDofToQuadForPolicy<
-                Policy,
-                std::tuple_element_t< Is, typename ShapeFunctions::shape_functions_1d_tuple >,
-                std::tuple_element_t< Is, typename IntRule::points::points_1d_tuple > >()... );
+   return MakeTensorProductData(
+      MakeDofToQuadForPolicy<
+         Policy,
+         std::tuple_element_t<
+            Is,
+            typename ShapeFunctions::shape_functions_1d_tuple>,
+         std::tuple_element_t<
+            Is,
+            typename IntRule::points::points_1d_tuple>>()...);
 }
 
 template < typename Policy, typename ShapeFunctions, typename IntRule, size_t... Is >
 auto MakeVectorDofToQuadForPolicy( std::index_sequence< Is... > )
 {
-   return std::make_tuple(
+   return MakeVectorDofToQuad(
       MakeDofToQuadForPolicy<
          Policy,
          std::tuple_element_t< Is, typename ShapeFunctions::scalar_shape_functions_tuple >,
@@ -312,7 +465,8 @@ auto MakeDofToQuad( )
  * @tparam FaceIntRulesTuple A tuple containing an integration rule for each face.
  * @return A tuple storing a DofToQuad objects for each face.
  * 
- * @note For tensor finite elements with tensor integration rules this returns a tuple of tuple of 1D DofToQuad.
+ * @note The outer tuple remains indexed by local face. Each face entry is a
+ * TensorProductDofToQuad or VectorDofToQuad.
  */
 template < typename ShapeFunctions, typename FaceIntRulesTuple > 
 auto MakeFaceDofToQuad( );
@@ -439,18 +593,30 @@ template <
    typename ... DofToQuads,
    Integer ... Is >
 GENDIL_HOST_DEVICE
-auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq, std::index_sequence< Is... > )
+auto MakeNonconformingDofToQuadData(
+   const Face& face,
+   const TensorProductData<DofToQuads...>& dtq,
+   std::index_sequence<Is...>)
 {
-   return std::make_tuple( MakeNonconformingDofToQuadData( face, std::get< Is >( dtq ), std::integral_constant<Integer, Is>{} )... );
+   return MakeTensorProductData(
+      MakeNonconformingDofToQuadData(
+         face,
+         GetTensorProductEntry<Is>(dtq),
+         std::integral_constant<Integer, Is>{})...);
 }
 
 template <
    CellFaceView Face,
    typename ... DofToQuads >
 GENDIL_HOST_DEVICE
-auto MakeNonconformingDofToQuadData( const Face & face, const std::tuple< DofToQuads... > & dtq )
+auto MakeNonconformingDofToQuadData(
+   const Face& face,
+   const TensorProductData<DofToQuads...>& dtq)
 {
-   return MakeNonconformingDofToQuadData( face, dtq, std::make_index_sequence< sizeof...(DofToQuads) >{} );
+   return MakeNonconformingDofToQuadData(
+      face,
+      dtq,
+      std::make_index_sequence<sizeof...(DofToQuads)>{});
 }
 
 // Assumes 1D QuadData
@@ -461,9 +627,17 @@ struct is_face_interpolation
 };
 
 template < typename... QuadData >
-struct is_face_interpolation< std::tuple< QuadData... > >
+struct is_face_interpolation<
+   TensorProductData<QuadData...>>
 {
    static constexpr bool value = ( is_face_interpolation< QuadData >::value || ... );
+};
+
+template < typename... ScalarMaps >
+struct is_face_interpolation<VectorDofToQuad<ScalarMaps...>>
+{
+   static constexpr bool value =
+      (is_face_interpolation<ScalarMaps>::value || ...);
 };
 
 template < typename QuadData >

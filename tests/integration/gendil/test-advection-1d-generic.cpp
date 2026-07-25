@@ -165,7 +165,7 @@ int TestAdvection1D()
    Cells<"mesh1"> cells;
    InteriorFacets<"mesh1"> interior_facets;
 
-   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
    auto advection_dg_wf =
       integrate(cells, -u_adv * dot(beta, grad(v_adv)))
@@ -173,7 +173,7 @@ int TestAdvection1D()
 
    auto advection_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_advection_operator =

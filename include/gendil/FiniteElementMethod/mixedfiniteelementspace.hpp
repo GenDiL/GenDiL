@@ -4,8 +4,12 @@
 
 #pragma once
 
+/**
+ * @file
+ * @brief Partition-aware heterogeneous finite-element spaces.
+ */
+
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
 #include "gendil/Meshes/partition.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
@@ -16,6 +20,23 @@
 
 namespace gendil {
 
+/**
+ * @brief Finite-element spaces associated with the cell parts of a partition.
+ *
+ * Tuple entry `I` is the homogeneous finite-element space associated with
+ * cell part `I` of the partition. Finite elements, polynomial orders,
+ * restrictions, and global DoF offsets may differ between entries.
+ *
+ * The retained partition describes the field's cell-part layout and may carry
+ * field-owned face parts. Weak-form integration topology, geometry, and face
+ * connectivity are supplied independently by a `PartitionIntegrationDomain`;
+ * its face-part tuple need not match this field's face-part tuple.
+ *
+ * @tparam CellSpacesTuple Tuple containing one homogeneous
+ * `FiniteElementSpace` per partition cell part.
+ * @tparam Partition Partition type defining the corresponding cell-part
+ * ordering and optional face parts.
+ */
 template<class CellSpacesTuple, class Partition>
 struct MixedFiniteElementSpace
 {
@@ -32,45 +53,58 @@ struct MixedFiniteElementSpace
    static constexpr size_t num_boundary_face_parts =
       Partition::num_boundary_face_parts;
 
+   /** @brief Homogeneous spaces stored in partition cell-part order. */
    CellSpacesTuple cell_spaces;
+
+   /** @brief Field partition retained by value. */
    Partition partition;
 
+   /** @brief Return all cell finite-element spaces in cell-part order. */
    GENDIL_HOST_DEVICE
    constexpr const CellSpacesTuple& CellSpaces() const
    {
       return cell_spaces;
    }
 
+   /** @brief Return the partition retained by this field space. */
    GENDIL_HOST_DEVICE
    constexpr const Partition& GetPartition() const
    {
       return partition;
    }
 
+   /** @brief Return the partition cell parts. */
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) CellParts() const
    {
       return partition.CellParts();
    }
 
+   /** @brief Return the field-owned interior face parts, if any. */
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) InteriorFaceParts() const
    {
       return partition.InteriorFaceParts();
    }
 
+   /** @brief Return the field-owned boundary face parts, if any. */
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) BoundaryFaceParts() const
    {
       return partition.BoundaryFaceParts();
    }
 
+   /** @brief Return the number of cell finite-element spaces. */
    GENDIL_HOST_DEVICE
    constexpr size_t GetNumberOfCellFiniteElementSpaces() const
    {
       return num_cell_spaces;
    }
 
+   /**
+    * @brief Return the finite-element space for cell part `I`.
+    * @tparam I Compile-time cell-part index.
+    */
    template<size_t I>
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) GetCellFiniteElementSpace() const
@@ -78,6 +112,10 @@ struct MixedFiniteElementSpace
       return std::get<I>(cell_spaces);
    }
 
+   /**
+    * @brief Invoke a callable once for every cell finite-element space.
+    * @param fn Callable accepting each heterogeneous tuple entry.
+    */
    template<class Fn>
    constexpr void ForEachCellFiniteElementSpace(Fn&& fn) const
    {
@@ -89,6 +127,7 @@ struct MixedFiniteElementSpace
          cell_spaces);
    }
 
+   /** @brief Return the total number of finite elements over all cell parts. */
    Integer GetNumberOfFiniteElements() const
    {
       return SumMixedFiniteElementSpaceCounts(
@@ -99,6 +138,7 @@ struct MixedFiniteElementSpace
          });
    }
 
+   /** @brief Return the sum of the cell spaces' finite-element DoF counts. */
    Integer GetNumberOfFiniteElementDofs() const
    {
       return SumMixedFiniteElementSpaceCounts(
@@ -109,6 +149,7 @@ struct MixedFiniteElementSpace
          });
    }
 
+   /** @brief Return the total number of field-owned interior faces. */
    Integer GetNumberOfInteriorFaces() const
    {
       return SumMixedFiniteElementSpaceCounts(
@@ -119,6 +160,7 @@ struct MixedFiniteElementSpace
          });
    }
 
+   /** @brief Return the total number of field-owned boundary faces. */
    Integer GetNumberOfBoundaryFaces() const
    {
       return SumMixedFiniteElementSpaceCounts(
@@ -130,6 +172,7 @@ struct MixedFiniteElementSpace
    }
 };
 
+/** @brief Detect a `MixedFiniteElementSpace` type. */
 template<class T>
 struct is_mixed_finite_element_space : std::false_type {};
 
@@ -143,7 +186,7 @@ template<class T>
 inline constexpr bool is_mixed_finite_element_space_v =
    is_mixed_finite_element_space<std::remove_cvref_t<T>>::value;
 
-
+/** @brief Detect a homogeneous cell `FiniteElementSpace` type. */
 template<class T>
 struct is_cell_finite_element_space : std::false_type {};
 
@@ -155,10 +198,12 @@ template<class T>
 inline constexpr bool is_cell_finite_element_space_v =
    is_cell_finite_element_space<std::remove_cvref_t<T>>::value;
 
+/** @internal */
 template<class T>
 inline constexpr Integer mixed_finite_element_space_classification_count_v =
    static_cast<Integer>(is_cell_finite_element_space_v<T>);
 
+/** @internal */
 template<class T>
 consteval void ValidateMixedFiniteElementSpaceArgument()
 {
@@ -177,6 +222,7 @@ consteval void ValidateMixedFiniteElementSpaceArgument()
       "one supported finite element space category.");
 }
 
+/** @internal */
 template<class Tuple, class CountFn>
 Integer SumMixedFiniteElementSpaceCounts(const Tuple& tuple, CountFn&& count_fn)
 {
@@ -190,6 +236,7 @@ Integer SumMixedFiniteElementSpaceCounts(const Tuple& tuple, CountFn&& count_fn)
    return total;
 }
 
+/** @internal */
 template<class FaceMesh>
 Integer GetConcreteFaceMeshNumberOfFaces(const FaceMesh& face_mesh)
 {
@@ -201,6 +248,7 @@ Integer GetConcreteFaceMeshNumberOfFaces(const FaceMesh& face_mesh)
    return face_mesh.GetNumberOfFaces();
 }
 
+/** @internal */
 template<class T>
 constexpr auto as_mixed_cell_space_tuple(T&& arg)
 {
@@ -259,6 +307,20 @@ constexpr auto MakeCellOnlyPartitionFromSpaces(
 
 } // namespace details
 
+/**
+ * @brief Combine existing homogeneous spaces into a mixed cell space.
+ *
+ * Arguments may be individual homogeneous `FiniteElementSpace` values or
+ * nested tuples of them. They are flattened in argument order, and a cell-only
+ * partition is constructed from their meshes. The generated partition has no
+ * global interior or boundary face parts; use a partition-taking overload
+ * when global-face connectivity is required.
+ *
+ * @param spaces Homogeneous cell finite-element spaces or tuples of spaces.
+ * @return A `MixedFiniteElementSpace` owning the flattened spaces and the
+ * generated cell-only partition.
+ * @tparam Spaces Homogeneous space or nested tuple argument types.
+ */
 template<class... Spaces>
 constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
 {
@@ -282,6 +344,13 @@ constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
          std::move(partition) };
 }
 
+/**
+ * @brief Request contiguous discontinuous-Galerkin direct-sum numbering.
+ *
+ * The corresponding factory overload creates one `L2Restriction` per cell
+ * part. Offsets begin at zero and advance by each preceding cell space's DoF
+ * count.
+ */
 struct DGDirectSumNumbering {};
 
 namespace details {
@@ -360,6 +429,23 @@ constexpr auto MakeDGDirectSumRestrictionTuple(
 
 } // namespace details
 
+/**
+ * @brief Construct a mixed space from a partition and explicit restrictions.
+ *
+ * Tuple entry `I` of `finite_elements` and `restrictions` is combined with the
+ * mesh of partition cell part `I` to construct one homogeneous
+ * `FiniteElementSpace`. Both tuples must have exactly one entry per cell part.
+ *
+ * @param partition Partition whose cell-part ordering defines the field
+ * layout.
+ * @param finite_elements Tuple containing one finite element per cell part.
+ * @param restrictions Tuple containing one restriction per cell part.
+ * @return A `MixedFiniteElementSpace` containing the constructed homogeneous
+ * spaces and a retained partition value.
+ * @tparam PartitionType Partition type.
+ * @tparam FiniteElementsTuple Finite-element tuple type.
+ * @tparam RestrictionsTuple Restriction tuple type.
+ */
 template<class PartitionType, class FiniteElementsTuple, class RestrictionsTuple>
    requires (
       is_partition_v<PartitionType> &&
@@ -427,13 +513,30 @@ constexpr auto MakeMixedFiniteElementSpace(
    }
 }
 
+/**
+ * @brief Construct a DG mixed space with contiguous direct-sum DoF numbering.
+ *
+ * Creates an `L2Restriction` for every partition cell part. The first part
+ * starts at global DoF zero, and each subsequent part starts after all DoFs of
+ * the preceding parts.
+ *
+ * @param partition Partition whose cell-part ordering defines the field
+ * layout.
+ * @param finite_elements Tuple containing one finite element per cell part.
+ * @param numbering Tag selecting automatic DG direct-sum numbering.
+ * @return A `MixedFiniteElementSpace` with automatically generated
+ * restrictions.
+ * @tparam PartitionType Partition type.
+ * @tparam FiniteElementsTuple Finite-element tuple type.
+ */
 template<class PartitionType, class FiniteElementsTuple>
    requires is_partition_v<PartitionType>
 constexpr auto MakeMixedFiniteElementSpace(
    PartitionType&& partition,
    FiniteElementsTuple&& finite_elements,
-   DGDirectSumNumbering)
+   DGDirectSumNumbering numbering)
 {
+   (void)numbering;
    using Partition = std::remove_cvref_t<PartitionType>;
    using FiniteElements = std::remove_cvref_t<FiniteElementsTuple>;
 
@@ -471,141 +574,6 @@ constexpr auto MakeMixedFiniteElementSpace(
          {},
          Partition{ partition } };
    }
-}
-
-template<class Space>
-struct IntegrationDomain
-{
-   Space space;
-};
-
-template<class Space>
-struct CellIntegrationDomain
-{
-   Space space;
-};
-
-template<class Space>
-struct InteriorFaceIntegrationDomain
-{
-   Space space;
-};
-
-template<class Space>
-struct BoundaryFaceIntegrationDomain
-{
-   Space space;
-};
-
-template<class T>
-struct is_integration_domain : std::false_type {};
-
-template<class Space>
-struct is_integration_domain<IntegrationDomain<Space>> : std::true_type {};
-
-template<class T>
-inline constexpr bool is_integration_domain_v =
-   is_integration_domain<std::remove_cvref_t<T>>::value;
-
-template<class T>
-struct is_cell_integration_domain : std::false_type {};
-
-template<class Space>
-struct is_cell_integration_domain<CellIntegrationDomain<Space>>
-   : std::true_type {};
-
-template<class T>
-inline constexpr bool is_cell_integration_domain_v =
-   is_cell_integration_domain<std::remove_cvref_t<T>>::value;
-
-template<class T>
-struct is_interior_face_integration_domain : std::false_type {};
-
-template<class Space>
-struct is_interior_face_integration_domain<
-   InteriorFaceIntegrationDomain<Space>> : std::true_type {};
-
-template<class T>
-inline constexpr bool is_interior_face_integration_domain_v =
-   is_interior_face_integration_domain<std::remove_cvref_t<T>>::value;
-
-template<class T>
-struct is_boundary_face_integration_domain : std::false_type {};
-
-template<class Space>
-struct is_boundary_face_integration_domain<
-   BoundaryFaceIntegrationDomain<Space>> : std::true_type {};
-
-template<class T>
-inline constexpr bool is_boundary_face_integration_domain_v =
-   is_boundary_face_integration_domain<std::remove_cvref_t<T>>::value;
-
-template<class IntegrationRule, class Space>
-constexpr auto MakeMeshQuadData(const CellIntegrationDomain<Space>&)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   if constexpr (is_mixed_finite_element_space_v<SpaceType>)
-   {
-      static_assert(
-         dependent_false_v<SpaceType>,
-         "MakeMeshQuadData requires a selected homogeneous "
-         "CellIntegrationDomain<Space>. Mixed finite element spaces must be "
-         "iterated and restricted to a selected cell batch before qdata "
-         "construction.");
-   }
-   else if constexpr (is_cell_finite_element_space_v<SpaceType>)
-   {
-      using Mesh = typename SpaceType::mesh_type;
-      using QD = typename Mesh::cell_type::template QuadData<IntegrationRule>;
-      return QD{};
-   }
-   else
-   {
-      static_assert(
-         dependent_false_v<SpaceType>,
-         "CellIntegrationDomain requires a homogeneous cell finite element "
-         "space or a MixedFiniteElementSpace.");
-   }
-}
-
-template<
-   class IntegrationRule,
-   class CellSpacesTuple,
-   class Partition>
-constexpr auto MakeFiniteElementQuadData(
-   const MixedFiniteElementSpace<
-      CellSpacesTuple,
-      Partition>&)
-{
-   static_assert(
-      dependent_false_v<
-         MixedFiniteElementSpace<
-            CellSpacesTuple,
-            Partition>>,
-      "MakeFiniteElementQuadData requires a selected homogeneous finite "
-      "element space. Mixed finite element spaces must be iterated and "
-      "restricted to a selected cell batch before qdata construction.");
-}
-
-template<
-   class IntegrationRule,
-   class CellSpacesTuple,
-   class Partition>
-constexpr auto MakeFiniteElementFacetQuadData(
-   const MixedFiniteElementSpace<
-      CellSpacesTuple,
-      Partition>&)
-{
-   static_assert(
-      dependent_false_v<
-         MixedFiniteElementSpace<
-            CellSpacesTuple,
-            Partition>>,
-      "MakeFiniteElementFacetQuadData builds local/cell-owned facet qdata "
-      "from a homogeneous volume finite element space. Mixed finite element "
-      "spaces must be restricted to a selected cell batch before local facet "
-      "context construction; global facet context construction uses "
-      "field-specific face bindings and MakeGlobalFacetFiniteElementQuadData.");
 }
 
 } // namespace gendil

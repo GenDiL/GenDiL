@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Added mesh- and partition-backed weak-form integration domains with compatibility validation for participating finite-element fields.
+- Added `GenericElementBlockDiagonalAssembly` for direct BSR/SGBSR/RawCOO output and conversion to the supported assembled sparse formats.
+- Added reference-geometry metadata and geometry-aware concepts for cells and meshes.
+
+### Changed
+- Breaking: `MakeIntegrationDomain<Name>` now accepts the mesh or partition that owns integration topology, geometry, cells, face parts, and connectivity. Homogeneous and mixed finite element spaces are rejected; they remain field bindings supplied through `MakeTrialField`, `MakeTestField`, or `MakeFiniteElementField`.
+- Matrix-free traversal now obtains geometry and connectivity from integration domains and finite-element interpolation/DOFs from active fields. Mesh domains use fused local traversal; partition domains use per-integrand global traversal; mixing both active domain kinds in one operator is rejected.
+- Breaking: custom integration cells must provide `using geometry = ...`, finite-element and integration-rule reference geometries must match the selected mesh, and local face loops now infer geometry from the mesh rather than an explicit template argument.
+- Breaking: renamed the coordinate-vector coefficient inputs to `PhysicalCoordinates` and `ReferenceCoordinates`.
+- Sparse assembly remains mesh-only and rejects active partition domains with a targeted diagnostic.
+- Breaking: tensor-product and vector quadrature data now use the distinct `TensorProductData`/`TensorProductDofToQuad` and `VectorDofToQuad` types. Tuple-style access and manually constructed volume-qdata tuples must be replaced with the tensor-entry or vector-component APIs.
+
+### Removed
+- Breaking: removed `GenericBlockDiagonalAssembly`; use `GenericElementBlockDiagonalAssembly` or its format-specific BSR/RawCOO factories.
+
 ## [0.0.5] - 2026-07-06
 
 ### Added

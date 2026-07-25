@@ -116,65 +116,84 @@ the cell and interior-facet terms:
 
 ```cpp
 TrialSpace<"u"> u;
-TestSpace<"u"> v;
+TestSpace<"v"> v;
 Cells<"mesh"> cells;
 InteriorFacets<"mesh"> interior_facets;
 
-auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
 auto upwind_dg_form =
    integrate(cells, -u * dot(beta, grad(v)))
    + integrate(interior_facets, upwind(beta, u) * jump(v));
 ```
 
-For SIPDG diffusion, the same DSL captures cell, interior-facet, and
+For the steady heterogeneous heat equation
+
+$$
+-\nabla\cdot(k\nabla T) = q,
+$$
+
+the conductivity $k$ can be represented by a spatially varying finite-element
+field. The SIPDG operator captures the cell, interior-facet, and
 boundary-facet contributions:
 
 ```cpp
 TrialSpace<"u"> u;
-TestSpace<"u"> v;
+TestSpace<"v"> v;
 Cells<"mesh"> cells;
 InteriorFacets<"mesh"> interior_facets;
 BoundaryFacets<"mesh"> boundary_facets;
 
-auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(mu_fn);
+auto k =
+   MakeCoefficient<"thermal_conductivity", FieldValue<"conductivity">>(
+      [] GENDIL_HOST_DEVICE (Real conductivity)
+      {
+         return conductivity;
+      });
 auto tau = MakeCoefficient<"penalty", InverseFacetSize>(tau_fn);
 
 auto sipdg_form =
-   integrate(cells, mu * dot(grad(u), grad(v)))
+   integrate(cells, k * dot(grad(u), grad(v)))
    + integrate(
         interior_facets,
-        -average(mu * dot(grad(u), Normal{})) * jump(v)
-        + jump(u) * average(mu * dot(grad(v), Normal{}))
-        + tau * mu * jump(u) * jump(v))
+        -average(k * dot(grad(u), Normal{})) * jump(v)
+        + jump(u) * average(k * dot(grad(v), Normal{}))
+        + tau * average(k) * jump(u) * jump(v))
    + integrate(
         boundary_facets,
-        -mu * dot(grad(u), Normal{}) * v
-        + u * mu * dot(grad(v), Normal{})
-        + tau * mu * u * v);
+        -k * dot(grad(u), Normal{}) * v
+        + u * k * dot(grad(v), Normal{})
+        + tau * k * u * v);
 ```
 
-The same weak form can create a matrix-free operator or an assembled sparse
-matrix. Here `weak_form` is either form above, and `fe_space` and
-`integration_rule` are the finite element space and quadrature rule for the
-domain named `"mesh"`:
+The `FieldValue<"conductivity">` input evaluates the conductivity field
+registered in the weak-form context.
+
+The SIPDG weak form can create a matrix-free operator or an assembled sparse
+matrix. Here `mesh` is the integration mesh, `fe_space` is the trial and test
+space, and `conductivity_space` and `conductivity_dofs` describe the
+conductivity field:
 
 ```cpp
 using KernelPolicy = SerialKernelConfiguration;
 
 auto context = MakeWeakFormContext(
    MakeTrialField<"u">(fe_space),
-   MakeIntegrationDomain<"mesh">(fe_space));
+   MakeTestField<"v">(fe_space),
+   MakeFiniteElementField<"conductivity">(
+      conductivity_space,
+      conductivity_dofs),
+   MakeIntegrationDomain<"mesh">(mesh));
 
 auto op =
    MakeGenericOperator<KernelPolicy>(
-      weak_form,
+      sipdg_form,
       context,
       integration_rule);
 
 auto matrix =
    GenericAssembly<MatrixAssemblyType::BSR, KernelPolicy>(
-      weak_form,
+      sipdg_form,
       context,
       integration_rule);
 ```

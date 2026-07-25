@@ -7,7 +7,7 @@
 #include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/Meshes/mesh.hpp"
 #include "gendil/Utilities/types.hpp"
 
 #include <type_traits>
@@ -24,6 +24,13 @@ namespace gendil {
 template < typename Mesh, typename FiniteElement, typename Restriction >
 class FiniteElementSpace : public Mesh
 {
+   static_assert(
+      std::is_same_v<
+         mesh::mesh_geometry_t<Mesh>,
+         typename FiniteElement::geometry>,
+      "FiniteElementSpace: finite-element reference geometry must exactly "
+      "match Mesh::cell_type::geometry.");
+
 public:
    using mesh_type = Mesh;
    using finite_element_type = FiniteElement;

@@ -98,7 +98,7 @@ void GenericCanonicalGlobalInteriorChannelOperator(
 
    ElementContext minus_element_context{
       face_info.MinusSide().GetCellIndex(),
-      face_domain.GetMinusCellFiniteElementSpace().GetCell(
+      face_domain.GetMinusCellMesh().GetCell(
          face_info.MinusSide().GetCellIndex())
    };
    auto face_context =
@@ -273,16 +273,14 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
 }
 
 template<
-   StaticString TrialName,
-   StaticString TestName,
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
    class FacePart,
-   class MinusCellSpace,
-   class PlusCellSpace,
+   class MinusCellMesh,
+   class PlusCellMesh,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -290,18 +288,22 @@ void GenericGlobalInteriorFaceDomainOperator(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    InteriorFacets<DomainName> domain_tag,
-   const InteriorFaceExecutionBatch<
+   const SelectedInteriorFaceExecutionDomain<
       DomainName,
       FaceI,
       FacePart,
-      MinusCellSpace,
-      PlusCellSpace>& batch,
+      MinusCellMesh,
+      PlusCellMesh>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
+   using Form = std::remove_cvref_t<WeakForm>;
+   constexpr auto TrialName = requirements<Form>::trial_name;
+   constexpr auto TestName = requirements<Form>::test_name;
+
    auto batch_ctx =
-      MakeRestrictedWeakFormContext<TrialName, TestName>(
+      MakeRestrictedWeakFormContext<WeakForm>(
          wf_ctx,
          domain_tag,
          batch);

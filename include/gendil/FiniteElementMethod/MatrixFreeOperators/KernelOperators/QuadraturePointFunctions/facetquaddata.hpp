@@ -44,7 +44,7 @@ struct IsSupportedNonconformingFacetDofToQuadTuple : std::false_type {};
 
 template<class... DofToQuads>
 struct IsSupportedNonconformingFacetDofToQuadTuple<
-   std::tuple<DofToQuads...>>
+   TensorProductData<DofToQuads...>>
    : std::bool_constant<
         (IsSupportedNonconformingFacetDofToQuad1D_v<DofToQuads> && ...)> {};
 
@@ -72,7 +72,8 @@ template<class T>
 struct IsStaticPointSetFacetQDataTuple : std::false_type {};
 
 template<class... PointSets>
-struct IsStaticPointSetFacetQDataTuple<std::tuple<PointSets...>>
+struct IsStaticPointSetFacetQDataTuple<
+   TensorProductData<PointSets...>>
    : std::bool_constant<
         (IsStaticPointSetFacetQData1D_v<PointSets> && ...)> {};
 
@@ -84,7 +85,7 @@ template<class Face, class... PointSets, size_t... Is>
 GENDIL_HOST_DEVICE
 auto MakeNonconformingMappedPointSetTupleImpl(
    const Face& face,
-   const std::tuple<PointSets...>&,
+   const TensorProductData<PointSets...>&,
    std::index_sequence<Is...>)
 {
    using Conformity = typename std::remove_cvref_t<Face>::conformity_type;
@@ -94,7 +95,7 @@ auto MakeNonconformingMappedPointSetTupleImpl(
       "cell-reference face map. Currently only "
       "NonconformingHyperCubeFaceMap<Dim> is supported.");
 
-   return std::make_tuple(
+   return MakeTensorProductData(
       NonconformingMappedPointSet1D<
          PointSets,
          Face,
@@ -105,7 +106,7 @@ template<class Face, class... PointSets>
 GENDIL_HOST_DEVICE
 auto MakeNonconformingMappedPointSetTuple(
    const Face& face,
-   const std::tuple<PointSets...>& point_sets)
+   const TensorProductData<PointSets...>& point_sets)
 {
    return MakeNonconformingMappedPointSetTupleImpl(
       face,
@@ -119,7 +120,13 @@ auto MakeNonconformingFacetQuadData(
    const Face& face,
    const LocalFaceQData& local_face_qd)
 {
-   if constexpr (
+   if constexpr (is_vector_dof_to_quad_v<LocalFaceQData>)
+   {
+      static_assert(
+         dependent_false_v<Face, LocalFaceQData>,
+         "Nonconforming facet qdata for VectorDofToQuad is unsupported.");
+   }
+   else if constexpr (
       IsSupportedNonconformingFacetDofToQuadTuple_v<LocalFaceQData>)
    {
       return MakeNonconformingDofToQuadData(face, local_face_qd);

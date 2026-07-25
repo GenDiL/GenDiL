@@ -207,19 +207,19 @@ template <
    bool IncludeCellTerms,
    bool IncludeBoundaryFaceTerms,
    bool IncludeInteriorFaceTerms,
-   typename FESpace >
+   typename DomainMesh >
 auto MakeRawCOOAssemblyLayout(
-   const FESpace & fe_space,
+   const DomainMesh & domain_mesh,
    const GlobalIndex block_entry_count )
 {
-   using Space = std::remove_cvref_t< FESpace >;
+   using Geometry = mesh::mesh_geometry_t<DomainMesh>;
    constexpr GlobalIndex num_faces =
       static_cast< GlobalIndex >(
-         Space::finite_element_type::geometry::num_faces );
+         Geometry::num_faces );
 
    RawCOOAssemblyLayout layout{};
    layout.num_elements =
-      static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElements() );
+      static_cast< GlobalIndex >( domain_mesh.GetNumberOfCells() );
    layout.num_faces = num_faces;
    layout.block_entry_count = block_entry_count;
 
@@ -252,7 +252,7 @@ auto MakeRawCOOAssemblyLayout(
       if constexpr ( IncludeInteriorFaceTerms )
       {
          InteriorFaceLoop(
-            fe_space,
+            domain_mesh,
             element_index,
             [&] ( const auto & face_info )
             {
@@ -288,7 +288,7 @@ auto MakeRawCOOAssemblyLayout(
       if constexpr ( IncludeBoundaryFaceTerms )
       {
          BoundaryFaceLoop(
-            fe_space,
+            domain_mesh,
             element_index,
             [&] ( const auto & face_info )
             {
@@ -310,6 +310,93 @@ auto MakeRawCOOAssemblyLayout(
 
    layout.nnz_raw = next_offset;
    SyncRawCOOAssemblyLayoutToDevice( layout );
+
+   return layout;
+}
+
+template <
+   bool IncludeCellTerms,
+   bool IncludeBoundaryFaceTerms,
+   bool IncludeInteriorFaceTerms,
+   typename DomainMesh >
+auto MakeRawCOOElementBlockDiagonalAssemblyLayout(
+   const DomainMesh & domain_mesh,
+   const GlobalIndex block_entry_count )
+{
+   RawCOOAssemblyLayout layout{};
+   layout.num_elements =
+      static_cast<GlobalIndex>(
+         domain_mesh.GetNumberOfCells());
+   layout.num_faces = 0;
+   layout.block_entry_count = block_entry_count;
+
+   AllocateRawCOOOffsetArray(
+      layout.num_elements,
+      layout.diagonal_offsets);
+   AllocateRawCOOOffsetArray(0, layout.offdiag_offsets);
+
+   GlobalIndex next_offset = 0;
+
+   for (GlobalIndex element_index = 0;
+        element_index < layout.num_elements;
+        ++element_index)
+   {
+      if constexpr (IncludeCellTerms)
+      {
+         ActivateRawCOODiagonalBlock(
+            layout,
+            element_index,
+            block_entry_count,
+            next_offset);
+      }
+
+      if constexpr (IncludeInteriorFaceTerms)
+      {
+         InteriorFaceLoop(
+            domain_mesh,
+            element_index,
+            [&] (const auto & face_info)
+            {
+               using FaceInfo =
+                  std::remove_cvref_t<decltype(face_info)>;
+               static_assert(
+                  FaceInfo::minus_side_type::is_conforming &&
+                  FaceInfo::plus_side_type::is_conforming,
+                  "RawCOO face assembly supports conforming faces only.");
+
+               ActivateRawCOODiagonalBlock(
+                  layout,
+                  element_index,
+                  block_entry_count,
+                  next_offset);
+            });
+      }
+
+      if constexpr (IncludeBoundaryFaceTerms)
+      {
+         BoundaryFaceLoop(
+            domain_mesh,
+            element_index,
+            [&] (const auto & face_info)
+            {
+               using FaceInfo =
+                  std::remove_cvref_t<decltype(face_info)>;
+               static_assert(
+                  FaceInfo::minus_side_type::is_conforming &&
+                  FaceInfo::plus_side_type::is_conforming,
+                  "RawCOO face assembly supports conforming faces only.");
+
+               ActivateRawCOODiagonalBlock(
+                  layout,
+                  element_index,
+                  block_entry_count,
+                  next_offset);
+            });
+      }
+   }
+
+   layout.nnz_raw = next_offset;
+   SyncRawCOOAssemblyLayoutToDevice(layout);
 
    return layout;
 }

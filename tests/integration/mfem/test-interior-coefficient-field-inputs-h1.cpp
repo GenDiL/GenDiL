@@ -352,7 +352,7 @@ int TestInteriorCoefficientFieldInputsH1()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(dg_space),
       MakeFiniteElementField<"w_cg">(h1_space, w_view),
-      MakeIntegrationDomain<"mesh">(dg_space));
+      MakeIntegrationDomain<"mesh">(mesh));
 
    auto average_op = MakeGenericOperator<KernelPolicy>(
       average_form,

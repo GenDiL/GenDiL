@@ -195,7 +195,8 @@ bool TestCartesianHAdaptiveGeometryMapCharacterization()
 
    using MinusLocalFaceQD =
       std::remove_cvref_t<decltype(std::get<MeshFaceIndex>(mesh_face_qd_L))>;
-   using MinusTangentialPoints = std::tuple_element_t<1, MinusLocalFaceQD>;
+   using MinusTangentialPoints =
+      tensor_product_entry_t<1, MinusLocalFaceQD>;
 
    bool success = true;
    Real integral_one = 0.0;
@@ -458,7 +459,8 @@ bool TestLowLevelOrientationAndNonconformingMapKernels()
 
    using LocalFaceQD =
       std::remove_cvref_t<decltype(std::get<LocalFaceIndex>(face_qd))>;
-   using TangentialQD = std::tuple_element_t<1, LocalFaceQD>;
+   using TangentialQD =
+      tensor_product_entry_t<1, LocalFaceQD>;
    using Shape1D = GaussLobattoLegendreShapeFunctions<p>;
 
    bool success = true;
@@ -672,7 +674,7 @@ bool TestGenericOperatorP0JumpResidualCancellation()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer num_quad_1d = 1;
    auto integration_rule =

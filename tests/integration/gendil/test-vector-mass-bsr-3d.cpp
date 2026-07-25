@@ -155,12 +155,12 @@ int TestVectorCellMassBsrAction()
    VectorTrialSpace< "u" > u;
    VectorTestSpace< "u" > v;
 
-   auto rho = MakeCoefficient< "density", PhysicalCoordinate >( rho_fn );
+   auto rho = MakeCoefficient< "density", PhysicalCoordinates >( rho_fn );
    auto weak_form = integrate( domain, rho * dot( u, v ) );
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( vector_fe_space ),
-      MakeIntegrationDomain< "mesh1" >( vector_fe_space ) );
+      MakeIntegrationDomain< "mesh1" >( mesh ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

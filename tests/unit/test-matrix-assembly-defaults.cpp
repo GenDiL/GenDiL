@@ -96,7 +96,7 @@ bool TestTypedGenericAssemblyDefaults()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( mesh ) );
 
    IntegrationRuleNumPoints< 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );

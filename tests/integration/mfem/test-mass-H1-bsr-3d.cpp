@@ -123,12 +123,12 @@ int TestH1MassSGBSR()
    TrialSpace< "u" > u;
    TestSpace< "u" > v;
 
-   auto density = MakeCoefficient< "density", PhysicalCoordinate >( density_fn );
+   auto density = MakeCoefficient< "density", PhysicalCoordinates >( density_fn );
    auto weak_form = integrate( domain, density * u * v );
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( fe_space ),
-      MakeIntegrationDomain< "mesh1" >( fe_space ) );
+      MakeIntegrationDomain< "mesh1" >( mesh ) );
 
    auto matrix_free_operator =
       MakeMassFiniteElementOperator< KernelPolicy >(

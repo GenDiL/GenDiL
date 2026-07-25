@@ -158,7 +158,8 @@ auto ApplyTestFunctionsThreaded(
    const ProductOperator & element_quad_data,
    const InputTensor & quad_point_values )
 {
-   constexpr Integer Dim = std::tuple_size_v< ProductOperator >;
+   constexpr Integer Dim =
+      tensor_product_entry_count_v<ProductOperator>;
    constexpr Integer ThreadBlockDim = Min( KernelContext::thread_block_dim, Dim );
 
    constexpr Integer SharedBlockDim = Min( KernelContext::shared_block_max_dim, Dim );
@@ -236,8 +237,9 @@ auto ApplyTestFunctionsThreaded(
       constexpr Integer c = _c; // NVCC fails to correctly capture arguments to three or more nested lambda expression, so this line is necessary
       constexpr Integer ActiveDim = seq_get_v<c, RegisterDimensions >;
 
-      using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-      auto& B = std::get< ActiveDim >( element_quad_data );
+      using Op1D =
+         tensor_product_entry_t<ActiveDim, ProductOperator>;
+      auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
       using contracted_dims = std::make_index_sequence< c >;
       using input_shape = replace_subsequence_t< reg_input_shape, reg_output_shape, contracted_dims >;
@@ -278,8 +280,9 @@ auto ApplyTestFunctionsThreaded(
          constexpr Integer c = _c; // NVCC fails to correctly capture arguments to three or more nested lambda expression, so this line is necessary
          constexpr Integer ActiveDim = seq_get_v< c, ThreadedDimensions >;
 
-         using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-         auto& B = std::get< ActiveDim >( element_quad_data );
+         using Op1D =
+            tensor_product_entry_t<ActiveDim, ProductOperator>;
+         auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
          using contracted_dims = std::make_index_sequence< c >;
          using input_shape = replace_subsequence_t< shared_input_shape, shared_output_shape, contracted_dims >;

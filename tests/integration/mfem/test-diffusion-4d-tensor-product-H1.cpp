@@ -180,14 +180,14 @@ int TestTensorProductH1Diffusion4D()
    TestSpace< "u" > v;
 
    auto diffusivity =
-      MakeCoefficient< "diffusivity", PhysicalCoordinate >( diffusivity_fn );
+      MakeCoefficient< "diffusivity", PhysicalCoordinates >( diffusivity_fn );
    auto weak_form =
       integrate( cells, diffusivity * dot( grad( u ), grad( v ) ) );
 
    auto weak_form_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( product_mesh ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

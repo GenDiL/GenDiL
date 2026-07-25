@@ -16,13 +16,13 @@
 namespace gendil
 {
 
-struct ElementIndex         : CoefficientInputBase {};
-struct QuadraturePointIndex : CoefficientInputBase {};
-struct PhysicalCoordinate   : CoefficientInputBase {};
-struct ReferenceCoordinate  : CoefficientInputBase {};
-struct JacobianDeterminant  : CoefficientInputBase {};
-struct Jacobian             : CoefficientInputBase {};
-struct JacobianInverse      : CoefficientInputBase {};
+struct ElementIndex          : CoefficientInputBase {};
+struct QuadraturePointIndex  : CoefficientInputBase {};
+struct PhysicalCoordinates   : CoefficientInputBase {};
+struct ReferenceCoordinates  : CoefficientInputBase {};
+struct JacobianDeterminant   : CoefficientInputBase {};
+struct Jacobian              : CoefficientInputBase {};
+struct JacobianInverse       : CoefficientInputBase {};
 
 /**
  * @brief Inverse facet size coefficient input: ||J^{-T} n_ref||
@@ -140,7 +140,7 @@ struct CoefficientInputGetter<QuadraturePointIndex>
 };
 
 template <>
-struct CoefficientInputGetter<PhysicalCoordinate>
+struct CoefficientInputGetter<PhysicalCoordinates>
 {
    template <
       typename KernelContext,
@@ -168,9 +168,9 @@ struct CoefficientInputGetter<PhysicalCoordinate>
       }
       else
       {
-         // QuadPtContext has no physical coordinates field, cannot provide PhysicalCoordinate input
+         // QuadPtContext has no physical coordinates field, cannot provide PhysicalCoordinates input
          static_assert(requires { quad_pt_context.X; },
-            "PhysicalCoordinate coefficient input requires QuadPtContext with physical coordinates (e.g., GenericQuadraturePointContext or FacetQuadraturePointContext)");
+            "PhysicalCoordinates coefficient input requires QuadPtContext with physical coordinates (e.g., GenericQuadraturePointContext or FacetQuadraturePointContext)");
 
          // Unreachable, but needed for return type deduction
          return Real{};
@@ -179,7 +179,7 @@ struct CoefficientInputGetter<PhysicalCoordinate>
 };
 
 template <>
-struct CoefficientInputGetter<ReferenceCoordinate>
+struct CoefficientInputGetter<ReferenceCoordinates>
 {
    template <
       typename KernelContext,
@@ -618,12 +618,12 @@ inline std::ostream& operator<<(std::ostream& os, const InverseFacetSize&)
    return os << "h_inv";
 }
 
-inline std::ostream& operator<<(std::ostream& os, const PhysicalCoordinate&)
+inline std::ostream& operator<<(std::ostream& os, const PhysicalCoordinates&)
 {
    return os << "x_phys";
 }
 
-inline std::ostream& operator<<(std::ostream& os, const ReferenceCoordinate&)
+inline std::ostream& operator<<(std::ostream& os, const ReferenceCoordinates&)
 {
    return os << "x_ref";
 }

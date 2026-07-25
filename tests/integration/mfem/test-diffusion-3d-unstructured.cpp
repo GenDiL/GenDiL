@@ -129,7 +129,7 @@ mfem::Mesh mesh_3d_orientation(int face_perm_1, int face_perm_2)
 // Coefficients.
 // Start with constant diffusivity. This isolates geometry, orientation,
 // facet normals, and plus-side Jacobians. Once this passes, the asymmetric
-// coefficient is useful for exposing PhysicalCoordinate mistakes.
+// coefficient is useful for exposing PhysicalCoordinates mistakes.
 // -----------------------------------------------------------------------------
 
 template <Integer Dim>
@@ -246,7 +246,7 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
          }
       };
 
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(diffusivity);
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(diffusivity);
 
    auto tau = MakeCoefficient<"penalty", InverseFacetSize>(
       [=] GENDIL_HOST_DEVICE (const Real& h_inv) -> Real
@@ -271,7 +271,7 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
 
    auto diffusion_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_diffusion_operator =

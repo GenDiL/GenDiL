@@ -19,13 +19,13 @@ namespace gendil
 template <
    bool Add,
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... Entries,
    typename Input,
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctions(
    KernelContext & thread,
-   const ElementDofToQuad & element_quad_data,
+   const TensorProductData<Entries...>& element_quad_data,
    const Input & DGuq,
    Output & dofs_out )
 {
@@ -45,14 +45,14 @@ void ApplyGradientTestFunctions(
 template <
    bool Add,
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... ScalarMaps,
    typename... InputTensors,
    typename... OutputTensors,
    size_t... I >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctionsTupleImpl(
    KernelContext & thread,
-   const ElementDofToQuad & element_quad_data,
+   const VectorDofToQuad<ScalarMaps...>& element_quad_data,
    const std::tuple< InputTensors... > & DGuq_tuple,
    std::tuple< OutputTensors... > & dofs_out_tuple,
    std::index_sequence< I... > )
@@ -63,7 +63,7 @@ void ApplyGradientTestFunctionsTupleImpl(
    // Apply gradient test functions for each component
    (ApplyGradientTestFunctions<Add>(
       thread,
-      std::get<I>(element_quad_data),
+      GetVectorComponent<I>(element_quad_data),
       std::get<I>(DGuq_tuple),
       std::get<I>(dofs_out_tuple)), ...);
 }
@@ -75,16 +75,20 @@ void ApplyGradientTestFunctionsTupleImpl(
 template <
    bool Add,
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... ScalarMaps,
    typename... InputTensors,
    typename... OutputTensors >
 GENDIL_HOST_DEVICE
 void ApplyGradientTestFunctions(
    KernelContext & thread,
-   const ElementDofToQuad & element_quad_data,
+   const VectorDofToQuad<ScalarMaps...>& element_quad_data,
    const std::tuple< InputTensors... > & DGuq_tuple,
    std::tuple< OutputTensors... > & dofs_out_tuple )
 {
+   static_assert(
+      sizeof...(ScalarMaps) == sizeof...(InputTensors),
+      "ApplyGradientTestFunctions requires one gradient/output tensor per "
+      "VectorDofToQuad component.");
    ApplyGradientTestFunctionsTupleImpl<Add>(
       thread,
       element_quad_data,

@@ -7,7 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 
 #include <type_traits>
@@ -70,11 +70,7 @@ auto GenericRawCOOAssembly(
    using I = std::remove_cvref_t<WeakForm>;
    ValidateSparseLinearAssemblyCoefficientInputs<I>();
 
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericAssembly<RawCOO>: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
+   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
 
    constexpr auto TrialName = requirements<I>::trial_name;
    constexpr auto TestName  = requirements<I>::test_name;
@@ -121,13 +117,15 @@ auto GenericRawCOOAssembly(
    constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
    constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   const auto& domain_mesh =
+      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
 
    auto layout =
       MakeRawCOOAssemblyLayout<
          has_cell_contributions_v< I >,
          has_boundary_facet_contributions_v< I >,
-         has_interior_facet_contributions_v< I > >(
-            trial_space,
+         has_interior_facet_contributions_v< I >>(
+            domain_mesh,
             block_entry_count );
 
    auto coo_buffer =
@@ -149,6 +147,114 @@ auto GenericRawCOOAssembly(
 
    SyncRawCOOTripletBuffer< KernelPolicy >( coo_buffer );
    FreeRawCOOAssemblyLayout( layout );
+
+   return coo_buffer;
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericRawCOOElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule )
+{
+   using I = std::remove_cvref_t<WeakForm>;
+   ValidateSparseLinearAssemblyCoefficientInputs<I>();
+   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
+
+   constexpr auto TrialName = requirements<I>::trial_name;
+   constexpr auto TestName = requirements<I>::test_name;
+
+   static_assert(
+      TrialName != StaticString{"Error"},
+      "GenericRawCOOElementBlockDiagonalAssembly: missing TrialSpace in "
+      "integrand.");
+   static_assert(
+      TestName != StaticString{"Error"},
+      "GenericRawCOOElementBlockDiagonalAssembly: missing TestSpace in "
+      "integrand.");
+   static_assert(
+      has_cell_contributions_v<I> ||
+      has_boundary_facet_contributions_v<I> ||
+      has_interior_facet_contributions_v<I>,
+      "GenericRawCOOElementBlockDiagonalAssembly requires at least one "
+      "active weak-form domain.");
+
+   const auto& trial_space =
+      wf_ctx.template fe_field<TrialName>().space;
+   const auto& test_space =
+      wf_ctx.template fe_field<TestName>().space;
+
+   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+
+   static_assert(
+      std::is_same_v<TrialSpace, TestSpace>,
+      "GenericRawCOOElementBlockDiagonalAssembly requires matching "
+      "trial/test FE spaces; mixed/rectangular spaces are unsupported.");
+
+   constexpr bool has_face_terms =
+      has_boundary_facet_contributions_v<I> ||
+      has_interior_facet_contributions_v<I>;
+
+   static_assert(
+      (!has_face_terms &&
+       IsRawCOOCellAssemblySpace<TrialSpace>::value &&
+       IsRawCOOCellAssemblySpace<TestSpace>::value) ||
+      (has_face_terms &&
+       IsRawCOOFaceAssemblySpace<TrialSpace>::value &&
+       IsRawCOOFaceAssemblySpace<TestSpace>::value),
+      "GenericRawCOOElementBlockDiagonalAssembly supports scalar/vector "
+      "L2/DG cell-only terms, scalar/vector H1/CG cell-only terms, scalar "
+      "tensor-product direct-index cell-only terms, and scalar/vector L2/DG "
+      "conforming face terms. H1 face terms, mixed spaces, nonconforming "
+      "faces, global face traversal, and variable-size hp emission are "
+      "unsupported.");
+
+   constexpr GlobalIndex ntrial =
+      LocalDofCount<TrialShapeFunctions>();
+   constexpr GlobalIndex ntest =
+      LocalDofCount<TestShapeFunctions>();
+   constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   const auto& domain_mesh =
+      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+
+   auto layout =
+      MakeRawCOOElementBlockDiagonalAssemblyLayout<
+         has_cell_contributions_v<I>,
+         has_boundary_facet_contributions_v<I>,
+         has_interior_facet_contributions_v<I>>(
+            domain_mesh,
+            block_entry_count);
+
+   auto coo_buffer =
+      MakeRawCOOTripletBuffer<Real, GlobalIndex>(
+         static_cast<GlobalIndex>(
+            test_space.GetNumberOfFiniteElementDofs()),
+         static_cast<GlobalIndex>(
+            trial_space.GetNumberOfFiniteElementDofs()),
+         layout.nnz_raw);
+
+   RawCOOAssemblyTarget<Real, GlobalIndex> coo_target{
+      coo_buffer,
+      layout
+   };
+
+   AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      coo_target);
+
+   SyncRawCOOTripletBuffer<KernelPolicy>(coo_buffer);
+   FreeRawCOOAssemblyLayout(layout);
 
    return coo_buffer;
 }

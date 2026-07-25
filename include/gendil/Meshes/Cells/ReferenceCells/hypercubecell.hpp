@@ -8,6 +8,7 @@
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
+#include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {
 
@@ -19,6 +20,7 @@ template < Integer Dim_ >
 struct HyperCubeCell
 {
     static constexpr Integer Dim = Dim_;
+    using geometry = HyperCube< Dim >;
 
     const Point<Dim> origin;
     const std::array< Real, Dim > h;
@@ -26,7 +28,9 @@ struct HyperCubeCell
    using physical_coordinates = std::array< Real, Dim >;
    using jacobian = std::array< Real, Dim >;
    template < typename IntRule >
-   using QuadData = typename IntRule::points::points_1d_tuple;
+   using QuadData =
+      tensor_product_data_from_tuple_t<
+         typename IntRule::points::points_1d_tuple>;
 
    GENDIL_HOST_DEVICE
    HyperCubeCell(

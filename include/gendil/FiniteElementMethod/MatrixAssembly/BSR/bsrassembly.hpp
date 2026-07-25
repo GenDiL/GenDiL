@@ -6,97 +6,12 @@
 
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrpattern.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/localinsertion.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
 
 namespace gendil {
-
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule,
-   class SparseMatrixType >
-void GenericBlockDiagonalAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
-   SparseMatrixType & sparse_matrix)
-{
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
-
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericBlockDiagonalAssembly: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
-
-   using I = std::remove_cvref_t<WeakForm>;
-   ValidateSparseLinearAssemblyCoefficientInputs<I>();
-
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TestName  = requirements<I>::test_name;
-
-   static_assert(TrialName != StaticString{"Error"}, "GenericExplicitOperator: missing TrialSpace in integrand.");
-   static_assert(TestName  != StaticString{"Error"}, "GenericExplicitOperator: missing TestSpace in integrand.");
-
-   // FE spaces come from wf_ctx via MakeTrialField/MakeTestField
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
-
-   // Shared memory requirement: for now, bind to the integration rule used by this operator
-   constexpr size_t required_shared_mem = required_shared_memory_v<KernelPolicy, IntegrationRule>;
-
-   mesh::CellIterator<KernelPolicy>(
-      trial_space,
-      [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
-      {
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
-         KernelContext<KernelPolicy, required_shared_mem> kernel_ctx(_shared_mem);
-
-         AssembleElementSparseMatrix(
-            kernel_ctx,
-            wf_ctx,
-            op_ctx,
-            element_index,
-            weak_form,
-            sparse_matrix
-         );
-      }
-   );
-}
-
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule >
-auto GenericBlockDiagonalAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
-{
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericBSRAssembly: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
-
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto bsr_matrix = MakeBlockDiagonalDGBSRPattern( trial_space );
-
-   GenericBlockDiagonalAssembly<KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      bsr_matrix
-   );
-
-   return bsr_matrix;
-}
 
 template < typename KernelPolicy, typename BSRMatrixType >
 void SyncAssembledBSRValues(
@@ -128,12 +43,94 @@ template<
    class WeakFormContext,
    class IntegrationRule,
    typename Backend >
+auto GenericBSRElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   Backend backend)
+{
+   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
+
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+   static_assert(
+      TrialName != StaticString{"Error"},
+      "GenericBSRElementBlockDiagonalAssembly: missing TrialSpace in "
+      "integrand.");
+   static_assert(
+      TestName != StaticString{"Error"},
+      "GenericBSRElementBlockDiagonalAssembly: missing TestSpace in "
+      "integrand.");
+
+   const auto& trial_space =
+      wf_ctx.template fe_field<TrialName>().space;
+   const auto& test_space =
+      wf_ctx.template fe_field<TestName>().space;
+   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+
+   constexpr GlobalIndex ntrial =
+      LocalDofCount<TrialShapeFunctions>();
+   constexpr GlobalIndex ntest =
+      LocalDofCount<TestShapeFunctions>();
+   const auto& domain_mesh =
+      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+   const GlobalIndex num_elements =
+      static_cast<GlobalIndex>(
+         domain_mesh.GetNumberOfCells());
+
+   auto bsr_matrix =
+      MakeBlockDiagonalDGBSRPattern(
+         num_elements,
+         ntest,
+         ntrial,
+         backend);
+
+   AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      bsr_matrix);
+
+   SyncAssembledBSRValues<KernelPolicy>(bsr_matrix);
+
+   return bsr_matrix;
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericBSRElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericBSRElementBlockDiagonalAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      DefaultBSRBackend{});
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   typename Backend >
 auto GenericBSRAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule,
    Backend backend)
 {
+   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
    constexpr auto TrialName = requirements<WeakForm>::trial_name;
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    auto bsr_matrix = MakeDGBSRPattern( trial_space, backend );

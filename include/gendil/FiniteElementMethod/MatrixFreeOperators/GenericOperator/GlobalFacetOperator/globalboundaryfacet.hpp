@@ -55,7 +55,7 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
 
       ElementContext element_context{
          face_info.MinusSide().GetCellIndex(),
-         face_domain.GetCellFiniteElementSpace().GetCell(
+         face_domain.GetCellMesh().GetCell(
             face_info.MinusSide().GetCellIndex())
       };
 
@@ -211,15 +211,13 @@ void GenericGlobalBoundaryFacetDomainOperator(
 }
 
 template<
-   StaticString TrialName,
-   StaticString TestName,
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
    class FacePart,
-   class CellSpace,
+   class CellMesh,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -227,17 +225,21 @@ void GenericGlobalBoundaryFaceDomainOperator(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    BoundaryFacets<DomainName> domain_tag,
-   const BoundaryFaceExecutionBatch<
+   const SelectedBoundaryFaceExecutionDomain<
       DomainName,
       FaceI,
       FacePart,
-      CellSpace>& batch,
+      CellMesh>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
+   using Form = std::remove_cvref_t<WeakForm>;
+   constexpr auto TrialName = requirements<Form>::trial_name;
+   constexpr auto TestName = requirements<Form>::test_name;
+
    auto batch_ctx =
-      MakeRestrictedWeakFormContext<TrialName, TestName>(
+      MakeRestrictedWeakFormContext<WeakForm>(
          wf_ctx,
          domain_tag,
          batch);

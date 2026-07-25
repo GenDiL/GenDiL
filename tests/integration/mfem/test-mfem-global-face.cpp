@@ -1099,7 +1099,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto form = integrate( InteriorFacets<"mesh">{}, jump( u ) * jump( v ) );
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">( global_space ),
-      MakeIntegrationDomain<"mesh">( global_space ) );
+      MakeIntegrationDomain<"mesh">( partition ) );
    constexpr Integer num_quad_1d = 5;
    auto ir =
       MakeIntegrationRule(
@@ -1192,7 +1192,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
          return Real(1.0);
       };
    auto mu =
-      MakeCoefficient<"diffusivity", PhysicalCoordinate>( diffusivity );
+      MakeCoefficient<"diffusivity", PhysicalCoordinates>( diffusivity );
    auto tau =
       MakeCoefficient<"penalty", InverseFacetSize>(
          [=] GENDIL_HOST_DEVICE ( const Real & h_inv ) -> Real
@@ -1217,11 +1217,11 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto local_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">( local_space ),
-         MakeIntegrationDomain<"mesh">( local_space ) );
+         MakeIntegrationDomain<"mesh">( local_mesh ) );
    auto global_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">( global_space ),
-         MakeIntegrationDomain<"mesh">( global_space ) );
+         MakeIntegrationDomain<"mesh">( conforming_partition ) );
    auto ir =
       MakeIntegrationRule(
          IntegrationRuleNumPoints< num_quad_1d, num_quad_1d >{} );
@@ -1383,7 +1383,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto form = integrate( BoundaryFacets<"mesh">{}, u * v );
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">( global_space ),
-      MakeIntegrationDomain<"mesh">( global_space ) );
+      MakeIntegrationDomain<"mesh">( partition ) );
    constexpr Integer num_quad_1d = 5;
    auto ir =
       MakeIntegrationRule(

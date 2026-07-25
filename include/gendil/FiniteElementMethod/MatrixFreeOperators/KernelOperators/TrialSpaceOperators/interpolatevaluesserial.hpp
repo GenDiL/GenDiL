@@ -81,7 +81,7 @@ inline auto InterpolateValuesImpl( const ElementDofToQuad & element_quad_data, c
    constexpr Integer Rank = get_rank_v< InputTensor >;
    static_assert( ActiveDim < Rank );
 
-   auto& B = std::get< ActiveDim >( element_quad_data );
+   auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
    if constexpr ( ActiveDim+1 == Rank )
       return InterpContraction< false, ActiveDim >( u, B );

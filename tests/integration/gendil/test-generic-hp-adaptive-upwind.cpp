@@ -484,7 +484,7 @@ bool TestFacetOnlyCase(
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer q1d =
       (p_minus > p_plus ? p_minus : p_plus) + 3;
@@ -624,7 +624,7 @@ bool TestFullCellAndFacetCase(
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer q1d =
       (p_minus > p_plus ? p_minus : p_plus) + 3;

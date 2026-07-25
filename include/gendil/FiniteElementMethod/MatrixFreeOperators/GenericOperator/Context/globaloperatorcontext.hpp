@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainfiniteelementspaceiteration.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainiteration.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontextcommon.hpp"
 
 namespace gendil
@@ -181,12 +181,14 @@ struct FacetOperatorContext
    }
 };
 
-template<class IntegrationRule, size_t SelectedIndex, class VolumeSpace>
+template<class IntegrationRule, size_t SelectedIndex, class CellMesh>
 constexpr auto MakeSelectedMeshFacetQuadDataForSide(
-   const VolumeSpace& /*space*/)
+   const CellMesh& /*mesh*/)
 {
-   using Space = std::remove_cvref_t<VolumeSpace>;
-   using Mesh = typename Space::mesh_type;
+   using Mesh = std::remove_cvref_t<CellMesh>;
+   operator_context_detail::ValidateIntegrationRuleGeometry<
+      IntegrationRule,
+      Mesh>();
    using FaceIRs = decltype(GetFaceIntegrationRules(IntegrationRule{}));
    using FaceIR = std::tuple_element_t<SelectedIndex, FaceIRs>;
    using QD = typename Mesh::cell_type::template QuadData<FaceIR>;
@@ -222,22 +224,22 @@ constexpr auto MakeGlobalFacetMeshQuadData(const FaceDomain& face_domain)
    constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
    constexpr size_t PlusI = global_face_mesh_plus_local_face_index_v<Mesh>;
 
-   if constexpr (is_boundary_face_execution_batch_v<Domain>)
+   if constexpr (is_selected_boundary_face_execution_domain_v<Domain>)
    {
       auto minus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, MinusI>(
-            face_domain.GetCellFiniteElementSpace());
+            face_domain.GetCellMesh());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       return BoundaryFacetQData<MinusQD>{ static_cast<MinusQD>(minus_qd) };
    }
-   else if constexpr (is_interior_face_execution_batch_v<Domain>)
+   else if constexpr (is_selected_interior_face_execution_domain_v<Domain>)
    {
       auto minus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, MinusI>(
-            face_domain.GetMinusCellFiniteElementSpace());
+            face_domain.GetMinusCellMesh());
       auto plus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, PlusI>(
-            face_domain.GetPlusCellFiniteElementSpace());
+            face_domain.GetPlusCellMesh());
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       using PlusQD = std::remove_cvref_t<decltype(plus_qd)>;
       return InteriorFacetQuadratureData<MinusQD, PlusQD>{
@@ -309,7 +311,7 @@ constexpr auto MakeGlobalFacetFiniteElementQuadData(
 }
 
 template<class IR, class DomainEntry, class FaceDomain>
-constexpr auto domain_entry_to_global_facet_mesh_qd_tuple(
+constexpr auto MakeGlobalFacetMeshQuadDataEntryTuple(
    const DomainEntry& e,
    const FaceDomain& face_domain)
 {
@@ -321,7 +323,7 @@ constexpr auto domain_entry_to_global_facet_mesh_qd_tuple(
 }
 
 template<class IR, class FEFieldEntry>
-constexpr auto fe_field_entry_to_global_facet_qd_tuple(
+constexpr auto MakeGlobalFacetFiniteElementQuadDataEntryTuple(
    const FEFieldEntry& e)
 {
    using Key = typename FEFieldEntry::key_type;
@@ -342,7 +344,8 @@ constexpr auto MakeCellOnlyOperatorContext(
    auto mesh_qd_t = std::apply(
       [&](auto const&... dom_entries)
       {
-         return std::tuple_cat(domain_entry_to_mesh_qd_tuple<IR>(dom_entries)...);
+         return std::tuple_cat(
+            MakeMeshQuadDataEntryTuple<IR>(dom_entries)...);
       },
       wf_ctx.domains.entries
    );
@@ -350,7 +353,8 @@ constexpr auto MakeCellOnlyOperatorContext(
    auto fe_qd_t = std::apply(
       [&](auto const&... fe_entries)
       {
-         return std::tuple_cat(fe_field_entry_to_elem_qd_tuple<IR>(fe_entries)...);
+         return std::tuple_cat(
+            MakeFiniteElementQuadDataEntryTuple<IR>(fe_entries)...);
       },
       wf_ctx.fe_fields.entries
    );
@@ -393,7 +397,7 @@ constexpr auto MakeFacetOperatorContext(
       [&](auto const&... dom_entries)
       {
          return std::tuple_cat(
-            domain_entry_to_global_facet_mesh_qd_tuple<IR>(
+            MakeGlobalFacetMeshQuadDataEntryTuple<IR>(
                dom_entries,
                face_domain)...);
       },
@@ -404,7 +408,7 @@ constexpr auto MakeFacetOperatorContext(
       [&](auto const&... fe_entries)
       {
          return std::tuple_cat(
-            fe_field_entry_to_global_facet_qd_tuple<IR>(
+            MakeGlobalFacetFiniteElementQuadDataEntryTuple<IR>(
                fe_entries)...);
       },
       wf_ctx.fe_fields.entries

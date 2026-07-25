@@ -38,10 +38,10 @@ int main() {
     TrialSpace<"displacement"> u;
     TestSpace<"displacement"> v;
     InteriorFacets<"mesh1"> interior_facets;
-    auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(velocity);
+    auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(velocity);
 
     auto symmetry_wf = integrate(interior_facets, sigma * jump(u) * average(mu * dot(grad(v), Normal{})));
-    auto wf_context = MakeWeakFormContext(MakeTrialField<"displacement">(fe_space), MakeIntegrationDomain<"mesh1">(fe_space));
+    auto wf_context = MakeWeakFormContext(MakeTrialField<"displacement">(fe_space), MakeIntegrationDomain<"mesh1">(mesh));
     auto generic_operator = MakeGenericOperator<KernelPolicy>(symmetry_wf, wf_context, int_rules);
     generic_operator(u_h, v_h_generic);
 

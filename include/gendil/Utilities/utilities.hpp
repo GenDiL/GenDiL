@@ -22,6 +22,9 @@
 // A tensor index.
 #include "tensorindex.hpp"
 
+// A strongly typed tensor-product data container.
+#include "tensorproductdata.hpp"
+
 // FIFO multi-index linearization helpers.
 #include "multiindex.hpp"
 

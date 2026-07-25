@@ -271,7 +271,7 @@ int TestVectorInteriorOrientation( int fp1, int fp2 )
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( vector_fe_space ),
-      MakeIntegrationDomain< "mesh1" >( vector_fe_space ) );
+      MakeIntegrationDomain< "mesh1" >( mesh ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

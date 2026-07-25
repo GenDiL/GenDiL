@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
@@ -20,6 +21,7 @@ template < int D1D >
 struct HexCell
 {
    static constexpr Integer Dim = 3;
+   using geometry = HyperCube< Dim >;
 
    Real nodes[D1D][D1D][D1D][Dim];
 
@@ -32,20 +34,22 @@ struct HexCell
    using jacobian = std::array< std::array< Real, Dim >, Dim >;
 
    template < typename IntRule >
-   using QuadData =  std::tuple<
-                        CachedDofToQuad<
-                           std::tuple_element_t<0, basis>,
-                           std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
-                        >,
-                        CachedDofToQuad<
-                           std::tuple_element_t<1, basis>,
-                           std::tuple_element_t<1, typename IntRule::points::points_1d_tuple >
-                        >,
-                        CachedDofToQuad<
-                           std::tuple_element_t<2, basis>,
-                           std::tuple_element_t<2, typename IntRule::points::points_1d_tuple >
-                        >
-                     >;
+   using QuadData = TensorProductData<
+      CachedDofToQuad<
+         std::tuple_element_t<0, basis>,
+         std::tuple_element_t<
+            0,
+            typename IntRule::points::points_1d_tuple>>,
+      CachedDofToQuad<
+         std::tuple_element_t<1, basis>,
+         std::tuple_element_t<
+            1,
+            typename IntRule::points::points_1d_tuple>>,
+      CachedDofToQuad<
+         std::tuple_element_t<2, basis>,
+         std::tuple_element_t<
+            2,
+            typename IntRule::points::points_1d_tuple>>>;
 
    GENDIL_HOST_DEVICE
    HexCell( const StridedView<2, const Real> & mesh_nodes,
@@ -97,16 +101,16 @@ struct HexCell
       }
       for (LocalIndex dz = 0; dz < D1D; ++dz)
       {
-         const Real bz = std::get<2>(quad_data).values(qz,dz);
-         const Real gz = std::get<2>(quad_data).gradients(qz,dz);
+         const Real bz = GetTensorProductEntry<2>(quad_data).values(qz,dz);
+         const Real gz = GetTensorProductEntry<2>(quad_data).gradients(qz,dz);
          for (LocalIndex dy = 0; dy < D1D; ++dy)
          {
-            const Real by = std::get<1>(quad_data).values(qy,dy);
-            const Real gy = std::get<1>(quad_data).gradients(qy,dy);
+            const Real by = GetTensorProductEntry<1>(quad_data).values(qy,dy);
+            const Real gy = GetTensorProductEntry<1>(quad_data).gradients(qy,dy);
             for (LocalIndex dx = 0; dx < D1D; ++dx)
             {
-               const Real bx = std::get<0>(quad_data).values(qx,dx);
-               const Real gx = std::get<0>(quad_data).gradients(qx,dx);
+               const Real bx = GetTensorProductEntry<0>(quad_data).values(qx,dx);
+               const Real gx = GetTensorProductEntry<0>(quad_data).gradients(qx,dx);
                Real x[3] = { nodes[ dx ][ dy ][ dz ][ 0 ],
                               nodes[ dx ][ dy ][ dz ][ 1 ],
                               nodes[ dx ][ dy ][ dz ][ 2 ] };

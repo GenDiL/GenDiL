@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/mesh.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
 
 #include <cstddef>
@@ -17,6 +18,10 @@ namespace gendil {
 template<class Mesh>
 struct CellPart
 {
+   static_assert(
+      mesh::MeshWithCellGeometry<Mesh>,
+      "CellPart requires a mesh with cell_type::geometry.");
+
    using mesh_type = Mesh;
 
    Mesh mesh;

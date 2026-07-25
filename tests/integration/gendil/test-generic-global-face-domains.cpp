@@ -21,6 +21,25 @@ using GlobalFaceKernelPolicy =
 #else
 template <Integer>
 using GlobalFaceKernelPolicy = SerialKernelConfiguration;
+
+struct CountingHostKernelConfiguration : HostKernelConfiguration
+{
+   static inline Integer block_loop_count = 0;
+
+   static void Reset()
+   {
+      block_loop_count = 0;
+   }
+
+   template<class Lambda>
+   static void BlockLoop(const GlobalIndex n, Lambda&& body)
+   {
+      ++block_loop_count;
+      HostKernelConfiguration::BlockLoop(
+         n,
+         std::forward<Lambda>(body));
+   }
+};
 #endif
 
 template <typename VectorType>
@@ -62,54 +81,36 @@ void FillPattern(VectorType& x)
    }
 }
 
-template<class Mesh, class FiniteElement, class InteriorFaces>
-auto MakeInteriorGlobalMixedSpace(
+template<class Mesh, class InteriorFaces>
+auto MakeInteriorGlobalPartition(
    const Mesh& mesh,
-   const FiniteElement& finite_element,
    const InteriorFaces& interior_faces)
 {
-   auto partition =
-      MakePartition(
-         MakeCellPart(mesh),
-         MakeInteriorFacePart<0, 0>(interior_faces));
-   return MakeMixedFiniteElementSpace(
-      partition,
-      std::tuple{finite_element},
-      DGDirectSumNumbering{});
+   return MakePartition(
+      MakeCellPart(mesh),
+      MakeInteriorFacePart<0, 0>(interior_faces));
 }
 
-template<class Mesh, class FiniteElement, class BoundaryFaces>
-auto MakeBoundaryGlobalMixedSpace(
+template<class Mesh, class BoundaryFaces>
+auto MakeBoundaryGlobalPartition(
    const Mesh& mesh,
-   const FiniteElement& finite_element,
    const BoundaryFaces& boundary_faces)
 {
-   auto partition =
-      MakePartition(
-         MakeCellPart(mesh),
-         MakeBoundaryFacePart<0>(boundary_faces));
-   return MakeMixedFiniteElementSpace(
-      partition,
-      std::tuple{finite_element},
-      DGDirectSumNumbering{});
+   return MakePartition(
+      MakeCellPart(mesh),
+      MakeBoundaryFacePart<0>(boundary_faces));
 }
 
-template<class Mesh, class FiniteElement, class InteriorFaces, class BoundaryFaces>
-auto MakeInteriorBoundaryGlobalMixedSpace(
+template<class Mesh, class InteriorFaces, class BoundaryFaces>
+auto MakeInteriorBoundaryGlobalPartition(
    const Mesh& mesh,
-   const FiniteElement& finite_element,
    const InteriorFaces& interior_faces,
    const BoundaryFaces& boundary_faces)
 {
-   auto partition =
-      MakePartition(
-         MakeCellPart(mesh),
-         MakeInteriorFacePart<0, 0>(interior_faces),
-         MakeBoundaryFacePart<0>(boundary_faces));
-   return MakeMixedFiniteElementSpace(
-      partition,
-      std::tuple{finite_element},
-      DGDirectSumNumbering{});
+   return MakePartition(
+      MakeCellPart(mesh),
+      MakeInteriorFacePart<0, 0>(interior_faces),
+      MakeBoundaryFacePart<0>(boundary_faces));
 }
 
 template <typename VectorType>
@@ -230,6 +231,21 @@ bool CheckDenseClose(
    return true;
 }
 
+#if !defined(GENDIL_USE_DEVICE)
+bool CheckLaunchCount(
+   const char* label,
+   const Integer expected)
+{
+   const Integer actual =
+      CountingHostKernelConfiguration::block_loop_count;
+   std::cout
+      << label
+      << " | launches = " << actual
+      << ", expected = " << expected << "\n";
+   return actual == expected;
+}
+#endif
+
 struct FullSharedThreadedFaceKernelPolicy :
    public DeviceKernelConfiguration<ThreadBlockLayout<1>, 1, 1>
 {
@@ -252,16 +268,20 @@ bool TestContextStorage()
    auto boundary_faces =
       MakeCartesianBoundaryFaceConnectivity<Dim>({n, n});
 
-   auto singleton_global_fes =
-      MakeInteriorBoundaryGlobalMixedSpace(
+   auto partition =
+      MakeInteriorBoundaryGlobalPartition(
          mesh,
-         finite_element,
          interior_faces,
          boundary_faces);
+   auto singleton_global_fes =
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{finite_element},
+         DGDirectSumNumbering{});
 
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(singleton_global_fes),
-      MakeIntegrationDomain<"mesh">(singleton_global_fes));
+      MakeIntegrationDomain<"mesh">(partition));
 
    using Ctx = decltype(ctx);
    static_assert(Ctx::template has_domain<"mesh">());
@@ -269,7 +289,6 @@ bool TestContextStorage()
    static_assert(Ctx::template has_boundary_face_domain<"mesh">());
    static_assert(Ctx::has_any_interior_face_domain());
    static_assert(Ctx::has_any_boundary_face_domain());
-   static_assert(use_global_facets_operator_v<Ctx>);
    static_assert(!Ctx::template has_interior_face_domain<"other">());
    static_assert(!Ctx::template has_boundary_face_domain<"other">());
 
@@ -436,16 +455,21 @@ bool TestInteriorTwoCellSigns()
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeIntegrationDomain<"mesh">(fe_space));
+      MakeIntegrationDomain<"mesh">(mesh));
 
    auto interior_faces =
       MakeCartesianInteriorFaceConnectivity<1>({n});
+   auto partition =
+      MakeInteriorGlobalPartition(mesh, interior_faces);
    auto singleton_global_fes =
-      MakeInteriorGlobalMixedSpace(mesh, finite_element, interior_faces);
+      MakeMixedFiniteElementSpace(
+         partition,
+         std::tuple{finite_element},
+         DGDirectSumNumbering{});
 
    auto global_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(singleton_global_fes),
-      MakeIntegrationDomain<"mesh">(singleton_global_fes));
+      MakeIntegrationDomain<"mesh">(partition));
 
    auto local_op =
       MakeGenericOperator<LocalKernelPolicy>(
@@ -579,76 +603,82 @@ bool TestDispatchIndependence()
    auto boundary_faces =
       MakeCartesianBoundaryFaceConnectivity<Dim>({nx, ny});
 
-   auto interior_global_fes =
-      MakeInteriorGlobalMixedSpace(mesh, finite_element, interior_faces);
-   auto boundary_global_fes =
-      MakeBoundaryGlobalMixedSpace(mesh, finite_element, boundary_faces);
-   auto both_global_fes =
-      MakeInteriorBoundaryGlobalMixedSpace(
+   auto interior_partition =
+      MakeInteriorGlobalPartition(mesh, interior_faces);
+   auto boundary_partition =
+      MakeBoundaryGlobalPartition(mesh, boundary_faces);
+   auto both_partition =
+      MakeInteriorBoundaryGlobalPartition(
          mesh,
-         finite_element,
          interior_faces,
          boundary_faces);
+   using BothPartition = std::remove_cvref_t<decltype(both_partition)>;
+   constexpr Integer expected_global_launches =
+      static_cast<Integer>(
+         BothPartition::num_cell_parts +
+         BothPartition::num_interior_face_parts +
+         BothPartition::num_boundary_face_parts);
+   auto interior_global_fes =
+      MakeMixedFiniteElementSpace(
+         interior_partition,
+         std::tuple{finite_element},
+         DGDirectSumNumbering{});
+   auto boundary_global_fes =
+      MakeMixedFiniteElementSpace(
+         boundary_partition,
+         std::tuple{finite_element},
+         DGDirectSumNumbering{});
+   auto both_global_fes =
+      MakeMixedFiniteElementSpace(
+         both_partition,
+         std::tuple{finite_element},
+         DGDirectSumNumbering{});
 
    auto local_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
       MakeFiniteElementField<"mu">(fe_space, local_mu_view),
-      MakeIntegrationDomain<"mesh">(fe_space));
+      MakeIntegrationDomain<"mesh">(mesh));
 
    auto interior_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(interior_global_fes),
       MakeFiniteElementField<"mu">(interior_global_fes, global_mu_view),
-      MakeIntegrationDomain<"mesh">(interior_global_fes));
+      MakeIntegrationDomain<"mesh">(interior_partition));
 
    auto boundary_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(boundary_global_fes),
       MakeFiniteElementField<"mu">(boundary_global_fes, global_mu_view),
-      MakeIntegrationDomain<"mesh">(boundary_global_fes));
+      MakeIntegrationDomain<"mesh">(boundary_partition));
 
    auto both_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(both_global_fes),
       MakeFiniteElementField<"mu">(both_global_fes, global_mu_view),
-      MakeIntegrationDomain<"mesh">(both_global_fes));
+      MakeIntegrationDomain<"mesh">(both_partition));
 
-   static_assert(!use_global_facets_operator_v<decltype(local_ctx)>);
-   static_assert(use_global_facets_operator_v<decltype(interior_ctx)>);
-   static_assert(use_global_facets_operator_v<decltype(boundary_ctx)>);
-   static_assert(use_global_facets_operator_v<decltype(both_ctx)>);
-
+   using DomainKind =
+      generic_operator_detail::GenericOperatorDomainKind;
    static_assert(
-      global_facet_domain_requirements_satisfied_v<
-         decltype(interior_form),
-         decltype(interior_ctx)>);
-   static_assert(
-      global_facet_domain_requirements_satisfied_v<
-         decltype(boundary_form),
-         decltype(boundary_ctx)>);
-   static_assert(
-      global_facet_domain_requirements_satisfied_v<
+      generic_operator_detail::generic_operator_domain_kind_v<
          decltype(form),
-         decltype(both_ctx)>);
+         decltype(local_ctx)> == DomainKind::Mesh);
    static_assert(
-      !global_facet_domain_requirements_satisfied_v<
+      generic_operator_detail::generic_operator_domain_kind_v<
          decltype(form),
-         decltype(interior_ctx)>);
-   static_assert(
-      !global_facet_domain_requirements_satisfied_v<
-         decltype(form),
-         decltype(boundary_ctx)>);
+         decltype(both_ctx)> == DomainKind::Partition);
 
    InteriorFacets<"mesh_a"> interior_facets_a;
    InteriorFacets<"mesh_b"> interior_facets_b;
    auto two_name_interior_form =
       integrate(interior_facets_a, jump(u) * jump(v))
       + integrate(interior_facets_b, jump(u) * jump(v));
-   auto mesh_a_ctx = MakeWeakFormContext(
+   auto two_partition_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(interior_global_fes),
       MakeFiniteElementField<"mu">(interior_global_fes, global_mu_view),
-      MakeIntegrationDomain<"mesh_a">(interior_global_fes));
+      MakeIntegrationDomain<"mesh_a">(interior_partition),
+      MakeIntegrationDomain<"mesh_b">(interior_partition));
    static_assert(
-      !global_facet_domain_requirements_satisfied_v<
+      generic_operator_detail::generic_operator_domain_kind_v<
          decltype(two_name_interior_form),
-         decltype(mesh_a_ctx)>);
+         decltype(two_partition_ctx)> == DomainKind::Partition);
 
    const Vector y_local = ApplyOperator(
       MakeGenericOperator<LocalKernelPolicy>(form, local_ctx, integration_rule),
@@ -696,11 +726,151 @@ bool TestDispatchIndependence()
          integration_rule),
       u_h);
 
+#if !defined(GENDIL_USE_DEVICE)
+   auto gradient_form =
+      integrate(cells, dot(grad(u), grad(v)));
+   auto counted_local_form = form + gradient_form;
+
+   CountingHostKernelConfiguration::Reset();
+   const Vector y_counted_local = ApplyOperator(
+      MakeGenericOperator<CountingHostKernelConfiguration>(
+         counted_local_form,
+         local_ctx,
+         integration_rule),
+      u_h);
+   const Integer counted_local_launches =
+      CountingHostKernelConfiguration::block_loop_count;
+
+   Vector y_counted_local_ref = y_local;
+   y_counted_local_ref += ApplyOperator(
+      MakeGenericOperator<SerialKernelConfiguration>(
+         gradient_form,
+         local_ctx,
+         integration_rule),
+      u_h);
+
+   auto two_mesh_form =
+      integrate(Cells<"mesh_a">{}, u * v)
+      + integrate(Cells<"mesh_b">{}, u * v);
+   auto two_mesh_ctx = MakeWeakFormContext(
+      MakeTrialField<"u">(fe_space),
+      MakeIntegrationDomain<"mesh_a">(mesh),
+      MakeIntegrationDomain<"mesh_b">(mesh));
+   static_assert(
+      generic_operator_detail::generic_operator_domain_kind_v<
+         decltype(two_mesh_form),
+         decltype(two_mesh_ctx)> == DomainKind::Mesh);
+
+   CountingHostKernelConfiguration::Reset();
+   const Vector y_two_mesh = ApplyOperator(
+      MakeGenericOperator<CountingHostKernelConfiguration>(
+         two_mesh_form,
+         two_mesh_ctx,
+         integration_rule),
+      u_h);
+   const Integer two_mesh_launches =
+      CountingHostKernelConfiguration::block_loop_count;
+
+   Vector y_two_mesh_ref = y_cell_ref;
+   y_two_mesh_ref += y_cell_ref;
+
+   CountingHostKernelConfiguration::Reset();
+   const Vector y_counted_global = ApplyOperator(
+      MakeGenericOperator<CountingHostKernelConfiguration>(
+         form,
+         both_ctx,
+         integration_rule),
+      u_h);
+   const Integer counted_global_launches =
+      CountingHostKernelConfiguration::block_loop_count;
+#endif
+
+   TrialSpace<"u_local"> u_local;
+   TestSpace<"u_local"> v_local;
+   TrialSpace<"u_global"> u_global;
+   TestSpace<"u_global"> v_global;
+   auto local_named_form =
+      integrate(
+         InteriorFacets<"local_mesh">{},
+         jump(u_local) * jump(v_local));
+   auto global_named_form =
+      integrate(
+         InteriorFacets<"global_partition">{},
+         jump(u_global) * jump(v_global));
+   auto mixed_domain_ctx = MakeWeakFormContext(
+      MakeTrialField<"u_local">(fe_space),
+      MakeTrialField<"u_global">(interior_global_fes),
+      MakeIntegrationDomain<"local_mesh">(mesh),
+      MakeIntegrationDomain<"global_partition">(interior_partition));
+   auto mixed_named_form =
+      local_named_form + global_named_form;
+   static_assert(
+      generic_operator_detail::generic_operator_domain_kind_v<
+         decltype(mixed_named_form),
+         decltype(mixed_domain_ctx)> == DomainKind::Mixed);
+   const Vector y_named_local = ApplyOperator(
+      MakeGenericOperator<LocalKernelPolicy>(
+         local_named_form,
+         mixed_domain_ctx,
+         integration_rule),
+      u_h);
+   const Vector y_named_global = ApplyOperator(
+      MakeGenericOperator<GlobalFaceKernelPolicy<num_quad_1d>>(
+         global_named_form,
+         mixed_domain_ctx,
+         integration_rule),
+      u_h);
+
    bool success = true;
    success = CheckClose("interior-only form with interior domain", y_interior, y_interior_ref) && success;
    success = CheckClose("boundary-only form with boundary domain", y_boundary, y_boundary_ref) && success;
    success = CheckClose("interior+boundary-domain dispatch", y_both, y_local) && success;
    success = CheckClose("cell-only form with global face domain", y_cell, y_cell_ref) && success;
+#if !defined(GENDIL_USE_DEVICE)
+   CountingHostKernelConfiguration::block_loop_count =
+      counted_local_launches;
+   success =
+      CheckLaunchCount("fused local named mesh domain", 1) &&
+      success;
+   success =
+      CheckClose(
+         "fused local traversal result",
+         y_counted_local,
+         y_counted_local_ref) &&
+      success;
+
+   CountingHostKernelConfiguration::block_loop_count =
+      two_mesh_launches;
+   success =
+      CheckLaunchCount("one fused launch per named mesh domain", 2) &&
+      success;
+   success =
+      CheckClose(
+         "two named mesh domains",
+         y_two_mesh,
+         y_two_mesh_ref) &&
+      success;
+
+   CountingHostKernelConfiguration::block_loop_count =
+      counted_global_launches;
+   success =
+      CheckLaunchCount(
+         "partition per-integrand execution-part launches",
+         expected_global_launches) &&
+      success;
+   success =
+      CheckClose(
+         "partition per-integrand traversal result",
+         y_counted_global,
+         y_both) &&
+      success;
+#endif
+   success =
+      CheckClose(
+         "named mesh/partition domains dispatch independently",
+         y_named_global,
+         y_named_local) &&
+      success;
    return success;
 }
 

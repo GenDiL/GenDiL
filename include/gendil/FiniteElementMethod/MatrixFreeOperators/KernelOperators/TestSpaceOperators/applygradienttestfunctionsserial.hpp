@@ -96,7 +96,7 @@ inline auto ApplyGradientTestFunctionsImpl( const ElementDofToQuad & element_qua
    constexpr Integer Rank = get_rank_v< InputTensor > - 1;
    constexpr bool SumReduce = (ActiveDim == 0);
 
-   auto& B = std::get< ActiveDim >( element_quad_data );
+   auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
    if constexpr ( ActiveDim+1 == Rank )
       return AdjointGradientContraction< ActiveDim, SumReduce >( u, B );
@@ -113,8 +113,8 @@ inline auto ApplyGradientTestFunctionsImpl( const ElementDofToQuad & element_qua
  * @tparam Add Specify if values should be accumulated or overwritten.
  * @tparam FiniteElementSpace The finite element space.
  * @tparam IntegrationRule The integration rule.
- * @tparam ElementDofToQuad A tuple of DofToQuad types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @tparam ElementDofToQuad TensorProductDofToQuad data.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param Duq The values at quadrature point.
  * @param dofs_out The contribution to the degrees-of-freed4.
  * 
