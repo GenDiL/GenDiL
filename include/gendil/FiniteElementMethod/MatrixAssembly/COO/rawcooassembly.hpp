@@ -5,10 +5,12 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoolayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
+#include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
 
@@ -134,10 +136,14 @@ auto GenericRawCOOAssembly(
          static_cast< GlobalIndex >( trial_space.GetNumberOfFiniteElementDofs() ),
          layout.nnz_raw );
 
-   RawCOOAssemblyTarget< Real, GlobalIndex > coo_target{
-      coo_buffer,
-      layout
-   };
+   static_assert(
+      is_host_configuration_v< KernelPolicy > !=
+         is_device_configuration_v< KernelPolicy >,
+      "RawCOO assembly requires a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   auto coo_target =
+      MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
 
    GenericAssembly<KernelPolicy>(
       weak_form,
@@ -145,8 +151,10 @@ auto GenericRawCOOAssembly(
       integration_rule,
       coo_target );
 
-   SyncRawCOOTripletBuffer< KernelPolicy >( coo_buffer );
-   FreeRawCOOAssemblyLayout( layout );
+   if constexpr ( !is_host_configuration_v< KernelPolicy > )
+   {
+      GENDIL_DEVICE_SYNC;
+   }
 
    return coo_buffer;
 }
@@ -242,10 +250,14 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
             trial_space.GetNumberOfFiniteElementDofs()),
          layout.nnz_raw);
 
-   RawCOOAssemblyTarget<Real, GlobalIndex> coo_target{
-      coo_buffer,
-      layout
-   };
+   static_assert(
+      is_host_configuration_v< KernelPolicy > !=
+         is_device_configuration_v< KernelPolicy >,
+      "RawCOO assembly requires a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   auto coo_target =
+      MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
 
    AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
       weak_form,
@@ -253,8 +265,10 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
       integration_rule,
       coo_target);
 
-   SyncRawCOOTripletBuffer<KernelPolicy>(coo_buffer);
-   FreeRawCOOAssemblyLayout(layout);
+   if constexpr ( !is_host_configuration_v< KernelPolicy > )
+   {
+      GENDIL_DEVICE_SYNC;
+   }
 
    return coo_buffer;
 }

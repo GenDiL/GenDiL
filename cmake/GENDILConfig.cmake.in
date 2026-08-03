@@ -9,6 +9,19 @@ endif()
 if (@USE_MFEM@)
     set(MFEM_DIR "@MFEM_DIR@" CACHE PATH "")
     find_dependency(MFEM)
+
+    if (@USE_CUDA@ AND NOT MFEM_USE_CUDA)
+        message(FATAL_ERROR
+            "This GenDiL package was built with CUDA and requires a "
+            "CUDA-enabled MFEM, but the found MFEM was built without CUDA "
+            "support.")
+    endif()
+    if (@USE_HIP@ AND NOT MFEM_USE_HIP)
+        message(FATAL_ERROR
+            "This GenDiL package was built with HIP and requires a "
+            "HIP-enabled MFEM, but the found MFEM was built without HIP "
+            "support.")
+    endif()
 endif()
 
 if (@USE_RAJA@)
@@ -23,6 +36,15 @@ endif()
 
 if (@USE_HYPRE@)
     find_dependency(HYPRE CONFIG REQUIRED)
+endif()
+
+if (@USE_CUDA@)
+    find_dependency(CUDAToolkit REQUIRED)
+endif()
+
+if (@USE_HIP@)
+    find_dependency(HIP REQUIRED)
+    find_dependency(rocsparse CONFIG REQUIRED)
 endif()
 
 set(GENDIL_USE_CUDA "@USE_CUDA@")

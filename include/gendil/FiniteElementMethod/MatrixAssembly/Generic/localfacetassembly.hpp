@@ -67,7 +67,7 @@ template <
    typename OperatorContext,
    typename DomainMesh,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleElementSparseMatrix(
    KernelContext & kernel_context,
@@ -76,7 +76,7 @@ void AssembleElementSparseMatrix(
    const DomainMesh & domain_mesh,
    const GlobalIndex & element_index,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName = requirements<Integrand>::test_name;
@@ -126,7 +126,7 @@ template <
    typename ElementContextType,
    typename FaceInfo,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetSelfSparseMatrix(
    KernelContext & kernel_context,
@@ -136,7 +136,7 @@ void AssembleInteriorFacetSelfSparseMatrix(
    const GlobalIndex & element_index,
    const FaceInfo & face_info,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName  = requirements<Integrand>::test_name;
@@ -194,7 +194,7 @@ template <
    typename ElementContextType,
    typename FaceInfo,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetNeighborSparseMatrix(
    KernelContext & kernel_context,
@@ -204,7 +204,7 @@ void AssembleInteriorFacetNeighborSparseMatrix(
    const GlobalIndex & element_index,
    const FaceInfo & face_info,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName = requirements<Integrand>::test_name;
@@ -268,7 +268,7 @@ template <
    typename OperatorContext,
    typename DomainMesh,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetSparseMatrix(
    KernelContext & kernel_context,
@@ -277,7 +277,7 @@ void AssembleInteriorFacetSparseMatrix(
    const DomainMesh & domain_mesh,
    const GlobalIndex & element_index,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    ElementContext element_context{
       element_index,
@@ -316,7 +316,7 @@ template <
    typename OperatorContext,
    typename DomainMesh,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleInteriorFacetElementBlockDiagonalSparseMatrix(
    KernelContext & kernel_context,
@@ -325,7 +325,7 @@ void AssembleInteriorFacetElementBlockDiagonalSparseMatrix(
    const DomainMesh & domain_mesh,
    const GlobalIndex & element_index,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    ElementContext element_context{
       element_index,
@@ -355,7 +355,7 @@ template <
    typename OperatorContext,
    typename DomainMesh,
    FormExpr Integrand,
-   typename SparseMatrixType >
+   typename SparseMatrix >
 GENDIL_HOST_DEVICE
 void AssembleBoundaryFacetSparseMatrix(
    KernelContext & kernel_context,
@@ -364,7 +364,7 @@ void AssembleBoundaryFacetSparseMatrix(
    const DomainMesh & domain_mesh,
    const GlobalIndex & element_index,
    const Integrand & integrand,
-   SparseMatrixType & sparse_matrix )
+   SparseMatrix & sparse_matrix )
 {
    constexpr auto TrialName = requirements<Integrand>::trial_name;
    constexpr auto TestName  = requirements<Integrand>::test_name;

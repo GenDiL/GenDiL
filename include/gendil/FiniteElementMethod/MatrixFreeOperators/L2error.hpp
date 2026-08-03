@@ -66,7 +66,7 @@ void L2ErrorElementOperatorSerial(
       error += Du_q;
    } );
 
-   AtomicAdd( *sum_ptr, error );
+   AtomicAddInPlace( *sum_ptr, error );
 }
 
 template <
@@ -125,13 +125,13 @@ void L2ErrorElementOperatorThreaded(
       const Real diff = Bu_q - analytical_sol;
       const Real Du_q = weight * detJ * diff * diff;
 
-      AtomicAdd( *error, Du_q );
+      AtomicAddInPlace( *error, Du_q );
    } );
 
    kernel_conf.Sync();
    if ( kernel_conf.GetLinearThreadIndex() == 0 )
    {
-      AtomicAdd( *sum_ptr, *error );
+      AtomicAddInPlace( *sum_ptr, *error );
    }
    kernel_conf.Sync();
 

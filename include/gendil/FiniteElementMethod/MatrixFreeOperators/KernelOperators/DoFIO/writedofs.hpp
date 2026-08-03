@@ -57,7 +57,7 @@ void WriteDofs( const GlobalIndex element_index,
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
          {
-            AtomicAdd( global_dofs( indices..., element_index ), local_dofs( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), local_dofs( indices... ) );
          }
       );
    }
@@ -93,7 +93,7 @@ void SerialWriteDofs(
       [&]( auto... indices )
       {      
          if constexpr ( Add )
-            AtomicAdd( global_dofs( indices..., element_index ), x( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), x( indices... ) );
             // TODO: Should we assume no aliasing in the general case?
             // global_dofs( indices..., element_index ) += x( indices... );
          else
@@ -105,7 +105,7 @@ void SerialWriteDofs(
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
          {
-            AtomicAdd( global_dofs( indices..., element_index ), x( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), x( indices... ) );
          }
       );
    }
@@ -144,7 +144,7 @@ void ThreadedWriteDofs(
          UnitLoop< rshape >( [&] ( auto... k )
          {
             if constexpr ( Add )
-               AtomicAdd( global_dofs( t..., k..., element_index ), x( k... ) );
+               AtomicAddInPlace( global_dofs( t..., k..., element_index ), x( k... ) );
                // TODO: Should we assume no aliasing in the general case?
                // global_dofs( t..., k..., element_index ) += x( k... );
             else
@@ -158,7 +158,7 @@ void ThreadedWriteDofs(
       {
          UnitLoop< rshape >( [&] ( auto... k )
          {
-            AtomicAdd( global_dofs( t..., k..., element_index ), x( k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), x( k... ) );
          });
       });
    }
@@ -213,7 +213,7 @@ void WriteVectorDofsSerial(
          UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
          {
             if constexpr ( Add )
-               AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+               AtomicAddInPlace( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
                // TODO: Should we assume no aliasing in the general case?
                // global_dofs( indices..., element_index ) += x( indices... );
             else
@@ -227,7 +227,7 @@ void WriteVectorDofsSerial(
       {
          UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
          {
-            AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+            AtomicAddInPlace( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
          });
       });
    }
@@ -263,7 +263,7 @@ void WriteVectorDofsThreaded(
                typename FiniteElementSpace::restriction_type >::is_injective )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else
-               AtomicAdd( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
+               AtomicAddInPlace( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
          });
       });
    });
@@ -397,9 +397,9 @@ void SerialWriteDofs(
       [&]( auto... indices )
       {
          if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( indices..., element_index ), oriented_view( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), oriented_view( indices... ) );
          else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
          else
             global_dofs( indices..., element_index ) = oriented_view( indices... );
       }
@@ -461,9 +461,9 @@ void ThreadedWriteDofs(
       UnitLoop< rshape >( [&] ( auto... k )
       {
          if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
          else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
          else
             global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );;
       });
@@ -520,13 +520,13 @@ void SerialWriteVectorFaceDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                global_component( indices..., element_index ),
                oriented_view( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                global_component( indices..., element_index ),
                -oriented_view( indices... ) );
          }
@@ -610,13 +610,13 @@ void ThreadedWriteVectorFaceDofs(
          {
             if constexpr ( Op == WriteAdd )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   global_component( t..., k..., element_index ),
                   oriented_view( t..., k... ) );
             }
             else if constexpr ( Op == WriteSub )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   global_component( t..., k..., element_index ),
                   -oriented_view( t..., k... ) );
             }
@@ -676,13 +676,13 @@ void DirectGlobalSerialWriteDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                local_dofs( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                -local_dofs( indices... ) );
          }
@@ -752,13 +752,13 @@ void DirectGlobalThreadedWriteDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( t..., k... ),
                local_dofs( k... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( t..., k... ),
                -local_dofs( k... ) );
          }
@@ -814,13 +814,13 @@ void DirectGlobalSerialWriteVectorFaceDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                local_component( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                -local_component( indices... ) );
          }
@@ -894,13 +894,13 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
          {
             if constexpr ( Op == WriteAdd )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   oriented_global_dofs( t..., k... ),
                   local_component( k... ) );
             }
             else if constexpr ( Op == WriteSub )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   oriented_global_dofs( t..., k... ),
                   -local_component( k... ) );
             }

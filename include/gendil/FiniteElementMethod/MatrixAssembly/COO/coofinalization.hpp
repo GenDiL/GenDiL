@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
 
 namespace gendil {
@@ -17,42 +17,41 @@ namespace gendil {
  * The policy reads the current host copy of `RawCOOTripletBuffer`, sorts by
  * `(row, col)`, and additively reduces exact duplicate coordinates. Callers are
  * responsible for ensuring the raw host buffers are current before calling this
- * policy; `GenericRawCOOAssembly` does that before returning its RawCOO buffer.
+ * policy. The buffer overload obtains a host read view and therefore performs
+ * any required device-to-host synchronization lazily.
  */
 struct HostSortReduceRawCOOPolicy
 { };
 
 template < typename ValueType, typename IndexType, typename Backend >
 auto FinalizeRawCOOToCOO(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   const RawCOOTripletView< ValueType, IndexType > & raw,
    const HostSortReduceRawCOOPolicy &,
    Backend backend )
 {
+   using StoredValueType = std::remove_const_t< ValueType >;
+   using StoredIndexType = std::remove_const_t< IndexType >;
    const auto reduced =
       details::MakeSortedReducedRawCOOTriplets<
          SparseCoordinateOrder::RowThenColumn >( raw );
 
    auto matrix =
-      MakeCOOMatrix< ValueType, IndexType, Backend >(
+      MakeCOOMatrix< StoredValueType, StoredIndexType, Backend >(
          raw.num_rows,
          raw.num_cols,
-         static_cast< IndexType >( reduced.size() ),
-         backend );
+         static_cast< StoredIndexType >( reduced.size() ),
+         std::move( backend ) );
 
-   for ( IndexType i = 0; i < matrix.nnz; ++i )
+   auto matrix_data = GetHostWriteView( matrix );
+   for ( StoredIndexType i = 0; i < matrix_data.nnz; ++i )
    {
       const auto & triplet = reduced[static_cast< size_t >( i )];
-      matrix.rows[i] = triplet.row;
-      matrix.cols[i] = triplet.col;
-      matrix.values[i] = triplet.value;
+      matrix_data.rows[i] = triplet.row;
+      matrix_data.cols[i] = triplet.col;
+      matrix_data.values[i] = triplet.value;
    }
 
-   if ( matrix.nnz > 0 )
-   {
-      ToDevice( static_cast< GlobalIndex >( matrix.nnz ), matrix.rows );
-      ToDevice( static_cast< GlobalIndex >( matrix.nnz ), matrix.cols );
-      ToDevice( static_cast< GlobalIndex >( matrix.nnz ), matrix.values );
-   }
+   Sync( matrix );
 
    return matrix;
 }
@@ -63,9 +62,21 @@ auto FinalizeRawCOOToCOO(
    const HostSortReduceRawCOOPolicy & policy )
 {
    return FinalizeRawCOOToCOO(
-      raw,
+      GetHostReadView( raw ),
       policy,
       DefaultCOOBackend{} );
+}
+
+template < typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCOO(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   const HostSortReduceRawCOOPolicy & policy,
+   Backend backend )
+{
+   return FinalizeRawCOOToCOO(
+      GetHostReadView( raw ),
+      policy,
+      std::move( backend ) );
 }
 
 } // namespace gendil

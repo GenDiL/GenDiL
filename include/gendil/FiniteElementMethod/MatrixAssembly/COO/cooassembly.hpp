@@ -33,8 +33,7 @@ auto GenericCOOAssembly(
       FinalizeRawCOOToCOO(
          raw_coo,
          HostSortReduceRawCOOPolicy{},
-         backend );
-   FreeRawCOOTripletBuffer( raw_coo );
+         std::move( backend ) );
    return coo;
 }
 

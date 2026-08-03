@@ -4,6 +4,9 @@ add_my_test(test-kernel-configuration test-kernel-configuration.cpp)
 add_my_test(test-getpoint test-getpoint.cpp)
 add_my_test(test-garbage-collector test-garbage-collector.cpp)
 add_my_test(test-read-write test-read-write.cpp)
+add_my_test(test-vector-access test-vector-access.cpp)
+add_my_test(test-kernel-loop test-kernel-loop.cpp)
+add_my_test(test-atomic-add test-atomic-add.cpp)
 add_my_test(test-dof-to-quad-policies test-dof-to-quad-policies.cpp)
 add_my_test(test-facet-quad-data test-facet-quad-data.cpp)
 add_my_test(test-cell-reference-geometry test-cell-reference-geometry.cpp)
@@ -18,7 +21,12 @@ add_non_nvcc_test(test-coo-matrix test-coo-matrix.cpp)
 add_non_nvcc_test(test-csr-matrix test-csr-matrix.cpp)
 add_non_nvcc_test(test-csc-matrix test-csc-matrix.cpp)
 add_non_nvcc_test(test-sparse-matrix-apply-arithmetic test-sparse-matrix-apply-arithmetic.cpp)
+add_non_nvcc_test(test-sparse-matrix-apply-add test-sparse-matrix-apply-add.cpp)
 add_non_nvcc_test(test-raw-coo-assembly test-raw-coo-assembly.cpp)
+add_my_test(
+  test-sparse-storage-ownership
+  test-sparse-storage-ownership.cpp
+)
 if(USE_HYPRE)
   add_my_test(test-hypre-csr-matrix test-hypre-csr-matrix.cpp)
 endif()
@@ -30,6 +38,14 @@ if(USE_CUDA OR USE_HIP)
   add_my_test(test-coo-device-apply test-coo-device-apply.cpp)
   add_my_test(test-csr-device-apply test-csr-device-apply.cpp)
   add_my_test(test-csc-device-apply test-csc-device-apply.cpp)
+  add_my_test(
+    test-sgbsr-device-gather-scatter
+    test-sgbsr-device-gather-scatter.cpp
+  )
+  add_my_test(
+    test-vendor-sparse-device-apply
+    test-vendor-sparse-device-apply.cpp
+  )
   add_my_test(test-device-kernel-configuration test-device-kernel-configuration.cpp)
   add_my_test(test-cell-iterator-device test-cell-iterator-device.cpp)
   add_my_test(test-threaded-dot-shared-arena test-threaded-dot-shared-arena.cpp)

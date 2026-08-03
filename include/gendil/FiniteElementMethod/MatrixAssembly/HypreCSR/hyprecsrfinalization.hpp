@@ -101,7 +101,7 @@ inline HypreCSRMetadata MakeHypreCSRMetadata(
  * 3. Build CSR row counts and convert them to prefix sums.
  * 4. Fill `col_ind` and `values` using `HYPRE_Int` and `HYPRE_Complex`.
  * 5. Record diagonal metadata from the first entry of each eligible row.
- * 6. Mark the CSR arrays host/device current through `ToDevice`.
+ * 6. Mark the CSR arrays host/device current through the owning CSR state.
  *
  * This function does not insert missing diagonals. Missing diagonal entries are
  * recorded in the metadata so matvec-only and solver-oriented callers can make
@@ -113,17 +113,18 @@ auto FinalizeRawCOOToHypreCSR(
    const HostSortReduceRawCOOToHypreCSRPolicy &,
    Backend backend )
 {
+   const auto raw_data = GetHostReadView( raw );
    const auto reduced =
       details::MakeSortedReducedRawCOOTriplets<
-         SparseCoordinateOrder::RowThenDiagonalThenColumn >( raw );
+         SparseCoordinateOrder::RowThenDiagonalThenColumn >( raw_data );
 
    const HYPRE_Int num_rows =
       details::CheckedHypreNarrow< HYPRE_Int >(
-         raw.num_rows,
+         raw_data.num_rows,
          "FinalizeRawCOOToHypreCSR received too many rows for HYPRE_Int." );
    const HYPRE_Int num_cols =
       details::CheckedHypreNarrow< HYPRE_Int >(
-         raw.num_cols,
+         raw_data.num_cols,
          "FinalizeRawCOOToHypreCSR received too many columns for HYPRE_Int." );
    const HYPRE_Int nnz =
       details::CheckedHypreNarrow< HYPRE_Int >(
@@ -137,41 +138,42 @@ auto FinalizeRawCOOToHypreCSR(
          nnz,
          HostCSRBackend<>{} );
 
+   auto csr_data = GetHostWriteView( csr );
    const HYPRE_Int row_ptr_size = num_rows + HYPRE_Int( 1 );
    for ( HYPRE_Int row = 0; row < row_ptr_size; ++row )
    {
-      csr.row_ptr[row] = HYPRE_Int( 0 );
+      csr_data.row_ptr[row] = HYPRE_Int( 0 );
    }
 
    for ( const auto & triplet : reduced )
    {
       GENDIL_VERIFY(
-         triplet.row < raw.num_rows,
+         triplet.row < raw_data.num_rows,
          "FinalizeRawCOOToHypreCSR received a row outside the matrix dimensions." );
       GENDIL_VERIFY(
-         triplet.col < raw.num_cols,
+         triplet.col < raw_data.num_cols,
          "FinalizeRawCOOToHypreCSR received a column outside the matrix dimensions." );
 
       const HYPRE_Int row =
          details::CheckedHypreNarrow< HYPRE_Int >(
             triplet.row,
             "FinalizeRawCOOToHypreCSR received a row outside HYPRE_Int range." );
-      ++csr.row_ptr[row + HYPRE_Int( 1 )];
+      ++csr_data.row_ptr[row + HYPRE_Int( 1 )];
    }
 
    for ( HYPRE_Int row = 0; row < num_rows; ++row )
    {
-      csr.row_ptr[row + HYPRE_Int( 1 )] += csr.row_ptr[row];
+      csr_data.row_ptr[row + HYPRE_Int( 1 )] += csr_data.row_ptr[row];
    }
 
    for ( HYPRE_Int i = 0; i < nnz; ++i )
    {
       const auto & triplet = reduced[static_cast< size_t >( i )];
-      csr.col_ind[i] =
+      csr_data.col_ind[i] =
          details::CheckedHypreNarrow< HYPRE_Int >(
             triplet.col,
             "FinalizeRawCOOToHypreCSR received a column outside HYPRE_Int range." );
-      csr.values[i] = static_cast< HYPRE_Complex >( triplet.value );
+      csr_data.values[i] = static_cast< HYPRE_Complex >( triplet.value );
    }
 
    auto metadata = details::MakeHypreCSRMetadata( num_rows, num_cols );
@@ -182,15 +184,16 @@ auto FinalizeRawCOOToHypreCSR(
    // layout directly, so metadata only needs to inspect the row start.
    for ( HYPRE_Int row = 0; row < num_rows; ++row )
    {
-      const HYPRE_Int row_start = csr.row_ptr[row];
-      const HYPRE_Int row_end = csr.row_ptr[row + HYPRE_Int( 1 )];
+      const HYPRE_Int row_start = csr_data.row_ptr[row];
+      const HYPRE_Int row_end = csr_data.row_ptr[row + HYPRE_Int( 1 )];
       bool has_diagonal = false;
 
       // Rectangular matrices can still be used as Hypre matvec operators. Only
       // rows with a valid local diagonal column can have a diagonal entry.
       if ( row < num_cols )
       {
-         has_diagonal = row_start < row_end && csr.col_ind[row_start] == row;
+         has_diagonal =
+            row_start < row_end && csr_data.col_ind[row_start] == row;
       }
 
       if ( has_diagonal )
@@ -215,14 +218,12 @@ auto FinalizeRawCOOToHypreCSR(
 
    // Mark both views current so native GenDiL apply and host Hypre aliasing can
    // share the same storage state without an immediate synchronization surprise.
-   ToDevice( static_cast< GlobalIndex >( row_ptr_size ), csr.row_ptr );
-   if ( csr.nnz > 0 )
-   {
-      ToDevice( static_cast< GlobalIndex >( csr.nnz ), csr.col_ind );
-      ToDevice( static_cast< GlobalIndex >( csr.nnz ), csr.values );
-   }
+   Sync( csr );
 
-   return HypreCSRMatrix< Backend >{ std::move( csr ), metadata, backend };
+   return HypreCSRMatrix< Backend >{
+      std::move( csr ),
+      metadata,
+      std::move( backend ) };
 }
 
 template < typename ValueType, typename IndexType >

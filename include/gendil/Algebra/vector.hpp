@@ -282,6 +282,8 @@ public:
    {
       if (this != &other)
       {
+         FreeHostPointer(ptr);
+         FreeDevicePointer(ptr);
          ptr = std::move(other.ptr);
          n = other.n;
          host_valid = other.host_valid;

@@ -10,32 +10,9 @@
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
+#include <utility>
 
 namespace gendil {
-
-template < typename KernelPolicy, typename BSRMatrixType >
-void SyncAssembledBSRValues(
-   BSRMatrixType & bsr_matrix )
-{
-#if defined(GENDIL_USE_DEVICE)
-   const GlobalIndex value_count =
-      static_cast< GlobalIndex >( bsr_matrix.num_blocks ) *
-      static_cast< GlobalIndex >( bsr_matrix.block_rows ) *
-      static_cast< GlobalIndex >( bsr_matrix.block_cols );
-
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      ToDevice( value_count, bsr_matrix.values );
-   }
-   else
-   {
-      GENDIL_DEVICE_SYNC;
-      ToHost( value_count, bsr_matrix.values );
-   }
-#else
-   (void) bsr_matrix;
-#endif
-}
 
 template<
    class KernelPolicy,
@@ -88,34 +65,24 @@ auto GenericBSRElementBlockDiagonalAssembly(
          num_elements,
          ntest,
          ntrial,
-         backend);
+         std::move( backend ));
+
+   static_assert(
+      is_host_configuration_v< KernelPolicy > !=
+         is_device_configuration_v< KernelPolicy >,
+      "BSR assembly requires a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   auto matrix_view =
+      GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
    AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
       weak_form,
       wf_ctx,
       integration_rule,
-      bsr_matrix);
-
-   SyncAssembledBSRValues<KernelPolicy>(bsr_matrix);
+      matrix_view);
 
    return bsr_matrix;
-}
-
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule >
-auto GenericBSRElementBlockDiagonalAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
-{
-   return GenericBSRElementBlockDiagonalAssembly<KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      DefaultBSRBackend{});
 }
 
 template<
@@ -132,19 +99,118 @@ auto GenericBSRAssembly(
 {
    ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
    constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+   static_assert(
+      TrialName != StaticString{"Error"},
+      "GenericBSRAssembly: missing TrialSpace in integrand." );
+   static_assert(
+      TestName != StaticString{"Error"},
+      "GenericBSRAssembly: missing TestSpace in integrand." );
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto bsr_matrix = MakeDGBSRPattern( trial_space, backend );
+   const auto& test_space = wf_ctx.template fe_field<TestName>().space;
+   auto bsr_matrix =
+      MakeDGBSRPattern(
+         trial_space,
+         test_space,
+         std::move( backend ) );
+
+   static_assert(
+      is_host_configuration_v< KernelPolicy > !=
+         is_device_configuration_v< KernelPolicy >,
+      "BSR assembly requires a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   auto matrix_view =
+      GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
    GenericAssembly<KernelPolicy>(
       weak_form,
       wf_ctx,
       integration_rule,
-      bsr_matrix
+      matrix_view
    );
 
-   SyncAssembledBSRValues< KernelPolicy >( bsr_matrix );
-
    return bsr_matrix;
+}
+
+template < class WeakForm, class WeakFormContext >
+auto MakeDefaultBSRBackend(
+   const WeakForm & weak_form,
+   const WeakFormContext & wf_ctx )
+{
+   using I = std::remove_cvref_t< decltype( weak_form ) >;
+   constexpr auto TrialName = requirements< I >::trial_name;
+   constexpr auto TestName = requirements< I >::test_name;
+   static_assert(
+      TrialName != StaticString{"Error"},
+      "Default BSR backend selection requires a TrialSpace in the integrand." );
+   static_assert(
+      TestName != StaticString{"Error"},
+      "Default BSR backend selection requires a TestSpace in the integrand." );
+
+   const auto & trial_space =
+      wf_ctx.template fe_field< TrialName >().space;
+   const auto & test_space =
+      wf_ctx.template fe_field< TestName >().space;
+   using TrialSpace =
+      std::remove_cvref_t< decltype( trial_space ) >;
+   using TestSpace =
+      std::remove_cvref_t< decltype( test_space ) >;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+
+#if defined(GENDIL_USE_DEVICE)
+   constexpr GlobalIndex ntrial =
+      LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest =
+      LocalDofCount< TestShapeFunctions >();
+   constexpr bool vendor_bsr_available =
+#if defined(GENDIL_USE_CUDA)
+#if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+      true;
+#else
+      false;
+#endif
+#elif defined(GENDIL_USE_HIP)
+#if defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+      true;
+#else
+      false;
+#endif
+#else
+      false;
+#endif
+
+   if constexpr ( ntrial == ntest && vendor_bsr_available )
+   {
+      return VendorDeviceBSRBackend<>{};
+   }
+   else
+   {
+      return NativeDeviceBSRBackend<>{};
+   }
+#else
+   return HostBSRBackend<>{};
+#endif
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericBSRElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericBSRElementBlockDiagonalAssembly<KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      MakeDefaultBSRBackend( weak_form, wf_ctx ));
 }
 
 template<
@@ -161,7 +227,7 @@ auto GenericBSRAssembly(
       weak_form,
       wf_ctx,
       integration_rule,
-      DefaultBSRBackend{} );
+      MakeDefaultBSRBackend( weak_form, wf_ctx ) );
 }
 
 } // namespace gendil

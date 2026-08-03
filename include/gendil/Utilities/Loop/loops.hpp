@@ -19,3 +19,6 @@
 
 // A loop that parallelizes on the current device (e.g. GPU or CPU with OpenMP).
 #include "deviceloop.hpp"
+
+// Select a host or device loop with a compile-time boolean.
+#include "kernelloop.hpp"

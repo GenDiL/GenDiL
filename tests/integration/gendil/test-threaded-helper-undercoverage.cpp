@@ -257,7 +257,7 @@ void CountThreadLoopVisits(
       [&] ( auto... indices )
       {
          const GlobalIndex index = FlatIndex( Shape{}, indices... );
-         gendil::AtomicAdd( output[ base + index ], Real{ 1.0 } );
+         gendil::AtomicAddInPlace( output[ base + index ], Real{ 1.0 } );
       } );
 }
 
@@ -289,7 +289,7 @@ void CountQuadratureLoopVisits(
                   index = index * dim + quad_index[ I ];
                }
             } );
-         gendil::AtomicAdd( output[ base + index ], Real{ 1.0 } );
+         gendil::AtomicAddInPlace( output[ base + index ], Real{ 1.0 } );
       } );
 }
 

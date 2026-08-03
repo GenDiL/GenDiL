@@ -84,8 +84,17 @@ cmake --install build-deps
 ```
 
 CUDA and HIP support are enabled separately with `-D USE_CUDA=ON` or
-`-D USE_HIP=ON`. HypreCSR device support requires a matching CUDA- or
-HIP-enabled HYPRE build.
+`-D USE_HIP=ON`. When MFEM support is enabled, the MFEM build must use the
+same device platform as GenDiL. HypreCSR device support requires a matching
+CUDA- or HIP-enabled HYPRE build.
+
+Device builds use cuSPARSE (CUDA) or rocSPARSE (HIP) as the default SpMV
+backend for canonical sparse matrices; host and native-device implementations
+remain explicitly selectable. See the documentation for
+[sparse matrix storage and application](include/gendil/Algebra/SparseMatrixTypes/README.md),
+[vendor sparse backends](include/gendil/Algebra/SparseMatrixTypes/VendorSparse/README.md),
+and [sparse matrix assembly](include/gendil/FiniteElementMethod/MatrixAssembly/README.md)
+for the detailed interfaces and capability rules.
 
 ### Usage
 Include the main header file in your project:

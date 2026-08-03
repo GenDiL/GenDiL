@@ -31,8 +31,7 @@ auto GenericCSRAssembly(
       FinalizeRawCOOToCSR(
          raw_coo,
          HostSortReduceRawCOOToCSRPolicy{},
-         backend );
-   FreeRawCOOTripletBuffer( raw_coo );
+         std::move( backend ) );
    return csr;
 }
 

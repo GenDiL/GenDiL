@@ -28,6 +28,12 @@ option(USE_HYPRE "Enables Hypre interface." OFF)
 option(GENDIL_ENABLE_BENCHMARKS "Build GenDiL benchmark executables" OFF)
 set(GENDIL_USE_HYPRE_DEVICE OFF)
 
+if(USE_CUDA AND USE_HIP)
+  message(FATAL_ERROR
+    "GenDiL supports one device platform per build. Disable either "
+    "USE_CUDA or USE_HIP.")
+endif()
+
 add_library(GENDIL INTERFACE)
 
 # Add -pg to compile and link flags to enable gprof profiling
@@ -68,6 +74,20 @@ if(USE_MFEM)
   endif()
   find_package(MFEM REQUIRED NAMES MFEM HINTS "${MFEM_DIR}"
               "${MFEM_DIR}/lib/cmake/mfem" NO_DEFAULT_PATH)
+
+  if(USE_CUDA AND NOT MFEM_USE_CUDA)
+    message(FATAL_ERROR
+      "USE_MFEM=ON with USE_CUDA=ON requires a CUDA-enabled MFEM, but "
+      "the found MFEM was built without CUDA support. Rebuild MFEM with "
+      "MFEM_USE_CUDA=ON or disable GenDiL CUDA support.")
+  endif()
+  if(USE_HIP AND NOT MFEM_USE_HIP)
+    message(FATAL_ERROR
+      "USE_MFEM=ON with USE_HIP=ON requires a HIP-enabled MFEM, but "
+      "the found MFEM was built without HIP support. Rebuild MFEM with "
+      "MFEM_USE_HIP=ON or disable GenDiL HIP support.")
+  endif()
+
   message(STATUS "MFEM found!")
   target_include_directories(GENDIL INTERFACE ${MFEM_INCLUDE_DIRS})
   target_link_libraries(GENDIL INTERFACE ${MFEM_LIBRARIES})
@@ -82,6 +102,12 @@ if(USE_MFEM)
   endif()
 else()
   message(STATUS "MFEM support is not enabled.")
+endif()
+
+if(USE_CUDA AND USE_HIP)
+  message(FATAL_ERROR
+    "The selected MFEM/device configuration enabled both CUDA and HIP. "
+    "GenDiL supports one device platform per build.")
 endif()
 
 # Caliper
@@ -201,6 +227,7 @@ target_compile_features(GENDIL INTERFACE cxx_std_20)
 if(USE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
+  target_link_libraries(GENDIL INTERFACE CUDA::cusparse)
   target_compile_features(GENDIL INTERFACE cuda_std_20)
   target_include_directories(GENDIL
     INTERFACE
@@ -238,18 +265,91 @@ if(USE_CUDA)
 
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CUDA)
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_DEVICE)
+
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
+  set(CMAKE_REQUIRED_LIBRARIES CUDA::cusparse)
+  check_cxx_source_compiles("
+    #include <cusparse.h>
+    int main()
+    {
+      auto function = &cusparseSpMV_preprocess;
+      (void) function;
+      return 0;
+    }
+  " GENDIL_CUSPARSE_HAS_SPMV_PREPROCESS)
+  check_cxx_source_compiles("
+    #include <cusparse.h>
+    int main()
+    {
+      cusparseSpMatDescr_t descriptor = nullptr;
+      auto algorithm = CUSPARSE_SPMV_BSR_ALG1;
+      (void) algorithm;
+      return static_cast<int>(
+        cusparseCreateBsr(
+          &descriptor, 1, 1, 1, 1, 1,
+          nullptr, nullptr, nullptr,
+          CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+          CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F,
+          CUSPARSE_ORDER_ROW));
+    }
+  " GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+  unset(CMAKE_REQUIRED_INCLUDES)
+  unset(CMAKE_REQUIRED_LIBRARIES)
+
+  if(GENDIL_CUSPARSE_HAS_SPMV_PREPROCESS)
+    target_compile_definitions(
+      GENDIL INTERFACE GENDIL_CUSPARSE_HAS_SPMV_PREPROCESS)
+  endif()
+  if(GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+    target_compile_definitions(
+      GENDIL INTERFACE GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+  endif()
+  # CUDA 12.5 Update 1 first exposed float-matrix/double-vector SpMV.
+  # FindCUDAToolkit reports NVIDIA's build version (12.5.82 for Update 1),
+  # rather than the marketing version 12.5.1.
+  if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "12.5.82")
+    target_compile_definitions(
+      GENDIL INTERFACE GENDIL_CUSPARSE_HAS_FLOAT_DOUBLE_SPMV)
+  endif()
 endif()
 
 # HIP
 if(USE_HIP)
   enable_language(HIP)
   find_package(HIP REQUIRED)
+  find_package(rocsparse REQUIRED CONFIG)
+  target_link_libraries(GENDIL INTERFACE roc::rocsparse)
   # target_compile_features(GENDIL INTERFACE HIP)
   target_include_directories(GENDIL INTERFACE ${hip_INCLUDE_DIRS})
   target_compile_options(GENDIL INTERFACE $<$<COMPILE_LANGUAGE:HIP>:
     -ftemplate-backtrace-limit=0
   >)
   target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HIP GENDIL_USE_DEVICE)
+
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_LIBRARIES roc::rocsparse)
+  check_cxx_source_compiles("
+    #include <rocsparse/rocsparse.h>
+    int main()
+    {
+      rocsparse_spmat_descr descriptor = nullptr;
+      auto algorithm = rocsparse_spmv_alg_bsr;
+      (void) algorithm;
+      return static_cast<int>(
+        rocsparse_create_bsr_descr(
+          &descriptor, 1, 1, 1,
+          rocsparse_direction_row, 1,
+          nullptr, nullptr, nullptr,
+          rocsparse_indextype_i32, rocsparse_indextype_i32,
+          rocsparse_index_base_zero, rocsparse_datatype_f64_r));
+    }
+  " GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+  unset(CMAKE_REQUIRED_LIBRARIES)
+  if(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+    target_compile_definitions(
+      GENDIL INTERFACE GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+  endif()
   message(STATUS "HIP support enabled!")
 endif()
 

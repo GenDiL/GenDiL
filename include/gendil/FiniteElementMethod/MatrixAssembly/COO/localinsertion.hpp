@@ -17,8 +17,7 @@ template <
    typename TestFESpace,
    typename TrialDofDescriptor,
    typename ElementVector,
-   typename ValueType,
-   typename IndexType >
+   typename COOBuffer >
 requires is_local_dof_descriptor_v< TrialDofDescriptor >
 GENDIL_HOST_DEVICE
 void AddRawCOOBlockEntries(
@@ -30,8 +29,11 @@ void AddRawCOOBlockEntries(
    const TrialDofDescriptor & trial_dof,
    const ElementVector & y,
    const GlobalIndex raw_entry_base,
-   RawCOOTripletBuffer< ValueType, IndexType > & coo_buffer )
+   COOBuffer & coo_buffer )
 {
+   using Buffer = std::remove_cvref_t< COOBuffer >;
+   using ValueType = typename Buffer::value_type;
+   using IndexType = typename Buffer::index_type;
    using TrialShapeFunctions =
       typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
    using TestShapeFunctions =
@@ -127,7 +129,7 @@ void AddSparseMatrixEntry(
       trial_dof,
       y,
       raw_entry_base,
-      coo_target.buffer );
+      coo_target );
 }
 
 template <
@@ -168,7 +170,7 @@ void AddSparseMatrixEntry(
       trial_dof,
       y,
       raw_entry_base,
-      coo_target.buffer );
+      coo_target );
 }
 
 } // namespace gendil

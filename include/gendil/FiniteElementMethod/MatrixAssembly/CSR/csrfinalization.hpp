@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
 
 namespace gendil {
@@ -23,56 +23,56 @@ struct HostSortReduceRawCOOToCSRPolicy
 
 template < typename ValueType, typename IndexType, typename Backend >
 auto FinalizeRawCOOToCSR(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   const RawCOOTripletView< ValueType, IndexType > & raw,
    const HostSortReduceRawCOOToCSRPolicy &,
    Backend backend )
 {
+   using StoredValueType = std::remove_const_t< ValueType >;
+   using StoredIndexType = std::remove_const_t< IndexType >;
    const auto reduced =
       details::MakeSortedReducedRawCOOTriplets<
          SparseCoordinateOrder::RowThenColumn >( raw );
 
    auto matrix =
-      MakeCSRMatrix< ValueType, IndexType, Backend >(
+      MakeCSRMatrix< StoredValueType, StoredIndexType, Backend >(
          raw.num_rows,
          raw.num_cols,
-         static_cast< IndexType >( reduced.size() ),
-         backend );
+         static_cast< StoredIndexType >( reduced.size() ),
+         std::move( backend ) );
 
-   const IndexType row_ptr_size = matrix.num_rows + IndexType( 1 );
-   for ( IndexType row = 0; row < row_ptr_size; ++row )
+   auto matrix_data = GetHostWriteView( matrix );
+   const StoredIndexType row_ptr_size =
+      matrix_data.num_rows + StoredIndexType( 1 );
+   for ( StoredIndexType row = 0; row < row_ptr_size; ++row )
    {
-      matrix.row_ptr[row] = IndexType( 0 );
+      matrix_data.row_ptr[row] = StoredIndexType( 0 );
    }
 
    for ( const auto & triplet : reduced )
    {
       GENDIL_VERIFY(
-         triplet.row < matrix.num_rows,
+         triplet.row < matrix_data.num_rows,
          "FinalizeRawCOOToCSR received a row outside the matrix dimensions." );
       GENDIL_VERIFY(
-         triplet.col < matrix.num_cols,
+         triplet.col < matrix_data.num_cols,
          "FinalizeRawCOOToCSR received a column outside the matrix dimensions." );
-      ++matrix.row_ptr[triplet.row + IndexType( 1 )];
+      ++matrix_data.row_ptr[triplet.row + StoredIndexType( 1 )];
    }
 
-   for ( IndexType row = 0; row < matrix.num_rows; ++row )
+   for ( StoredIndexType row = 0; row < matrix_data.num_rows; ++row )
    {
-      matrix.row_ptr[row + IndexType( 1 )] += matrix.row_ptr[row];
+      matrix_data.row_ptr[row + StoredIndexType( 1 )] +=
+         matrix_data.row_ptr[row];
    }
 
-   for ( IndexType i = 0; i < matrix.nnz; ++i )
+   for ( StoredIndexType i = 0; i < matrix_data.nnz; ++i )
    {
       const auto & triplet = reduced[static_cast< size_t >( i )];
-      matrix.col_ind[i] = triplet.col;
-      matrix.values[i] = triplet.value;
+      matrix_data.col_ind[i] = triplet.col;
+      matrix_data.values[i] = triplet.value;
    }
 
-   ToDevice( static_cast< GlobalIndex >( row_ptr_size ), matrix.row_ptr );
-   if ( matrix.nnz > 0 )
-   {
-      ToDevice( static_cast< GlobalIndex >( matrix.nnz ), matrix.col_ind );
-      ToDevice( static_cast< GlobalIndex >( matrix.nnz ), matrix.values );
-   }
+   Sync( matrix );
 
    return matrix;
 }
@@ -83,9 +83,21 @@ auto FinalizeRawCOOToCSR(
    const HostSortReduceRawCOOToCSRPolicy & policy )
 {
    return FinalizeRawCOOToCSR(
-      raw,
+      GetHostReadView( raw ),
       policy,
       DefaultCSRBackend{} );
+}
+
+template < typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCSR(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   const HostSortReduceRawCOOToCSRPolicy & policy,
+   Backend backend )
+{
+   return FinalizeRawCOOToCSR(
+      GetHostReadView( raw ),
+      policy,
+      std::move( backend ) );
 }
 
 } // namespace gendil

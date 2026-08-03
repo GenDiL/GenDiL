@@ -31,8 +31,7 @@ auto GenericCSCAssembly(
       FinalizeRawCOOToCSC(
          raw_coo,
          HostSortReduceRawCOOToCSCPolicy{},
-         backend );
-   FreeRawCOOTripletBuffer( raw_coo );
+         std::move( backend ) );
    return csc;
 }
 

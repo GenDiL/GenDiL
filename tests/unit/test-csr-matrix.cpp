@@ -83,31 +83,32 @@ bool CheckCSRStructure(
    const std::vector< Real > & values,
    const char * message )
 {
+   const auto matrix_data = GetHostReadView( matrix );
    bool success = true;
    success = Check(
-      row_ptr.size() == static_cast< size_t >( matrix.num_rows + 1 ),
+      row_ptr.size() == static_cast< size_t >( matrix_data.num_rows + 1 ),
       message ) && success;
    success = Check(
-      col_ind.size() == static_cast< size_t >( matrix.nnz ),
+      col_ind.size() == static_cast< size_t >( matrix_data.nnz ),
       message ) && success;
    success = Check(
-      values.size() == static_cast< size_t >( matrix.nnz ),
+      values.size() == static_cast< size_t >( matrix_data.nnz ),
       message ) && success;
 
-   for ( GlobalIndex i = 0; i < matrix.num_rows + 1; ++i )
+   for ( GlobalIndex i = 0; i < matrix_data.num_rows + 1; ++i )
    {
       success = Check(
-         matrix.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
+         matrix_data.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
          message ) && success;
    }
 
-   for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
+   for ( GlobalIndex i = 0; i < matrix_data.nnz; ++i )
    {
       success = Check(
-         matrix.col_ind[i] == col_ind[static_cast< size_t >( i )],
+         matrix_data.col_ind[i] == col_ind[static_cast< size_t >( i )],
          message ) && success;
       success = Check(
-         Near( matrix.values[i], values[static_cast< size_t >( i )] ),
+         Near( matrix_data.values[i], values[static_cast< size_t >( i )] ),
          message ) && success;
    }
    return success;
@@ -116,24 +117,26 @@ bool CheckCSRStructure(
 template < typename Matrix >
 bool CheckCSRSortedRows( const Matrix & matrix )
 {
+   const auto matrix_data = GetHostReadView( matrix );
    bool success = true;
-   for ( GlobalIndex row = 0; row < matrix.num_rows; ++row )
+   for ( GlobalIndex row = 0; row < matrix_data.num_rows; ++row )
    {
       success = Check(
-         matrix.row_ptr[row] <= matrix.row_ptr[row + 1],
+         matrix_data.row_ptr[row] <= matrix_data.row_ptr[row + 1],
          "CSR row_ptr is not monotone." ) && success;
 
-      for ( GlobalIndex entry = matrix.row_ptr[row];
-            entry < matrix.row_ptr[row + 1];
+      for ( GlobalIndex entry = matrix_data.row_ptr[row];
+            entry < matrix_data.row_ptr[row + 1];
             ++entry )
       {
          success = Check(
-            matrix.col_ind[entry] < matrix.num_cols,
+            matrix_data.col_ind[entry] < matrix_data.num_cols,
             "CSR column index is outside the matrix dimensions." ) && success;
-         if ( entry + 1 < matrix.row_ptr[row + 1] )
+         if ( entry + 1 < matrix_data.row_ptr[row + 1] )
          {
             success = Check(
-               matrix.col_ind[entry] < matrix.col_ind[entry + 1],
+               matrix_data.col_ind[entry] <
+                  matrix_data.col_ind[entry + 1],
                "CSR column indices are not strictly sorted within a row." ) && success;
          }
       }
@@ -170,30 +173,32 @@ void FillRawFixture( RawCOOTripletBuffer< Real, GlobalIndex > & raw )
    const std::array< GlobalIndex, 8 > cols{ 4, 3, 1, 3, 2, 2, 0, 0 };
    const std::array< Real, 8 > values{ 1.0, -1.0, 4.0, 2.0, 5.0, -5.0, -3.0, 2.0 };
 
+   auto raw_data = GetHostReadWriteView( raw );
    for ( GlobalIndex i = 0; i < raw.nnz_raw; ++i )
    {
-      raw.rows[i] = rows[static_cast< size_t >( i )];
-      raw.cols[i] = cols[static_cast< size_t >( i )];
-      raw.values[i] = values[static_cast< size_t >( i )];
+      raw_data.rows[i] = rows[static_cast< size_t >( i )];
+      raw_data.cols[i] = cols[static_cast< size_t >( i )];
+      raw_data.values[i] = values[static_cast< size_t >( i )];
    }
 }
 
 bool TestHandWrittenCSRAction()
 {
    auto matrix = MakeCSRMatrix< Real, GlobalIndex >( 4, 5, 6 );
+   auto matrix_data = GetHostWriteView( matrix );
 
-   matrix.row_ptr[0] = 0;
-   matrix.row_ptr[1] = 2;
-   matrix.row_ptr[2] = 5;
-   matrix.row_ptr[3] = 5;
-   matrix.row_ptr[4] = 6;
+   matrix_data.row_ptr[0] = 0;
+   matrix_data.row_ptr[1] = 2;
+   matrix_data.row_ptr[2] = 5;
+   matrix_data.row_ptr[3] = 5;
+   matrix_data.row_ptr[4] = 6;
 
    const std::array< GlobalIndex, 6 > cols{ 0, 3, 1, 2, 4, 0 };
    const std::array< Real, 6 > values{ 2.0, -1.0, 4.0, 0.0, 1.5, -3.0 };
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      matrix.col_ind[i] = cols[static_cast< size_t >( i )];
-      matrix.values[i] = values[static_cast< size_t >( i )];
+      matrix_data.col_ind[i] = cols[static_cast< size_t >( i )];
+      matrix_data.values[i] = values[static_cast< size_t >( i )];
    }
 
    Vector x( 5 );
@@ -231,7 +236,6 @@ bool TestHandWrittenCSRAction()
       "CSRMatrix::operator()(x, y) produced the wrong result." ) && success;
    success = CheckCSRSortedRows( matrix ) && success;
 
-   FreeCSRMatrix( matrix );
    return success;
 }
 
@@ -242,10 +246,12 @@ bool TestRawCOOSortReduceOrdersAndCSRFinalization()
 
    const auto row_major =
       details::MakeSortedReducedRawCOOTriplets<
-         SparseCoordinateOrder::RowThenColumn >( raw );
+         SparseCoordinateOrder::RowThenColumn >(
+            GetHostReadView( raw ) );
    const auto col_major =
       details::MakeSortedReducedRawCOOTriplets<
-         SparseCoordinateOrder::ColumnThenRow >( raw );
+         SparseCoordinateOrder::ColumnThenRow >(
+            GetHostReadView( raw ) );
 
    bool success = true;
    success = CheckTriplets(
@@ -277,8 +283,6 @@ bool TestRawCOOSortReduceOrdersAndCSRFinalization()
       "RawCOO-to-CSR finalization produced the wrong storage." ) && success;
    success = CheckCSRSortedRows( csr ) && success;
 
-   FreeCSRMatrix( csr );
-   FreeRawCOOTripletBuffer( raw );
    return success;
 }
 
@@ -341,8 +345,6 @@ bool TestScalarH1CSRAssemblyAgainstCOO()
       y_coo,
       "Scalar H1 CSR action disagrees with COO action." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeCSRMatrix( csr );
    return success;
 }
 
@@ -413,8 +415,6 @@ bool TestVectorH1CSRAssemblyAgainstCOO()
       y_coo,
       "Vector H1 CSR action disagrees with COO action." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeCSRMatrix( csr );
    return success;
 }
 
@@ -472,7 +472,6 @@ bool TestScalarP0InteriorJumpCSRAssembly()
    success = Check( Near( y_data[0], -3.0 ), "Analytic p0 CSR action row 0 is wrong." ) && success;
    success = Check( Near( y_data[1], 3.0 ), "Analytic p0 CSR action row 1 is wrong." ) && success;
 
-   FreeCSRMatrix( csr );
    return success;
 }
 

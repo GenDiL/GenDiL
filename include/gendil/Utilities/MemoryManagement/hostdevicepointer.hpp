@@ -23,8 +23,10 @@
  *  - **No RAII**: allocation, deallocation, and H↔D copies are explicit and under
  *    the caller's control (see Allocate/Free, ToDevice/ToHost).
  *
- * @note The handle is shallow and trivially copyable; use move semantics to transfer
- *       ownership. Synchronization of contents (ToDevice/ToHost) is explicit.
+ * @note The handle is shallow and can be copied into host/device kernels.
+ *       Its move operations clear the source, so it is not formally
+ *       `std::is_trivially_copyable`. Synchronization of contents
+ *       (`ToDevice`/`ToHost`) is explicit.
  */
 
 
@@ -56,6 +58,7 @@ struct HostDevicePointer
 
    HostDevicePointer() = default;
    HostDevicePointer( const HostDevicePointer& ) = default;
+   HostDevicePointer& operator=( const HostDevicePointer& ) = default;
 
    // Move constructor
    HostDevicePointer(HostDevicePointer&& other) noexcept

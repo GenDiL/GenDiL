@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcooview.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -72,14 +72,16 @@ template <
    typename ValueType,
    typename IndexType >
 auto MakeSortedReducedRawCOOTriplets(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
+   const RawCOOTripletView< ValueType, IndexType > & raw )
 {
-   using Triplet = RawCOOTriplet< ValueType, IndexType >;
+   using StoredValueType = std::remove_const_t< ValueType >;
+   using StoredIndexType = std::remove_const_t< IndexType >;
+   using Triplet = RawCOOTriplet< StoredValueType, StoredIndexType >;
 
    std::vector< Triplet > triplets;
    triplets.reserve( static_cast< size_t >( raw.nnz_raw ) );
 
-   for ( IndexType i = 0; i < raw.nnz_raw; ++i )
+   for ( StoredIndexType i = 0; i < raw.nnz_raw; ++i )
    {
       triplets.push_back(
          Triplet{ raw.rows[i], raw.cols[i], raw.values[i] } );

@@ -4,6 +4,11 @@
 
 #pragma once
 
-// Public CSR matrix interface: storage plus Apply support.
+// Move-only CSR matrix storage and backend definitions.
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixstorage.hpp"
+
+// Raw-pointer CSR views and synchronized host/device access.
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixview.hpp"
+
+// Host, native-device, cuSPARSE, and rocSPARSE CSR Apply support.
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixapply.hpp"

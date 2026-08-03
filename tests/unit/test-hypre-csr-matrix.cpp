@@ -74,11 +74,12 @@ void FillRawHypreCSRFixture(
    const std::array< GlobalIndex, 8 > cols{ 2, 0, 0, 1, 2, 0, 2, 0 };
    const std::array< Real, 8 > values{ 3.0, 1.0, -1.0, 4.0, 5.0, 1.0, 2.0, -2.0 };
 
+   auto raw_view = GetHostReadWriteView( raw );
    for ( GlobalIndex i = 0; i < raw.nnz_raw; ++i )
    {
-      raw.rows[i] = rows[static_cast< size_t >( i )];
-      raw.cols[i] = cols[static_cast< size_t >( i )];
-      raw.values[i] = values[static_cast< size_t >( i )];
+      raw_view.rows[i] = rows[static_cast< size_t >( i )];
+      raw_view.cols[i] = cols[static_cast< size_t >( i )];
+      raw_view.values[i] = values[static_cast< size_t >( i )];
    }
 }
 
@@ -93,7 +94,6 @@ HypreCSRMatrix< Backend > BuildSmallHypreCSRMatrix( Backend backend )
          raw,
          HostSortReduceRawCOOToHypreCSRPolicy{},
          backend );
-   FreeRawCOOTripletBuffer( raw );
    return matrix;
 }
 
@@ -102,13 +102,14 @@ HypreCSRMatrix<> BuildSmallHypreCSRMatrix()
    return BuildSmallHypreCSRMatrix( typename HypreCSRMatrix<>::backend_type{} );
 }
 
+template < HostAccessibleVector VectorType >
 bool CheckVector(
-   const Vector & vector,
+   const VectorType & vector,
    const std::array< Real, 3 > & expected,
    const char * message )
 {
    bool success = true;
-   const Real * data = vector.ReadHostData();
+   const auto * data = ReadHostVector( vector );
    for ( GlobalIndex i = 0; i < expected.size(); ++i )
    {
       success = Check(
@@ -117,6 +118,65 @@ bool CheckVector(
    }
    return success;
 }
+
+#ifdef GENDIL_USE_MFEM
+bool TestMFEMHypreVectorInterop()
+{
+   auto matrix = BuildSmallHypreCSRMatrix( HypreCSRHostBackend{} );
+
+   mfem::Vector mfem_x( 3 );
+   auto * mfem_x_data = WriteHostVector( mfem_x );
+   mfem_x_data[0] = 1.0;
+   mfem_x_data[1] = 2.0;
+   mfem_x_data[2] = 3.0;
+
+   mfem::Vector mfem_y( 3 );
+   Apply( HypreCSRHostBackend{}, matrix, mfem_x, mfem_y );
+   bool success = CheckVector(
+      mfem_y,
+      { 11.0, 13.0, 13.0 },
+      "HypreCSR MFEM apply produced the wrong result." );
+
+   auto * mfem_y_data = WriteHostVector( mfem_y );
+   mfem_y_data[0] = 1.0;
+   mfem_y_data[1] = 2.0;
+   mfem_y_data[2] = 3.0;
+   ApplyAdd( HypreCSRHostBackend{}, matrix, mfem_x, mfem_y );
+   success = CheckVector(
+      mfem_y,
+      { 12.0, 15.0, 16.0 },
+      "HypreCSR MFEM ApplyAdd produced the wrong result." ) && success;
+
+   Vector gendil_y( 3 );
+   Apply( HypreCSRHostBackend{}, matrix, mfem_x, gendil_y );
+   success = CheckVector(
+      gendil_y,
+      { 11.0, 13.0, 13.0 },
+      "HypreCSR MFEM-input/GenDiL-output apply produced the wrong result." ) &&
+      success;
+
+   Vector gendil_x( 3 );
+   auto * gendil_x_data = WriteHostVector( gendil_x );
+   gendil_x_data[0] = 1.0;
+   gendil_x_data[1] = 2.0;
+   gendil_x_data[2] = 3.0;
+   Apply( HypreCSRHostBackend{}, matrix, gendil_x, mfem_y );
+   success = CheckVector(
+      mfem_y,
+      { 11.0, 13.0, 13.0 },
+      "HypreCSR GenDiL-input/MFEM-output apply produced the wrong result." ) &&
+      success;
+
+   Apply( HostCSRBackend<>{}, matrix, mfem_x, gendil_y );
+   success = CheckVector(
+      gendil_y,
+      { 11.0, 13.0, 13.0 },
+      "Explicit CSR MFEM forwarding through HypreCSR produced the wrong result." ) &&
+      success;
+
+   return success;
+}
+#endif
 
 bool TestHypreCSRFinalizationAndNativeApply()
 {
@@ -134,22 +194,23 @@ bool TestHypreCSRFinalizationAndNativeApply()
    const std::array< HYPRE_Int, 4 > row_ptr{ 0, 2, 5, 7 };
    const std::array< HYPRE_Int, 7 > col_ind{ 0, 2, 1, 0, 2, 2, 0 };
    const std::array< Real, 7 > values{ 2.0, 3.0, 4.0, -1.0, 2.0, 5.0, -2.0 };
+   const auto csr_view = GetHostReadView( matrix.csr );
 
    for ( HYPRE_Int i = 0; i < 4; ++i )
    {
       success = Check(
-         matrix.csr.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
+         csr_view.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
          "HypreCSR row_ptr is wrong." ) && success;
    }
 
    for ( HYPRE_Int i = 0; i < 7; ++i )
    {
       success = Check(
-         matrix.csr.col_ind[i] == col_ind[static_cast< size_t >( i )],
+         csr_view.col_ind[i] == col_ind[static_cast< size_t >( i )],
          "HypreCSR column ordering is wrong." ) && success;
       success = Check(
          Near(
-            static_cast< Real >( matrix.csr.values[i] ),
+            static_cast< Real >( csr_view.values[i] ),
             values[static_cast< size_t >( i )] ),
          "HypreCSR values are wrong." ) && success;
    }
@@ -177,6 +238,47 @@ bool TestHypreCSRFinalizationAndNativeApply()
       { 11.0, 13.0, 13.0 },
       "Apply(HostCSRBackend, HypreCSRMatrix, x, y) produced the wrong native result." ) && success;
 
+   Vector y_add( 3 );
+   Real * y_add_data = y_add.WriteHostData();
+   y_add_data[0] = 1.0;
+   y_add_data[1] = 2.0;
+   y_add_data[2] = 3.0;
+   ApplyAdd( matrix, x, y_add );
+   success = CheckVector(
+      y_add,
+      { 12.0, 15.0, 16.0 },
+      "HypreCSR stored-backend ApplyAdd produced the wrong result." ) && success;
+
+   y_add_data = y_add.WriteHostData();
+   y_add_data[0] = 1.0;
+   y_add_data[1] = 2.0;
+   y_add_data[2] = 3.0;
+   ApplyAdd( HostCSRBackend<>{}, matrix, x, y_add );
+   success = CheckVector(
+      y_add,
+      { 12.0, 15.0, 16.0 },
+      "Explicit CSR ApplyAdd forwarding through HypreCSR produced the wrong result." ) && success;
+
+#if defined(GENDIL_USE_DEVICE)
+   Vector y_vendor( 3 );
+   VendorDeviceCSRBackend<> vendor_backend;
+   Apply( vendor_backend, matrix, x, y_vendor );
+   success = CheckVector(
+      y_vendor,
+      { 11.0, 13.0, 13.0 },
+      "Explicit vendor CSR forwarding through HypreCSR produced the wrong result." ) && success;
+
+   y_add_data = y_vendor.WriteHostData();
+   y_add_data[0] = 1.0;
+   y_add_data[1] = 2.0;
+   y_add_data[2] = 3.0;
+   ApplyAdd( vendor_backend, matrix, x, y_vendor );
+   success = CheckVector(
+      y_vendor,
+      { 12.0, 15.0, 16.0 },
+      "Explicit vendor CSR ApplyAdd forwarding through HypreCSR produced the wrong result." ) && success;
+#endif
+
    return success;
 }
 
@@ -187,15 +289,15 @@ bool TestHypreCSRDiagonalFirstSortReduce()
    const std::array< GlobalIndex, 9 > cols{ 3, 1, 0, 3, 1, 2, 2, 2, 0 };
    const std::array< Real, 9 > values{ 1.0, 4.0, -2.0, 2.0, 5.0, 7.0, 8.0, -8.0, 9.0 };
 
+   auto raw_view = GetHostReadWriteView( raw );
    for ( GlobalIndex i = 0; i < raw.nnz_raw; ++i )
    {
-      raw.rows[i] = rows[static_cast< size_t >( i )];
-      raw.cols[i] = cols[static_cast< size_t >( i )];
-      raw.values[i] = values[static_cast< size_t >( i )];
+      raw_view.rows[i] = rows[static_cast< size_t >( i )];
+      raw_view.cols[i] = cols[static_cast< size_t >( i )];
+      raw_view.values[i] = values[static_cast< size_t >( i )];
    }
 
    auto matrix = FinalizeRawCOOToHypreCSR( raw );
-   FreeRawCOOTripletBuffer( raw );
 
    bool success = true;
    success = Check(
@@ -217,23 +319,24 @@ bool TestHypreCSRDiagonalFirstSortReduce()
    const std::array< HYPRE_Int, 4 > row_ptr{ 0, 1, 5, 6 };
    const std::array< HYPRE_Int, 6 > col_ind{ 2, 1, 0, 2, 3, 0 };
    const std::array< Real, 6 > expected_values{ 0.0, 9.0, -2.0, 7.0, 3.0, 9.0 };
+   const auto csr_view = GetHostReadView( matrix.csr );
 
    success = Check( matrix.csr.nnz == 6, "HypreCSR duplicate reduction count is wrong." ) && success;
    for ( HYPRE_Int i = 0; i < 4; ++i )
    {
       success = Check(
-         matrix.csr.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
+         csr_view.row_ptr[i] == row_ptr[static_cast< size_t >( i )],
          "HypreCSR diagonal-first row_ptr is wrong." ) && success;
    }
 
    for ( HYPRE_Int i = 0; i < 6; ++i )
    {
       success = Check(
-         matrix.csr.col_ind[i] == col_ind[static_cast< size_t >( i )],
+         csr_view.col_ind[i] == col_ind[static_cast< size_t >( i )],
          "HypreCSR diagonal-first column ordering is wrong." ) && success;
       success = Check(
          Near(
-            static_cast< Real >( matrix.csr.values[i] ),
+            static_cast< Real >( csr_view.values[i] ),
             expected_values[static_cast< size_t >( i )] ),
          "HypreCSR diagonal-first reduced values are wrong." ) && success;
    }
@@ -258,15 +361,16 @@ bool TestHypreAliasVectorViewsAndMatvec()
 #endif
    auto * internal = reinterpret_cast< hypre_ParCSRMatrix * >( parcsr );
    hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( internal );
+   const auto csr_view = GetHostReadView( matrix.csr );
 
    success = Check(
-      hypre_CSRMatrixI( diag ) == matrix.csr.row_ptr.host_pointer,
+      hypre_CSRMatrixI( diag ) == csr_view.row_ptr,
       "Hypre ParCSR row pointer does not alias GenDiL storage." ) && success;
    success = Check(
-      hypre_CSRMatrixJ( diag ) == matrix.csr.col_ind.host_pointer,
+      hypre_CSRMatrixJ( diag ) == csr_view.col_ind,
       "Hypre ParCSR column pointer does not alias GenDiL storage." ) && success;
    success = Check(
-      hypre_CSRMatrixData( diag ) == matrix.csr.values.host_pointer,
+      hypre_CSRMatrixData( diag ) == csr_view.values,
       "Hypre ParCSR value pointer does not alias GenDiL storage." ) && success;
 
    Vector x( 3 );
@@ -308,6 +412,13 @@ bool TestHypreAliasVectorViewsAndMatvec()
       { 11.0, 13.0, 13.0 },
       "HypreMatvec produced the wrong result." ) && success;
 
+   y_hypre = 2.0;
+   ApplyAdd( HypreCSRHostBackend{}, matrix, x, y_hypre );
+   success = CheckVector(
+      y_hypre,
+      { 13.0, 15.0, 15.0 },
+      "HypreCSRHostBackend ApplyAdd produced the wrong result." ) && success;
+
 #ifdef GENDIL_USE_HYPRE_DEVICE
    HYPRE_ParCSRMatrix device_parcsr =
       matrix.GetDeviceHypreParCSR();
@@ -321,15 +432,16 @@ bool TestHypreAliasVectorViewsAndMatvec()
       reinterpret_cast< hypre_ParCSRMatrix * >( device_parcsr );
    hypre_CSRMatrix * device_diag =
       hypre_ParCSRMatrixDiag( device_internal );
+   const auto device_csr_view = GetDeviceReadView( matrix.csr );
 
    success = Check(
-      hypre_CSRMatrixI( device_diag ) == matrix.csr.row_ptr.device_pointer,
+      hypre_CSRMatrixI( device_diag ) == device_csr_view.row_ptr,
       "Device Hypre ParCSR row pointer does not alias GenDiL device storage." ) && success;
    success = Check(
-      hypre_CSRMatrixJ( device_diag ) == matrix.csr.col_ind.device_pointer,
+      hypre_CSRMatrixJ( device_diag ) == device_csr_view.col_ind,
       "Device Hypre ParCSR column pointer does not alias GenDiL device storage." ) && success;
    success = Check(
-      hypre_CSRMatrixData( device_diag ) == matrix.csr.values.device_pointer,
+      hypre_CSRMatrixData( device_diag ) == device_csr_view.values,
       "Device Hypre ParCSR value pointer does not alias GenDiL device storage." ) && success;
 
    Vector y_device( 3 );
@@ -342,6 +454,13 @@ bool TestHypreAliasVectorViewsAndMatvec()
       y_device,
       { 11.0, 13.0, 13.0 },
       "HypreCSRDeviceBackend apply produced the wrong result." ) && success;
+
+   y_device = 2.0;
+   ApplyAdd( HypreCSRDeviceBackend{}, matrix, x, y_device );
+   success = CheckVector(
+      y_device,
+      { 13.0, 15.0, 15.0 },
+      "HypreCSRDeviceBackend ApplyAdd produced the wrong result." ) && success;
 #endif
 
    return success;
@@ -366,15 +485,16 @@ bool TestHypreMatVecBackendMarkerDispatch()
       reinterpret_cast< hypre_ParCSRMatrix * >( host_parcsr );
    hypre_CSRMatrix * diag =
       hypre_ParCSRMatrixDiag( internal );
+   const auto csr_view = GetHostReadView( matrix.csr );
 
    success = Check(
-      hypre_CSRMatrixI( diag ) == matrix.csr.row_ptr.host_pointer,
+      hypre_CSRMatrixI( diag ) == csr_view.row_ptr,
       "HostMatVecBackend marker-dispatched shell should alias host row storage." ) && success;
    success = Check(
-      hypre_CSRMatrixJ( diag ) == matrix.csr.col_ind.host_pointer,
+      hypre_CSRMatrixJ( diag ) == csr_view.col_ind,
       "HostMatVecBackend marker-dispatched shell should alias host column storage." ) && success;
    success = Check(
-      hypre_CSRMatrixData( diag ) == matrix.csr.values.host_pointer,
+      hypre_CSRMatrixData( diag ) == csr_view.values,
       "HostMatVecBackend marker-dispatched shell should alias host value storage." ) && success;
 
    return success;
@@ -431,26 +551,51 @@ bool TestHypreMoveAfterAlias()
       reinterpret_cast< hypre_ParCSRMatrix * >( moved_shell );
    hypre_CSRMatrix * moved_diag =
       hypre_ParCSRMatrixDiag( moved_internal );
+   const auto moved_csr_view = GetHostReadView( moved.csr );
 
    success = Check(
-      hypre_CSRMatrixI( moved_diag ) == moved.csr.row_ptr.host_pointer,
+      hypre_CSRMatrixI( moved_diag ) == moved_csr_view.row_ptr,
       "Moved Hypre shell row pointer should alias destination CSR storage." ) && success;
    success = Check(
-      hypre_CSRMatrixJ( moved_diag ) == moved.csr.col_ind.host_pointer,
+      hypre_CSRMatrixJ( moved_diag ) == moved_csr_view.col_ind,
       "Moved Hypre shell column pointer should alias destination CSR storage." ) && success;
    success = Check(
-      hypre_CSRMatrixData( moved_diag ) == moved.csr.values.host_pointer,
+      hypre_CSRMatrixData( moved_diag ) == moved_csr_view.values,
       "Moved Hypre shell value pointer should alias destination CSR storage." ) && success;
 
    success = Check(
-      moved.csr.row_ptr.host_pointer == original_row_ptr,
+      moved_csr_view.row_ptr == original_row_ptr,
       "Destination CSR row pointer should retain the aliased storage address." ) && success;
    success = Check(
-      moved.csr.col_ind.host_pointer == original_col_ind,
+      moved_csr_view.col_ind == original_col_ind,
       "Destination CSR column pointer should retain the aliased storage address." ) && success;
    success = Check(
-      moved.csr.values.host_pointer == original_values,
+      moved_csr_view.values == original_values,
       "Destination CSR value pointer should retain the aliased storage address." ) && success;
+
+   auto destination = BuildSmallHypreCSRMatrix();
+   (void) destination.GetHostHypreParCSR();
+#ifdef GENDIL_USE_HYPRE_DEVICE
+   (void) destination.GetDeviceHypreParCSR();
+#endif
+   destination = std::move( moved );
+
+   success = Check(
+      moved.host_parcsr == nullptr &&
+      moved.csr.row_ptr.data.host_pointer == nullptr &&
+      moved.csr.col_ind.data.host_pointer == nullptr &&
+      moved.csr.values.data.host_pointer == nullptr,
+      "Move-assigned-from HypreCSRMatrix should be empty." ) && success;
+   success = Check(
+      destination.GetHostHypreParCSR() == original_shell,
+      "HypreCSR move assignment did not transfer the host Hypre shell." ) &&
+      success;
+   success = Check(
+      destination.csr.row_ptr.data.host_pointer == original_row_ptr &&
+      destination.csr.col_ind.data.host_pointer == original_col_ind &&
+      destination.csr.values.data.host_pointer == original_values,
+      "HypreCSR move assignment did not transfer the CSR storage." ) &&
+      success;
 
    Vector x( 3 );
    Real * x_data = x.WriteHostData();
@@ -460,7 +605,7 @@ bool TestHypreMoveAfterAlias()
 
    Vector y_hypre( 3 );
    y_hypre = 0.0;
-   HypreMatvec( moved, x, y_hypre );
+   HypreMatvec( destination, x, y_hypre );
 
    success = CheckVector(
       y_hypre,
@@ -484,6 +629,9 @@ int main( int argc, char ** argv )
       success = TestHypreAliasVectorViewsAndMatvec() && success;
       success = TestHypreMatVecBackendMarkerDispatch() && success;
       success = TestHypreMoveAfterAlias() && success;
+#ifdef GENDIL_USE_MFEM
+      success = TestMFEMHypreVectorInterop() && success;
+#endif
    }
 
    hypre_MPI_Finalize();

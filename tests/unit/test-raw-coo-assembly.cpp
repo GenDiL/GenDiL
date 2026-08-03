@@ -40,13 +40,13 @@ bool CheckRawTripletRangesAndFinite(
    for ( GlobalIndex i = 0; i < buffer.nnz_raw; ++i )
    {
       success = Check(
-         buffer.rows[i] < buffer.num_rows,
+         ReadHost( buffer.rows )[i] < buffer.num_rows,
          "Raw COO emitted a row outside the matrix dimensions." ) && success;
       success = Check(
-         buffer.cols[i] < buffer.num_cols,
+         ReadHost( buffer.cols )[i] < buffer.num_cols,
          "Raw COO emitted a column outside the matrix dimensions." ) && success;
       success = Check(
-         std::isfinite( buffer.values[i] ),
+         std::isfinite( ReadHost( buffer.values )[i] ),
          "Raw COO emitted a non-finite value." ) && success;
    }
    return success;
@@ -85,10 +85,10 @@ bool CheckScalar1DRawCellSlotCoordinates(
                raw_index < buffer.nnz_raw,
                "Raw COO slot coordinate test exceeded the triplet buffer." ) && success;
             success = Check(
-               buffer.rows[raw_index] == expected_row,
+               ReadHost( buffer.rows )[raw_index] == expected_row,
                "Raw COO row slot does not match element-local test DoF order." ) && success;
             success = Check(
-               buffer.cols[raw_index] == expected_col,
+               ReadHost( buffer.cols )[raw_index] == expected_col,
                "Raw COO column slot does not match element-local trial DoF order." ) && success;
          }
       }
@@ -167,11 +167,11 @@ bool CheckVectorRawCellSlotCoordinates(
                raw_index < buffer.nnz_raw,
                "Vector Raw COO slot coordinate test exceeded the triplet buffer." ) && success;
             success = Check(
-               buffer.rows[raw_index] ==
+               ReadHost( buffer.rows )[raw_index] ==
                   expected_globals[static_cast< size_t >( local_row )],
                "Vector Raw COO row slot does not match component-major test DoF order." ) && success;
             success = Check(
-               buffer.cols[raw_index] ==
+               ReadHost( buffer.cols )[raw_index] ==
                   expected_globals[static_cast< size_t >( local_col )],
                "Vector Raw COO column slot does not match component-major trial DoF order." ) && success;
          }
@@ -189,7 +189,7 @@ bool HasDuplicateCoordinate(
 
    for ( GlobalIndex i = 0; i < buffer.nnz_raw; ++i )
    {
-      coordinates.emplace_back( buffer.rows[i], buffer.cols[i] );
+      coordinates.emplace_back( ReadHost( buffer.rows )[i], ReadHost( buffer.cols )[i] );
    }
 
    std::sort( coordinates.begin(), coordinates.end() );
@@ -205,22 +205,22 @@ bool CheckCanonicalCOOSortedUnique(
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
       success = Check(
-         matrix.rows[i] < matrix.num_rows,
+         ReadHost( matrix.rows )[i] < matrix.num_rows,
          "Canonical COO emitted a row outside the matrix dimensions." ) && success;
       success = Check(
-         matrix.cols[i] < matrix.num_cols,
+         ReadHost( matrix.cols )[i] < matrix.num_cols,
          "Canonical COO emitted a column outside the matrix dimensions." ) && success;
       success = Check(
-         std::isfinite( matrix.values[i] ),
+         std::isfinite( ReadHost( matrix.values )[i] ),
          "Canonical COO emitted a non-finite value." ) && success;
    }
 
    for ( GlobalIndex i = 1; i < matrix.nnz; ++i )
    {
       const bool ordered =
-         matrix.rows[i - 1] < matrix.rows[i] ||
-         ( matrix.rows[i - 1] == matrix.rows[i] &&
-           matrix.cols[i - 1] < matrix.cols[i] );
+         ReadHost( matrix.rows )[i - 1] < ReadHost( matrix.rows )[i] ||
+         ( ReadHost( matrix.rows )[i - 1] == ReadHost( matrix.rows )[i] &&
+           ReadHost( matrix.cols )[i - 1] < ReadHost( matrix.cols )[i] );
 
       success = Check(
          ordered,
@@ -252,13 +252,13 @@ bool CheckCOOMatricesEqual(
    for ( GlobalIndex i = 0; i < nnz; ++i )
    {
       success = Check(
-         actual.rows[i] == expected.rows[i],
+         ReadHost( actual.rows )[i] == ReadHost( expected.rows )[i],
          message ) && success;
       success = Check(
-         actual.cols[i] == expected.cols[i],
+         ReadHost( actual.cols )[i] == ReadHost( expected.cols )[i],
          message ) && success;
       success = Check(
-         Near( actual.values[i], expected.values[i] ),
+         Near( ReadHost( actual.values )[i], ReadHost( expected.values )[i] ),
          message ) && success;
    }
 
@@ -397,43 +397,43 @@ bool TestRawCOOBufferAllocation()
    success = Check( buffer.num_rows == 4, "Raw COO row count is wrong." ) && success;
    success = Check( buffer.num_cols == 5, "Raw COO column count is wrong." ) && success;
    success = Check( buffer.nnz_raw == 6, "Raw COO triplet count is wrong." ) && success;
-   success = Check( buffer.rows.host_pointer != nullptr, "Raw COO rows were not allocated on host." ) && success;
-   success = Check( buffer.cols.host_pointer != nullptr, "Raw COO cols were not allocated on host." ) && success;
-   success = Check( buffer.values.host_pointer != nullptr, "Raw COO values were not allocated on host." ) && success;
+   success = Check( buffer.rows.data.host_pointer != nullptr, "Raw COO rows were not allocated on host." ) && success;
+   success = Check( buffer.cols.data.host_pointer != nullptr, "Raw COO cols were not allocated on host." ) && success;
+   success = Check( buffer.values.data.host_pointer != nullptr, "Raw COO values were not allocated on host." ) && success;
 
    for ( GlobalIndex i = 0; i < buffer.nnz_raw; ++i )
    {
-      success = Check( buffer.rows[i] == 0, "Raw COO rows were not initialized." ) && success;
-      success = Check( buffer.cols[i] == 0, "Raw COO cols were not initialized." ) && success;
-      success = Check( Near( buffer.values[i], 0.0 ), "Raw COO values were not initialized." ) && success;
+      success = Check( ReadHost( buffer.rows )[i] == 0, "Raw COO rows were not initialized." ) && success;
+      success = Check( ReadHost( buffer.cols )[i] == 0, "Raw COO cols were not initialized." ) && success;
+      success = Check( Near( ReadHost( buffer.values )[i], 0.0 ), "Raw COO values were not initialized." ) && success;
    }
 
-   FreeRawCOOTripletBuffer( buffer );
    return success;
 }
 
 bool TestRawCOOToCOOFinalization()
 {
    auto raw = MakeRawCOOTripletBuffer< Real, GlobalIndex >( 2, 3, 6 );
+   auto raw_data = GetHostReadWriteView( raw );
 
-   raw.rows[0] = 1;
-   raw.cols[0] = 2;
-   raw.values[0] = 3.0;
-   raw.rows[1] = 0;
-   raw.cols[1] = 0;
-   raw.values[1] = 1.0;
-   raw.rows[2] = 1;
-   raw.cols[2] = 2;
-   raw.values[2] = 4.0;
-   raw.rows[3] = 0;
-   raw.cols[3] = 1;
-   raw.values[3] = 5.0;
-   raw.rows[4] = 1;
-   raw.cols[4] = 1;
-   raw.values[4] = 2.0;
-   raw.rows[5] = 1;
-   raw.cols[5] = 1;
-   raw.values[5] = -2.0;
+   raw_data.rows[0] = 1;
+   raw_data.cols[0] = 2;
+   raw_data.values[0] = 3.0;
+   raw_data.rows[1] = 0;
+   raw_data.cols[1] = 0;
+   raw_data.values[1] = 1.0;
+   raw_data.rows[2] = 1;
+   raw_data.cols[2] = 2;
+   raw_data.values[2] = 4.0;
+   raw_data.rows[3] = 0;
+   raw_data.cols[3] = 1;
+   raw_data.values[3] = 5.0;
+   raw_data.rows[4] = 1;
+   raw_data.cols[4] = 1;
+   raw_data.values[4] = 2.0;
+   raw_data.rows[5] = 1;
+   raw_data.cols[5] = 1;
+   raw_data.values[5] = -2.0;
 
    auto coo =
       FinalizeRawCOOToCOO(
@@ -446,17 +446,15 @@ bool TestRawCOOToCOOFinalization()
    success = Check( coo.nnz == 4, "Canonical COO reduced nnz is wrong." ) && success;
    success = CheckCanonicalCOOSortedUnique( coo ) && success;
 
-   success = Check( coo.rows[0] == 0 && coo.cols[0] == 0, "Canonical COO entry 0 coordinate is wrong." ) && success;
-   success = Check( Near( coo.values[0], 1.0 ), "Canonical COO entry 0 value is wrong." ) && success;
-   success = Check( coo.rows[1] == 0 && coo.cols[1] == 1, "Canonical COO entry 1 coordinate is wrong." ) && success;
-   success = Check( Near( coo.values[1], 5.0 ), "Canonical COO entry 1 value is wrong." ) && success;
-   success = Check( coo.rows[2] == 1 && coo.cols[2] == 1, "Canonical COO entry 2 coordinate is wrong." ) && success;
-   success = Check( Near( coo.values[2], 0.0 ), "Canonical COO should retain exact reduced zeros." ) && success;
-   success = Check( coo.rows[3] == 1 && coo.cols[3] == 2, "Canonical COO entry 3 coordinate is wrong." ) && success;
-   success = Check( Near( coo.values[3], 7.0 ), "Canonical COO entry 3 value is wrong." ) && success;
+   success = Check( ReadHost( coo.rows )[0] == 0 && ReadHost( coo.cols )[0] == 0, "Canonical COO entry 0 coordinate is wrong." ) && success;
+   success = Check( Near( ReadHost( coo.values )[0], 1.0 ), "Canonical COO entry 0 value is wrong." ) && success;
+   success = Check( ReadHost( coo.rows )[1] == 0 && ReadHost( coo.cols )[1] == 1, "Canonical COO entry 1 coordinate is wrong." ) && success;
+   success = Check( Near( ReadHost( coo.values )[1], 5.0 ), "Canonical COO entry 1 value is wrong." ) && success;
+   success = Check( ReadHost( coo.rows )[2] == 1 && ReadHost( coo.cols )[2] == 1, "Canonical COO entry 2 coordinate is wrong." ) && success;
+   success = Check( Near( ReadHost( coo.values )[2], 0.0 ), "Canonical COO should retain exact reduced zeros." ) && success;
+   success = Check( ReadHost( coo.rows )[3] == 1 && ReadHost( coo.cols )[3] == 2, "Canonical COO entry 3 coordinate is wrong." ) && success;
+   success = Check( Near( ReadHost( coo.values )[3], 7.0 ), "Canonical COO entry 3 value is wrong." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw );
    return success;
 }
 
@@ -564,9 +562,6 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
          "Raw COO action disagrees with BSR action." ) && success;
    }
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -656,8 +651,8 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
    for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
    {
       success = Check(
-         raw_coo.rows[i] == raw_coords[i].first &&
-            raw_coo.cols[i] == raw_coords[i].second,
+         ReadHost( raw_coo.rows )[i] == raw_coords[i].first &&
+            ReadHost( raw_coo.cols )[i] == raw_coords[i].second,
          "Vector p0 RawCOO coordinates are not component-major." ) && success;
    }
 
@@ -685,9 +680,6 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
       y_sgbsr,
       "Vector L2 COO action disagrees with SGBSR action." ) && success;
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -757,12 +749,12 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
    for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
    {
       const bool cross_component =
-         ( raw_coo.rows[i] < num_elements ) !=
-         ( raw_coo.cols[i] < num_elements );
+         ( ReadHost( raw_coo.rows )[i] < num_elements ) !=
+         ( ReadHost( raw_coo.cols )[i] < num_elements );
       if ( cross_component )
       {
          success = Check(
-            Near( raw_coo.values[i], 0.0 ),
+            Near( ReadHost( raw_coo.values )[i], 0.0 ),
             "Vector boundary RawCOO should retain zero cross-component entries." ) && success;
       }
    }
@@ -770,12 +762,12 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
    for ( GlobalIndex i = 0; i < coo.nnz; ++i )
    {
       const bool cross_component =
-         ( coo.rows[i] < num_elements ) !=
-         ( coo.cols[i] < num_elements );
+         ( ReadHost( coo.rows )[i] < num_elements ) !=
+         ( ReadHost( coo.cols )[i] < num_elements );
       if ( cross_component )
       {
          success = Check(
-            Near( coo.values[i], 0.0 ),
+            Near( ReadHost( coo.values )[i], 0.0 ),
             "Vector boundary canonical COO should retain zero cross-component entries." ) && success;
       }
    }
@@ -794,9 +786,6 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
       y_sgbsr,
       "Vector boundary COO action disagrees with SGBSR action." ) && success;
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -855,7 +844,8 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
       GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
          weak_form,
          wf_context,
-         integration_rule );
+         integration_rule,
+         HostBSRBackend<>{} );
 
    const GlobalIndex local_dofs =
       static_cast< GlobalIndex >( fe_space.finite_element.GetNumDofs() );
@@ -918,9 +908,6 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
       }
    }
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1025,9 +1012,6 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
       y_expected,
       "Vector H1 COO action disagrees with the dense p1 mass reference." ) && success;
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1086,11 +1070,11 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
    for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
    {
       success = Check(
-         raw_coo.rows[i] == raw_coords[i].first &&
-            raw_coo.cols[i] == raw_coords[i].second,
+         ReadHost( raw_coo.rows )[i] == raw_coords[i].first &&
+            ReadHost( raw_coo.cols )[i] == raw_coords[i].second,
          "Analytic p0 RawCOO did not preserve the directed interior face traversal." ) && success;
       success = Check(
-         Near( raw_coo.values[i], raw_values[i] ),
+         Near( ReadHost( raw_coo.values )[i], raw_values[i] ),
          "Analytic p0 RawCOO value is wrong." ) && success;
    }
 
@@ -1108,11 +1092,11 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
    for ( GlobalIndex i = 0; i < coo.nnz; ++i )
    {
       success = Check(
-         coo.rows[i] == coo_coords[i].first &&
-            coo.cols[i] == coo_coords[i].second,
+         ReadHost( coo.rows )[i] == coo_coords[i].first &&
+            ReadHost( coo.cols )[i] == coo_coords[i].second,
          "Analytic p0 canonical COO coordinate is wrong." ) && success;
       success = Check(
-         Near( coo.values[i], coo_values[i] ),
+         Near( ReadHost( coo.values )[i], coo_values[i] ),
          "Analytic p0 canonical COO value is wrong." ) && success;
    }
 
@@ -1127,8 +1111,6 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
    success = Check( Near( y_data[0], -3.0 ), "Analytic p0 COO action row 0 is wrong." ) && success;
    success = Check( Near( y_data[1], 3.0 ), "Analytic p0 COO action row 1 is wrong." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1223,11 +1205,11 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
    for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
    {
       success = Check(
-         raw_coo.rows[i] == raw_coords[i].first &&
-            raw_coo.cols[i] == raw_coords[i].second,
+         ReadHost( raw_coo.rows )[i] == raw_coords[i].first &&
+            ReadHost( raw_coo.cols )[i] == raw_coords[i].second,
          "Vector analytic p0 RawCOO compact directed coordinate is wrong." ) && success;
       success = Check(
-         Near( raw_coo.values[i], raw_values[i] ),
+         Near( ReadHost( raw_coo.values )[i], raw_values[i] ),
          "Vector analytic p0 RawCOO value is wrong." ) && success;
    }
 
@@ -1269,11 +1251,11 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
    for ( GlobalIndex i = 0; i < coo.nnz; ++i )
    {
       success = Check(
-         coo.rows[i] == coo_coords[i].first &&
-            coo.cols[i] == coo_coords[i].second,
+         ReadHost( coo.rows )[i] == coo_coords[i].first &&
+            ReadHost( coo.cols )[i] == coo_coords[i].second,
          "Vector analytic p0 canonical COO coordinate is wrong." ) && success;
       success = Check(
-         Near( coo.values[i], coo_values[i] ),
+         Near( ReadHost( coo.values )[i], coo_values[i] ),
          "Vector analytic p0 canonical COO value is wrong." ) && success;
    }
 
@@ -1306,9 +1288,6 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
       y_sgbsr,
       "Vector analytic p0 COO action disagrees with SGBSR action." ) && success;
 
-   FreeCOOMatrix( direct_coo );
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1385,8 +1364,6 @@ bool TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR()
       y_generic,
       "Boundary face COO action disagrees with matrix-free action." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1463,8 +1440,6 @@ bool TestScalarInteriorJumpCOOAgainstGenericAndBSR()
       y_generic,
       "Interior face COO action disagrees with matrix-free action." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 
@@ -1541,11 +1516,11 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    for ( GlobalIndex i = 0; i < raw_coo.nnz_raw; ++i )
    {
       success = Check(
-         raw_coo.rows[i] == raw_coords[i].first &&
-            raw_coo.cols[i] == raw_coords[i].second,
+         ReadHost( raw_coo.rows )[i] == raw_coords[i].first &&
+            ReadHost( raw_coo.cols )[i] == raw_coords[i].second,
          "Combined p0 RawCOO compact block coordinate is wrong." ) && success;
       success = Check(
-         Near( raw_coo.values[i], raw_values[i] ),
+         Near( ReadHost( raw_coo.values )[i], raw_values[i] ),
          "Combined p0 RawCOO did not accumulate self contributions into diagonal slots." ) && success;
    }
 
@@ -1563,11 +1538,11 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    for ( GlobalIndex i = 0; i < coo.nnz; ++i )
    {
       success = Check(
-         coo.rows[i] == coo_coords[i].first &&
-            coo.cols[i] == coo_coords[i].second,
+         ReadHost( coo.rows )[i] == coo_coords[i].first &&
+            ReadHost( coo.cols )[i] == coo_coords[i].second,
          "Combined p0 canonical COO coordinate is wrong." ) && success;
       success = Check(
-         Near( coo.values[i], coo_values[i] ),
+         Near( ReadHost( coo.values )[i], coo_values[i] ),
          "Combined p0 canonical COO value is wrong." ) && success;
    }
 
@@ -1592,8 +1567,6 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
       y_generic,
       "Combined face COO action disagrees with matrix-free action." ) && success;
 
-   FreeCOOMatrix( coo );
-   FreeRawCOOTripletBuffer( raw_coo );
    return success;
 }
 

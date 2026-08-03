@@ -4,11 +4,16 @@
 
 #pragma once
 
+#include "gendil/Algebra/SparseMatrixTypes/BSR/bsrbackendconfiguration.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
+#include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
-namespace gendil {
+#include <type_traits>
+#include <utility>
+
+namespace gendil
+{
 
 enum class BlockLayout
 {
@@ -34,64 +39,85 @@ struct NativeDeviceBSRBackend : DeviceMatVecBackend
    using accumulator_type = AccumulatorType;
 };
 
-// Standalone BSR storage default. GenericAssembly dispatch uses
-// DefaultBackendFor_t<MatrixAssemblyType::BSR> instead.
+#if defined(GENDIL_USE_DEVICE)
+using DefaultBSRBackend = VendorDeviceBSRBackend<>;
+#else
 using DefaultBSRBackend = HostBSRBackend<>;
+#endif
 
 template <
    typename ValueType = Real,
    typename IndexType = GlobalIndex,
    BlockLayout Layout = BlockLayout::ColumnMajor,
    typename Backend = DefaultBSRBackend >
-struct BSRMatrix;
-
-template <
-   typename ValueType,
-   typename IndexType,
-   BlockLayout Layout,
-   typename Backend >
 struct BSRMatrix
 {
    using value_type = ValueType;
    using index_type = IndexType;
    using backend_type = Backend;
 
-   IndexType block_rows = 0; // ntest
-   IndexType block_cols = 0; // ntrial
+   static constexpr BlockLayout block_layout = Layout;
+
+   IndexType block_rows = 0;
+   IndexType block_cols = 0;
    IndexType num_row_blocks = 0;
    IndexType num_col_blocks = 0;
    IndexType num_blocks = 0;
 
-   static constexpr BlockLayout block_layout = Layout;
+   SyncHostDeviceArray< ValueType, IndexType > values{};
+   SyncHostDeviceArray< IndexType, IndexType > row_offsets{};
+   SyncHostDeviceArray< IndexType, IndexType > col_indices{};
 
-   HostDevicePointer<ValueType> values;       // size = num_blocks * block_rows * block_cols
-   HostDevicePointer<IndexType> row_offsets;  // size = num_row_blocks + 1
-   HostDevicePointer<IndexType> col_indices;  // size = num_blocks
-
-   // BSRMatrix is currently a shallow handle over HostDevicePointer buffers.
-   // Backend objects stored here must therefore be safely copyable as long as
-   // BSRMatrix itself remains copyable.
+   // Keep the backend last so cached descriptors are destroyed before arrays.
    Backend backend{};
 
-   GENDIL_HOST_DEVICE
-   constexpr ValueType GetBlockEntry(
-      const IndexType block_index,
-      const IndexType local_row,
-      const IndexType local_col ) const
-   {
-      const IndexType block_offset = block_index * block_rows * block_cols;
+   BSRMatrix() = default;
+   BSRMatrix( const BSRMatrix & ) = delete;
+   BSRMatrix & operator=( const BSRMatrix & ) = delete;
 
-      if constexpr (block_layout == BlockLayout::ColumnMajor)
+   BSRMatrix( BSRMatrix && other )
+      noexcept( std::is_nothrow_move_constructible_v< Backend > )
+   : block_rows( std::exchange( other.block_rows, IndexType( 0 ) ) ),
+     block_cols( std::exchange( other.block_cols, IndexType( 0 ) ) ),
+     num_row_blocks(
+        std::exchange( other.num_row_blocks, IndexType( 0 ) ) ),
+     num_col_blocks(
+        std::exchange( other.num_col_blocks, IndexType( 0 ) ) ),
+     num_blocks( std::exchange( other.num_blocks, IndexType( 0 ) ) ),
+     values( std::move( other.values ) ),
+     row_offsets( std::move( other.row_offsets ) ),
+     col_indices( std::move( other.col_indices ) ),
+     backend( std::move( other.backend ) )
+   { }
+
+   BSRMatrix & operator=( BSRMatrix && other )
+      noexcept( std::is_nothrow_move_assignable_v< Backend > )
+   {
+      if ( this != &other )
       {
-         return values[block_offset + local_col * block_rows + local_row];
+         if constexpr ( requires { backend.ResetState(); } )
+         {
+            backend.ResetState();
+         }
+
+         block_rows = std::exchange( other.block_rows, IndexType( 0 ) );
+         block_cols = std::exchange( other.block_cols, IndexType( 0 ) );
+         num_row_blocks =
+            std::exchange( other.num_row_blocks, IndexType( 0 ) );
+         num_col_blocks =
+            std::exchange( other.num_col_blocks, IndexType( 0 ) );
+         num_blocks = std::exchange( other.num_blocks, IndexType( 0 ) );
+         values = std::move( other.values );
+         row_offsets = std::move( other.row_offsets );
+         col_indices = std::move( other.col_indices );
+         backend = std::move( other.backend );
       }
-      else
-      {
-         return values[block_offset + local_row * block_cols + local_col];
-      }
+      return *this;
    }
 
-   template <typename InputVector, typename OutputVector>
+   ~BSRMatrix() = default;
+
+   template < typename InputVector, typename OutputVector >
    void operator()( const InputVector & x, OutputVector & y ) const;
 };
 

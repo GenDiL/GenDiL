@@ -4,6 +4,11 @@
 
 #pragma once
 
-// Public CSC matrix interface: storage plus Apply support.
+// Move-only CSC matrix storage and backend definitions.
 #include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixstorage.hpp"
+
+// Raw-pointer CSC views and synchronized host/device access.
+#include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixview.hpp"
+
+// Host, native-device, cuSPARSE, and rocSPARSE CSC Apply support.
 #include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixapply.hpp"

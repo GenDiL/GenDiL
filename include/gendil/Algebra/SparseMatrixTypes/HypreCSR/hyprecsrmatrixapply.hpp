@@ -15,8 +15,8 @@ namespace gendil
 
 template <
    typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
+   HostAccessibleVector InputVector,
+   HostAccessibleVector OutputVector >
 void Apply(
    const HypreCSRHostBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,
@@ -28,8 +28,26 @@ void Apply(
 
 template <
    typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
+   HostAccessibleVector InputVector,
+   HostAccessibleVector OutputVector >
+void ApplyAdd(
+   const HypreCSRHostBackend &,
+   const HypreCSRMatrix< MatrixBackend > & matrix,
+   const InputVector & x,
+   OutputVector & y )
+{
+   HypreHostMatvec(
+      matrix,
+      x,
+      y,
+      HYPRE_Complex( 1 ),
+      HYPRE_Complex( 1 ) );
+}
+
+template <
+   typename MatrixBackend,
+   DeviceAccessibleVector InputVector,
+   DeviceAccessibleVector OutputVector >
 void Apply(
    const HypreCSRDeviceBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,
@@ -37,6 +55,24 @@ void Apply(
    OutputVector & y )
 {
    HypreDeviceMatvec( matrix, x, y );
+}
+
+template <
+   typename MatrixBackend,
+   DeviceAccessibleVector InputVector,
+   DeviceAccessibleVector OutputVector >
+void ApplyAdd(
+   const HypreCSRDeviceBackend &,
+   const HypreCSRMatrix< MatrixBackend > & matrix,
+   const InputVector & x,
+   OutputVector & y )
+{
+   HypreDeviceMatvec(
+      matrix,
+      x,
+      y,
+      HYPRE_Complex( 1 ),
+      HYPRE_Complex( 1 ) );
 }
 
 template <
@@ -54,6 +90,20 @@ void Apply(
 }
 
 template <
+   typename Backend,
+   typename MatrixBackend,
+   typename InputVector,
+   typename OutputVector >
+void ApplyAdd(
+   const Backend & backend,
+   const HypreCSRMatrix< MatrixBackend > & matrix,
+   const InputVector & x,
+   OutputVector & y )
+{
+   ApplyAdd( backend, matrix.csr, x, y );
+}
+
+template <
    typename MatrixBackend,
    typename InputVector,
    typename OutputVector >
@@ -63,6 +113,18 @@ void Apply(
    OutputVector & y )
 {
    Apply( matrix.backend, matrix, x, y );
+}
+
+template <
+   typename MatrixBackend,
+   typename InputVector,
+   typename OutputVector >
+void ApplyAdd(
+   const HypreCSRMatrix< MatrixBackend > & matrix,
+   const InputVector & x,
+   OutputVector & y )
+{
+   ApplyAdd( matrix.backend, matrix, x, y );
 }
 
 template < typename MatrixBackend >

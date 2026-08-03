@@ -33,8 +33,7 @@ auto GenericHypreCSRAssembly(
       FinalizeRawCOOToHypreCSR(
          raw_coo,
          HostSortReduceRawCOOToHypreCSRPolicy{},
-         backend );
-   FreeRawCOOTripletBuffer( raw_coo );
+         std::move( backend ) );
    return hypre_csr;
 }
 

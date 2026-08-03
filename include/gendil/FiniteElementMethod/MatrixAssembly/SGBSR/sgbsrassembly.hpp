@@ -32,11 +32,13 @@ auto MakeSGBSRInternalPattern(
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I > )
    {
-      return MakeDGBSRPattern( trial_space, backend );
+      return MakeDGBSRPattern( trial_space, std::move( backend ) );
    }
    else
    {
-      return MakeBlockDiagonalDGBSRPattern( trial_space, backend );
+      return MakeBlockDiagonalDGBSRPattern(
+         trial_space,
+         std::move( backend ) );
    }
 }
 
@@ -85,16 +87,26 @@ auto GenericSGBSRAssembly(
       !( ( trial_uses_h1_restriction || test_uses_h1_restriction ) && has_facet_terms ),
       "SGBSR GenericAssembly currently supports H1Restriction/VectorH1Restriction cell terms only; H1/vector H1 boundary/interior facet terms are unsupported." );
 
-   auto bsr_matrix = MakeSGBSRInternalPattern< I >( trial_space, backend );
+   auto bsr_matrix =
+      MakeSGBSRInternalPattern< I >(
+         trial_space,
+         std::move( backend ) );
+
+   static_assert(
+      is_host_configuration_v< KernelPolicy > !=
+         is_device_configuration_v< KernelPolicy >,
+      "SGBSR assembly requires a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   auto matrix_view =
+      GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
    GenericAssembly<KernelPolicy>(
       weak_form,
       wf_ctx,
       integration_rule,
-      bsr_matrix
+      matrix_view
    );
-
-   SyncAssembledBSRValues< KernelPolicy >( bsr_matrix );
 
    using BSRType = std::remove_cvref_t<decltype(bsr_matrix)>;
    using TrialGather = default_bsr_gather_t< TrialSpace >;
@@ -120,7 +132,7 @@ auto GenericSGBSRAssembly(
       weak_form,
       wf_ctx,
       integration_rule,
-      DefaultBSRBackend{} );
+      MakeDefaultBSRBackend( weak_form, wf_ctx ) );
 }
 
 template<
@@ -181,7 +193,7 @@ auto GenericSGBSRElementBlockDiagonalAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend);
+         std::move( backend ));
 
    using BSRType = std::remove_cvref_t<decltype(bsr_matrix)>;
    using TrialGather = default_bsr_gather_t<TrialSpace>;
@@ -207,7 +219,7 @@ auto GenericSGBSRElementBlockDiagonalAssembly(
       weak_form,
       wf_ctx,
       integration_rule,
-      DefaultBSRBackend{});
+      MakeDefaultBSRBackend( weak_form, wf_ctx ));
 }
 
 } // namespace gendil

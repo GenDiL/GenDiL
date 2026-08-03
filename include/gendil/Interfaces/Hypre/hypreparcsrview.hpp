@@ -48,9 +48,10 @@ inline void DestroyHypreParCSRView( HYPRE_ParCSRMatrix & parcsr )
    parcsr = nullptr;
 }
 
-template < typename HypreMatrix >
+template < typename HypreMatrix, typename CSRView >
 HYPRE_ParCSRMatrix CreateHostHypreParCSRView(
-   const HypreMatrix & matrix )
+   const HypreMatrix & matrix,
+   const CSRView & csr )
 {
    RequireHypreInitialized(
       "HypreCSRMatrix conversion to HYPRE_ParCSRMatrix requires an active HypreSession or prior HYPRE_Initialize()." );
@@ -67,7 +68,7 @@ HYPRE_ParCSRMatrix CreateHostHypreParCSRView(
          row_starts,
          col_starts,
          0,
-         matrix.csr.nnz,
+         csr.nnz,
          0,
          &parcsr ),
       "HYPRE_ParCSRMatrixCreate failed" );
@@ -75,9 +76,12 @@ HYPRE_ParCSRMatrix CreateHostHypreParCSRView(
    auto * internal = reinterpret_cast< hypre_ParCSRMatrix * >( parcsr );
    hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( internal );
 
-   hypre_CSRMatrixI( diag ) = matrix.csr.row_ptr.host_pointer;
-   hypre_CSRMatrixJ( diag ) = matrix.csr.col_ind.host_pointer;
-   hypre_CSRMatrixData( diag ) = matrix.csr.values.host_pointer;
+   hypre_CSRMatrixI( diag ) =
+      const_cast< typename CSRView::index_type * >( csr.row_ptr );
+   hypre_CSRMatrixJ( diag ) =
+      const_cast< typename CSRView::index_type * >( csr.col_ind );
+   hypre_CSRMatrixData( diag ) =
+      const_cast< typename CSRView::value_type * >( csr.values );
    hypre_CSRMatrixOwnsData( diag ) = 0;
    hypre_CSRMatrixMemoryLocation( diag ) = HYPRE_MEMORY_HOST;
    hypre_CSRMatrix * offd = hypre_ParCSRMatrixOffd( internal );
@@ -93,9 +97,10 @@ HYPRE_ParCSRMatrix CreateHostHypreParCSRView(
    return parcsr;
 }
 
-template < typename HypreMatrix >
+template < typename HypreMatrix, typename CSRView >
 HYPRE_ParCSRMatrix CreateDeviceHypreParCSRView(
-   const HypreMatrix & matrix )
+   const HypreMatrix & matrix,
+   const CSRView & csr )
 {
 #ifdef GENDIL_USE_HYPRE_DEVICE
    RequireHypreInitialized(
@@ -113,7 +118,7 @@ HYPRE_ParCSRMatrix CreateDeviceHypreParCSRView(
          row_starts,
          col_starts,
          0,
-         matrix.csr.nnz,
+         csr.nnz,
          0,
          &parcsr ),
       "HYPRE_ParCSRMatrixCreate failed" );
@@ -121,9 +126,12 @@ HYPRE_ParCSRMatrix CreateDeviceHypreParCSRView(
    auto * internal = reinterpret_cast< hypre_ParCSRMatrix * >( parcsr );
    hypre_CSRMatrix * diag = hypre_ParCSRMatrixDiag( internal );
 
-   hypre_CSRMatrixI( diag ) = matrix.csr.row_ptr.device_pointer;
-   hypre_CSRMatrixJ( diag ) = matrix.csr.col_ind.device_pointer;
-   hypre_CSRMatrixData( diag ) = matrix.csr.values.device_pointer;
+   hypre_CSRMatrixI( diag ) =
+      const_cast< typename CSRView::index_type * >( csr.row_ptr );
+   hypre_CSRMatrixJ( diag ) =
+      const_cast< typename CSRView::index_type * >( csr.col_ind );
+   hypre_CSRMatrixData( diag ) =
+      const_cast< typename CSRView::value_type * >( csr.values );
    hypre_CSRMatrixOwnsData( diag ) = 0;
    hypre_CSRMatrixMemoryLocation( diag ) = HYPRE_MEMORY_DEVICE;
    hypre_CSRMatrix * offd = hypre_ParCSRMatrixOffd( internal );
@@ -139,6 +147,7 @@ HYPRE_ParCSRMatrix CreateDeviceHypreParCSRView(
    return parcsr;
 #else
    (void) matrix;
+   (void) csr;
    static_assert(
       dependent_false_v< HypreMatrix >,
       "CreateDeviceHypreParCSRView requires GENDIL_USE_HYPRE_DEVICE. Configure "

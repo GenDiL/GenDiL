@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <type_traits>
 
 using namespace gendil;
 
@@ -109,6 +110,9 @@ bool TestElementBlockDiagonalFormats()
             cell_form,
             context,
             integration_rule);
+   const auto element_bsr_data = GetHostReadView( element_bsr );
+   const auto full_bsr_data = GetHostReadView( full_bsr );
+   const auto cell_bsr_data = GetHostReadView( cell_bsr );
 
    bool success = true;
    success =
@@ -130,15 +134,15 @@ bool TestElementBlockDiagonalFormats()
    {
       success =
          Check(
-            element_bsr.row_offsets[element] == element &&
-            element_bsr.row_offsets[element + 1] == element + 1 &&
-            element_bsr.col_indices[element] == element,
+            element_bsr_data.row_offsets[element] == element &&
+            element_bsr_data.row_offsets[element + 1] == element + 1 &&
+            element_bsr_data.col_indices[element] == element,
             "Element BSR contains a neighbor block.") &&
          success;
 
       const auto full_diagonal_block =
          FindBSRBlockIndex(
-            full_bsr,
+            full_bsr_data,
             element,
             element);
       success =
@@ -149,9 +153,9 @@ bool TestElementBlockDiagonalFormats()
          success;
 
       const Real element_value =
-         element_bsr.GetBlockEntry(element, 0, 0);
+         element_bsr_data.GetBlockEntry(element, 0, 0);
       const Real full_value =
-         full_bsr.GetBlockEntry(
+         full_bsr_data.GetBlockEntry(
             full_diagonal_block,
             0,
             0);
@@ -164,7 +168,7 @@ bool TestElementBlockDiagonalFormats()
          facet_terms_changed_diagonal ||
          !Near(
             element_value,
-            cell_bsr.GetBlockEntry(element, 0, 0));
+            cell_bsr_data.GetBlockEntry(element, 0, 0));
    }
    success =
       Check(
@@ -179,6 +183,7 @@ bool TestElementBlockDiagonalFormats()
             full_form,
             context,
             integration_rule);
+   const auto raw_data = GetHostReadView( raw );
    success =
       Check(
          raw.nnz_raw == num_elements,
@@ -188,14 +193,14 @@ bool TestElementBlockDiagonalFormats()
    {
       success =
          Check(
-            raw.rows[i] == i && raw.cols[i] == i,
+            raw_data.rows[i] == i && raw_data.cols[i] == i,
             "Element RawCOO emitted a cross-element entry.") &&
          success;
       success =
          Check(
             Near(
-               raw.values[i],
-               element_bsr.GetBlockEntry(i, 0, 0)),
+               raw_data.values[i],
+               element_bsr_data.GetBlockEntry(i, 0, 0)),
             "Element RawCOO disagrees with element BSR.") &&
          success;
    }
@@ -308,11 +313,6 @@ bool TestElementBlockDiagonalFormats()
       success;
 #endif
 
-   FreeRawCOOTripletBuffer(raw);
-   FreeCOOMatrix(coo);
-   FreeCOOMatrix(explicit_coo);
-   FreeCSRMatrix(csr);
-   FreeCSCMatrix(csc);
 
    return success;
 }
@@ -351,12 +351,14 @@ bool TestH1SGBSRElementBlockDiagonal()
          KernelPolicy>(
             form,
             context,
-            integration_rule);
+            integration_rule,
+            HostBSRBackend<>{});
    auto full_matrix =
       GenericAssembly<MatrixAssemblyType::SGBSR, KernelPolicy>(
          form,
          context,
-         integration_rule);
+         integration_rule,
+         HostBSRBackend<>{});
 
    Vector x(fe_space.GetNumberOfFiniteElementDofs());
    Real * x_data = x.WriteHostData();
@@ -403,6 +405,7 @@ bool TestFacetOnlyRawCOOActivatesTouchedElements()
             form,
             context,
             integration_rule);
+   const auto raw_data = GetHostReadView( raw );
 
    bool success = true;
    success =
@@ -412,14 +415,13 @@ bool TestFacetOnlyRawCOOActivatesTouchedElements()
       success;
    success =
       Check(
-         raw.rows[0] == 0 &&
-         raw.cols[0] == 0 &&
-         raw.rows[1] == num_elements - 1 &&
-         raw.cols[1] == num_elements - 1,
+         raw_data.rows[0] == 0 &&
+         raw_data.cols[0] == 0 &&
+         raw_data.rows[1] == num_elements - 1 &&
+         raw_data.cols[1] == num_elements - 1,
          "Boundary-only element RawCOO activated the wrong elements.") &&
       success;
 
-   FreeRawCOOTripletBuffer(raw);
    return success;
 }
 
@@ -453,6 +455,33 @@ bool TestRectangularElementBSR()
             form,
             context,
             integration_rule);
+   auto sparse_matrix =
+      GenericBSRAssembly<
+         SerialKernelConfiguration>(
+            form,
+            context,
+            integration_rule);
+   const auto matrix_data = GetHostReadView( matrix );
+
+#if defined(GENDIL_USE_DEVICE)
+   static_assert(
+      std::is_same_v<
+         typename decltype( matrix )::backend_type,
+         NativeDeviceBSRBackend<> > );
+   static_assert(
+      std::is_same_v<
+         typename decltype( sparse_matrix )::backend_type,
+         NativeDeviceBSRBackend<> > );
+#else
+   static_assert(
+      std::is_same_v<
+         typename decltype( matrix )::backend_type,
+         HostBSRBackend<> > );
+   static_assert(
+      std::is_same_v<
+         typename decltype( sparse_matrix )::backend_type,
+         HostBSRBackend<> > );
+#endif
 
    bool success = true;
    success =
@@ -473,11 +502,18 @@ bool TestRectangularElementBSR()
          success =
             Check(
                std::isfinite(
-                  matrix.GetBlockEntry(block, 0, col)),
+                  matrix_data.GetBlockEntry(block, 0, col)),
                "Rectangular element BSR contains a non-finite value.") &&
             success;
       }
    }
+   success =
+      Check(
+         sparse_matrix.block_rows == 1 &&
+         sparse_matrix.block_cols == 2,
+         "Rectangular GenericBSRAssembly has the wrong block shape.") &&
+      success;
+
    return success;
 }
 

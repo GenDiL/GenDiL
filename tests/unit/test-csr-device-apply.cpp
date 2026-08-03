@@ -48,33 +48,32 @@ auto MakeDeviceCSRMatrix()
          6,
          NativeDeviceCSRBackend{} );
 
-   matrix.row_ptr[0] = 0;
-   matrix.row_ptr[1] = 2;
-   matrix.row_ptr[2] = 5;
-   matrix.row_ptr[3] = 5;
-   matrix.row_ptr[4] = 6;
+   auto matrix_data = GetHostWriteView( matrix );
+   matrix_data.row_ptr[0] = 0;
+   matrix_data.row_ptr[1] = 2;
+   matrix_data.row_ptr[2] = 5;
+   matrix_data.row_ptr[3] = 5;
+   matrix_data.row_ptr[4] = 6;
 
-   matrix.col_ind[0] = 0;
-   matrix.values[0] = 2.0;
+   matrix_data.col_ind[0] = 0;
+   matrix_data.values[0] = 2.0;
 
-   matrix.col_ind[1] = 3;
-   matrix.values[1] = -1.0;
+   matrix_data.col_ind[1] = 3;
+   matrix_data.values[1] = -1.0;
 
-   matrix.col_ind[2] = 1;
-   matrix.values[2] = 4.0;
+   matrix_data.col_ind[2] = 1;
+   matrix_data.values[2] = 4.0;
 
-   matrix.col_ind[3] = 2;
-   matrix.values[3] = 0.0;
+   matrix_data.col_ind[3] = 2;
+   matrix_data.values[3] = 0.0;
 
-   matrix.col_ind[4] = 4;
-   matrix.values[4] = 1.5;
+   matrix_data.col_ind[4] = 4;
+   matrix_data.values[4] = 1.5;
 
-   matrix.col_ind[5] = 0;
-   matrix.values[5] = -3.0;
+   matrix_data.col_ind[5] = 0;
+   matrix_data.values[5] = -3.0;
 
-   ToDevice( matrix.num_rows + 1, matrix.row_ptr );
-   ToDevice( matrix.nnz, matrix.col_ind );
-   ToDevice( matrix.nnz, matrix.values );
+   Sync( matrix );
 
    return matrix;
 }
@@ -136,7 +135,31 @@ bool TestNativeDeviceCSRAction()
       y_host,
       "CSRMatrix::operator()(x, y) with NativeDeviceCSRBackend disagrees with host Apply." ) && success;
 
-   FreeCSRMatrix( matrix );
+   y_host = 3.0;
+   y_device_apply = 3.0;
+   ApplyAdd( HostCSRBackend{}, matrix, x, y_host );
+   ApplyAdd( NativeDeviceCSRBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "NativeDeviceCSRBackend ApplyAdd disagrees with HostCSRBackend ApplyAdd." ) &&
+      success;
+
+   Real * device_values = ReadWriteDevice( matrix.values );
+   DeviceLoop(
+      matrix.nnz,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex i )
+      {
+         device_values[i] *= Real( 2 );
+      } );
+   Apply( HostCSRBackend{}, matrix, x, y_host );
+   Apply( NativeDeviceCSRBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "CSR device-value modification did not synchronize back to host." ) &&
+      success;
+
    return success;
 }
 

@@ -128,14 +128,15 @@ bool TestFloatBSRApplyArithmetic()
          typename MatrixType::backend_type,
          HostBSRBackend< float, float > > );
 
-   matrix.values[0] = 1.0f;
-   matrix.values[1] = 3.0f;
-   matrix.values[2] = 2.0f;
-   matrix.values[3] = 4.0f;
-   matrix.values[4] = -1.0f;
-   matrix.values[5] = 2.0f;
-   matrix.values[6] = 0.5f;
-   matrix.values[7] = -2.0f;
+   auto * matrix_values = ReadWriteHost( matrix.values );
+   matrix_values[0] = 1.0f;
+   matrix_values[1] = 3.0f;
+   matrix_values[2] = 2.0f;
+   matrix_values[3] = 4.0f;
+   matrix_values[4] = -1.0f;
+   matrix_values[5] = 2.0f;
+   matrix_values[6] = 0.5f;
+   matrix_values[7] = -2.0f;
 
    Vector x( 4 );
    FillInput( x );
@@ -177,11 +178,12 @@ bool TestFloatCOOApplyArithmetic()
    const GlobalIndex rows[] = { 0, 0, 1, 1, 2, 2, 3, 3 };
    const GlobalIndex cols[] = { 0, 1, 0, 1, 2, 3, 2, 3 };
    const float values[] = { 1.0f, 2.0f, 3.0f, 4.0f, -1.0f, 0.5f, 2.0f, -2.0f };
+   auto matrix_data = GetHostWriteView( matrix );
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      matrix.rows[i] = rows[i];
-      matrix.cols[i] = cols[i];
-      matrix.values[i] = values[i];
+      matrix_data.rows[i] = rows[i];
+      matrix_data.cols[i] = cols[i];
+      matrix_data.values[i] = values[i];
    }
 
    Vector x( 4 );
@@ -203,7 +205,6 @@ bool TestFloatCOOApplyArithmetic()
       y_operator,
       "Float COO operator() with stored compute override failed." ) && success;
 
-   FreeCOOMatrix( matrix );
    return success;
 }
 
@@ -226,14 +227,15 @@ bool TestFloatCSRApplyArithmetic()
    const GlobalIndex row_ptr[] = { 0, 2, 4, 6, 8 };
    const GlobalIndex cols[] = { 0, 1, 0, 1, 2, 3, 2, 3 };
    const float values[] = { 1.0f, 2.0f, 3.0f, 4.0f, -1.0f, 0.5f, 2.0f, -2.0f };
+   auto matrix_data = GetHostWriteView( matrix );
    for ( GlobalIndex i = 0; i < 5; ++i )
    {
-      matrix.row_ptr[i] = row_ptr[i];
+      matrix_data.row_ptr[i] = row_ptr[i];
    }
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      matrix.col_ind[i] = cols[i];
-      matrix.values[i] = values[i];
+      matrix_data.col_ind[i] = cols[i];
+      matrix_data.values[i] = values[i];
    }
 
    Vector x( 4 );
@@ -255,7 +257,6 @@ bool TestFloatCSRApplyArithmetic()
       y_operator,
       "Float CSR operator() with stored backend override failed." ) && success;
 
-   FreeCSRMatrix( matrix );
    return success;
 }
 
@@ -278,14 +279,15 @@ bool TestFloatCSCApplyArithmetic()
    const GlobalIndex col_ptr[] = { 0, 2, 4, 6, 8 };
    const GlobalIndex rows[] = { 0, 1, 0, 1, 2, 3, 2, 3 };
    const float values[] = { 1.0f, 3.0f, 2.0f, 4.0f, -1.0f, 2.0f, 0.5f, -2.0f };
+   auto matrix_data = GetHostWriteView( matrix );
    for ( GlobalIndex i = 0; i < 5; ++i )
    {
-      matrix.col_ptr[i] = col_ptr[i];
+      matrix_data.col_ptr[i] = col_ptr[i];
    }
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      matrix.row_ind[i] = rows[i];
-      matrix.values[i] = values[i];
+      matrix_data.row_ind[i] = rows[i];
+      matrix_data.values[i] = values[i];
    }
 
    Vector x( 4 );
@@ -307,7 +309,6 @@ bool TestFloatCSCApplyArithmetic()
       y_operator,
       "Float CSC operator() with stored compute override failed." ) && success;
 
-   FreeCSCMatrix( matrix );
    return success;
 }
 

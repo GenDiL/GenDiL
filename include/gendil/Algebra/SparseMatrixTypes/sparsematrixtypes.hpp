@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+#pragma once
+
 // Shared sparse matrix action arithmetic policy helpers.
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 
@@ -14,8 +16,8 @@
 // Algebraic scatter/gather wrapper for BSR sparse matrix application.
 #include "gendil/Algebra/SparseMatrixTypes/SGBSR/sgbsrmatrix.hpp"
 
-// Raw duplicated unsorted COO triplet assembly buffer.
-#include "gendil/Algebra/SparseMatrixTypes/COO/rawcootripletbuffer.hpp"
+// Raw duplicated unsorted COO triplet storage and views.
+#include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 
 // Canonical sorted and duplicate-reduced COO sparse matrix type and action.
 #include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"

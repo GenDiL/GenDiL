@@ -7,6 +7,8 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/globalfacetassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/localfacetassembly.hpp"
 
+#include <type_traits>
+
 namespace gendil {
 
 template<
@@ -15,6 +17,7 @@ template<
    class WeakFormContext,
    class IntegrationRule,
    class SparseMatrixType>
+requires std::is_copy_constructible_v< SparseMatrixType >
 void GenericAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,

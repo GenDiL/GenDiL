@@ -16,7 +16,7 @@ void WriteAddQuadratureLocalValues(
    QuadraturePointTensor & field,
    std::index_sequence< Is... > )
 {
-   AtomicAdd( field( quad_index[Is]... ) , field_q );
+   AtomicAddInPlace( field( quad_index[Is]... ) , field_q );
 }
 
 template < Integer Dim, typename QuadraturePointTensor >
@@ -40,7 +40,7 @@ void WriteAddQuadratureLocalValues(
 {
    for (LocalIndex comp = 0; comp < NumComp; comp++)
    {
-      AtomicAdd( field( quad_index[Is]..., comp ), field_q[comp] );
+      AtomicAddInPlace( field( quad_index[Is]..., comp ), field_q[comp] );
    }
 }
 
