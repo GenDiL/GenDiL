@@ -24,6 +24,10 @@ add_non_nvcc_test(test-sparse-matrix-apply-arithmetic test-sparse-matrix-apply-a
 add_non_nvcc_test(test-sparse-matrix-apply-add test-sparse-matrix-apply-add.cpp)
 add_non_nvcc_test(test-raw-coo-assembly test-raw-coo-assembly.cpp)
 add_my_test(
+  test-device-sparse-finalization
+  test-device-sparse-finalization.cpp
+)
+add_my_test(
   test-sparse-storage-ownership
   test-sparse-storage-ownership.cpp
 )

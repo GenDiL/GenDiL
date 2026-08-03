@@ -45,12 +45,17 @@ endif()
 if (@USE_HIP@)
     find_dependency(HIP REQUIRED)
     find_dependency(rocsparse CONFIG REQUIRED)
+    if (@GENDIL_HAS_DEVICE_SPARSE_FINALIZATION@)
+        find_dependency(rocprim CONFIG REQUIRED)
+    endif()
 endif()
 
 set(GENDIL_USE_CUDA "@USE_CUDA@")
 set(GENDIL_USE_HIP "@USE_HIP@")
 set(GENDIL_USE_HYPRE "@USE_HYPRE@")
 set(GENDIL_USE_HYPRE_DEVICE "@GENDIL_USE_HYPRE_DEVICE@")
+set(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+    "@GENDIL_HAS_DEVICE_SPARSE_FINALIZATION@")
 
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 

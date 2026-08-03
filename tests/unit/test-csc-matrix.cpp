@@ -223,9 +223,7 @@ bool TestRawCOOToCSCFinalization()
    FillRawFixture( raw );
 
    auto csc =
-      FinalizeRawCOOToCSC(
-         raw,
-         HostSortReduceRawCOOToCSCPolicy{} );
+      FinalizeRawCOOToCSCHost( raw );
 
    bool success = true;
    success = Check(

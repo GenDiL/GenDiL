@@ -27,11 +27,9 @@ auto GenericCSCAssembly(
          weak_form,
          wf_ctx,
          integration_rule );
-   auto csc =
-      FinalizeRawCOOToCSC(
-         raw_coo,
-         HostSortReduceRawCOOToCSCPolicy{},
-         std::move( backend ) );
+   auto csc = FinalizeRawCOOToCSC< KernelPolicy >(
+      raw_coo,
+      std::move( backend ) );
    return csc;
 }
 

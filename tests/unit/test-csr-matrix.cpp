@@ -268,9 +268,7 @@ bool TestRawCOOSortReduceOrdersAndCSRFinalization()
       "RawCOO column-major sort/reduce produced the wrong triplets." ) && success;
 
    auto csr =
-      FinalizeRawCOOToCSR(
-         raw,
-         HostSortReduceRawCOOToCSRPolicy{} );
+      FinalizeRawCOOToCSRHost( raw );
 
    success = Check(
       csr.num_rows == 4 && csr.num_cols == 5 && csr.nnz == 6,

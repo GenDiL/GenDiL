@@ -27,11 +27,9 @@ auto GenericCSRAssembly(
          weak_form,
          wf_ctx,
          integration_rule );
-   auto csr =
-      FinalizeRawCOOToCSR(
-         raw_coo,
-         HostSortReduceRawCOOToCSRPolicy{},
-         std::move( backend ) );
+   auto csr = FinalizeRawCOOToCSR< KernelPolicy >(
+      raw_coo,
+      std::move( backend ) );
    return csr;
 }
 

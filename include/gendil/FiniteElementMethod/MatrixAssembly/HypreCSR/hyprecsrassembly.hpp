@@ -29,11 +29,9 @@ auto GenericHypreCSRAssembly(
          weak_form,
          wf_ctx,
          integration_rule );
-   auto hypre_csr =
-      FinalizeRawCOOToHypreCSR(
-         raw_coo,
-         HostSortReduceRawCOOToHypreCSRPolicy{},
-         std::move( backend ) );
+   auto hypre_csr = FinalizeRawCOOToHypreCSR< KernelPolicy >(
+      raw_coo,
+      std::move( backend ) );
    return hypre_csr;
 }
 

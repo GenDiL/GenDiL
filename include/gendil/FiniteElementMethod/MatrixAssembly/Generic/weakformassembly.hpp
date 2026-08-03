@@ -184,18 +184,16 @@ auto GenericElementBlockDiagonalAssembly(
       else if constexpr (Type == MatrixAssemblyType::COO)
       {
          auto matrix =
-            FinalizeRawCOOToCOO(
+            FinalizeRawCOOToCOO< KernelPolicy >(
                raw_coo,
-               HostSortReduceRawCOOPolicy{},
                std::move( backend ));
          return matrix;
       }
       else if constexpr (Type == MatrixAssemblyType::CSR)
       {
          auto matrix =
-            FinalizeRawCOOToCSR(
+            FinalizeRawCOOToCSR< KernelPolicy >(
                raw_coo,
-               HostSortReduceRawCOOToCSRPolicy{},
                std::move( backend ));
          return matrix;
       }
@@ -203,9 +201,8 @@ auto GenericElementBlockDiagonalAssembly(
       else if constexpr (Type == MatrixAssemblyType::HypreCSR)
       {
          auto matrix =
-            FinalizeRawCOOToHypreCSR(
+            FinalizeRawCOOToHypreCSR< KernelPolicy >(
                raw_coo,
-               HostSortReduceRawCOOToHypreCSRPolicy{},
                std::move( backend ));
          return matrix;
       }
@@ -213,9 +210,8 @@ auto GenericElementBlockDiagonalAssembly(
       else if constexpr (Type == MatrixAssemblyType::CSC)
       {
          auto matrix =
-            FinalizeRawCOOToCSC(
+            FinalizeRawCOOToCSC< KernelPolicy >(
                raw_coo,
-               HostSortReduceRawCOOToCSCPolicy{},
                std::move( backend ));
          return matrix;
       }

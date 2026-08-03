@@ -8,25 +8,22 @@
 #include "gendil/Algebra/SparseMatrixTypes/COO/coomatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 
 namespace gendil {
 
 /**
- * Host-only RawCOO finalization policy.
+ * Host-only RawCOO finalization.
  *
- * The policy reads the current host copy of `RawCOOTripletBuffer`, sorts by
+ * This function reads the current host copy of `RawCOOTripletBuffer`, sorts by
  * `(row, col)`, and additively reduces exact duplicate coordinates. Callers are
- * responsible for ensuring the raw host buffers are current before calling this
- * policy. The buffer overload obtains a host read view and therefore performs
+ * responsible for ensuring a raw host view is current before calling this
+ * overload. The buffer overload obtains a host read view and therefore performs
  * any required device-to-host synchronization lazily.
  */
-struct HostSortReduceRawCOOPolicy
-{ };
-
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCOO(
+auto FinalizeRawCOOToCOOHost(
    const RawCOOTripletView< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOPolicy &,
    Backend backend )
 {
    using StoredValueType = std::remove_const_t< ValueType >;
@@ -51,31 +48,92 @@ auto FinalizeRawCOOToCOO(
       matrix_data.values[i] = triplet.value;
    }
 
-   Sync( matrix );
+   return matrix;
+}
 
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+
+/** GPU RawCOO finalization using CUB or rocPRIM vendor primitives. */
+template < typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCOODevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+   if ( !details::DevicePrimitiveCanProcess( raw.nnz_raw ) )
+   {
+      details::WarnDeviceSparseFinalizationItemLimit();
+      return FinalizeRawCOOToCOOHost(
+         GetHostReadView( raw ),
+         std::move( backend ) );
+   }
+
+   auto reduced =
+      details::MakeDeviceSortedReducedRawCOOTriplets<
+         SparseCoordinateOrder::RowThenColumn >( GetDeviceReadView( raw ) );
+   auto matrix = MakeCOOMatrix< ValueType, IndexType, Backend >(
+      raw.num_rows,
+      raw.num_cols,
+      reduced.nnz,
+      std::move( backend ) );
+   auto output = GetDeviceWriteView( matrix );
+   const auto * coordinates = reduced.coordinates.data();
+   const auto * values = reduced.values.data();
+   DeviceLoop(
+      reduced.nnz,
+      [=] GENDIL_HOST_DEVICE ( const IndexType i )
+      {
+         output.rows[i] = coordinates[i].major;
+         output.cols[i] = coordinates[i].minor;
+         output.values[i] = values[i];
+      } );
    return matrix;
 }
 
 template < typename ValueType, typename IndexType >
-auto FinalizeRawCOOToCOO(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOPolicy & policy )
+auto FinalizeRawCOOToCOODevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
-   return FinalizeRawCOOToCOO(
+   return FinalizeRawCOOToCOODevice(
+      raw,
+      DefaultCOOBackend{} );
+}
+
+#endif // GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+
+template < typename ValueType, typename IndexType >
+auto FinalizeRawCOOToCOOHost(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
+{
+   return FinalizeRawCOOToCOOHost(
       GetHostReadView( raw ),
-      policy,
       DefaultCOOBackend{} );
 }
 
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCOO(
+auto FinalizeRawCOOToCOOHost(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOPolicy & policy,
    Backend backend )
 {
-   return FinalizeRawCOOToCOO(
+   return FinalizeRawCOOToCOOHost(
       GetHostReadView( raw ),
-      policy,
+      std::move( backend ) );
+}
+
+template < class KernelPolicy, typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCOO(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+   if constexpr ( is_device_configuration_v< KernelPolicy > )
+   {
+      return FinalizeRawCOOToCOODevice(
+         raw,
+         std::move( backend ) );
+   }
+#endif
+   return FinalizeRawCOOToCOOHost(
+      raw,
       std::move( backend ) );
 }
 

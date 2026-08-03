@@ -90,9 +90,8 @@ HypreCSRMatrix< Backend > BuildSmallHypreCSRMatrix( Backend backend )
    FillRawHypreCSRFixture( raw );
 
    auto matrix =
-      FinalizeRawCOOToHypreCSR(
+      FinalizeRawCOOToHypreCSRHost(
          raw,
-         HostSortReduceRawCOOToHypreCSRPolicy{},
          backend );
    return matrix;
 }

@@ -8,6 +8,7 @@
 
 #include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrix.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -18,7 +19,7 @@ namespace gendil
 {
 
 /**
- * @brief Host-only RawCOO-to-HypreCSR finalization policy.
+ * @brief Host-only RawCOO-to-HypreCSR finalization.
  *
  * This is the Hypre-specific counterpart to the native CSR finalizer. It reads
  * the current host copy of `RawCOOTripletBuffer`, sorts entries by row, then
@@ -32,9 +33,6 @@ namespace gendil
  * for zero-copy aliasing by the `HYPRE_ParCSRMatrix` shell owned by
  * `HypreCSRMatrix`.
  */
-struct HostSortReduceRawCOOToHypreCSRPolicy
-{ };
-
 namespace details
 {
 
@@ -101,16 +99,15 @@ inline HypreCSRMetadata MakeHypreCSRMetadata(
  * 3. Build CSR row counts and convert them to prefix sums.
  * 4. Fill `col_ind` and `values` using `HYPRE_Int` and `HYPRE_Complex`.
  * 5. Record diagonal metadata from the first entry of each eligible row.
- * 6. Mark the CSR arrays host/device current through the owning CSR state.
+ * 6. Leave the CSR arrays host-authoritative until a device view is requested.
  *
  * This function does not insert missing diagonals. Missing diagonal entries are
  * recorded in the metadata so matvec-only and solver-oriented callers can make
  * different policy decisions later.
  */
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToHypreCSR(
+auto FinalizeRawCOOToHypreCSRHost(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOToHypreCSRPolicy &,
    Backend backend )
 {
    const auto raw_data = GetHostReadView( raw );
@@ -122,6 +119,10 @@ auto FinalizeRawCOOToHypreCSR(
       details::CheckedHypreNarrow< HYPRE_Int >(
          raw_data.num_rows,
          "FinalizeRawCOOToHypreCSR received too many rows for HYPRE_Int." );
+   GENDIL_VERIFY(
+      num_rows < std::numeric_limits< HYPRE_Int >::max(),
+      "FinalizeRawCOOToHypreCSR requires num_rows + 1 to fit in "
+      "HYPRE_Int." );
    const HYPRE_Int num_cols =
       details::CheckedHypreNarrow< HYPRE_Int >(
          raw_data.num_cols,
@@ -216,9 +217,192 @@ auto FinalizeRawCOOToHypreCSR(
    metadata.has_explicit_diagonal =
       metadata.missing_diagonal_count == 0;
 
-   // Mark both views current so native GenDiL apply and host Hypre aliasing can
-   // share the same storage state without an immediate synchronization surprise.
-   Sync( csr );
+   return HypreCSRMatrix< Backend >{
+      std::move( csr ),
+      metadata,
+      std::move( backend ) };
+}
+
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+
+/** GPU RawCOO-to-HypreCSR finalization using CUB or rocPRIM primitives. */
+template < typename IndexType >
+bool DeviceHyprePointerCountCanProcess( const IndexType num_rows )
+{
+   if ( num_rows == std::numeric_limits< IndexType >::max() )
+   {
+      return false;
+   }
+   return details::DevicePrimitiveCanProcess(
+      num_rows + IndexType( 1 ) );
+}
+
+template < typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToHypreCSRDevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+   if ( !details::DevicePrimitiveCanProcess( raw.nnz_raw ) ||
+        !DeviceHyprePointerCountCanProcess( raw.num_rows ) )
+   {
+      details::WarnDeviceSparseFinalizationItemLimit();
+      return FinalizeRawCOOToHypreCSRHost(
+         raw,
+         std::move( backend ) );
+   }
+
+   const HYPRE_Int num_rows =
+      details::CheckedHypreNarrow< HYPRE_Int >(
+         raw.num_rows,
+         "FinalizeRawCOOToHypreCSR received too many rows for HYPRE_Int." );
+   GENDIL_VERIFY(
+      num_rows < std::numeric_limits< HYPRE_Int >::max(),
+      "FinalizeRawCOOToHypreCSR requires num_rows + 1 to fit in "
+      "HYPRE_Int." );
+   const HYPRE_Int num_cols =
+      details::CheckedHypreNarrow< HYPRE_Int >(
+         raw.num_cols,
+         "FinalizeRawCOOToHypreCSR received too many columns for HYPRE_Int." );
+
+   auto reduced =
+      details::MakeDeviceSortedReducedRawCOOTriplets<
+         SparseCoordinateOrder::RowThenColumn >( GetDeviceReadView( raw ) );
+   const HYPRE_Int nnz =
+      details::CheckedHypreNarrow< HYPRE_Int >(
+         reduced.nnz,
+         "FinalizeRawCOOToHypreCSR received too many entries for HYPRE_Int." );
+
+   auto csr = MakeCSRMatrix< HYPRE_Complex, HYPRE_Int, HostCSRBackend<> >(
+      num_rows,
+      num_cols,
+      nnz,
+      HostCSRBackend<>{} );
+   auto output = GetDeviceWriteView( csr );
+   const HYPRE_Int pointer_count = num_rows + HYPRE_Int( 1 );
+   details::DeviceMemset(
+      output.row_ptr,
+      0,
+      static_cast< size_t >( pointer_count ) * sizeof( HYPRE_Int ) );
+
+   const auto * coordinates = reduced.coordinates.data();
+   const auto * values = reduced.values.data();
+   details::DeviceOnlyBuffer< HYPRE_Int > diagonal_positions(
+      static_cast< size_t >( num_rows ) );
+   details::DeviceMemset(
+      diagonal_positions.data(),
+      0xff,
+      static_cast< size_t >( num_rows ) * sizeof( HYPRE_Int ) );
+   auto * diagonal_position = diagonal_positions.data();
+   const IndexType reduced_nnz = reduced.nnz;
+   DeviceLoop(
+      reduced_nnz,
+      [=] GENDIL_HOST_DEVICE ( const IndexType i )
+      {
+         const auto coordinate = coordinates[i];
+         const HYPRE_Int row = static_cast< HYPRE_Int >( coordinate.major );
+         if ( i + IndexType( 1 ) == reduced_nnz ||
+              coordinates[i + IndexType( 1 )].major != coordinate.major )
+         {
+            output.row_ptr[row + HYPRE_Int( 1 )] =
+               static_cast< HYPRE_Int >( i + IndexType( 1 ) );
+         }
+         if ( coordinate.major == coordinate.minor )
+         {
+            diagonal_position[row] = static_cast< HYPRE_Int >( i );
+         }
+      } );
+
+   details::DeviceOnlyBuffer< HYPRE_Int > scanned_pointers(
+      static_cast< size_t >( pointer_count ) );
+   details::DeviceInclusiveScan(
+      output.row_ptr,
+      scanned_pointers.data(),
+      pointer_count,
+      details::DeviceMaximum< HYPRE_Int >{} );
+   details::DeviceCopyToDevice(
+      output.row_ptr,
+      scanned_pointers.data(),
+      static_cast< size_t >( pointer_count ) * sizeof( HYPRE_Int ) );
+
+   const auto * row_ptr = output.row_ptr;
+   DeviceLoop(
+      reduced_nnz,
+      [=] GENDIL_HOST_DEVICE ( const IndexType i )
+      {
+         const auto coordinate = coordinates[i];
+         const HYPRE_Int row = static_cast< HYPRE_Int >( coordinate.major );
+         const HYPRE_Int source = static_cast< HYPRE_Int >( i );
+         const HYPRE_Int row_start = row_ptr[row];
+         const HYPRE_Int diagonal = diagonal_position[row];
+         HYPRE_Int destination = source;
+         if ( diagonal >= HYPRE_Int( 0 ) )
+         {
+            if ( source == diagonal )
+            {
+               destination = row_start;
+            }
+            else if ( source < diagonal )
+            {
+               destination = source + HYPRE_Int( 1 );
+            }
+         }
+         output.col_ind[destination] =
+            static_cast< HYPRE_Int >( coordinate.minor );
+         output.values[destination] =
+            static_cast< HYPRE_Complex >( values[i] );
+      } );
+
+   auto metadata = details::MakeHypreCSRMetadata( num_rows, num_cols );
+   const HYPRE_Int diagonal_rows = metadata.diagonal_rows;
+   if ( diagonal_rows > HYPRE_Int( 0 ) )
+   {
+      details::DeviceOnlyBuffer< HYPRE_Int > explicit_flags(
+         static_cast< size_t >( diagonal_rows ) );
+      details::DeviceOnlyBuffer< HYPRE_Int > missing_candidates(
+         static_cast< size_t >( diagonal_rows ) );
+      auto * flags = explicit_flags.data();
+      auto * candidates = missing_candidates.data();
+      DeviceLoop(
+         diagonal_rows,
+         [=] GENDIL_HOST_DEVICE ( const HYPRE_Int row )
+         {
+            const bool has_diagonal =
+               diagonal_position[row] >= HYPRE_Int( 0 );
+            flags[row] = has_diagonal ? HYPRE_Int( 1 ) : HYPRE_Int( 0 );
+            candidates[row] = has_diagonal ? diagonal_rows : row;
+         } );
+
+      details::DeviceOnlyBuffer< HYPRE_Int > explicit_prefix(
+         static_cast< size_t >( diagonal_rows ) );
+      details::DeviceOnlyBuffer< HYPRE_Int > first_missing_prefix(
+         static_cast< size_t >( diagonal_rows ) );
+      details::DeviceInclusiveScan(
+         explicit_flags.data(),
+         explicit_prefix.data(),
+         diagonal_rows,
+         details::DeviceAdd< HYPRE_Int >{} );
+      details::DeviceInclusiveScan(
+         missing_candidates.data(),
+         first_missing_prefix.data(),
+         diagonal_rows,
+         details::DeviceMinimum< HYPRE_Int >{} );
+
+      details::DeviceCopyToHost(
+         &metadata.explicit_diagonal_count,
+         explicit_prefix.data() + diagonal_rows - HYPRE_Int( 1 ),
+         sizeof( HYPRE_Int ) );
+      HYPRE_Int first_missing = diagonal_rows;
+      details::DeviceCopyToHost(
+         &first_missing,
+         first_missing_prefix.data() + diagonal_rows - HYPRE_Int( 1 ),
+         sizeof( HYPRE_Int ) );
+      metadata.missing_diagonal_count =
+         diagonal_rows - metadata.explicit_diagonal_count;
+      metadata.first_missing_diagonal =
+         first_missing == diagonal_rows ? HYPRE_Int( -1 ) : first_missing;
+   }
+   metadata.has_explicit_diagonal =
+      metadata.missing_diagonal_count == HYPRE_Int( 0 );
 
    return HypreCSRMatrix< Backend >{
       std::move( csr ),
@@ -227,13 +411,22 @@ auto FinalizeRawCOOToHypreCSR(
 }
 
 template < typename ValueType, typename IndexType >
-auto FinalizeRawCOOToHypreCSR(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOToHypreCSRPolicy & policy )
+auto FinalizeRawCOOToHypreCSRDevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
-   return FinalizeRawCOOToHypreCSR(
+   return FinalizeRawCOOToHypreCSRDevice(
       raw,
-      policy,
+      typename HypreCSRMatrix<>::backend_type{} );
+}
+
+#endif // GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+
+template < typename ValueType, typename IndexType >
+auto FinalizeRawCOOToHypreCSRHost(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
+{
+   return FinalizeRawCOOToHypreCSRHost(
+      raw,
       typename HypreCSRMatrix<>::backend_type{} );
 }
 
@@ -241,9 +434,25 @@ template < typename ValueType, typename IndexType >
 auto FinalizeRawCOOToHypreCSR(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
-   return FinalizeRawCOOToHypreCSR(
+   return FinalizeRawCOOToHypreCSRHost( raw );
+}
+
+template < class KernelPolicy, typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToHypreCSR(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+   if constexpr ( is_device_configuration_v< KernelPolicy > )
+   {
+      return FinalizeRawCOOToHypreCSRDevice(
+         raw,
+         std::move( backend ) );
+   }
+#endif
+   return FinalizeRawCOOToHypreCSRHost(
       raw,
-      HostSortReduceRawCOOToHypreCSRPolicy{} );
+      std::move( backend ) );
 }
 
 } // namespace gendil

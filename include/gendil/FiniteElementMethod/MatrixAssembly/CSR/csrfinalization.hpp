@@ -8,23 +8,22 @@
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/COO/rawcoo.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoosortreduce.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
+
+#include <limits>
 
 namespace gendil {
 
 /**
- * Host-only RawCOO-to-CSR finalization policy.
+ * Host-only RawCOO-to-CSR finalization.
  *
- * The policy reads the current host copy of `RawCOOTripletBuffer`, sorts by
+ * This function reads the current host copy of `RawCOOTripletBuffer`, sorts by
  * `(row, col)`, and additively reduces exact duplicate coordinates before
  * building canonical CSR row storage. Exact reduced zeros are retained.
  */
-struct HostSortReduceRawCOOToCSRPolicy
-{ };
-
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCSR(
+auto FinalizeRawCOOToCSRHost(
    const RawCOOTripletView< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOToCSRPolicy &,
    Backend backend )
 {
    using StoredValueType = std::remove_const_t< ValueType >;
@@ -72,31 +71,129 @@ auto FinalizeRawCOOToCSR(
       matrix_data.values[i] = triplet.value;
    }
 
-   Sync( matrix );
+   return matrix;
+}
 
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+
+/** GPU RawCOO-to-CSR finalization using CUB or rocPRIM primitives. */
+template < typename IndexType >
+bool DeviceCompressedPointerCountCanProcess( const IndexType major_extent )
+{
+   if ( major_extent == std::numeric_limits< IndexType >::max() )
+   {
+      return false;
+   }
+   return details::DevicePrimitiveCanProcess(
+      major_extent + IndexType( 1 ) );
+}
+
+template < typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCSRDevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+   if ( !details::DevicePrimitiveCanProcess( raw.nnz_raw ) ||
+        !DeviceCompressedPointerCountCanProcess( raw.num_rows ) )
+   {
+      details::WarnDeviceSparseFinalizationItemLimit();
+      return FinalizeRawCOOToCSRHost(
+         GetHostReadView( raw ),
+         std::move( backend ) );
+   }
+
+   auto reduced =
+      details::MakeDeviceSortedReducedRawCOOTriplets<
+         SparseCoordinateOrder::RowThenColumn >( GetDeviceReadView( raw ) );
+   auto matrix = MakeCSRMatrix< ValueType, IndexType, Backend >(
+      raw.num_rows,
+      raw.num_cols,
+      reduced.nnz,
+      std::move( backend ) );
+   auto output = GetDeviceWriteView( matrix );
+   const IndexType pointer_count = raw.num_rows + IndexType( 1 );
+   details::DeviceMemset(
+      output.row_ptr,
+      0,
+      static_cast< size_t >( pointer_count ) * sizeof( IndexType ) );
+
+   const auto * coordinates = reduced.coordinates.data();
+   const auto * values = reduced.values.data();
+   const IndexType nnz = reduced.nnz;
+   DeviceLoop(
+      nnz,
+      [=] GENDIL_HOST_DEVICE ( const IndexType i )
+      {
+         const auto coordinate = coordinates[i];
+         output.col_ind[i] = coordinate.minor;
+         output.values[i] = values[i];
+         if ( i + IndexType( 1 ) == nnz ||
+              coordinates[i + IndexType( 1 )].major != coordinate.major )
+         {
+            output.row_ptr[coordinate.major + IndexType( 1 )] =
+               i + IndexType( 1 );
+         }
+      } );
+
+   details::DeviceOnlyBuffer< IndexType > scanned_pointers(
+      static_cast< size_t >( pointer_count ) );
+   details::DeviceInclusiveScan(
+      output.row_ptr,
+      scanned_pointers.data(),
+      pointer_count,
+      details::DeviceMaximum< IndexType >{} );
+   details::DeviceCopyToDevice(
+      output.row_ptr,
+      scanned_pointers.data(),
+      static_cast< size_t >( pointer_count ) * sizeof( IndexType ) );
    return matrix;
 }
 
 template < typename ValueType, typename IndexType >
-auto FinalizeRawCOOToCSR(
-   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOToCSRPolicy & policy )
+auto FinalizeRawCOOToCSRDevice(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
-   return FinalizeRawCOOToCSR(
+   return FinalizeRawCOOToCSRDevice(
+      raw,
+      DefaultCSRBackend{} );
+}
+
+#endif // GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+
+template < typename ValueType, typename IndexType >
+auto FinalizeRawCOOToCSRHost(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw )
+{
+   return FinalizeRawCOOToCSRHost(
       GetHostReadView( raw ),
-      policy,
       DefaultCSRBackend{} );
 }
 
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCSR(
+auto FinalizeRawCOOToCSRHost(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
-   const HostSortReduceRawCOOToCSRPolicy & policy,
    Backend backend )
 {
-   return FinalizeRawCOOToCSR(
+   return FinalizeRawCOOToCSRHost(
       GetHostReadView( raw ),
-      policy,
+      std::move( backend ) );
+}
+
+template < class KernelPolicy, typename ValueType, typename IndexType, typename Backend >
+auto FinalizeRawCOOToCSR(
+   const RawCOOTripletBuffer< ValueType, IndexType > & raw,
+   Backend backend )
+{
+#if defined(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION)
+   if constexpr ( is_device_configuration_v< KernelPolicy > )
+   {
+      return FinalizeRawCOOToCSRDevice(
+         raw,
+         std::move( backend ) );
+   }
+#endif
+   return FinalizeRawCOOToCSRHost(
+      raw,
       std::move( backend ) );
 }
 

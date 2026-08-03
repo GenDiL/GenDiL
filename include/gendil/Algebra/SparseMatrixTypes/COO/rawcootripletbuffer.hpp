@@ -61,10 +61,13 @@ struct RawCOOTripletBuffer
    ~RawCOOTripletBuffer() = default;
 };
 
+namespace details
+{
+
 template <
    typename ValueType = Real,
    typename IndexType = GlobalIndex >
-auto MakeRawCOOTripletBuffer(
+auto AllocateRawCOOTripletBuffer(
    const IndexType num_rows,
    const IndexType num_cols,
    const IndexType nnz_raw )
@@ -77,6 +80,30 @@ auto MakeRawCOOTripletBuffer(
    buffer.cols = MakeSyncHostDeviceArray< IndexType >( nnz_raw );
    buffer.values = MakeSyncHostDeviceArray< ValueType >( nnz_raw );
 
+   return buffer;
+}
+
+} // namespace details
+
+/**
+ * Allocate a host-initialized raw triplet buffer.
+ *
+ * The device allocations remain invalid until a device view is requested.
+ */
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex >
+auto MakeRawCOOTripletBuffer(
+   const IndexType num_rows,
+   const IndexType num_cols,
+   const IndexType nnz_raw )
+{
+   auto buffer =
+      details::AllocateRawCOOTripletBuffer< ValueType, IndexType >(
+         num_rows,
+         num_cols,
+         nnz_raw );
+
    auto * rows = WriteHost( buffer.rows );
    auto * cols = WriteHost( buffer.cols );
    auto * values = WriteHost( buffer.values );
@@ -86,10 +113,6 @@ auto MakeRawCOOTripletBuffer(
       cols[i] = IndexType( 0 );
       values[i] = ValueType( 0 );
    }
-
-   Sync( buffer.rows );
-   Sync( buffer.cols );
-   Sync( buffer.values );
    return buffer;
 }
 

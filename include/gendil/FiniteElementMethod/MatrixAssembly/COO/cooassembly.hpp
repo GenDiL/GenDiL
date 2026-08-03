@@ -29,11 +29,9 @@ auto GenericCOOAssembly(
          weak_form,
          wf_ctx,
          integration_rule );
-   auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{},
-         std::move( backend ) );
+   auto coo = FinalizeRawCOOToCOO< KernelPolicy >(
+      raw_coo,
+      std::move( backend ) );
    return coo;
 }
 

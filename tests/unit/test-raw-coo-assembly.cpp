@@ -436,9 +436,7 @@ bool TestRawCOOToCOOFinalization()
    raw_data.values[5] = -2.0;
 
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw );
 
    bool success = true;
    success = Check( coo.num_rows == 2, "Canonical COO row count is wrong." ) && success;
@@ -496,9 +494,7 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
@@ -598,9 +594,7 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
@@ -716,9 +710,7 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
@@ -832,9 +824,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
@@ -953,9 +943,7 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,
@@ -1049,9 +1037,7 @@ bool TestScalarP0InteriorJumpAnalyticRawCOO()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
 
    bool success = true;
    success = Check(
@@ -1153,9 +1139,7 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
          wf_context,
          integration_rule );
    auto coo =
-      FinalizeRawCOOToCOO(
-         raw_coo,
-         HostSortReduceRawCOOPolicy{} );
+      FinalizeRawCOOToCOOHost( raw_coo );
    auto direct_coo =
       GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
          weak_form,

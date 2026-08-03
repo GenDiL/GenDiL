@@ -11,10 +11,42 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
+#include "gendil/Utilities/Loop/kernelloop.hpp"
 
 #include <type_traits>
 
 namespace gendil {
+
+namespace details
+{
+
+template <
+   bool OnDevice,
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex >
+auto MakeAssemblyRawCOOTripletBuffer(
+   const IndexType num_rows,
+   const IndexType num_cols,
+   const IndexType nnz_raw )
+{
+   auto buffer =
+      AllocateRawCOOTripletBuffer< ValueType, IndexType >(
+         num_rows,
+         num_cols,
+         nnz_raw );
+   auto view = GetKernelWriteView< OnDevice >( buffer );
+   KernelLoop< OnDevice >(
+      nnz_raw,
+      [=] GENDIL_HOST_DEVICE ( const IndexType i )
+      {
+         view.rows[i] = IndexType( 0 );
+         view.cols[i] = IndexType( 0 );
+         view.values[i] = ValueType( 0 );
+      } );
+   return buffer;
+}
+
+} // namespace details
 
 template < typename FESpace >
 struct IsRawCOOCellAssemblySpace
@@ -130,18 +162,22 @@ auto GenericRawCOOAssembly(
             domain_mesh,
             block_entry_count );
 
-   auto coo_buffer =
-      MakeRawCOOTripletBuffer< Real, GlobalIndex >(
-         static_cast< GlobalIndex >( test_space.GetNumberOfFiniteElementDofs() ),
-         static_cast< GlobalIndex >( trial_space.GetNumberOfFiniteElementDofs() ),
-         layout.nnz_raw );
-
    static_assert(
       is_host_configuration_v< KernelPolicy > !=
          is_device_configuration_v< KernelPolicy >,
       "RawCOO assembly requires a host or device kernel policy." );
    constexpr bool on_device =
       is_device_configuration_v< KernelPolicy >;
+   auto coo_buffer =
+      details::MakeAssemblyRawCOOTripletBuffer<
+         on_device,
+         Real,
+         GlobalIndex >(
+            static_cast< GlobalIndex >(
+               test_space.GetNumberOfFiniteElementDofs() ),
+            static_cast< GlobalIndex >(
+               trial_space.GetNumberOfFiniteElementDofs() ),
+            layout.nnz_raw );
    auto coo_target =
       MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
 
@@ -242,20 +278,22 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
             domain_mesh,
             block_entry_count);
 
-   auto coo_buffer =
-      MakeRawCOOTripletBuffer<Real, GlobalIndex>(
-         static_cast<GlobalIndex>(
-            test_space.GetNumberOfFiniteElementDofs()),
-         static_cast<GlobalIndex>(
-            trial_space.GetNumberOfFiniteElementDofs()),
-         layout.nnz_raw);
-
    static_assert(
       is_host_configuration_v< KernelPolicy > !=
          is_device_configuration_v< KernelPolicy >,
       "RawCOO assembly requires a host or device kernel policy." );
    constexpr bool on_device =
       is_device_configuration_v< KernelPolicy >;
+   auto coo_buffer =
+      details::MakeAssemblyRawCOOTripletBuffer<
+         on_device,
+         Real,
+         GlobalIndex >(
+            static_cast<GlobalIndex>(
+               test_space.GetNumberOfFiniteElementDofs()),
+            static_cast<GlobalIndex>(
+               trial_space.GetNumberOfFiniteElementDofs()),
+            layout.nnz_raw);
    auto coo_target =
       MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
 
