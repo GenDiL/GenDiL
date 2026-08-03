@@ -1,0 +1,13 @@
+include_guard(GLOBAL)
+
+function(gendil_configure_openmp target output_flags)
+  set(openmp_flags "")
+  if(USE_OPENMP)
+    find_package(OpenMP REQUIRED)
+    message(STATUS "OpenMP found!")
+    target_compile_definitions(${target} INTERFACE GENDIL_USE_OPENMP)
+    target_link_libraries(${target} INTERFACE OpenMP::OpenMP_CXX)
+    set(openmp_flags "${OpenMP_CXX_FLAGS}")
+  endif()
+  set(${output_flags} "${openmp_flags}" PARENT_SCOPE)
+endfunction()
