@@ -308,6 +308,9 @@ auto ApplyTestFunctionsThreaded(
          else // write slice to registers
          {
             AdjointInterpHelperFunctions::ReadSliceFromShared< dof_shape >( thread, sy, y, std::tie( slice_index... ) );
+            // Ensure all threads finish reading from shared memory before the next
+            // UnitLoop iteration writes a new slice, preventing cross-warp races.
+            thread.Synchronize();
          }
       });
    });

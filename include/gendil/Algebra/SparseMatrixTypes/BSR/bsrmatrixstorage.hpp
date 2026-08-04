@@ -40,7 +40,12 @@ struct NativeDeviceBSRBackend : DeviceMatVecBackend
 };
 
 #if defined(GENDIL_USE_DEVICE)
+#  if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR) || \
+      defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
 using DefaultBSRBackend = VendorDeviceBSRBackend<>;
+#  else
+using DefaultBSRBackend = NativeDeviceBSRBackend<>;
+#  endif
 #else
 using DefaultBSRBackend = HostBSRBackend<>;
 #endif

@@ -156,9 +156,11 @@ void InterpolateGradientAtQPointsThreaded(
 
          GradHelperFunctions::GradContractionShared< c, ActiveDim, quad_shape >( thread, sx, Gu, B, std::tie( slice_index... ) );
 
-         if constexpr ( c+1 < ThreadBlockDim )
-            thread.Synchronize();
+         // No inter-direction barrier: each direction reads same sx, writes disjoint Gu component
       });
+
+      // Post-slice barrier: ensure all threads finish reading sx before next slice overwrites it
+      thread.Synchronize();
    });
 
 // contraction along non-threaded dimensions

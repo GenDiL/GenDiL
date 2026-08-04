@@ -288,8 +288,8 @@ GlobalIndex RawCOOLocalFaceIndex( const FaceInfo & face_info )
    return static_cast< GlobalIndex >( LocalFaceIndex::value );
 }
 
-GENDIL_HOST_DEVICE
 template < typename Layout >
+GENDIL_HOST_DEVICE
 inline GlobalIndex RawCOOFaceOffsetArrayIndex(
    const Layout & layout,
    const GlobalIndex element_index,

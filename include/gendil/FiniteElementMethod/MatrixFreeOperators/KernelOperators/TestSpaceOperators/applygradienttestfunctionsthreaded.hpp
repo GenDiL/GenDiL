@@ -237,6 +237,10 @@ void ApplyGradientTestFunctionsAtQPoints(
          if constexpr ( c+1 < ThreadBlockDim )
             thread.Synchronize();
       });
+
+      // Ensure all threads finish reading from shared memory before the next
+      // UnitLoop iteration writes a new slice to sx.
+      thread.Synchronize();
    });
 
 // contraction along non-threaded dimensions

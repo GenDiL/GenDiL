@@ -15,6 +15,14 @@ namespace gendil
 namespace details
 {
 
+#if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+inline constexpr cusparseSpMVAlg_t CuSparseBSRSpMVAlgorithm =
+   CUSPARSE_SPMV_BSR_ALG1;
+#else
+inline constexpr cusparseSpMVAlg_t CuSparseBSRSpMVAlgorithm =
+   CUSPARSE_SPMV_ALG_DEFAULT;
+#endif
+
 template <
    typename Backend,
    typename MatrixView,
@@ -100,7 +108,7 @@ CuSparseSpMVState & InitializeCuSparseBSRSpMV(
          config,
          x_data,
          y_data,
-         CUSPARSE_SPMV_BSR_ALG1,
+         CuSparseBSRSpMVAlgorithm,
          [&] ( cusparseSpMatDescr_t * descriptor )
          {
             CheckCuSparse(
@@ -180,7 +188,7 @@ void Apply(
       initialized,
       ComputeType( 1 ),
       ComputeType( 0 ),
-      CUSPARSE_SPMV_BSR_ALG1,
+      details::CuSparseBSRSpMVAlgorithm,
       "Apply(CuSparseBSRBackend, ...)" );
 }
 
@@ -227,7 +235,7 @@ void ApplyAdd(
       initialized,
       ComputeType( 1 ),
       ComputeType( 1 ),
-      CUSPARSE_SPMV_BSR_ALG1,
+      details::CuSparseBSRSpMVAlgorithm,
       "ApplyAdd(CuSparseBSRBackend, ...)" );
 }
 

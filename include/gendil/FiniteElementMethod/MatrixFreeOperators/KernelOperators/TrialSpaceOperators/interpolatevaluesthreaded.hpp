@@ -251,6 +251,8 @@ auto InterpolateValuesThreaded(
          else // copy partial result to registers
          {
             InterpHelperFunctions::ReadSliceFromShared< dof_shape, quad_shape >( thread, sy, y, std::tie( slice_index... ) );
+            // Barrier after every slice (including final) ensures all shared reads complete
+            thread.Synchronize();
          }
       });
    });

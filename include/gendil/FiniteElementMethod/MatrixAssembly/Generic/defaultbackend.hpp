@@ -30,7 +30,12 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::BSR >
 {
 #if defined(GENDIL_USE_DEVICE)
+#  if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR) || \
+      defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
    using type = VendorDeviceBSRBackend<>;
+#  else
+   using type = NativeDeviceBSRBackend<>;
+#  endif
 #else
    using type = HostBSRBackend<>;
 #endif
@@ -40,7 +45,12 @@ template <>
 struct DefaultBackendFor< MatrixAssemblyType::SGBSR >
 {
 #if defined(GENDIL_USE_DEVICE)
+#  if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR) || \
+      defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
    using type = VendorDeviceBSRBackend<>;
+#  else
+   using type = NativeDeviceBSRBackend<>;
+#  endif
 #else
    using type = HostBSRBackend<>;
 #endif
