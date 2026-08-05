@@ -115,15 +115,13 @@ public:
       return *state_;
    }
 
-
-   /// Hidden friend: Reset cached cuSPARSE state.
+   /// Reset cached cuSPARSE state.
    ///
    /// Clears descriptors, preprocessing, and workspace allocations that
-   /// reference a specific sparse matrix's storage. Found via ADL for all
-   /// CuSparse*Backend types.
-   friend void ResetState( const CuSparseBackendBase & backend ) noexcept
+   /// reference a specific sparse matrix's storage.
+   void ClearCachedState() const noexcept
    {
-      backend.state_.reset();
+      state_.reset();
    }
 
    VendorSparseExecutionPath LastExecutionPath() const
@@ -155,6 +153,14 @@ namespace gendil
 {
 
 #if defined(GENDIL_USE_CUDA)
+/// Clear cached state owned by a cuSPARSE backend.
+template < typename ComputeType >
+inline void ResetState(
+   const details::CuSparseBackendBase< ComputeType > & backend ) noexcept
+{
+   backend.ClearCachedState();
+}
+
 template < typename ComputeType = void >
 using CuSparseBackendBaseFor = details::CuSparseBackendBase< ComputeType >;
 #else

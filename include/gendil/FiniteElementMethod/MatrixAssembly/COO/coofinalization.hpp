@@ -91,8 +91,7 @@ FinalizeRawCOOToCOODevice(
 }
 
 template < typename ValueType, typename IndexType >
-COOMatrix< ValueType, IndexType, DefaultCOOBackend >
-FinalizeRawCOOToCOODevice(
+auto FinalizeRawCOOToCOODevice(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
    return FinalizeRawCOOToCOODevice(

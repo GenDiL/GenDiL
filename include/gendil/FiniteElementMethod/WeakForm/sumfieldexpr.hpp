@@ -39,16 +39,9 @@ struct SumExpr : FieldBase
    constexpr auto operator()(Args&&... args) const
    {
       return std::apply(
-         [&] (const Head& head, const Tail&... tail)
+         [&] (const auto&... terms)
          {
-            if constexpr (sizeof...(Tail) == 0)
-            {
-               return head(std::forward<Args>(args)...);
-            }
-            else
-            {
-               return head(std::forward<Args>(args)...) + (tail(std::forward<Args>(args)...) + ...);
-            }
+            return (terms(std::forward<Args>(args)...) + ...);
          },
          terms
       );

@@ -57,8 +57,8 @@ allocations, call `ResetState()` on the stored backend and every explicit
 vendor backend previously applied to the matrix:
 
 ```cpp
-matrix.backend.ResetState();
-external_backend.ResetState();
+ResetState(matrix.backend);
+ResetState(external_backend);
 auto structure = GetHostReadWriteView(matrix);
 // Modify structure and keep its metadata consistent with the owner.
 ```

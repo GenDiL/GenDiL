@@ -115,15 +115,13 @@ public:
       return *state_;
    }
 
-
-   /// Hidden friend: Reset cached rocSPARSE state.
+   /// Reset cached rocSPARSE state.
    ///
    /// Clears descriptors, preprocessing, and workspace allocations that
-   /// reference a specific sparse matrix's storage. Found via ADL for all
-   /// RocSparse*Backend types.
-   friend void ResetState( const RocSparseBackendBase & backend ) noexcept
+   /// reference a specific sparse matrix's storage.
+   void ClearCachedState() const noexcept
    {
-      backend.state_.reset();
+      state_.reset();
    }
 
    VendorSparseExecutionPath LastExecutionPath() const
@@ -155,6 +153,14 @@ namespace gendil
 {
 
 #if defined(GENDIL_USE_HIP)
+/// Clear cached state owned by a rocSPARSE backend.
+template < typename ComputeType >
+inline void ResetState(
+   const details::RocSparseBackendBase< ComputeType > & backend ) noexcept
+{
+   backend.ClearCachedState();
+}
+
 template < typename ComputeType = void >
 using RocSparseBackendBaseFor = details::RocSparseBackendBase< ComputeType >;
 #else
