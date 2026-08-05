@@ -342,7 +342,7 @@ bool TestCOO()
       "Move-assigned COO matrix with a cached vendor plan is incorrect." ) &&
       success;
 
-   vendor.ResetState();
+   ResetState( vendor );
    return success;
 }
 
@@ -488,7 +488,7 @@ bool TestCSR()
       "CSR apply did not rebuild explicitly invalidated vendor plans." ) &&
       success;
 
-   vendor.ResetState();
+   ResetState( vendor );
    return success;
 }
 
@@ -584,7 +584,7 @@ bool TestCSC()
       "Vendor CSC mixed-vector apply differs from host." ) && success;
 #endif
 
-   vendor.ResetState();
+   ResetState( vendor );
    return success;
 }
 
