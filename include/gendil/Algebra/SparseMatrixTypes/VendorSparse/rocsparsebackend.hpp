@@ -115,13 +115,15 @@ public:
       return *state_;
    }
 
-   /// Clear cached rocSPARSE descriptors, preprocessing, and workspace.
+
+   /// Hidden friend: Reset cached rocSPARSE state.
    ///
-   /// Call this on every backend previously applied to a matrix before
-   /// modifying that matrix's sparse structure or replacing its storage.
-   void ResetState() const
+   /// Clears descriptors, preprocessing, and workspace allocations that
+   /// reference a specific sparse matrix's storage. Found via ADL for all
+   /// RocSparse*Backend types.
+   friend void ResetState( const RocSparseBackendBase & backend ) noexcept
    {
-      state_.reset();
+      backend.state_.reset();
    }
 
    VendorSparseExecutionPath LastExecutionPath() const

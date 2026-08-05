@@ -55,7 +55,8 @@ auto FinalizeRawCOOToCOOHost(
 
 /** GPU RawCOO finalization using CUB or rocPRIM vendor primitives. */
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCOODevice(
+COOMatrix< ValueType, IndexType, Backend >
+FinalizeRawCOOToCOODevice(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
    Backend backend )
 {
@@ -90,7 +91,8 @@ auto FinalizeRawCOOToCOODevice(
 }
 
 template < typename ValueType, typename IndexType >
-auto FinalizeRawCOOToCOODevice(
+COOMatrix< ValueType, IndexType, DefaultCOOBackend >
+FinalizeRawCOOToCOODevice(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw )
 {
    return FinalizeRawCOOToCOODevice(

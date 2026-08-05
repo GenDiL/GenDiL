@@ -281,7 +281,7 @@ constexpr void CheckVendorSparseArithmetic()
 template < typename Backend >
 void ExecuteEmptySparseSpMV( const Backend & backend )
 {
-   backend.ResetState();
+   ResetState( backend );
    backend.MarkExecutionPath( VendorSparseExecutionPath::Trivial );
 }
 
@@ -295,7 +295,7 @@ void ExecuteEmptySparseSpMV(
    OutputValue * output,
    const IndexType output_size )
 {
-   backend.ResetState();
+   ResetState( backend );
    ScaleSparseDeviceOutput(
       output,
       output_size,

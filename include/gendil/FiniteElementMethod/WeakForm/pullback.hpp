@@ -957,9 +957,16 @@ GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const SumExpr<Head, Tail...>& expr)
 {
    return std::apply(
-      [] GENDIL_HOST_DEVICE (const auto&... terms)
+      [] (const Head& head, const Tail&... tail)
       {
-         return (TraceToMinusSide(terms) + ...);
+         if constexpr (sizeof...(Tail) == 0)
+         {
+            return TraceToMinusSide(head);
+         }
+         else
+         {
+            return TraceToMinusSide(head) + (TraceToMinusSide(tail) + ...);
+         }
       },
       expr.terms);
 }
@@ -969,9 +976,16 @@ GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const SumExpr<Head, Tail...>& expr)
 {
    return std::apply(
-      [] GENDIL_HOST_DEVICE (const auto&... terms)
+      [] (const Head& head, const Tail&... tail)
       {
-         return (TraceToPlusSide(terms) + ...);
+         if constexpr (sizeof...(Tail) == 0)
+         {
+            return TraceToPlusSide(head);
+         }
+         else
+         {
+            return TraceToPlusSide(head) + (TraceToPlusSide(tail) + ...);
+         }
       },
       expr.terms);
 }

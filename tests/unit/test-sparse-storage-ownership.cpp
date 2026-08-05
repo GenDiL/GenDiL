@@ -10,6 +10,52 @@
 
 using namespace gendil;
 
+// Compile-time validation that ResetState free function is callable
+namespace {
+
+template <typename Backend>
+concept HasResetStateOverload = requires(const Backend& backend) {
+   { ResetState(backend) } noexcept;
+};
+
+// Verify all backends have a ResetState overload
+static_assert(HasResetStateOverload<HostBSRBackend<void, void>>,
+   "HostBSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<NativeDeviceBSRBackend<void, void>>,
+   "NativeDeviceBSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<HostCOOBackend<void>>,
+   "HostCOOBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<HostCSRBackend<void, void>>,
+   "HostCSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<HostCSCBackend<void>>,
+   "HostCSCBackend should have ResetState(backend) overload");
+
+#if defined(GENDIL_USE_CUDA)
+// Verify cuSPARSE backends have ResetState overload
+static_assert(HasResetStateOverload<CuSparseBSRBackend<void>>,
+   "CuSparseBSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<CuSparseCSRBackend<void>>,
+   "CuSparseCSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<CuSparseCOOBackend<void>>,
+   "CuSparseCOOBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<CuSparseCSCBackend<void>>,
+   "CuSparseCSCBackend should have ResetState(backend) overload");
+#endif
+
+#if defined(GENDIL_USE_HIP)
+// Verify rocSPARSE backends have ResetState overload
+static_assert(HasResetStateOverload<RocSparseBSRBackend<void>>,
+   "RocSparseBSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<RocSparseCSRBackend<void>>,
+   "RocSparseCSRBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<RocSparseCOOBackend<void>>,
+   "RocSparseCOOBackend should have ResetState(backend) overload");
+static_assert(HasResetStateOverload<RocSparseCSCBackend<void>>,
+   "RocSparseCSCBackend should have ResetState(backend) overload");
+#endif
+
+} // namespace
+
 namespace
 {
 

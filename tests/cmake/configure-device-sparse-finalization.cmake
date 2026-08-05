@@ -41,7 +41,11 @@ elseif(NOT EXPECT_SUCCESS AND configure_result EQUAL 0)
 endif()
 
 if(DEFINED EXPECTED_TEXT)
-  string(FIND "${configure_output}" "${EXPECTED_TEXT}" expected_position)
+  # Normalize whitespace in both output and expected text for robust matching
+  # CMake can wrap long messages across lines, breaking exact matches
+  string(REGEX REPLACE "[\r\n\t ]+" " " normalized_output "${configure_output}")
+  string(REGEX REPLACE "[\r\n\t ]+" " " normalized_expected "${EXPECTED_TEXT}")
+  string(FIND "${normalized_output}" "${normalized_expected}" expected_position)
   if(expected_position EQUAL -1)
     message(FATAL_ERROR
       "Configuration output did not contain '${EXPECTED_TEXT}':\n"

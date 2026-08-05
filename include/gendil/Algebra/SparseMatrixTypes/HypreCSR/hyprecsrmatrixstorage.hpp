@@ -120,10 +120,7 @@ struct HypreCSRMatrix
       {
          details::DestroyHypreParCSRView( host_parcsr );
          details::DestroyHypreParCSRView( device_parcsr );
-         if constexpr ( requires { backend.ResetState(); } )
-         {
-            backend.ResetState();
-         }
+         ResetState( backend );
 
          csr = std::move( other.csr );
          metadata = other.metadata;
@@ -140,10 +137,7 @@ struct HypreCSRMatrix
    {
       details::DestroyHypreParCSRView( host_parcsr );
       details::DestroyHypreParCSRView( device_parcsr );
-      if constexpr ( requires { backend.ResetState(); } )
-      {
-         backend.ResetState();
-      }
+      ResetState( backend );
    }
 
    template < typename InputVector, typename OutputVector >

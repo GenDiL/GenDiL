@@ -100,10 +100,7 @@ struct BSRMatrix
    {
       if ( this != &other )
       {
-         if constexpr ( requires { backend.ResetState(); } )
-         {
-            backend.ResetState();
-         }
+         ResetState( backend );
 
          block_rows = std::exchange( other.block_rows, IndexType( 0 ) );
          block_cols = std::exchange( other.block_cols, IndexType( 0 ) );

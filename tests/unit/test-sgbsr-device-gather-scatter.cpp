@@ -27,7 +27,7 @@ namespace
 {
 
 constexpr Real tolerance = 1.0e-10;
-using ScalarFE = GLFiniteElement< 2, 1 >;
+using ScalarFE = GLFiniteElement< 1 >;
 
 bool Check( const bool condition, const char * message )
 {

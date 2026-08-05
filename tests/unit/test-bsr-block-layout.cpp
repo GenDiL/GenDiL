@@ -13,6 +13,13 @@ using namespace gendil;
 namespace
 {
 
+// Backend for rectangular block tests: vendor BSR requires square blocks
+#if defined(GENDIL_USE_DEVICE)
+using RectangularTestBackend = NativeDeviceBSRBackend<>;
+#else
+using RectangularTestBackend = HostBSRBackend<>;
+#endif
+
 static_assert( !std::is_copy_constructible_v< BSRMatrix<> > );
 static_assert( !std::is_copy_assignable_v< BSRMatrix<> > );
 static_assert( std::is_move_constructible_v< BSRMatrix<> > );
@@ -139,12 +146,14 @@ bool TestRawApplySupportsBothBlockLayouts()
       MakeBlockDiagonalDGBSRPattern<
          Real,
          GlobalIndex,
-         BlockLayout::ColumnMajor >( 3, 2, 3 );
+         BlockLayout::ColumnMajor,
+         RectangularTestBackend >( 3, 2, 3 );
    auto row_matrix =
       MakeBlockDiagonalDGBSRPattern<
          Real,
          GlobalIndex,
-         BlockLayout::RowMajor >( 3, 2, 3 );
+         BlockLayout::RowMajor,
+         RectangularTestBackend >( 3, 2, 3 );
 
    FillLogicalBlocks( column_matrix );
    FillLogicalBlocks( row_matrix );

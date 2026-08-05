@@ -268,7 +268,8 @@ template <
    SparseCoordinateOrder Order,
    typename ValueType,
    typename IndexType >
-auto MakeDeviceSortedReducedRawCOOTriplets(
+DeviceSortedReducedRawCOO< ValueType, IndexType >
+MakeDeviceSortedReducedRawCOOTriplets(
    const RawCOOTripletView< const ValueType, const IndexType > & raw )
 {
    static_assert(
@@ -316,22 +317,20 @@ auto MakeDeviceSortedReducedRawCOOTriplets(
       {
          const IndexType row = rows[i];
          const IndexType col = cols[i];
+         const ValueType value = values[i];
+         const IndexType major_key =
+            Order == SparseCoordinateOrder::RowThenColumn ? row : col;
+         const IndexType minor_key =
+            Order == SparseCoordinateOrder::RowThenColumn ? col : row;
+
          if ( SparseCoordinateOutOfBounds( row, num_rows ) ||
               SparseCoordinateOutOfBounds( col, num_cols ) )
          {
             RecordInvalidSparseCoordinate( status );
          }
 
-         if constexpr ( Order == SparseCoordinateOrder::RowThenColumn )
-         {
-            minor_keys[i] = col;
-            input_sort_data[i] = SortData{ row, values[i] };
-         }
-         else
-         {
-            minor_keys[i] = row;
-            input_sort_data[i] = SortData{ col, values[i] };
-         }
+         minor_keys[i] = minor_key;
+         input_sort_data[i] = SortData{ major_key, value };
       } );
 
    DeviceStableRadixSortPairs(

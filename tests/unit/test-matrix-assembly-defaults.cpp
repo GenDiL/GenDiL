@@ -22,14 +22,21 @@ bool Check( const bool condition, const char * message )
 }
 
 #if defined(GENDIL_USE_DEVICE)
+#if \
+   defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR) || \
+   defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+using ExpectedDeviceBSRBackend = VendorDeviceBSRBackend<>;
+#else
+using ExpectedDeviceBSRBackend = NativeDeviceBSRBackend<>;
+#endif
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::BSR >,
-      VendorDeviceBSRBackend<> > );
+      ExpectedDeviceBSRBackend > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::SGBSR >,
-      VendorDeviceBSRBackend<> > );
+      ExpectedDeviceBSRBackend > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
@@ -43,7 +50,7 @@ static_assert(
       DefaultBackendFor_t< MatrixAssemblyType::CSC >,
       VendorDeviceCSCBackend<> > );
 static_assert(
-   std::is_same_v< DefaultBSRBackend, VendorDeviceBSRBackend<> > );
+   std::is_same_v< DefaultBSRBackend, ExpectedDeviceBSRBackend > );
 static_assert(
    std::is_same_v< DefaultCOOBackend, VendorDeviceCOOBackend<> > );
 static_assert(

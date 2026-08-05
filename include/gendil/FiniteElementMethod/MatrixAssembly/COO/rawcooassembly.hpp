@@ -24,7 +24,8 @@ template <
    bool OnDevice,
    typename ValueType = Real,
    typename IndexType = GlobalIndex >
-auto MakeAssemblyRawCOOTripletBuffer(
+RawCOOTripletBuffer< ValueType, IndexType >
+MakeAssemblyRawCOOTripletBuffer(
    const IndexType num_rows,
    const IndexType num_cols,
    const IndexType nnz_raw )

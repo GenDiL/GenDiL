@@ -89,7 +89,8 @@ bool DeviceCompressedPointerCountCanProcess( const IndexType major_extent )
 }
 
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToCSRDevice(
+CSRMatrix< ValueType, IndexType, Backend >
+FinalizeRawCOOToCSRDevice(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
    Backend backend )
 {

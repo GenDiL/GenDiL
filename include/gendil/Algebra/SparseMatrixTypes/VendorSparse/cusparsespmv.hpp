@@ -118,7 +118,7 @@ CuSparseSpMVState & InitializeCuSparseSpMV(
    if ( current.initialized &&
         !current.config.SameSparsePlan( config ) )
    {
-      backend.ResetState();
+      ResetState( backend );
    }
 
    auto & state = backend.State();

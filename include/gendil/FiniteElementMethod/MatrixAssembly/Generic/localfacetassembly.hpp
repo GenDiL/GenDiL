@@ -497,6 +497,7 @@ void GenericLocalFacetAssembly(
          (void)op_ctx;
          (void)weak_form;
          (void)sparse_matrix;
+         (void)domain_mesh;
 
          GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem>
@@ -602,6 +603,7 @@ void AssembleElementBlockDiagonalSparseTarget(
          (void)op_ctx;
          (void)weak_form;
          (void)sparse_matrix;
+         (void)domain_mesh;
 
          GENDIL_SHARED Real _shared_mem[required_shared_mem];
          KernelContext<KernelPolicy, required_shared_mem>

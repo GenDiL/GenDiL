@@ -24,8 +24,17 @@ using namespace gendil;
 namespace
 {
 
+// BSR default is capability-aware
+#if \
+   defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR) || \
+   defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+using ExpectedBSRBackend = VendorDeviceBSRBackend<>;
+#else
+using ExpectedBSRBackend = NativeDeviceBSRBackend<>;
+#endif
+
 static_assert(
-   std::is_same_v< DefaultBSRBackend, VendorDeviceBSRBackend<> > );
+   std::is_same_v< DefaultBSRBackend, ExpectedBSRBackend > );
 static_assert(
    std::is_same_v< DefaultCOOBackend, VendorDeviceCOOBackend<> > );
 static_assert(
@@ -35,11 +44,11 @@ static_assert(
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::BSR >,
-      VendorDeviceBSRBackend<> > );
+      ExpectedBSRBackend > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::SGBSR >,
-      VendorDeviceBSRBackend<> > );
+      ExpectedBSRBackend > );
 static_assert(
    std::is_same_v<
       DefaultBackendFor_t< MatrixAssemblyType::COO >,
@@ -458,8 +467,8 @@ bool TestCSR()
       "Acquiring a mutable CSR view invalidated a vendor plan." ) &&
       success;
 
-   matrix.backend.ResetState();
-   vendor.ResetState();
+   ResetState( matrix.backend );
+   ResetState( vendor );
    success = Check(
       !matrix.backend.HasCachedPlan() && !vendor.HasCachedPlan(),
       "Explicit CSR vendor backend reset retained a cached plan." ) &&
@@ -950,6 +959,14 @@ bool TestEmptyCSC()
 
 int main()
 {
+#if defined(GENDIL_USE_MFEM)
+  #if defined(GENDIL_USE_CUDA)
+   mfem::Device device("cuda");
+  #elif defined(GENDIL_USE_HIP)
+   mfem::Device device("hip");
+  #endif
+#endif
+
    bool success = true;
    success = TestCOO() && success;
    success = TestCSR< GlobalIndex >() && success;

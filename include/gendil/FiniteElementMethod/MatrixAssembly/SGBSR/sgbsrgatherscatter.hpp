@@ -68,7 +68,7 @@ void GatherBsrElement(
 
    ForEachLocalDof(
       finite_element_space,
-      [&] GENDIL_HOST_DEVICE (
+      [&] (
          const auto component,
          const auto & indices )
       {
@@ -108,7 +108,7 @@ void ScatterBsrElement(
 
    ForEachLocalDof(
       finite_element_space,
-      [&] GENDIL_HOST_DEVICE (
+      [&] (
          const auto component,
          const auto & indices )
       {

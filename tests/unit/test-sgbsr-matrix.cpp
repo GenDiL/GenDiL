@@ -16,6 +16,13 @@ using namespace gendil;
 namespace
 {
 
+// Backend for rectangular block tests: vendor BSR requires square blocks
+#if defined(GENDIL_USE_DEVICE)
+using RectangularTestBackend = NativeDeviceBSRBackend<>;
+#else
+using RectangularTestBackend = HostBSRBackend<>;
+#endif
+
 using ScalarFE0 = GLFiniteElement< 1, 1 >;
 using ScalarFE1 = GLFiniteElement< 2, 1 >;
 using ScalarShape0 = typename ScalarFE0::shape_functions;
@@ -407,7 +414,8 @@ bool TestSGBSRFreeApplyVariants()
 
 bool TestIdentityWrapperMatchesRawBsr()
 {
-   auto raw_matrix = MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 2, 2, 3 );
+   auto raw_matrix = MakeBlockDiagonalDGBSRPattern<
+      Real, GlobalIndex, BlockLayout::RowMajor, RectangularTestBackend >( 2, 2, 3 );
    auto * raw_values = ReadWriteHost( raw_matrix.values );
 
    for ( GlobalIndex i = 0;
@@ -431,8 +439,9 @@ bool TestIdentityWrapperMatchesRawBsr()
 
    raw_matrix( x, y_raw );
 
+   using RawMatrixType = std::remove_cvref_t< decltype( raw_matrix ) >;
    SGBSRMatrix<
-      BSRMatrix< Real, GlobalIndex >,
+      RawMatrixType,
       IdentityBsrGather,
       IdentityBsrScatter > sg_matrix(
          std::move( raw_matrix ),
@@ -540,7 +549,8 @@ bool TestSGBSRMoveAssignment()
 
 bool TestRawBsrOperatorDelegatesToBackendApply()
 {
-   auto raw_matrix = MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 2, 2, 3 );
+   auto raw_matrix = MakeBlockDiagonalDGBSRPattern<
+      Real, GlobalIndex, BlockLayout::RowMajor, RectangularTestBackend >( 2, 2, 3 );
    auto * raw_values = ReadWriteHost( raw_matrix.values );
 
    for ( GlobalIndex i = 0;
@@ -1215,6 +1225,14 @@ bool TestMFEMSGBSRApply()
 
 int main()
 {
+#if defined(GENDIL_USE_MFEM)
+  #if defined(GENDIL_USE_CUDA)
+   mfem::Device device("cuda");
+  #elif defined(GENDIL_USE_HIP)
+   mfem::Device device("hip");
+  #endif
+#endif
+
    bool success = true;
    success = TestSGBSRFreeApplyVariants() && success;
    success = TestIdentityWrapperMatchesRawBsr() && success;

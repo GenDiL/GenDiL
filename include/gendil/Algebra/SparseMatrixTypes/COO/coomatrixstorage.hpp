@@ -77,10 +77,7 @@ struct COOMatrix
    {
       if ( this != &other )
       {
-         if constexpr ( requires { backend.ResetState(); } )
-         {
-            backend.ResetState();
-         }
+         ResetState( backend );
 
          num_rows = std::exchange( other.num_rows, IndexType( 0 ) );
          num_cols = std::exchange( other.num_cols, IndexType( 0 ) );
