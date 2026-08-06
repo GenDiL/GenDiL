@@ -427,6 +427,15 @@ bool TestFacetOnlyRawCOOActivatesTouchedElements()
 
 bool TestRectangularElementBSR()
 {
+   static_assert(
+      details::is_bsr_assembly_backend_compatible_v<HostBSRBackend<>, 1, 2>);
+   static_assert(
+      details::is_bsr_assembly_backend_compatible_v<NativeDeviceBSRBackend<>, 1, 2>);
+   static_assert(
+      !details::is_bsr_assembly_backend_compatible_v<CuSparseBSRBackend<>, 1, 2>);
+   static_assert(
+      !details::is_bsr_assembly_backend_compatible_v<RocSparseBSRBackend<>, 1, 2>);
+
    Cartesian1DMesh mesh(0.5, 2);
    auto trial_fe =
       MakeLegendreFiniteElement(FiniteElementOrders<1>{});
@@ -461,7 +470,13 @@ bool TestRectangularElementBSR()
             form,
             context,
             integration_rule);
+   auto generic =
+      MakeGenericOperator<SerialKernelConfiguration>(
+         form,
+         context,
+         integration_rule);
    const auto matrix_data = GetHostReadView( matrix );
+   const auto sparse_data = GetHostReadView( sparse_matrix );
 
 #if defined(GENDIL_USE_DEVICE)
    static_assert(
@@ -512,6 +527,42 @@ bool TestRectangularElementBSR()
          sparse_matrix.block_rows == 1 &&
          sparse_matrix.block_cols == 2,
          "Rectangular GenericBSRAssembly has the wrong block shape.") &&
+      success;
+   success =
+      Check(
+         sparse_matrix.num_blocks == 4 &&
+         sparse_data.row_offsets[0] == 0 &&
+         sparse_data.row_offsets[1] == 2 &&
+         sparse_data.row_offsets[2] == 4 &&
+         sparse_data.col_indices[0] == 0 &&
+         sparse_data.col_indices[1] == 1 &&
+         sparse_data.col_indices[2] == 0 &&
+         sparse_data.col_indices[3] == 1,
+         "Rectangular full BSR does not use the domain adjacency.") &&
+      success;
+
+   Vector x(trial_space.GetNumberOfFiniteElementDofs());
+   Real * x_data = x.WriteHostData();
+   for (GlobalIndex i = 0; i < x.Size(); ++i)
+   {
+      x_data[i] = 0.3 + 0.27 * static_cast<Real>(i);
+   }
+   Vector expected(test_space.GetNumberOfFiniteElementDofs());
+   expected = 0.0;
+   generic(x, expected);
+   success =
+      CheckAction(
+         matrix,
+         x,
+         expected,
+         "Rectangular element BSR action disagrees with MakeGenericOperator.") &&
+      success;
+   success =
+      CheckAction(
+         sparse_matrix,
+         x,
+         expected,
+         "Rectangular full BSR action disagrees with MakeGenericOperator.") &&
       success;
 
    return success;

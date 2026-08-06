@@ -6,8 +6,55 @@
 
 #include "gendil/Algebra/SparseMatrixTypes/VendorSparse/vendorsparsebackend.hpp"
 
+#include <type_traits>
+
 namespace gendil
 {
+
+namespace details
+{
+
+template < typename Backend >
+struct IsVendorBSRBackend : std::false_type
+{ };
+
+template < typename ComputeType >
+struct IsVendorBSRBackend< CuSparseBSRBackend< ComputeType > >
+   : std::true_type
+{ };
+
+template < typename ComputeType >
+struct IsVendorBSRBackend< RocSparseBSRBackend< ComputeType > >
+   : std::true_type
+{ };
+
+template < typename Backend >
+inline constexpr bool is_vendor_bsr_backend_v =
+   IsVendorBSRBackend< std::remove_cvref_t< Backend > >::value;
+
+template <
+   typename Backend,
+   GlobalIndex BlockRows,
+   GlobalIndex BlockCols >
+inline constexpr bool is_bsr_assembly_backend_compatible_v =
+   !is_vendor_bsr_backend_v< Backend > || BlockRows == BlockCols;
+
+template <
+   typename Backend,
+   GlobalIndex BlockRows,
+   GlobalIndex BlockCols >
+consteval void ValidateBSRAssemblyBackendCompatibility()
+{
+   static_assert(
+      is_bsr_assembly_backend_compatible_v<
+         Backend,
+         BlockRows,
+         BlockCols >,
+      "Rectangular BSR assembly requires HostBSRBackend or "
+      "NativeDeviceBSRBackend; vendor BSR backends require square blocks." );
+}
+
+} // namespace details
 
 /**
  * Configure a BSR apply backend from assembled storage metadata.

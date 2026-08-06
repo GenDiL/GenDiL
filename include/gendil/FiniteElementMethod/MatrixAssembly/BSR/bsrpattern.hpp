@@ -98,9 +98,11 @@ template <
    typename IndexType = GlobalIndex,
    BlockLayout Layout = BlockLayout::ColumnMajor,
    typename Backend = DefaultBSRBackend,
+   typename DomainMesh,
    typename TrialFESpace,
    typename TestFESpace >
 auto MakeDGBSRPattern(
+   const DomainMesh & domain_mesh,
    const TrialFESpace & trial_space,
    const TestFESpace & test_space,
    Backend backend )
@@ -111,10 +113,14 @@ auto MakeDGBSRPattern(
    const IndexType num_col_blocks =
       static_cast< IndexType >(
          trial_space.GetNumberOfFiniteElements() );
+   const IndexType num_domain_elements =
+      static_cast< IndexType >(
+         domain_mesh.GetNumberOfCells() );
    GENDIL_VERIFY(
-      num_row_blocks == num_col_blocks,
-      "MakeDGBSRPattern currently requires trial and test spaces with "
-      "matching element topology." );
+      num_row_blocks == num_domain_elements &&
+         num_col_blocks == num_domain_elements,
+      "MakeDGBSRPattern requires trial and test spaces over the integration "
+      "domain cell mesh." );
 
    const IndexType block_rows =
       static_cast< IndexType >(
@@ -132,7 +138,7 @@ auto MakeDGBSRPattern(
       cols.push_back(e); // diagonal block always present
 
       FaceLoop(
-         test_space,
+         domain_mesh,
          e,
          [&] (auto const& face_info)
          {
@@ -195,6 +201,29 @@ auto MakeDGBSRPattern(
       bsr_matrix.num_blocks );
 
    return bsr_matrix;
+}
+
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend,
+   typename TrialFESpace,
+   typename TestFESpace >
+auto MakeDGBSRPattern(
+   const TrialFESpace & trial_space,
+   const TestFESpace & test_space,
+   Backend backend )
+{
+   return MakeDGBSRPattern<
+      ValueType,
+      IndexType,
+      Layout,
+      Backend >(
+         test_space,
+         trial_space,
+         test_space,
+         std::move( backend ) );
 }
 
 template <

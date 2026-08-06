@@ -56,6 +56,10 @@ auto GenericBSRElementBlockDiagonalAssembly(
       LocalDofCount<TrialShapeFunctions>();
    constexpr GlobalIndex ntest =
       LocalDofCount<TestShapeFunctions>();
+   details::ValidateBSRAssemblyBackendCompatibility<
+      Backend,
+      ntest,
+      ntrial >();
    const auto& domain_mesh =
       GetCellIntegrationDomainMesh(weak_form, wf_ctx);
    const GlobalIndex num_elements =
@@ -111,8 +115,25 @@ auto GenericBSRAssembly(
    ValidateWeakFormContext(weak_form, wf_ctx);
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space = wf_ctx.template fe_field<TestName>().space;
+   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+   using TrialShapeFunctions =
+      typename TrialSpace::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename TestSpace::finite_element_type::shape_functions;
+   constexpr GlobalIndex ntrial =
+      LocalDofCount<TrialShapeFunctions>();
+   constexpr GlobalIndex ntest =
+      LocalDofCount<TestShapeFunctions>();
+   details::ValidateBSRAssemblyBackendCompatibility<
+      Backend,
+      ntest,
+      ntrial >();
+   const auto& domain_mesh =
+      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
    auto bsr_matrix =
       MakeDGBSRPattern(
+         domain_mesh,
          trial_space,
          test_space,
          std::move( backend ) );

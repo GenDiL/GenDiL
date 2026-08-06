@@ -1709,6 +1709,11 @@ bool TestRectangularP1TrialP2TestCellAssembly()
          form,
          context,
          integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
    auto generic =
       MakeGenericOperator< KernelPolicy >(
          form,
@@ -1734,6 +1739,10 @@ bool TestRectangularP1TrialP2TestCellAssembly()
       csr.num_rows == 18 && csr.num_cols == 8 &&
       csc.num_rows == 18 && csc.num_cols == 8,
       "A derived cell format lost the 18 x 8 dimensions." ) && success;
+   success = Check(
+      bsr.block_rows == 9 && bsr.block_cols == 4 &&
+      bsr.num_row_blocks == 2 && bsr.num_col_blocks == 2,
+      "Rectangular cell BSR has the wrong block dimensions." ) && success;
 
    const auto independent_block =
       IndependentP2TestP1TrialCellMassBlock();
@@ -1795,6 +1804,11 @@ bool TestRectangularP1TrialP2TestCellAssembly()
       x,
       expected,
       "Rectangular CSC action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      bsr,
+      x,
+      expected,
+      "Rectangular cell BSR action disagrees with MakeGenericOperator." ) && success;
 
    return success;
 }
@@ -1847,6 +1861,11 @@ bool TestRectangularP1TrialP2TestAffineBoundaryAssembly()
          form,
          context,
          integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
    auto generic =
       MakeGenericOperator< KernelPolicy >(
          form,
@@ -1869,6 +1888,10 @@ bool TestRectangularP1TrialP2TestAffineBoundaryAssembly()
       csr.num_rows == 18 && csr.num_cols == 8 &&
       csc.num_rows == 18 && csc.num_cols == 8,
       "A derived affine-boundary format lost the 18 x 8 dimensions." ) && success;
+   success = Check(
+      bsr.block_rows == 9 && bsr.block_cols == 4 &&
+      bsr.num_row_blocks == 2 && bsr.num_col_blocks == 2,
+      "Rectangular affine-boundary BSR has the wrong block dimensions." ) && success;
 
    Vector x( 8 );
    FillDeterministicInput( x );
@@ -1905,6 +1928,11 @@ bool TestRectangularP1TrialP2TestAffineBoundaryAssembly()
       x,
       expected,
       "Affine-boundary CSC action disagrees with F(x) - F(0)." ) && success;
+   success = CheckRectangularAction(
+      bsr,
+      x,
+      expected,
+      "Affine-boundary BSR action disagrees with F(x) - F(0)." ) && success;
 
    return success;
 }
@@ -2051,6 +2079,11 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
          form,
          context,
          integration_rule );
+   auto bsr =
+      GenericAssembly< MatrixAssemblyType::BSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
    auto generic =
       MakeGenericOperator< KernelPolicy >(
          form,
@@ -2101,6 +2134,21 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
       csr.num_rows == 8 && csr.num_cols == 18 &&
       csc.num_rows == 8 && csc.num_cols == 18,
       "A derived interior format lost the 8 x 18 dimensions." ) && success;
+   success = Check(
+      bsr.block_rows == 4 && bsr.block_cols == 9 &&
+      bsr.num_row_blocks == 2 && bsr.num_col_blocks == 2 &&
+      bsr.num_blocks == 4,
+      "Reverse-interior BSR has the wrong domain-derived block pattern." ) && success;
+   const auto bsr_data = GetHostReadView( bsr );
+   success = Check(
+      bsr_data.row_offsets[0] == 0 &&
+      bsr_data.row_offsets[1] == 2 &&
+      bsr_data.row_offsets[2] == 4 &&
+      bsr_data.col_indices[0] == 0 &&
+      bsr_data.col_indices[1] == 1 &&
+      bsr_data.col_indices[2] == 0 &&
+      bsr_data.col_indices[3] == 1,
+      "Reverse-interior BSR adjacency is not derived from the domain mesh." ) && success;
 
    const auto raw_data = GetHostReadView( raw );
    constexpr GlobalIndex first_neighbor_offset = 36;
@@ -2192,6 +2240,11 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
       x,
       expected,
       "Reverse-interior CSC action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      bsr,
+      x,
+      expected,
+      "Reverse-interior BSR action disagrees with MakeGenericOperator." ) && success;
 
    return success;
 }
