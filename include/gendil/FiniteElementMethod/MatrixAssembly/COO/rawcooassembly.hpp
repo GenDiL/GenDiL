@@ -130,10 +130,6 @@ auto GenericRawCOOAssembly(
    using TestShapeFunctions =
       typename TestSpace::finite_element_type::shape_functions;
 
-   static_assert(
-      std::is_same_v< TrialSpace, TestSpace >,
-      "GenericAssembly<RawCOO> requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported." );
-
    constexpr bool has_face_terms =
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I >;
@@ -148,7 +144,7 @@ auto GenericRawCOOAssembly(
       "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
       "scalar/vector H1/CG cell-only terms, scalar tensor-product direct-index "
       "cell-only terms, and scalar/vector L2/DG conforming face terms. H1 face "
-      "terms, mixed spaces, nonconforming faces, global face traversal, and "
+      "terms, nonconforming faces, global face traversal, and "
       "variable-size hp emission are unsupported." );
 
    using OffsetType = RawCOOAssemblyLayout::offset_type;
@@ -251,11 +247,6 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
    using TestShapeFunctions =
       typename TestSpace::finite_element_type::shape_functions;
 
-   static_assert(
-      std::is_same_v<TrialSpace, TestSpace>,
-      "GenericRawCOOElementBlockDiagonalAssembly requires matching "
-      "trial/test FE spaces; mixed/rectangular spaces are unsupported.");
-
    constexpr bool has_face_terms =
       has_boundary_facet_contributions_v<I> ||
       has_interior_facet_contributions_v<I>;
@@ -270,7 +261,7 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
       "GenericRawCOOElementBlockDiagonalAssembly supports scalar/vector "
       "L2/DG cell-only terms, scalar/vector H1/CG cell-only terms, scalar "
       "tensor-product direct-index cell-only terms, and scalar/vector L2/DG "
-      "conforming face terms. H1 face terms, mixed spaces, nonconforming "
+      "conforming face terms. H1 face terms, nonconforming "
       "faces, global face traversal, and variable-size hp emission are "
       "unsupported.");
 

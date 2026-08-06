@@ -517,6 +517,142 @@ bool TestRectangularElementBSR()
    return success;
 }
 
+bool TestRectangularElementRawCOOCSRAndCSC()
+{
+   Cartesian2DMesh mesh(1.0, 2, 1);
+   auto trial_fe =
+      MakeLegendreFiniteElement(FiniteElementOrders<1, 1>{});
+   auto test_fe =
+      MakeLegendreFiniteElement(FiniteElementOrders<2, 2>{});
+   auto trial_space = MakeFiniteElementSpace(mesh, trial_fe);
+   auto test_space = MakeFiniteElementSpace(mesh, test_fe);
+
+   TrialSpace<"u"> u;
+   TestSpace<"v"> v;
+   auto source = MakeCoefficient<"source">(
+      [] GENDIL_HOST_DEVICE () -> Real { return 0.625; });
+   auto form =
+      integrate(Cells<"mesh">{}, u * v) +
+      integrate(
+         BoundaryFacets<"mesh">{},
+         u * v + source * v);
+   auto context =
+      MakeWeakFormContext(
+         MakeTrialField<"u">(trial_space),
+         MakeTestField<"v">(test_space),
+         MakeIntegrationDomain<"mesh">(mesh));
+   auto integration_rule =
+      MakeIntegrationRule(IntegrationRuleNumPoints<4, 4>{});
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw =
+      GenericElementBlockDiagonalAssembly<
+         MatrixAssemblyType::RawCOO,
+         KernelPolicy>(
+            form,
+            context,
+            integration_rule);
+   auto finalized = FinalizeRawCOOToCOOHost(raw);
+   auto coo =
+      GenericElementBlockDiagonalAssembly<
+         MatrixAssemblyType::COO,
+         KernelPolicy>(
+            form,
+            context,
+            integration_rule);
+   auto csr =
+      GenericElementBlockDiagonalAssembly<
+         MatrixAssemblyType::CSR,
+         KernelPolicy>(
+            form,
+            context,
+            integration_rule);
+   auto csc =
+      GenericElementBlockDiagonalAssembly<
+         MatrixAssemblyType::CSC,
+         KernelPolicy>(
+            form,
+            context,
+            integration_rule);
+   auto generic =
+      MakeGenericOperator<KernelPolicy>(
+         form,
+         context,
+         integration_rule);
+
+   bool success = true;
+   success =
+      Check(
+         raw.num_rows == 18 &&
+         raw.num_cols == 8 &&
+         raw.nnz_raw == 72,
+         "Rectangular element RawCOO does not contain two 9 x 4 blocks.") &&
+      success;
+   success =
+      Check(
+         finalized.num_rows == 18 && finalized.num_cols == 8 &&
+         coo.num_rows == 18 && coo.num_cols == 8 &&
+         csr.num_rows == 18 && csr.num_cols == 8 &&
+         csc.num_rows == 18 && csc.num_cols == 8,
+         "A derived element format lost the 18 x 8 dimensions.") &&
+      success;
+
+   Vector x(8);
+   Real * x_data = x.WriteHostData();
+   for (GlobalIndex i = 0; i < x.Size(); ++i)
+   {
+      x_data[i] = 0.4 + 0.19 * static_cast<Real>(i);
+   }
+   Vector zero(8);
+   zero = 0.0;
+   Vector fx(18);
+   Vector fzero(18);
+   fx = 0.0;
+   fzero = 0.0;
+   generic(x, fx);
+   generic(zero, fzero);
+
+   Vector expected(18);
+   Real * expected_data = expected.WriteHostData();
+   const Real * fx_data = fx.ReadHostData();
+   const Real * fzero_data = fzero.ReadHostData();
+   for (GlobalIndex i = 0; i < expected.Size(); ++i)
+   {
+      expected_data[i] = fx_data[i] - fzero_data[i];
+   }
+
+   success =
+      CheckAction(
+         finalized,
+         x,
+         expected,
+         "Rectangular element RawCOO action disagrees with F(x) - F(0).") &&
+      success;
+   success =
+      CheckAction(
+         coo,
+         x,
+         expected,
+         "Rectangular element COO action disagrees with F(x) - F(0).") &&
+      success;
+   success =
+      CheckAction(
+         csr,
+         x,
+         expected,
+         "Rectangular element CSR action disagrees with F(x) - F(0).") &&
+      success;
+   success =
+      CheckAction(
+         csc,
+         x,
+         expected,
+         "Rectangular element CSC action disagrees with F(x) - F(0).") &&
+      success;
+
+   return success;
+}
+
 } // namespace
 
 int main(int argc, char ** argv)
@@ -539,6 +675,7 @@ int main(int argc, char ** argv)
          TestFacetOnlyRawCOOActivatesTouchedElements() &&
          success;
       success = TestRectangularElementBSR() && success;
+      success = TestRectangularElementRawCOOCSRAndCSC() && success;
 #ifdef GENDIL_USE_HYPRE
    }
    hypre_MPI_Finalize();

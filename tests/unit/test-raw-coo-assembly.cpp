@@ -1554,6 +1554,648 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    return success;
 }
 
+template < typename Operator >
+Vector ApplyRectangularOperator(
+   const Operator & op,
+   const Vector & x,
+   const GlobalIndex output_size )
+{
+   Vector y( output_size );
+   y = 0.0;
+   op( x, y );
+   return y;
+}
+
+template < typename Operator >
+bool CheckRectangularAction(
+   const Operator & op,
+   const Vector & x,
+   const Vector & expected,
+   const char * message )
+{
+   const auto actual =
+      ApplyRectangularOperator( op, x, expected.Size() );
+   return CheckVectorNear( actual, expected, message );
+}
+
+template < size_t NumNodes >
+Real IndependentLagrangeValue(
+   const std::array< Real, NumNodes > & nodes,
+   const size_t basis,
+   const Real point )
+{
+   Real value = 1.0;
+   for ( size_t other = 0; other < NumNodes; ++other )
+   {
+      if ( other != basis )
+      {
+         value *=
+            ( point - nodes[other] ) /
+            ( nodes[basis] - nodes[other] );
+      }
+   }
+   return value;
+}
+
+std::array< Real, 36 > IndependentP2TestP1TrialCellMassBlock()
+{
+   // Test-owned values on [0, 1]. These deliberately do not use GenDiL's
+   // point, weight, interpolation, qdata, or DofToQuad implementations.
+   constexpr std::array< Real, 2 > trial_nodes{
+      0.21132486540518711775,
+      0.78867513459481288225 };
+   constexpr std::array< Real, 3 > test_nodes{
+      0.11270166537925831148,
+      0.5,
+      0.88729833462074168852 };
+   constexpr std::array< Real, 5 > points{
+      0.0469100770306680,
+      0.230765344947158,
+      0.500000000000000,
+      0.769234655052842,
+      0.953089922969332 };
+   constexpr std::array< Real, 5 > weights{
+      0.118463442528095,
+      0.239314335249683,
+      0.284444444444444,
+      0.239314335249683,
+      0.118463442528095 };
+
+   std::array< Real, 36 > block{};
+   for ( size_t trial_y = 0; trial_y < trial_nodes.size(); ++trial_y )
+   {
+      for ( size_t trial_x = 0; trial_x < trial_nodes.size(); ++trial_x )
+      {
+         const size_t trial = trial_x + 2 * trial_y;
+         for ( size_t test_y = 0; test_y < test_nodes.size(); ++test_y )
+         {
+            for ( size_t test_x = 0; test_x < test_nodes.size(); ++test_x )
+            {
+               const size_t test = test_x + 3 * test_y;
+               Real value = 0.0;
+               for ( size_t qy = 0; qy < points.size(); ++qy )
+               {
+                  for ( size_t qx = 0; qx < points.size(); ++qx )
+                  {
+                     value +=
+                        weights[qx] * weights[qy] *
+                        IndependentLagrangeValue(
+                           test_nodes,
+                           test_x,
+                           points[qx] ) *
+                        IndependentLagrangeValue(
+                           test_nodes,
+                           test_y,
+                           points[qy] ) *
+                        IndependentLagrangeValue(
+                           trial_nodes,
+                           trial_x,
+                           points[qx] ) *
+                        IndependentLagrangeValue(
+                           trial_nodes,
+                           trial_y,
+                           points[qy] );
+                  }
+               }
+               // Cartesian2DMesh(1.0, ...) has unit affine-cell Jacobian.
+               block[trial * 9 + test] = value;
+            }
+         }
+      }
+   }
+   return block;
+}
+
+bool TestRectangularP1TrialP2TestCellAssembly()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+   auto trial_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   auto test_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 2, 2 >{} );
+   auto trial_space = MakeFiniteElementSpace( mesh, trial_fe );
+   auto test_space = MakeFiniteElementSpace( mesh, test_fe );
+
+   TrialSpace< "u" > u;
+   TestSpace< "v" > v;
+   auto form = integrate( Cells< "mesh" >{}, u * v );
+   auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( trial_space ),
+         MakeTestField< "v" >( test_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto finalized = FinalizeRawCOOToCOOHost( raw );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csc =
+      GenericAssembly< MatrixAssemblyType::CSC, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw.num_rows == 18 && raw.num_cols == 8,
+      "Rectangular cell RawCOO dimensions are not 18 x 8." ) && success;
+   success = Check(
+      raw.nnz_raw == 72,
+      "Rectangular cell RawCOO must contain two 9 x 4 blocks." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+   success = CheckCanonicalCOOSortedUnique( finalized ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = CheckCOOMatricesEqual(
+      coo,
+      finalized,
+      "Direct rectangular COO disagrees with finalized RawCOO." ) && success;
+   success = Check(
+      coo.num_rows == 18 && coo.num_cols == 8 &&
+      csr.num_rows == 18 && csr.num_cols == 8 &&
+      csc.num_rows == 18 && csc.num_cols == 8,
+      "A derived cell format lost the 18 x 8 dimensions." ) && success;
+
+   const auto independent_block =
+      IndependentP2TestP1TrialCellMassBlock();
+   const auto raw_data = GetHostReadView( raw );
+   for ( GlobalIndex element = 0; element < 2; ++element )
+   {
+      for ( GlobalIndex trial = 0; trial < 4; ++trial )
+      {
+         const std::array< GlobalIndex, 2 > trial_indices{
+            trial % 2,
+            trial / 2 };
+         const GlobalIndex expected_col =
+            GlobalDofIndex( trial_space, element, trial_indices );
+         for ( GlobalIndex test = 0; test < 9; ++test )
+         {
+            const std::array< GlobalIndex, 2 > test_indices{
+               test % 3,
+               test / 3 };
+            const GlobalIndex expected_row =
+               GlobalDofIndex( test_space, element, test_indices );
+            const GlobalIndex entry =
+               element * 36 + trial * 9 + test;
+            success = Check(
+               raw_data.rows[entry] == expected_row,
+               "Rectangular cell RawCOO row is not derived from the p2 test space." ) && success;
+            success = Check(
+               raw_data.cols[entry] == expected_col,
+               "Rectangular cell RawCOO column is not derived from the p1 trial space." ) && success;
+         }
+      }
+   }
+   for ( GlobalIndex entry = 0; entry < 36; ++entry )
+   {
+      success = Check(
+         Near( raw_data.values[entry], independent_block[entry] ),
+         "Rectangular 9 x 4 cell block disagrees with independent nodal integration." ) && success;
+   }
+
+   Vector x( 8 );
+   FillDeterministicInput( x );
+   const auto expected = ApplyRectangularOperator( generic, x, 18 );
+   success = CheckRectangularAction(
+      finalized,
+      x,
+      expected,
+      "Finalized rectangular RawCOO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Rectangular COO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      csr,
+      x,
+      expected,
+      "Rectangular CSR action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      csc,
+      x,
+      expected,
+      "Rectangular CSC action disagrees with MakeGenericOperator." ) && success;
+
+   return success;
+}
+
+bool TestRectangularP1TrialP2TestAffineBoundaryAssembly()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+   auto trial_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   auto test_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 2, 2 >{} );
+   auto trial_space = MakeFiniteElementSpace( mesh, trial_fe );
+   auto test_space = MakeFiniteElementSpace( mesh, test_fe );
+
+   TrialSpace< "u" > u;
+   TestSpace< "v" > v;
+   auto source = MakeCoefficient< "source" >(
+      [] GENDIL_HOST_DEVICE () -> Real { return 1.375; } );
+   auto form =
+      integrate(
+         BoundaryFacets< "mesh" >{},
+         u * v + source * v );
+   auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( trial_space ),
+         MakeTestField< "v" >( test_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto finalized = FinalizeRawCOOToCOOHost( raw );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csc =
+      GenericAssembly< MatrixAssemblyType::CSC, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw.num_rows == 18 && raw.num_cols == 8 && raw.nnz_raw == 72,
+      "Rectangular affine-boundary RawCOO does not contain two 9 x 4 blocks." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+   success = CheckCOOMatricesEqual(
+      coo,
+      finalized,
+      "Direct affine-boundary COO disagrees with finalized RawCOO." ) && success;
+   success = CheckCanonicalCOOSortedUnique( finalized ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = Check(
+      coo.num_rows == 18 && coo.num_cols == 8 &&
+      csr.num_rows == 18 && csr.num_cols == 8 &&
+      csc.num_rows == 18 && csc.num_cols == 8,
+      "A derived affine-boundary format lost the 18 x 8 dimensions." ) && success;
+
+   Vector x( 8 );
+   FillDeterministicInput( x );
+   Vector zero( 8 );
+   zero = 0.0;
+   const auto fx = ApplyRectangularOperator( generic, x, 18 );
+   const auto fzero = ApplyRectangularOperator( generic, zero, 18 );
+   Vector expected( 18 );
+   Real * expected_data = expected.WriteHostData();
+   const Real * fx_data = fx.ReadHostData();
+   const Real * fzero_data = fzero.ReadHostData();
+   for ( GlobalIndex i = 0; i < expected.Size(); ++i )
+   {
+      expected_data[i] = fx_data[i] - fzero_data[i];
+   }
+
+   success = CheckRectangularAction(
+      finalized,
+      x,
+      expected,
+      "Affine-boundary RawCOO action disagrees with F(x) - F(0)." ) && success;
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Affine-boundary COO action disagrees with F(x) - F(0)." ) && success;
+   success = CheckRectangularAction(
+      csr,
+      x,
+      expected,
+      "Affine-boundary CSR action disagrees with F(x) - F(0)." ) && success;
+   success = CheckRectangularAction(
+      csc,
+      x,
+      expected,
+      "Affine-boundary CSC action disagrees with F(x) - F(0)." ) && success;
+
+   return success;
+}
+
+struct OrientedTwoQuadFixture
+{
+   // Cell 0 is axis-aligned. Cell 1 is rotated by 180 degrees, so both cells
+   // are positively oriented but their shared-face tangential coordinates run
+   // in opposite directions.
+   std::array< Real, 12 > node_data{
+      0.0, 0.0,
+      1.0, 0.0,
+      0.0, 1.0,
+      1.0, 1.0,
+      2.0, 0.0,
+      2.0, 1.0 };
+   std::array< int, 8 > restriction_data{
+      0, 1, 2, 3,
+      5, 3, 4, 1 };
+   HostDevicePointer< const int > restriction_pointer{};
+   UnstructuredConformingConnectivity< HyperCube< 2 > > connectivity{ 2 };
+
+   OrientedTwoQuadFixture()
+   {
+      restriction_pointer.host_pointer = restriction_data.data();
+      for ( GlobalIndex element = 0; element < 2; ++element )
+      {
+         for ( Integer face = 0; face < HyperCube< 2 >::num_faces; ++face )
+         {
+            connectivity[element].faces[face] =
+               { 0,
+                 {},
+                 MakeReferencePermutation< 2 >(),
+                 {},
+                 {},
+                 true };
+         }
+      }
+
+      const Permutation< 2 > rotated_neighbor{ { -1, -2 } };
+      connectivity[0].faces[2] =
+         { 1, {}, rotated_neighbor, {}, {}, false };
+      connectivity[1].faces[2] =
+         { 0, {}, rotated_neighbor, {}, {}, false };
+   }
+
+   auto MakeMesh() const
+   {
+      return QuadMesh< 1 >{
+         MakeFIFOView( node_data.data(), GlobalIndex( 2 ), GlobalIndex( 6 ) ),
+         MakeFIFOView(
+            restriction_pointer,
+            GlobalIndex( 2 ),
+            GlobalIndex( 2 ),
+            GlobalIndex( 2 ) ),
+         connectivity,
+         2 };
+   }
+};
+
+Real IndependentP2P1TangentialMass(
+   const size_t trial,
+   const size_t test )
+{
+   constexpr std::array< Real, 3 > trial_nodes{
+      0.11270166537925831148,
+      0.5,
+      0.88729833462074168852 };
+   constexpr std::array< Real, 2 > test_nodes{
+      0.21132486540518711775,
+      0.78867513459481288225 };
+   constexpr std::array< Real, 5 > points{
+      0.0469100770306680,
+      0.230765344947158,
+      0.500000000000000,
+      0.769234655052842,
+      0.953089922969332 };
+   constexpr std::array< Real, 5 > weights{
+      0.118463442528095,
+      0.239314335249683,
+      0.284444444444444,
+      0.239314335249683,
+      0.118463442528095 };
+
+   Real value = 0.0;
+   for ( size_t q = 0; q < points.size(); ++q )
+   {
+      value +=
+         weights[q] *
+         IndependentLagrangeValue( trial_nodes, trial, points[q] ) *
+         IndependentLagrangeValue( test_nodes, test, points[q] );
+   }
+   return value;
+}
+
+bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
+{
+   OrientedTwoQuadFixture fixture;
+   auto mesh = fixture.MakeMesh();
+   const auto fixture_face =
+      mesh.GetLocalFaceInfo(
+         0,
+         std::integral_constant< Integer, 2 >{} );
+   auto trial_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 2, 2 >{} );
+   auto test_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   auto trial_space = MakeFiniteElementSpace( mesh, trial_fe );
+   auto test_space = MakeFiniteElementSpace( mesh, test_fe );
+
+   TrialSpace< "u" > u;
+   TestSpace< "v" > v;
+   auto form =
+      integrate(
+         InteriorFacets< "mesh" >{},
+         jump( u ) * jump( v ) );
+   auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( trial_space ),
+         MakeTestField< "v" >( test_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto finalized = FinalizeRawCOOToCOOHost( raw );
+   auto coo =
+      GenericAssembly< MatrixAssemblyType::COO, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto csc =
+      GenericAssembly< MatrixAssemblyType::CSC, KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      fixture_face.PlusSide().orientation ==
+         Permutation< 2 >{ { -1, -2 } },
+      "Two-quad fixture did not retain its nonidentity face orientation." ) && success;
+   for ( GlobalIndex element = 0; element < 2; ++element )
+   {
+      const int node00 = fixture.restriction_data[4 * element];
+      const int node10 = fixture.restriction_data[4 * element + 1];
+      const int node01 = fixture.restriction_data[4 * element + 2];
+      const Real dx_x =
+         fixture.node_data[2 * node10] - fixture.node_data[2 * node00];
+      const Real dx_y =
+         fixture.node_data[2 * node10 + 1] -
+         fixture.node_data[2 * node00 + 1];
+      const Real dy_x =
+         fixture.node_data[2 * node01] - fixture.node_data[2 * node00];
+      const Real dy_y =
+         fixture.node_data[2 * node01 + 1] -
+         fixture.node_data[2 * node00 + 1];
+      const Real determinant =
+         dx_x * dy_y - dx_y * dy_x;
+      success = Check(
+         determinant > 0.0,
+         "Two-quad orientation fixture contains a non-positive cell." ) && success;
+   }
+   success = Check(
+      raw.num_rows == 8 && raw.num_cols == 18,
+      "Reverse rectangular interior RawCOO dimensions are not 8 x 18." ) && success;
+   success = Check(
+      raw.nnz_raw == 144,
+      "Reverse rectangular interior RawCOO must contain four 4 x 9 blocks." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+   success = CheckCOOMatricesEqual(
+      coo,
+      finalized,
+      "Direct reverse-interior COO disagrees with finalized RawCOO." ) && success;
+   success = CheckCanonicalCOOSortedUnique( finalized ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+   success = Check(
+      coo.num_rows == 8 && coo.num_cols == 18 &&
+      csr.num_rows == 8 && csr.num_cols == 18 &&
+      csc.num_rows == 8 && csc.num_cols == 18,
+      "A derived interior format lost the 8 x 18 dimensions." ) && success;
+
+   const auto raw_data = GetHostReadView( raw );
+   constexpr GlobalIndex first_neighbor_offset = 36;
+   constexpr std::array< GlobalIndex, 4 > selected_trial_dofs{
+      0, 1, 5, 8 };
+   for ( const GlobalIndex trial : selected_trial_dofs )
+   {
+      const GlobalIndex trial_x = trial % 3;
+      const GlobalIndex trial_y = trial / 3;
+      const std::array< GlobalIndex, 2 > native_trial_indices{
+         trial_x,
+         trial_y };
+      const GlobalIndex expected_col =
+         GlobalDofIndex( trial_space, 1, native_trial_indices );
+
+      for ( GlobalIndex test = 0; test < 4; ++test )
+      {
+         const GlobalIndex test_x = test % 2;
+         const GlobalIndex test_y = test / 2;
+         const std::array< GlobalIndex, 2 > test_indices{
+            test_x,
+            test_y };
+         const GlobalIndex expected_row =
+            GlobalDofIndex( test_space, 0, test_indices );
+         const GlobalIndex entry =
+            first_neighbor_offset + trial * 4 + test;
+         success = Check(
+            raw_data.rows[entry] == expected_row,
+            "Oriented neighbor RawCOO row is not from the p1 minus-side test space." ) && success;
+         success = Check(
+            raw_data.cols[entry] == expected_col,
+            "Oriented neighbor RawCOO column does not apply the p2 plus-side reversal." ) && success;
+
+         constexpr std::array< Real, 2 > p1_nodes{
+            0.21132486540518711775,
+            0.78867513459481288225 };
+         constexpr std::array< Real, 3 > p2_nodes{
+            0.11270166537925831148,
+            0.5,
+            0.88729833462074168852 };
+         // RawCOO slots are indexed by native neighbor columns. The {-1,-2}
+         // plus orientation maps the reversed reference basis into this slot.
+         const GlobalIndex reference_trial_x = 2 - trial_x;
+         const GlobalIndex reference_trial_y = 2 - trial_y;
+         const Real expected_value =
+            -IndependentLagrangeValue(
+               p1_nodes,
+               static_cast<size_t>( test_x ),
+               1.0 ) *
+            IndependentLagrangeValue(
+               p2_nodes,
+               static_cast<size_t>( reference_trial_x ),
+               0.0 ) *
+            IndependentP2P1TangentialMass(
+               static_cast<size_t>( reference_trial_y ),
+               static_cast<size_t>( test_y ) );
+         success = Check(
+            Near( raw_data.values[entry], expected_value ),
+            "Oriented neighbor RawCOO value disagrees with the independent face block." ) && success;
+      }
+   }
+
+   Vector x( 18 );
+   Real * x_data = x.WriteHostData();
+   for ( GlobalIndex i = 0; i < x.Size(); ++i )
+   {
+      x_data[i] =
+         0.35 + 0.11 * static_cast< Real >( i ) +
+         0.017 * static_cast< Real >( i * i );
+   }
+   const auto expected = ApplyRectangularOperator( generic, x, 8 );
+   success = CheckRectangularAction(
+      finalized,
+      x,
+      expected,
+      "Reverse-interior RawCOO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Reverse-interior COO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      csr,
+      x,
+      expected,
+      "Reverse-interior CSR action disagrees with MakeGenericOperator." ) && success;
+   success = CheckRectangularAction(
+      csc,
+      x,
+      expected,
+      "Reverse-interior CSC action disagrees with MakeGenericOperator." ) && success;
+
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -1571,6 +2213,9 @@ int main()
    success = TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR() && success;
    success = TestScalarInteriorJumpCOOAgainstGenericAndBSR() && success;
    success = TestScalarCombinedFaceCOOOffsetsAndAccumulation() && success;
+   success = TestRectangularP1TrialP2TestCellAssembly() && success;
+   success = TestRectangularP1TrialP2TestAffineBoundaryAssembly() && success;
+   success = TestRectangularP2TrialP1TestOrientedInteriorAssembly() && success;
 
    return success ? 0 : 1;
 }
