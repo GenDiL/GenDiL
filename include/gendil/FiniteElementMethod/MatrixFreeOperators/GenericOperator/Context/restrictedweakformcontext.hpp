@@ -217,6 +217,11 @@ void ValidateSelectedCellMeshCompatibility(
       Compatibility::value,
       "Active finite-element field mesh type is incompatible with the "
       "selected integration-domain cell mesh type.");
+   static_assert(
+      !Compatibility::value || Compatibility::has_indexed_identity,
+      "Active finite-element field mesh compatibility cannot establish "
+      "indexed-topology identity. Provide MeshIdentityTraits for this mesh "
+      "type.");
    if constexpr (Compatibility::value)
    {
       GENDIL_VERIFY(
@@ -280,6 +285,12 @@ void ValidateActiveFiniteElementFieldDomainCompatibility(
                "Active MixedFiniteElementSpace has an incompatible cell-part "
                "layout or an integration-domain face relation references a "
                "missing field cell part.");
+            static_assert(
+               !Compatibility::value ||
+                  Compatibility::has_indexed_identity,
+               "Active MixedFiniteElementSpace compatibility cannot establish "
+               "indexed-topology identity for every cell-part mesh. Provide "
+               "MeshIdentityTraits for the missing mesh type.");
             if constexpr (Compatibility::value)
             {
                GENDIL_VERIFY(

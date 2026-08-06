@@ -173,6 +173,19 @@ public:
    static constexpr Integer Dim = product_dim_v< Meshes ... >;
    using cell_type = ProductCell< details::mesh_cell_t< Meshes > ... >;
 
+   /**
+    * @brief Read-only access to the component meshes.
+    *
+    * Mesh-domain compatibility uses this view to establish recursive indexed
+    * topology identity for product meshes. The product mesh continues to own
+    * the component values.
+    */
+   GENDIL_HOST_DEVICE
+   const MeshTuple & GetSubMeshes() const
+   {
+      return SubMeshes;
+   }
+
    CartesianProductMesh( Meshes const & ... meshes ) : 
       SubMeshes{ meshes ... }
    {

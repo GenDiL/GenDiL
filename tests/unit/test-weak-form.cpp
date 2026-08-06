@@ -159,11 +159,76 @@ int main()
          Cartesian1DMesh,
          Cartesian1DMesh>::Check(mesh, different_count)));
    assert((
-      IsCompatibleMeshDomain<
+      !IsCompatibleMeshDomain<
          CountOnlyMesh,
          CountOnlyMesh>::Check(
             CountOnlyMesh{n, h},
             CountOnlyMesh{n, 2.0 * h})));
+
+   static_assert(!MeshIdentityTraits<CountOnlyMesh>::available);
+   static_assert(
+      MeshIdentityTraits<Cartesian2DMesh>::available &&
+      MeshIdentityTraits<Cartesian3DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian1DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian2DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian3DMesh>::available);
+
+   Cartesian1DMesh mesh_y(h, 3);
+   Cartesian1DMesh same_mesh_y(h, 3);
+   Cartesian1DMesh different_mesh_y(2.0 * h, 3);
+   auto product_mesh = MakeCartesianProductMesh(mesh, mesh_y);
+   auto same_product_mesh =
+      MakeCartesianProductMesh(same_mesh, same_mesh_y);
+   auto different_product_mesh =
+      MakeCartesianProductMesh(same_mesh, different_mesh_y);
+   using ProductMesh = std::remove_cvref_t<decltype(product_mesh)>;
+   static_assert(MeshIdentityTraits<ProductMesh>::available);
+   assert((
+      IsCompatibleMeshDomain<ProductMesh, ProductMesh>::Check(
+         product_mesh,
+         same_product_mesh)));
+   assert((
+      !IsCompatibleMeshDomain<ProductMesh, ProductMesh>::Check(
+         product_mesh,
+         different_product_mesh)));
+
+   using UnstructuredMesh = LineMesh<1>;
+   static_assert(MeshIdentityTraits<UnstructuredMesh>::available);
+   StridedView<1, const Real> empty_nodes{
+      PointerContainer<const Real>{nullptr},
+      StridedLayout<1>{GlobalIndex{1}}};
+   HostDeviceStridedView<2, const int> empty_restriction{
+      HostDevicePointer<const int>{},
+      StridedLayout<2>{GlobalIndex{1}, GlobalIndex{1}}};
+   UnstructuredConformingConnectivity<HyperCube<1>> connectivity(1);
+   UnstructuredMesh unstructured_mesh{
+      empty_nodes,
+      empty_restriction,
+      connectivity,
+      1};
+   UnstructuredMesh shallow_unstructured_copy = unstructured_mesh;
+   UnstructuredConformingConnectivity<HyperCube<1>> other_connectivity(1);
+   UnstructuredMesh different_unstructured_mesh{
+      empty_nodes,
+      empty_restriction,
+      other_connectivity,
+      1};
+   assert((
+      IsCompatibleMeshDomain<
+         UnstructuredMesh,
+         UnstructuredMesh>::Check(
+            unstructured_mesh,
+            shallow_unstructured_copy)));
+   assert((
+      !IsCompatibleMeshDomain<
+         UnstructuredMesh,
+         UnstructuredMesh>::Check(
+            unstructured_mesh,
+            different_unstructured_mesh)));
+
+   static_assert(MeshIdentityTraits<LineCellMesh<1>>::available);
+   static_assert(MeshIdentityTraits<QuadCellMesh<1>>::available);
+   static_assert(MeshIdentityTraits<HexCellMesh<1>>::available);
 
    auto mesh_domain_entry = MakeIntegrationDomain<"mesh_type">(mesh);
    using MeshDomain =

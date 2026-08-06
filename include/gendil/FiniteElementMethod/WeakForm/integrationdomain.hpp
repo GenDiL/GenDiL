@@ -412,6 +412,95 @@ struct MeshIdentityTraits<Mesh>
    }
 };
 
+template<class Mesh>
+   requires (
+      requires (const Mesh& mesh)
+      {
+         mesh.nodes.data.data;
+         mesh.nodes.layout.strides;
+         mesh.restriction.data.host_pointer;
+         mesh.restriction.layout.strides;
+         mesh.num_elems;
+      } &&
+      !requires (const Mesh& mesh)
+      {
+         mesh.connectivity.element_connectivities.host_pointer;
+      })
+struct MeshIdentityTraits<Mesh>
+{
+   static constexpr bool available = true;
+
+   template<class View, size_t... I>
+   static auto GetStrides(
+      const View& view,
+      std::index_sequence<I...>)
+   {
+      return std::array<GlobalIndex, sizeof...(I)>{
+         view.layout.strides[I]...};
+   }
+
+   static auto Get(const Mesh& mesh)
+   {
+      return std::tuple{
+         mesh.nodes.data.data,
+         GetStrides(
+            mesh.nodes,
+            std::make_index_sequence<
+               std::remove_cvref_t<decltype(mesh.nodes)>::rank>{}),
+         mesh.restriction.data.host_pointer,
+         GetStrides(
+            mesh.restriction,
+            std::make_index_sequence<
+               std::remove_cvref_t<decltype(mesh.restriction)>::rank>{}),
+         mesh.num_elems};
+   }
+};
+
+template<class Mesh>
+   requires requires (const Mesh& mesh)
+   {
+      mesh.GetSubMeshes();
+   }
+struct MeshIdentityTraits<Mesh>
+{
+private:
+   using SubMeshes =
+      std::remove_cvref_t<decltype(std::declval<const Mesh&>().GetSubMeshes())>;
+
+   template<size_t... I>
+   static consteval bool SubMeshIdentitiesAvailable(
+      std::index_sequence<I...>)
+   {
+      return (
+         MeshIdentityTraits<
+            std::remove_cvref_t<
+               std::tuple_element_t<I, SubMeshes>>>::available &&
+         ...);
+   }
+
+public:
+   static constexpr bool available =
+      SubMeshIdentitiesAvailable(
+         std::make_index_sequence<std::tuple_size_v<SubMeshes>>{});
+
+   static auto Get(const Mesh& mesh)
+   {
+      static_assert(
+         available,
+         "CartesianProductMesh identity requires every component mesh to "
+         "provide MeshIdentityTraits.");
+      return std::apply(
+         [] (const auto&... sub_meshes)
+         {
+            return std::tuple{
+               MeshIdentityTraits<
+                  std::remove_cvref_t<decltype(sub_meshes)>>::Get(
+                     sub_meshes)...};
+         },
+         mesh.GetSubMeshes());
+   }
+};
+
 template<class DomainMesh, class FieldMesh>
 struct IsCompatibleMeshDomain
    : std::bool_constant<
@@ -421,6 +510,13 @@ struct IsCompatibleMeshDomain
            std::remove_cvref_t<DomainMesh>,
            std::remove_cvref_t<FieldMesh>>>
 {
+   using Domain = std::remove_cvref_t<DomainMesh>;
+   using Field = std::remove_cvref_t<FieldMesh>;
+
+   static constexpr bool has_indexed_identity =
+      MeshIdentityTraits<Domain>::available &&
+      MeshIdentityTraits<Field>::available;
+
    static bool Check(const DomainMesh& domain_mesh, const FieldMesh& field_mesh)
    {
       if (domain_mesh.GetNumberOfCells() != field_mesh.GetNumberOfCells())
@@ -428,21 +524,15 @@ struct IsCompatibleMeshDomain
          return false;
       }
 
-      using Domain = std::remove_cvref_t<DomainMesh>;
-      using Field = std::remove_cvref_t<FieldMesh>;
-      if constexpr (
-         MeshIdentityTraits<Domain>::available &&
-         MeshIdentityTraits<Field>::available)
+      if constexpr (has_indexed_identity)
       {
          return MeshIdentityTraits<Domain>::Get(domain_mesh) ==
                 MeshIdentityTraits<Field>::Get(field_mesh);
       }
       else
       {
-         // No universal mesh identity exists yet. Equal counts are necessary,
-         // while matching logical topology and cell ordering remain a caller
-         // precondition for mesh types without an identity specialization.
-         return true;
+         // Equal cell counts cannot establish common indexed topology.
+         return false;
       }
    }
 };
@@ -461,6 +551,22 @@ consteval bool CompatiblePartitionCellTypes(std::index_sequence<I...>)
       IsCompatibleMeshDomain<
          typename std::tuple_element_t<I, DomainParts>::mesh_type,
          typename std::tuple_element_t<I, FieldParts>::mesh_type>::value &&
+      ...);
+}
+
+template<class DomainPartition, class FieldPartition, size_t... I>
+consteval bool CompatiblePartitionCellIdentities(std::index_sequence<I...>)
+{
+   using DomainParts =
+      typename std::remove_cvref_t<DomainPartition>::cell_parts_type;
+   using FieldParts =
+      typename std::remove_cvref_t<FieldPartition>::cell_parts_type;
+
+   return (
+      IsCompatibleMeshDomain<
+         typename std::tuple_element_t<I, DomainParts>::mesh_type,
+         typename std::tuple_element_t<I, FieldParts>::mesh_type>::
+            has_indexed_identity &&
       ...);
 }
 
@@ -486,6 +592,8 @@ bool CheckPartitionCells(
 template<class DomainPartition, class FieldPartition, bool SameCellCount>
 struct CompatiblePartitionTopologyImpl : std::false_type
 {
+   static constexpr bool has_indexed_identity = false;
+
    static bool Check(const DomainPartition&, const FieldPartition&)
    {
       return false;
@@ -509,6 +617,12 @@ struct CompatiblePartitionTopologyImpl<
            FieldPartition::num_cell_parts,
            typename DomainPartition::boundary_face_parts_type>>
 {
+   static constexpr bool has_indexed_identity =
+      CompatiblePartitionCellIdentities<
+         DomainPartition,
+         FieldPartition>(
+            std::make_index_sequence<DomainPartition::num_cell_parts>{});
+
    static bool Check(
       const DomainPartition& domain_partition,
       const FieldPartition& field_partition)
@@ -532,6 +646,8 @@ template<
       is_partition_v<FieldPartition>>
 struct CompatiblePartitionDispatch : std::false_type
 {
+   static constexpr bool has_indexed_identity = false;
+
    static bool Check(const DomainPartition&, const FieldPartition&)
    {
       return false;
