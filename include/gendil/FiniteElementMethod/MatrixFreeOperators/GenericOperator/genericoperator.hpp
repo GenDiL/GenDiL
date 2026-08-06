@@ -26,11 +26,10 @@ void GenericExplicitOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using I = std::remove_cvref_t<WeakForm>;
    using namespace generic_operator_detail;
 
    constexpr auto DomainKind =
-      generic_operator_domain_kind_v<I, WeakFormContext>;
+      generic_operator_domain_kind_v<WeakForm, WeakFormContext>;
 
    if constexpr (DomainKind == GenericOperatorDomainKind::Invalid)
    {
@@ -48,8 +47,8 @@ void GenericExplicitOperator(
    }
    else
    {
-      constexpr auto TrialName = requirements<I>::trial_name;
-      constexpr auto TestName  = requirements<I>::test_name;
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName  = requirements<WeakForm>::test_name;
 
       static_assert(
          TrialName != StaticString{"Error"},

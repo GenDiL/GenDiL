@@ -46,9 +46,8 @@ void GenericCellDomainOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using Form = std::remove_cvref_t<WeakForm>;
-   constexpr auto TrialName = requirements<Form>::trial_name;
-   constexpr auto TestName = requirements<Form>::test_name;
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
 
    auto batch_ctx =
       MakeRestrictedWeakFormContext<WeakForm>(
@@ -242,15 +241,14 @@ void GenericGlobalInteriorFacePhase(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using Context = std::remove_cvref_t<WeakFormContext>;
-
    static_assert(
-      Context::template has_interior_face_domain<DomainName>(),
+      WeakFormContext::template has_interior_face_domain<DomainName>(),
       "InteriorFacets<Name>: PartitionIntegrationDomain has no interior "
       "face parts; partition domains do not fall back to local-facet "
       "traversal.");
 
-   if constexpr (Context::template has_interior_face_domain<DomainName>())
+   if constexpr (
+      WeakFormContext::template has_interior_face_domain<DomainName>())
    {
       ForEachInteriorFaceExecutionDomain(
          wf_ctx,
@@ -341,15 +339,14 @@ void GenericGlobalBoundaryFacePhase(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using Context = std::remove_cvref_t<WeakFormContext>;
-
    static_assert(
-      Context::template has_boundary_face_domain<DomainName>(),
+      WeakFormContext::template has_boundary_face_domain<DomainName>(),
       "BoundaryFacets<Name>: PartitionIntegrationDomain has no boundary "
       "face parts; partition domains do not fall back to local-facet "
       "traversal.");
 
-   if constexpr (Context::template has_boundary_face_domain<DomainName>())
+   if constexpr (
+      WeakFormContext::template has_boundary_face_domain<DomainName>())
    {
       ForEachBoundaryFaceExecutionDomain(
          wf_ctx,

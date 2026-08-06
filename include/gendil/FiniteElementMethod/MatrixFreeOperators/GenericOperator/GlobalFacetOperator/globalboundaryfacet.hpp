@@ -234,9 +234,8 @@ void GenericGlobalBoundaryFaceDomainOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using Form = std::remove_cvref_t<WeakForm>;
-   constexpr auto TrialName = requirements<Form>::trial_name;
-   constexpr auto TestName = requirements<Form>::test_name;
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
 
    auto batch_ctx =
       MakeRestrictedWeakFormContext<WeakForm>(

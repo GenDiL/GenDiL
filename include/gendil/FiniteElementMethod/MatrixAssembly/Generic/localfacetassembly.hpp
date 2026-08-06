@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/localdoforientation.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/sparseassemblyvalidation.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/localdofoperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
@@ -19,16 +20,6 @@
 #include <utility>
 
 namespace gendil {
-
-template<class WeakForm>
-consteval void ValidateSparseLinearAssemblyCoefficientInputs()
-{
-   static_assert(
-      !has_active_trial_coefficient_dependency_v<WeakForm>,
-      "Coefficient expression depends on active trial field during sparse "
-      "linear assembly. This is nonlinear or ambiguous. Use a supplied frozen "
-      "field with a distinct name, for example \"u_lagged\".");
-}
 
 template < typename KernelContext, typename FE_Space >
 GENDIL_HOST_DEVICE
@@ -451,19 +442,9 @@ void GenericLocalFacetAssembly(
    const IntegrationRule& integration_rule,
    SparseMatrixType& sparse_matrix)
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR(KernelPolicy);
-   ValidateSparseLinearAssemblyCoefficientInputs<
-      std::remove_cvref_t<WeakForm>>();
-   ValidateWeakFormContext(weak_form, wf_ctx);
-
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "GenericAssembly: missing TrialSpace in integrand.");
-   static_assert(
-      TestName != StaticString{"Error"},
-      "GenericAssembly: missing TestSpace in integrand.");
+   details::ValidateSparseAssemblyExecutionInputs<
+      details::SparseAssemblyMode::Full,
+      KernelPolicy>(weak_form, wf_ctx);
 
    constexpr auto DomainName =
       local_facet_assembly_domain_name_v<WeakForm>;
@@ -555,21 +536,9 @@ void AssembleElementBlockDiagonalSparseTarget(
    const IntegrationRule& integration_rule,
    SparseMatrixType& sparse_matrix)
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR(KernelPolicy);
-   ValidateSparseLinearAssemblyCoefficientInputs<
-      std::remove_cvref_t<WeakForm>>();
-   ValidateWeakFormContext(weak_form, wf_ctx);
-
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "GenericElementBlockDiagonalAssembly: missing TrialSpace in "
-      "integrand.");
-   static_assert(
-      TestName != StaticString{"Error"},
-      "GenericElementBlockDiagonalAssembly: missing TestSpace in "
-      "integrand.");
+   details::ValidateSparseAssemblyExecutionInputs<
+      details::SparseAssemblyMode::ElementBlockDiagonal,
+      KernelPolicy>(weak_form, wf_ctx);
 
    constexpr auto DomainName =
       local_facet_assembly_domain_name_v<WeakForm>;

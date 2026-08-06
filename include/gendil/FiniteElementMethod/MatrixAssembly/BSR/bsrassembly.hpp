@@ -7,6 +7,7 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrpattern.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/sparseassemblyvalidation.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
@@ -26,69 +27,59 @@ auto GenericBSRElementBlockDiagonalAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
-   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
+   const auto can_instantiate =
+      details::ValidateSparseAssemblyInputs<
+         MatrixAssemblyType::BSR,
+         details::SparseAssemblyMode::ElementBlockDiagonal,
+         KernelPolicy,
+         Backend>(weak_form, wf_ctx);
 
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "GenericBSRElementBlockDiagonalAssembly: missing TrialSpace in "
-      "integrand.");
-   static_assert(
-      TestName != StaticString{"Error"},
-      "GenericBSRElementBlockDiagonalAssembly: missing TestSpace in "
-      "integrand.");
+   if constexpr (can_instantiate)
+   {
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName = requirements<WeakForm>::test_name;
 
-   ValidateWeakFormContext(weak_form, wf_ctx);
+      const auto& trial_space =
+         wf_ctx.template fe_field<TrialName>().space;
+      const auto& test_space =
+         wf_ctx.template fe_field<TestName>().space;
+      using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+      using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+      using TrialShapeFunctions =
+         typename TrialSpace::finite_element_type::shape_functions;
+      using TestShapeFunctions =
+         typename TestSpace::finite_element_type::shape_functions;
 
-   const auto& trial_space =
-      wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_space =
-      wf_ctx.template fe_field<TestName>().space;
-   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
-   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-   using TrialShapeFunctions =
-      typename TrialSpace::finite_element_type::shape_functions;
-   using TestShapeFunctions =
-      typename TestSpace::finite_element_type::shape_functions;
+      constexpr GlobalIndex ntrial =
+         LocalDofCount<TrialShapeFunctions>();
+      constexpr GlobalIndex ntest =
+         LocalDofCount<TestShapeFunctions>();
+      const auto& domain_mesh =
+         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+      const GlobalIndex num_elements =
+         static_cast<GlobalIndex>(
+            domain_mesh.GetNumberOfCells());
 
-   constexpr GlobalIndex ntrial =
-      LocalDofCount<TrialShapeFunctions>();
-   constexpr GlobalIndex ntest =
-      LocalDofCount<TestShapeFunctions>();
-   details::ValidateBSRAssemblyBackendCompatibility<
-      Backend,
-      ntest,
-      ntrial >();
-   const auto& domain_mesh =
-      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
-   const GlobalIndex num_elements =
-      static_cast<GlobalIndex>(
-         domain_mesh.GetNumberOfCells());
+      auto bsr_matrix =
+         MakeBlockDiagonalDGBSRPattern(
+            num_elements,
+            ntest,
+            ntrial,
+            std::move( backend ));
 
-   auto bsr_matrix =
-      MakeBlockDiagonalDGBSRPattern(
-         num_elements,
-         ntest,
-         ntrial,
-         std::move( backend ));
+      constexpr bool on_device =
+         is_device_configuration_v< KernelPolicy >;
+      auto matrix_view =
+         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
-   static_assert(
-      is_host_configuration_v< KernelPolicy > !=
-         is_device_configuration_v< KernelPolicy >,
-      "BSR assembly requires a host or device kernel policy." );
-   constexpr bool on_device =
-      is_device_configuration_v< KernelPolicy >;
-   auto matrix_view =
-      GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+      AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         matrix_view);
 
-   AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      matrix_view);
-
-   return bsr_matrix;
+      return bsr_matrix;
+   }
 }
 
 template<
@@ -103,58 +94,42 @@ auto GenericBSRAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
-   ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "GenericBSRAssembly: missing TrialSpace in integrand." );
-   static_assert(
-      TestName != StaticString{"Error"},
-      "GenericBSRAssembly: missing TestSpace in integrand." );
-   ValidateWeakFormContext(weak_form, wf_ctx);
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   const auto& test_space = wf_ctx.template fe_field<TestName>().space;
-   using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
-   using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-   using TrialShapeFunctions =
-      typename TrialSpace::finite_element_type::shape_functions;
-   using TestShapeFunctions =
-      typename TestSpace::finite_element_type::shape_functions;
-   constexpr GlobalIndex ntrial =
-      LocalDofCount<TrialShapeFunctions>();
-   constexpr GlobalIndex ntest =
-      LocalDofCount<TestShapeFunctions>();
-   details::ValidateBSRAssemblyBackendCompatibility<
-      Backend,
-      ntest,
-      ntrial >();
-   const auto& domain_mesh =
-      GetCellIntegrationDomainMesh(weak_form, wf_ctx);
-   auto bsr_matrix =
-      MakeDGBSRPattern(
-         domain_mesh,
-         trial_space,
-         test_space,
-         std::move( backend ) );
+   const auto can_instantiate =
+      details::ValidateSparseAssemblyInputs<
+         MatrixAssemblyType::BSR,
+         details::SparseAssemblyMode::Full,
+         KernelPolicy,
+         Backend>(weak_form, wf_ctx);
 
-   static_assert(
-      is_host_configuration_v< KernelPolicy > !=
-         is_device_configuration_v< KernelPolicy >,
-      "BSR assembly requires a host or device kernel policy." );
-   constexpr bool on_device =
-      is_device_configuration_v< KernelPolicy >;
-   auto matrix_view =
-      GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+   if constexpr (can_instantiate)
+   {
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName = requirements<WeakForm>::test_name;
+      const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+      const auto& test_space = wf_ctx.template fe_field<TestName>().space;
+      const auto& domain_mesh =
+         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+      auto bsr_matrix =
+         MakeDGBSRPattern(
+            domain_mesh,
+            trial_space,
+            test_space,
+            std::move( backend ) );
 
-   GenericAssembly<KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      matrix_view
-   );
+      constexpr bool on_device =
+         is_device_configuration_v< KernelPolicy >;
+      auto matrix_view =
+         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
-   return bsr_matrix;
+      GenericAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         matrix_view
+      );
+
+      return bsr_matrix;
+   }
 }
 
 template < class WeakForm, class WeakFormContext >
@@ -162,28 +137,28 @@ auto MakeDefaultBSRBackend(
    const WeakForm & weak_form,
    const WeakFormContext & wf_ctx )
 {
-   using I = std::remove_cvref_t< decltype( weak_form ) >;
-   constexpr auto TrialName = requirements< I >::trial_name;
-   constexpr auto TestName = requirements< I >::test_name;
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "Default BSR backend selection requires a TrialSpace in the integrand." );
-   static_assert(
-      TestName != StaticString{"Error"},
-      "Default BSR backend selection requires a TestSpace in the integrand." );
+   const auto can_instantiate =
+      details::ValidateDefaultBSRBackendSelectionInputs<
+         WeakForm,
+         WeakFormContext>();
 
-   const auto & trial_space =
-      wf_ctx.template fe_field< TrialName >().space;
-   const auto & test_space =
-      wf_ctx.template fe_field< TestName >().space;
-   using TrialSpace =
-      std::remove_cvref_t< decltype( trial_space ) >;
-   using TestSpace =
-      std::remove_cvref_t< decltype( test_space ) >;
-   using TrialShapeFunctions =
-      typename TrialSpace::finite_element_type::shape_functions;
-   using TestShapeFunctions =
-      typename TestSpace::finite_element_type::shape_functions;
+   if constexpr (can_instantiate)
+   {
+      constexpr auto TrialName = requirements< WeakForm >::trial_name;
+      constexpr auto TestName = requirements< WeakForm >::test_name;
+
+      const auto & trial_space =
+         wf_ctx.template fe_field< TrialName >().space;
+      const auto & test_space =
+         wf_ctx.template fe_field< TestName >().space;
+      using TrialSpace =
+         std::remove_cvref_t< decltype( trial_space ) >;
+      using TestSpace =
+         std::remove_cvref_t< decltype( test_space ) >;
+      using TrialShapeFunctions =
+         typename TrialSpace::finite_element_type::shape_functions;
+      using TestShapeFunctions =
+         typename TestSpace::finite_element_type::shape_functions;
 
 #if defined(GENDIL_USE_DEVICE)
    constexpr GlobalIndex ntrial =
@@ -207,17 +182,22 @@ auto MakeDefaultBSRBackend(
       false;
 #endif
 
-   if constexpr ( ntrial == ntest && vendor_bsr_available )
-   {
-      return VendorDeviceBSRBackend<>{};
+      if constexpr ( ntrial == ntest && vendor_bsr_available )
+      {
+         return VendorDeviceBSRBackend<>{};
+      }
+      else
+      {
+         return NativeDeviceBSRBackend<>{};
+      }
+   #else
+      return HostBSRBackend<>{};
+#endif
    }
    else
    {
-      return NativeDeviceBSRBackend<>{};
+      return Empty{};
    }
-#else
-   return HostBSRBackend<>{};
-#endif
 }
 
 template<
