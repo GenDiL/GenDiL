@@ -39,6 +39,8 @@ auto GenericBSRElementBlockDiagonalAssembly(
       "GenericBSRElementBlockDiagonalAssembly: missing TestSpace in "
       "integrand.");
 
+   ValidateWeakFormContext(weak_form, wf_ctx);
+
    const auto& trial_space =
       wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space =
@@ -106,6 +108,7 @@ auto GenericBSRAssembly(
    static_assert(
       TestName != StaticString{"Error"},
       "GenericBSRAssembly: missing TestSpace in integrand." );
+   ValidateWeakFormContext(weak_form, wf_ctx);
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space = wf_ctx.template fe_field<TestName>().space;
    auto bsr_matrix =

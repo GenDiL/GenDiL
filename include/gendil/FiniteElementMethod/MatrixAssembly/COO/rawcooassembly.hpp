@@ -118,6 +118,8 @@ auto GenericRawCOOAssembly(
       has_interior_facet_contributions_v< I >,
       "GenericAssembly<RawCOO> requires at least one active weak-form domain." );
 
+   ValidateWeakFormContext(weak_form, wf_ctx);
+
    const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
 
@@ -149,9 +151,16 @@ auto GenericRawCOOAssembly(
       "terms, mixed spaces, nonconforming faces, global face traversal, and "
       "variable-size hp emission are unsupported." );
 
-   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
-   constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   using OffsetType = RawCOOAssemblyLayout::offset_type;
+   constexpr OffsetType ntrial =
+      static_cast<OffsetType>(LocalDofCount<TrialShapeFunctions>());
+   constexpr OffsetType ntest =
+      static_cast<OffsetType>(LocalDofCount<TestShapeFunctions>());
+   const OffsetType block_entry_count =
+      CheckedRawCOOMultiply(
+         ntest,
+         ntrial,
+         "RawCOO local trial/test block size overflow.");
    const auto& domain_mesh =
       GetCellIntegrationDomainMesh(weak_form, wf_ctx);
 
@@ -228,6 +237,8 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
       "GenericRawCOOElementBlockDiagonalAssembly requires at least one "
       "active weak-form domain.");
 
+   ValidateWeakFormContext(weak_form, wf_ctx);
+
    const auto& trial_space =
       wf_ctx.template fe_field<TrialName>().space;
    const auto& test_space =
@@ -263,11 +274,16 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
       "faces, global face traversal, and variable-size hp emission are "
       "unsupported.");
 
-   constexpr GlobalIndex ntrial =
-      LocalDofCount<TrialShapeFunctions>();
-   constexpr GlobalIndex ntest =
-      LocalDofCount<TestShapeFunctions>();
-   constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   using OffsetType = RawCOOAssemblyLayout::offset_type;
+   constexpr OffsetType ntrial =
+      static_cast<OffsetType>(LocalDofCount<TrialShapeFunctions>());
+   constexpr OffsetType ntest =
+      static_cast<OffsetType>(LocalDofCount<TestShapeFunctions>());
+   const OffsetType block_entry_count =
+      CheckedRawCOOMultiply(
+         ntest,
+         ntrial,
+         "Element RawCOO local trial/test block size overflow.");
    const auto& domain_mesh =
       GetCellIntegrationDomainMesh(weak_form, wf_ctx);
 

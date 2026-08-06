@@ -34,15 +34,12 @@ void AddRawCOOBlockEntries(
    using Buffer = std::remove_cvref_t< COOBuffer >;
    using ValueType = typename Buffer::value_type;
    using IndexType = typename Buffer::index_type;
-   using TrialShapeFunctions =
-      typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
    using TestShapeFunctions =
       typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
    using TrialDescriptor = std::remove_cvref_t< TrialDofDescriptor >;
 
-   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   const auto block_entry_count = coo_buffer.block_entry_count;
 
    GENDIL_VERIFY(
       IsActiveRawCOOOffset(

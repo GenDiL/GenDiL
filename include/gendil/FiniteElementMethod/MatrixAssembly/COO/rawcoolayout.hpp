@@ -20,10 +20,12 @@ namespace gendil
  */
 struct RawCOOAssemblyLayout
 {
-   GlobalIndex num_elements = 0;
-   GlobalIndex num_faces = 0;
-   GlobalIndex block_entry_count = 0;
-   GlobalIndex nnz_raw = 0;
+   using offset_type = GlobalIndex;
+
+   offset_type num_elements = 0;
+   offset_type num_faces = 0;
+   offset_type block_entry_count = 0;
+   offset_type nnz_raw = 0;
 
    // Compact algebraic block bases. Cell, boundary self, and interior self
    // terms share diagonal_offsets[e]. Directed interior neighbor terms use
@@ -72,11 +74,12 @@ template < typename IndexType = const GlobalIndex >
 struct RawCOOAssemblyLayoutView
 {
    using index_type = std::remove_const_t< IndexType >;
+   using offset_type = RawCOOAssemblyLayout::offset_type;
 
-   GlobalIndex num_elements = 0;
-   GlobalIndex num_faces = 0;
-   GlobalIndex block_entry_count = 0;
-   GlobalIndex nnz_raw = 0;
+   offset_type num_elements = 0;
+   offset_type num_faces = 0;
+   offset_type block_entry_count = 0;
+   offset_type nnz_raw = 0;
    IndexType * diagonal_offsets = nullptr;
    IndexType * offdiag_offsets = nullptr;
 };
@@ -92,6 +95,7 @@ struct RawCOOAssemblyTarget
 {
    using value_type = std::remove_const_t< ValueType >;
    using index_type = std::remove_const_t< IndexType >;
+   using offset_type = RawCOOAssemblyLayout::offset_type;
 
    index_type num_rows = 0;
    index_type num_cols = 0;
@@ -100,11 +104,11 @@ struct RawCOOAssemblyTarget
    IndexType * cols = nullptr;
    ValueType * values = nullptr;
 
-   GlobalIndex num_elements = 0;
-   GlobalIndex num_faces = 0;
-   GlobalIndex block_entry_count = 0;
-   const GlobalIndex * diagonal_offsets = nullptr;
-   const GlobalIndex * offdiag_offsets = nullptr;
+   offset_type num_elements = 0;
+   offset_type num_faces = 0;
+   offset_type block_entry_count = 0;
+   const offset_type * diagonal_offsets = nullptr;
+   const offset_type * offdiag_offsets = nullptr;
 };
 
 /// Combine prepared triplet and layout views into a borrowed assembly target.
@@ -116,6 +120,15 @@ auto MakeRawCOOAssemblyTarget(
    const RawCOOTripletView< ValueType, IndexType > triplets,
    const RawCOOAssemblyLayoutView< LayoutIndexType > layout )
 {
+   GENDIL_VERIFY(
+      static_cast<RawCOOAssemblyLayout::offset_type>(triplets.nnz_raw) ==
+         layout.nnz_raw,
+      "RawCOO triplet buffer and assembly layout capacities disagree.");
+   GENDIL_VERIFY(
+      layout.nnz_raw == 0 ||
+         layout.block_entry_count <= layout.nnz_raw,
+      "RawCOO assembly layout block capacity exceeds its triplet capacity.");
+
    return RawCOOAssemblyTarget< ValueType, IndexType >{
       triplets.num_rows,
       triplets.num_cols,
