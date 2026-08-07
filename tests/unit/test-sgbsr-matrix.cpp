@@ -29,27 +29,20 @@ using ScalarShape0 = typename ScalarFE0::shape_functions;
 using VectorFE = decltype( MakeVectorFiniteElement( ScalarFE0{}, ScalarFE1{} ) );
 using VectorShape = typename VectorFE::shape_functions;
 using VectorSpace = FiniteElementSpace< Cartesian2DMesh, VectorFE, L2Restriction >;
+using Scalar1DFE = GLFiniteElement< 1 >;
+using ScalarL2Space =
+   FiniteElementSpace< Cartesian1DMesh, Scalar1DFE, L2Restriction >;
+using ScalarH1Space =
+   FiniteElementSpace< Cartesian1DMesh, Scalar1DFE, H1Restriction >;
+using HomogeneousVectorFE =
+   decltype( MakeVectorFiniteElement( Scalar1DFE{}, Scalar1DFE{} ) );
+using VectorH1Space =
+   FiniteElementSpace<
+      Cartesian1DMesh,
+      HomogeneousVectorFE,
+      VectorH1Restriction< 2 > >;
 using Component0Tag = std::integral_constant< size_t, 0 >;
 using Component1Tag = std::integral_constant< size_t, 1 >;
-using IdentitySGBSRMatrix =
-   SGBSRMatrix<
-      BSRMatrix< Real, GlobalIndex >,
-      IdentityBsrGather,
-      IdentityBsrScatter >;
-
-static_assert( !std::is_copy_constructible_v< IdentitySGBSRMatrix > );
-static_assert( !std::is_copy_assignable_v< IdentitySGBSRMatrix > );
-static_assert( std::is_move_constructible_v< IdentitySGBSRMatrix > );
-static_assert( std::is_move_assignable_v< IdentitySGBSRMatrix > );
-static_assert(
-   requires ( IdentitySGBSRMatrix & matrix )
-   {
-      matrix.bsr_matrix;
-      matrix.trial_gather;
-      matrix.test_scatter;
-      matrix.x_bsr;
-      matrix.y_bsr;
-   } );
 
 constexpr Real tolerance = 1.0e-12;
 
@@ -185,7 +178,11 @@ void FillIdentityBlocks(
 
 struct CopyBsrGather
 {
-   static constexpr bool is_identity = false;
+   GlobalIndex external_size;
+   GlobalIndex internal_size;
+
+   GlobalIndex ExternalSize() const { return external_size; }
+   GlobalIndex InternalSize() const { return internal_size; }
 
    template <
       typename Backend,
@@ -226,7 +223,11 @@ struct CopyBsrGather
 
 struct CopyBsrScatter
 {
-   static constexpr bool is_identity = false;
+   GlobalIndex external_size;
+   GlobalIndex internal_size;
+
+   GlobalIndex ExternalSize() const { return external_size; }
+   GlobalIndex InternalSize() const { return internal_size; }
 
    template <
       typename Backend,
@@ -324,10 +325,77 @@ struct CopyBsrScatter
    }
 };
 
-template < typename TrialGather, typename TestScatter >
-bool CheckSGBSRFreeApplyVariant(
-   TrialGather trial_gather,
-   TestScatter test_scatter )
+using CopySGBSRMatrix =
+   SGBSRMatrix<
+      BSRMatrix< Real, GlobalIndex >,
+      CopyBsrGather,
+      CopyBsrScatter >;
+
+static_assert( !std::is_copy_constructible_v< CopySGBSRMatrix > );
+static_assert( !std::is_copy_assignable_v< CopySGBSRMatrix > );
+static_assert( std::is_move_constructible_v< CopySGBSRMatrix > );
+static_assert( std::is_move_assignable_v< CopySGBSRMatrix > );
+static_assert(
+   GatherOperatorType<
+      CopyBsrGather,
+      HostBSRBackend<>,
+      Vector,
+      Vector > );
+static_assert(
+   ScatterOperatorType<
+      CopyBsrScatter,
+      HostBSRBackend<>,
+      Vector,
+      Vector > );
+static_assert(
+   requires ( CopySGBSRMatrix & matrix )
+   {
+      matrix.bsr_matrix;
+      matrix.trial_gather;
+      matrix.test_scatter;
+      matrix.x_bsr;
+      matrix.y_bsr;
+   } );
+
+template < typename Backend >
+constexpr bool BuiltInMappingConcepts =
+   GatherOperatorType<
+      DGGatherToBsr< ScalarL2Space >,
+      Backend,
+      Vector,
+      Vector > &&
+   ScatterOperatorType<
+      DGScatterFromBsr< ScalarL2Space >,
+      Backend,
+      Vector,
+      Vector > &&
+   GatherOperatorType<
+      CGGatherToBsr< ScalarH1Space >,
+      Backend,
+      Vector,
+      Vector > &&
+   ScatterOperatorType<
+      CGScatterFromBsr< ScalarH1Space >,
+      Backend,
+      Vector,
+      Vector > &&
+   GatherOperatorType<
+      VectorCGGatherToBsr< VectorH1Space >,
+      Backend,
+      Vector,
+      Vector > &&
+   ScatterOperatorType<
+      VectorCGScatterFromBsr< VectorH1Space >,
+      Backend,
+      Vector,
+      Vector >;
+
+static_assert( BuiltInMappingConcepts< HostBSRBackend<> > );
+#if defined(GENDIL_USE_DEVICE)
+static_assert( BuiltInMappingConcepts< NativeDeviceBSRBackend<> > );
+#endif
+
+bool TestSGBSRFreeApply()
 {
    auto bsr_matrix =
       MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 2, 2, 2 );
@@ -335,11 +403,11 @@ bool CheckSGBSRFreeApplyVariant(
 
    SGBSRMatrix<
       BSRMatrix< Real, GlobalIndex >,
-      TrialGather,
-      TestScatter > matrix(
+      CopyBsrGather,
+      CopyBsrScatter > matrix(
          std::move( bsr_matrix ),
-         std::move( trial_gather ),
-         std::move( test_scatter ) );
+         CopyBsrGather{ 4, 4 },
+         CopyBsrScatter{ 4, 4 } );
 
    Vector x( 4 );
    auto * x_data = x.WriteHostData();
@@ -394,127 +462,29 @@ bool CheckSGBSRFreeApplyVariant(
    return success;
 }
 
-bool TestSGBSRFreeApplyVariants()
-{
-   bool success = true;
-   success = CheckSGBSRFreeApplyVariant(
-      IdentityBsrGather{},
-      IdentityBsrScatter{} ) && success;
-   success = CheckSGBSRFreeApplyVariant(
-      IdentityBsrGather{},
-      CopyBsrScatter{} ) && success;
-   success = CheckSGBSRFreeApplyVariant(
-      CopyBsrGather{},
-      IdentityBsrScatter{} ) && success;
-   success = CheckSGBSRFreeApplyVariant(
-      CopyBsrGather{},
-      CopyBsrScatter{} ) && success;
-   return success;
-}
-
-bool TestIdentityWrapperMatchesRawBsr()
-{
-   auto raw_matrix = MakeBlockDiagonalDGBSRPattern<
-      Real, GlobalIndex, BlockLayout::RowMajor, RectangularTestBackend >( 2, 2, 3 );
-   auto * raw_values = ReadWriteHost( raw_matrix.values );
-
-   for ( GlobalIndex i = 0;
-         i < raw_matrix.num_blocks * raw_matrix.block_rows * raw_matrix.block_cols;
-         ++i )
-   {
-      raw_values[i] = static_cast< Real >( 1 + i );
-   }
-
-   Vector x( 6 );
-   Real * x_data = x.WriteHostData();
-   for ( GlobalIndex i = 0; i < x.Size(); ++i )
-   {
-      x_data[i] = 0.25 + static_cast< Real >( i );
-   }
-
-   Vector y_raw( 4 );
-   Vector y_sg( 4 );
-   y_raw = 0.0;
-   y_sg = 0.0;
-
-   raw_matrix( x, y_raw );
-
-   using RawMatrixType = std::remove_cvref_t< decltype( raw_matrix ) >;
-   SGBSRMatrix<
-      RawMatrixType,
-      IdentityBsrGather,
-      IdentityBsrScatter > sg_matrix(
-         std::move( raw_matrix ),
-         IdentityBsrGather{},
-         IdentityBsrScatter{} );
-
-   sg_matrix( x, y_sg );
-
-   bool success = true;
-   success = Check(
-      sg_matrix.TrialBsrSize() == 6,
-      "Identity SGBSRMatrix trial BSR size is wrong." ) && success;
-   success = Check(
-      sg_matrix.TestBsrSize() == 4,
-      "Identity SGBSRMatrix test BSR size is wrong." ) && success;
-
-   const Real * y_raw_data = y_raw.ReadHostData();
-   const Real * y_sg_data = y_sg.ReadHostData();
-   for ( GlobalIndex i = 0; i < y_raw.Size(); ++i )
-   {
-      success = Check(
-         Near( y_raw_data[i], y_sg_data[i] ),
-         "Identity SGBSRMatrix apply disagrees with raw BSRMatrix." ) && success;
-   }
-
-   y_sg = 2.5;
-   ApplyAdd( sg_matrix, x, y_sg );
-   y_sg_data = y_sg.ReadHostData();
-   for ( GlobalIndex i = 0; i < y_raw.Size(); ++i )
-   {
-      success = Check(
-         Near( y_sg_data[i], y_raw_data[i] + 2.5 ),
-         "Identity SGBSRMatrix ApplyAdd disagrees with raw BSRMatrix." ) &&
-         success;
-   }
-
-   y_sg = 1.25;
-   ApplyAdd( HostBSRBackend<>{}, sg_matrix, x, y_sg );
-   y_sg_data = y_sg.ReadHostData();
-   for ( GlobalIndex i = 0; i < y_raw.Size(); ++i )
-   {
-      success = Check(
-         Near( y_sg_data[i], y_raw_data[i] + 1.25 ),
-         "Explicit-backend SGBSRMatrix ApplyAdd produced the wrong result." ) &&
-         success;
-   }
-
-   return success;
-}
-
 bool TestSGBSRMoveAssignment()
 {
    using Matrix =
       SGBSRMatrix<
          BSRMatrix< Real, GlobalIndex >,
-         IdentityBsrGather,
-         IdentityBsrScatter >;
+         CopyBsrGather,
+         CopyBsrScatter >;
 
    auto source_bsr =
       MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 2, 2, 2 );
    FillIdentityBlocks( source_bsr );
    Matrix source(
       std::move( source_bsr ),
-      IdentityBsrGather{},
-      IdentityBsrScatter{} );
+      CopyBsrGather{ 4, 4 },
+      CopyBsrScatter{ 4, 4 } );
 
    auto destination_bsr =
       MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 1, 1, 1 );
    FillIdentityBlocks( destination_bsr );
    Matrix destination(
       std::move( destination_bsr ),
-      IdentityBsrGather{},
-      IdentityBsrScatter{} );
+      CopyBsrGather{ 1, 1 },
+      CopyBsrScatter{ 1, 1 } );
 
    Matrix moved_source( std::move( source ) );
    destination = std::move( moved_source );
@@ -545,6 +515,39 @@ bool TestSGBSRMoveAssignment()
          success;
    }
    return success;
+}
+
+bool TestBuiltInSGBSRExternalDimensions()
+{
+   Cartesian2DMesh mesh( 1.0, 2, 1 );
+   auto finite_element =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   auto trial_space =
+      MakeFiniteElementSpace( mesh, finite_element, L2Restriction{ 3 } );
+   auto test_space =
+      MakeFiniteElementSpace( mesh, finite_element, L2Restriction{ 7 } );
+
+   constexpr GlobalIndex block_size = 4;
+   auto bsr = MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >(
+      2,
+      block_size,
+      block_size );
+   FillIdentityBlocks( bsr );
+   SGBSRMatrix<
+      BSRMatrix< Real, GlobalIndex >,
+      DGGatherToBsr< decltype( trial_space ) >,
+      DGScatterFromBsr< decltype( test_space ) > > matrix(
+         std::move( bsr ),
+         DGGatherToBsr< decltype( trial_space ) >{ trial_space },
+         DGScatterFromBsr< decltype( test_space ) >{ test_space } );
+
+   return Check(
+      matrix.TrialBsrSize() == 8 && matrix.TestBsrSize() == 8 &&
+      matrix.trial_gather.InternalSize() == 8 &&
+      matrix.test_scatter.InternalSize() == 8 &&
+      matrix.NumCols() == 11 && matrix.NumRows() == 15,
+      "Built-in L2 SGBSR mapping dimensions are inconsistent with the BSR "
+      "spans or restriction shifts." );
 }
 
 bool TestRawBsrOperatorDelegatesToBackendApply()
@@ -608,7 +611,9 @@ bool TestScalarH1GatherScatterMapping()
    Vector x_bsr( num_elements * block_size );
    gather( HostBSRBackend<>{}, x_fe, x_bsr );
 
-   bool success = true;
+   bool success = Check(
+      gather.ExternalSize() == 6 && gather.InternalSize() == 8,
+      "Scalar H1 gather reported incorrect external or internal metadata." );
    const Real expected_gather[] = {
       10.0, 20.0, 40.0, 50.0,
       20.0, 30.0, 50.0, 60.0
@@ -636,6 +641,10 @@ bool TestScalarH1GatherScatterMapping()
    }
 
    CGScatterFromBsr< decltype( h1_space ) > scatter{ h1_space };
+   success = Check(
+      scatter.ExternalSize() == 6 && scatter.InternalSize() == 8,
+      "Scalar H1 scatter reported incorrect external or internal metadata." ) &&
+      success;
    scatter( HostBSRBackend<>{}, y_bsr, y_fe );
 
    const Real expected_scatter[] = {
@@ -761,7 +770,11 @@ bool TestVectorGatherScatterMapping()
    Vector x_bsr( num_elements * block_size );
    gather( HostBSRBackend<>{}, x_fe, x_bsr );
 
-   bool success = true;
+   bool success = Check(
+      gather.ExternalSize() ==
+         vector_space.GetNumberOfFiniteElementDofs() &&
+      gather.InternalSize() == num_elements * block_size,
+      "Vector DG gather reported incorrect external or internal metadata." );
    const Real * x_bsr_data = x_bsr.ReadHostData();
    for ( GlobalIndex element = 0; element < num_elements; ++element )
    {
@@ -800,6 +813,12 @@ bool TestVectorGatherScatterMapping()
    }
 
    DGScatterFromBsr< decltype( vector_space ) > scatter{ vector_space };
+   success = Check(
+      scatter.ExternalSize() ==
+         vector_space.GetNumberOfFiniteElementDofs() &&
+      scatter.InternalSize() == num_elements * block_size,
+      "Vector DG scatter reported incorrect external or internal metadata." ) &&
+      success;
    Vector y_fe( vector_space.GetNumberOfFiniteElementDofs() );
    scatter( HostBSRBackend<>{}, y_bsr, y_fe );
 
@@ -878,7 +897,9 @@ bool TestVectorH1GatherScatterMapping()
    Vector x_bsr( num_elements * block_size );
    gather( HostBSRBackend<>{}, x_fe, x_bsr );
 
-   bool success = true;
+   bool success = Check(
+      gather.ExternalSize() == 6 && gather.InternalSize() == 8,
+      "Vector H1 gather reported incorrect external or internal metadata." );
    const Real expected_gather[] = {
       10.0, 20.0, 40.0, 50.0,
       20.0, 30.0, 50.0, 60.0
@@ -907,6 +928,10 @@ bool TestVectorH1GatherScatterMapping()
 
    VectorCGScatterFromBsr< decltype( vector_h1_space ) > scatter{
       vector_h1_space };
+   success = Check(
+      scatter.ExternalSize() == 6 && scatter.InternalSize() == 8,
+      "Vector H1 scatter reported incorrect external or internal metadata." ) &&
+      success;
    scatter( HostBSRBackend<>{}, y_bsr, y_fe );
 
    const Real expected_scatter[] = {
@@ -1102,70 +1127,6 @@ bool TestMFEMSGBSRApply()
 {
    bool success = true;
 
-   auto identity_bsr =
-      MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >( 2, 1, 1 );
-   auto * identity_values = ReadWriteHost( identity_bsr.values );
-   identity_values[0] = 2.0;
-   identity_values[1] = 3.0;
-   SGBSRMatrix<
-      BSRMatrix< Real, GlobalIndex >,
-      IdentityBsrGather,
-      IdentityBsrScatter > identity_matrix(
-         std::move( identity_bsr ),
-         IdentityBsrGather{},
-         IdentityBsrScatter{} );
-
-   mfem::Vector identity_x( 2 );
-   auto * identity_x_data = WriteHostVector( identity_x );
-   identity_x_data[0] = 4.0;
-   identity_x_data[1] = 5.0;
-   mfem::Vector identity_y( 2 );
-   Apply( identity_matrix, identity_x, identity_y );
-   const auto * identity_y_data = ReadHostVector( identity_y );
-   success = Check(
-      Near( identity_y_data[0], 8.0 ) &&
-      Near( identity_y_data[1], 15.0 ),
-      "Identity SGBSR MFEM apply produced the wrong result." ) && success;
-
-   auto * identity_add_data = WriteHostVector( identity_y );
-   identity_add_data[0] = 10.0;
-   identity_add_data[1] = 20.0;
-   ApplyAdd( identity_matrix, identity_x, identity_y );
-   identity_y_data = ReadHostVector( identity_y );
-   success = Check(
-      Near( identity_y_data[0], 18.0 ) &&
-      Near( identity_y_data[1], 35.0 ),
-      "Identity SGBSR MFEM ApplyAdd produced the wrong result." ) && success;
-
-   Vector mixed_gendil_x( 2 );
-   auto * mixed_gendil_x_data = WriteHostVector( mixed_gendil_x );
-   mixed_gendil_x_data[0] = 4.0;
-   mixed_gendil_x_data[1] = 5.0;
-   mfem::Vector mixed_mfem_y( 2 );
-   Apply( identity_matrix, mixed_gendil_x, mixed_mfem_y );
-   const auto * mixed_mfem_y_data = ReadHostVector( mixed_mfem_y );
-   success = Check(
-      Near( mixed_mfem_y_data[0], 8.0 ) &&
-      Near( mixed_mfem_y_data[1], 15.0 ),
-      "Stored-backend SGBSR Apply failed for GenDiL input and MFEM output." ) &&
-      success;
-
-   Vector mixed_gendil_y( 2 );
-   auto * mixed_gendil_y_data = WriteHostVector( mixed_gendil_y );
-   mixed_gendil_y_data[0] = 1.0;
-   mixed_gendil_y_data[1] = 2.0;
-   ApplyAdd(
-      HostBSRBackend<>{},
-      identity_matrix,
-      identity_x,
-      mixed_gendil_y );
-   const auto * mixed_gendil_y_read = ReadHostVector( mixed_gendil_y );
-   success = Check(
-      Near( mixed_gendil_y_read[0], 9.0 ) &&
-      Near( mixed_gendil_y_read[1], 17.0 ),
-      "Explicit-backend SGBSR ApplyAdd failed for MFEM input and GenDiL "
-      "output." ) && success;
-
    Cartesian2DMesh mesh( 1.0, 2, 1 );
    auto vector_space = MakeFiniteElementSpace( mesh, VectorFE{} );
    constexpr GlobalIndex block_size = LocalDofCount< VectorShape >();
@@ -1217,6 +1178,39 @@ bool TestMFEMSGBSRApply()
          success;
    }
 
+   Vector mixed_gendil_x( fe_size );
+   auto * mixed_gendil_x_data = WriteHostVector( mixed_gendil_x );
+   for ( int i = 0; i < fe_size; ++i )
+   {
+      mixed_gendil_x_data[i] = 1.5 + static_cast< Real >( i );
+   }
+   mfem::Vector mixed_mfem_y( fe_size );
+   Apply( gathered_matrix, mixed_gendil_x, mixed_mfem_y );
+   const auto * mixed_mfem_y_data = ReadHostVector( mixed_mfem_y );
+   for ( int i = 0; i < fe_size; ++i )
+   {
+      success = Check(
+         Near( mixed_mfem_y_data[i], mixed_gendil_x_data[i] ),
+         "Stored-backend SGBSR Apply failed for GenDiL input and MFEM "
+         "output." ) && success;
+   }
+
+   Vector mixed_gendil_y( fe_size );
+   mixed_gendil_y = 3.0;
+   ApplyAdd(
+      HostBSRBackend<>{},
+      gathered_matrix,
+      gathered_x,
+      mixed_gendil_y );
+   const auto * mixed_gendil_y_data = ReadHostVector( mixed_gendil_y );
+   for ( int i = 0; i < fe_size; ++i )
+   {
+      success = Check(
+         Near( mixed_gendil_y_data[i], gathered_x_data[i] + 3.0 ),
+         "Explicit-backend SGBSR ApplyAdd failed for MFEM input and GenDiL "
+         "output." ) && success;
+   }
+
    return success;
 }
 #endif
@@ -1234,9 +1228,9 @@ int main()
 #endif
 
    bool success = true;
-   success = TestSGBSRFreeApplyVariants() && success;
-   success = TestIdentityWrapperMatchesRawBsr() && success;
+   success = TestSGBSRFreeApply() && success;
    success = TestSGBSRMoveAssignment() && success;
+   success = TestBuiltInSGBSRExternalDimensions() && success;
    success = TestRawBsrOperatorDelegatesToBackendApply() && success;
    success = TestScalarH1GatherScatterMapping() && success;
    success = TestSharedScalarH1HostScatter() && success;

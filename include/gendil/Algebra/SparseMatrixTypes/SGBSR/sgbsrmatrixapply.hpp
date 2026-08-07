@@ -33,7 +33,9 @@ template <
    typename OutputVector >
 requires
    details::SGBSRVectorAccessibleForBackend< Backend, InputVector > &&
-   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector >
+   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector > &&
+   GatherOperatorType< TrialGather, Backend, InputVector, Vector > &&
+   ScatterOperatorType< TestScatter, Backend, Vector, OutputVector >
 void Apply(
    const Backend & backend,
    const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix,
@@ -42,54 +44,13 @@ void Apply(
 {
    // Workspaces are owned and reused; one SGBSRMatrix instance is not
    // thread-safe for concurrent applies.
-   if constexpr ( TrialGather::is_identity && TestScatter::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) ==
-            static_cast< size_t >( matrix.TrialBsrSize() ),
-         "SGBSRMatrix identity gather input has the wrong BSR size." );
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) ==
-            static_cast< size_t >( matrix.TestBsrSize() ),
-         "SGBSRMatrix identity scatter output has the wrong BSR size." );
-      gendil::Apply( backend, matrix.bsr_matrix, x_fe, y_fe );
-   }
-   else if constexpr ( TrialGather::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) ==
-            static_cast< size_t >( matrix.TrialBsrSize() ),
-         "SGBSRMatrix identity gather input has the wrong BSR size." );
-      gendil::Apply(
-         backend,
-         matrix.bsr_matrix,
-         x_fe,
-         matrix.y_bsr );
-      matrix.test_scatter( backend, matrix.y_bsr, y_fe );
-   }
-   else if constexpr ( TestScatter::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) ==
-            static_cast< size_t >( matrix.TestBsrSize() ),
-         "SGBSRMatrix identity scatter output has the wrong BSR size." );
-      matrix.trial_gather( backend, x_fe, matrix.x_bsr );
-      gendil::Apply(
-         backend,
-         matrix.bsr_matrix,
-         matrix.x_bsr,
-         y_fe );
-   }
-   else
-   {
-      matrix.trial_gather( backend, x_fe, matrix.x_bsr );
-      gendil::Apply(
-         backend,
-         matrix.bsr_matrix,
-         matrix.x_bsr,
-         matrix.y_bsr );
-      matrix.test_scatter( backend, matrix.y_bsr, y_fe );
-   }
+   matrix.trial_gather( backend, x_fe, matrix.x_bsr );
+   gendil::Apply(
+      backend,
+      matrix.bsr_matrix,
+      matrix.x_bsr,
+      matrix.y_bsr );
+   matrix.test_scatter( backend, matrix.y_bsr, y_fe );
 }
 
 template <
@@ -104,6 +65,16 @@ requires
       InputVector > &&
    details::SGBSRVectorAccessibleForBackend<
       typename BSRType::backend_type,
+      OutputVector > &&
+   GatherOperatorType<
+      TrialGather,
+      typename BSRType::backend_type,
+      InputVector,
+      Vector > &&
+   ScatterOperatorType<
+      TestScatter,
+      typename BSRType::backend_type,
+      Vector,
       OutputVector >
 void Apply(
    const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix,
@@ -131,67 +102,25 @@ template <
    typename OutputVector >
 requires
    details::SGBSRVectorAccessibleForBackend< Backend, InputVector > &&
-   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector >
+   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector > &&
+   GatherOperatorType< TrialGather, Backend, InputVector, Vector > &&
+   ScatterOperatorType< TestScatter, Backend, Vector, OutputVector >
 void ApplyAdd(
    const Backend & backend,
    const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix,
    const InputVector & x_fe,
    OutputVector & y_fe )
 {
-   if constexpr ( TrialGather::is_identity && TestScatter::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) ==
-            static_cast< size_t >( matrix.TrialBsrSize() ),
-         "SGBSRMatrix identity gather input has the wrong BSR size." );
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) ==
-            static_cast< size_t >( matrix.TestBsrSize() ),
-         "SGBSRMatrix identity scatter output has the wrong BSR size." );
-      gendil::ApplyAdd( backend, matrix.bsr_matrix, x_fe, y_fe );
-   }
-   else if constexpr ( TrialGather::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) ==
-            static_cast< size_t >( matrix.TrialBsrSize() ),
-         "SGBSRMatrix identity gather input has the wrong BSR size." );
-      gendil::Apply(
-         backend,
-         matrix.bsr_matrix,
-         x_fe,
-         matrix.y_bsr );
-      matrix.test_scatter.ApplyAdd(
-         backend,
-         matrix.y_bsr,
-         y_fe );
-   }
-   else if constexpr ( TestScatter::is_identity )
-   {
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) ==
-            static_cast< size_t >( matrix.TestBsrSize() ),
-         "SGBSRMatrix identity scatter output has the wrong BSR size." );
-      matrix.trial_gather( backend, x_fe, matrix.x_bsr );
-      gendil::ApplyAdd(
-         backend,
-         matrix.bsr_matrix,
-         matrix.x_bsr,
-         y_fe );
-   }
-   else
-   {
-      matrix.trial_gather( backend, x_fe, matrix.x_bsr );
-      gendil::Apply(
-         backend,
-         matrix.bsr_matrix,
-         matrix.x_bsr,
-         matrix.y_bsr );
-      matrix.test_scatter.ApplyAdd(
-         backend,
-         matrix.y_bsr,
-         y_fe );
-   }
+   matrix.trial_gather( backend, x_fe, matrix.x_bsr );
+   gendil::Apply(
+      backend,
+      matrix.bsr_matrix,
+      matrix.x_bsr,
+      matrix.y_bsr );
+   matrix.test_scatter.ApplyAdd(
+      backend,
+      matrix.y_bsr,
+      y_fe );
 }
 
 template <
@@ -206,6 +135,16 @@ requires
       InputVector > &&
    details::SGBSRVectorAccessibleForBackend<
       typename BSRType::backend_type,
+      OutputVector > &&
+   GatherOperatorType<
+      TrialGather,
+      typename BSRType::backend_type,
+      InputVector,
+      Vector > &&
+   ScatterOperatorType<
+      TestScatter,
+      typename BSRType::backend_type,
+      Vector,
       OutputVector >
 void ApplyAdd(
    const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix,

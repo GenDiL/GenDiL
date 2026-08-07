@@ -18,13 +18,25 @@ namespace gendil {
 
 template <
    class WeakForm,
-   class FESpace,
+   class DomainMesh,
+   class TrialFESpace,
+   class TestFESpace,
    typename Backend = DefaultBSRBackend >
 auto MakeSGBSRInternalPattern(
-   const FESpace & trial_space,
+   const DomainMesh & domain_mesh,
+   const TrialFESpace & trial_space,
+   const TestFESpace & test_space,
    Backend backend = Backend{} )
 {
    using I = std::remove_cvref_t< WeakForm >;
+   using TrialShapeFunctions =
+      typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
+   using TestShapeFunctions =
+      typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
+   constexpr GlobalIndex block_cols =
+      LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex block_rows =
+      LocalDofCount< TestShapeFunctions >();
 
    // SGBSR applies an element-block BSR operator through gather/scatter maps.
    // Cell-only forms can use the block-diagonal element pattern; facet forms
@@ -33,12 +45,18 @@ auto MakeSGBSRInternalPattern(
       has_boundary_facet_contributions_v< I > ||
       has_interior_facet_contributions_v< I > )
    {
-      return MakeDGBSRPattern( trial_space, std::move( backend ) );
+      return MakeDGBSRPattern(
+         domain_mesh,
+         trial_space,
+         test_space,
+         std::move( backend ) );
    }
    else
    {
       return MakeBlockDiagonalDGBSRPattern(
-         trial_space,
+         domain_mesh.GetNumberOfCells(),
+         block_rows,
+         block_cols,
          std::move( backend ) );
    }
 }
@@ -69,13 +87,17 @@ auto GenericSGBSRAssembly(
 
       const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
       const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
+      const auto& domain_mesh =
+         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
 
       using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
       using TestSpace = std::remove_cvref_t<decltype(test_space)>;
 
       auto bsr_matrix =
          MakeSGBSRInternalPattern< WeakForm >(
+            domain_mesh,
             trial_space,
+            test_space,
             std::move( backend ) );
 
       constexpr bool on_device =

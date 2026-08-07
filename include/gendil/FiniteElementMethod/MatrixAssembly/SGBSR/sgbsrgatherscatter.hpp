@@ -18,20 +18,54 @@
 namespace gendil
 {
 
-struct IdentityBsrGather
-{
-   static constexpr bool is_identity = true;
-};
-
-struct IdentityBsrScatter
-{
-   static constexpr bool is_identity = true;
-};
-
 // Built-in mappings execute in the memory space selected by their matvec
 // backend. Parallel H1 mappings use atomic accumulation for shared true DoFs.
 namespace details
 {
+
+template < typename FiniteElementSpace >
+GlobalIndex BsrInternalSize(
+   const FiniteElementSpace & finite_element_space )
+{
+   using Space = std::remove_cvref_t< FiniteElementSpace >;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   return finite_element_space.GetNumberOfFiniteElements() *
+      LocalDofCount< ShapeFunctions >();
+}
+
+template < typename FiniteElementSpace >
+GlobalIndex BsrExternalSize(
+   const FiniteElementSpace & finite_element_space )
+{
+   using Space = std::remove_cvref_t< FiniteElementSpace >;
+   using Restriction = typename Space::restriction_type;
+
+   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+   {
+      return finite_element_space.restriction.shift +
+         finite_element_space.GetNumberOfFiniteElementDofs();
+   }
+   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+   {
+      return static_cast< GlobalIndex >(
+         finite_element_space.restriction.num_dofs );
+   }
+   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   {
+      return static_cast< GlobalIndex >( Restriction::num_comp ) *
+         static_cast< GlobalIndex >(
+            finite_element_space.restriction.scalar_num_dofs );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< FiniteElementSpace >,
+         "Built-in SGBSR external-size metadata supports only "
+         "L2Restriction, scalar H1Restriction, and VectorH1Restriction "
+         "finite element spaces." );
+   }
+}
 
 template < typename FiniteElementSpace >
 void VerifyDeviceRestrictionMap(
@@ -345,9 +379,17 @@ void ScatterBsr(
 template < typename FiniteElementSpace >
 struct DGGatherToBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -390,9 +432,17 @@ struct DGGatherToBsr
 template < typename FiniteElementSpace >
 struct DGScatterFromBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -465,9 +515,17 @@ private:
 template < typename FiniteElementSpace >
 struct CGGatherToBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -515,9 +573,17 @@ struct CGGatherToBsr
 template < typename FiniteElementSpace >
 struct CGScatterFromBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -591,9 +657,17 @@ private:
 template < typename FiniteElementSpace >
 struct VectorCGGatherToBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -651,9 +725,17 @@ struct VectorCGGatherToBsr
 template < typename FiniteElementSpace >
 struct VectorCGScatterFromBsr
 {
-   static constexpr bool is_identity = false;
-
    FiniteElementSpace finite_element_space;
+
+   GlobalIndex ExternalSize() const
+   {
+      return details::BsrExternalSize( finite_element_space );
+   }
+
+   GlobalIndex InternalSize() const
+   {
+      return details::BsrInternalSize( finite_element_space );
+   }
 
    template <
       typename Backend,
@@ -732,6 +814,46 @@ private:
          y_fe );
    }
 };
+
+template < typename FESpace >
+struct IsDefaultBsrMappingSpace
+{
+   using Space = std::remove_cvref_t< FESpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+
+   static constexpr bool value = [] {
+      if constexpr ( std::is_same_v< Restriction, L2Restriction > )
+      {
+         return true;
+      }
+      else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
+      {
+         return !is_vector_shape_functions_v< ShapeFunctions >;
+      }
+      else if constexpr ( is_vector_h1_restriction_v< Restriction > )
+      {
+         if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+         {
+            return Restriction::num_comp == ShapeFunctions::vector_dim &&
+               VectorComponentDofShapesMatchFirst< ShapeFunctions >();
+         }
+         else
+         {
+            return false;
+         }
+      }
+      else
+      {
+         return false;
+      }
+   }();
+};
+
+template < typename FESpace >
+inline constexpr bool is_default_bsr_mapping_space_v =
+   IsDefaultBsrMappingSpace< FESpace >::value;
 
 template <
    typename FESpace,

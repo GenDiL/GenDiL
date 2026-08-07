@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrbackendconfiguration.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/restrictedweakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
@@ -366,14 +367,27 @@ struct SparseAssemblySpaceContract<
 {
    static constexpr bool has_face_terms =
       SparseAssemblyFormTraits<WeakForm>::has_face_terms;
-   static constexpr bool sgbsr_matching_spaces =
-      std::is_same_v<TrialSpace, TestSpace>;
-   static constexpr bool sgbsr_h1_facet_supported =
-      !((is_h1_restriction_v<typename TrialSpace::restriction_type> ||
-         is_h1_restriction_v<typename TestSpace::restriction_type>) &&
-        has_face_terms);
+   using TrialRestriction = typename TrialSpace::restriction_type;
+   using TestRestriction = typename TestSpace::restriction_type;
+   static constexpr bool sgbsr_mappings_supported =
+      is_default_bsr_mapping_space_v< TrialSpace > &&
+      is_default_bsr_mapping_space_v< TestSpace >;
+   static constexpr bool sgbsr_both_l2 =
+      std::is_same_v< TrialRestriction, L2Restriction > &&
+      std::is_same_v< TestRestriction, L2Restriction >;
+   static constexpr bool sgbsr_both_scalar_h1 =
+      std::is_same_v< TrialRestriction, H1Restriction > &&
+      std::is_same_v< TestRestriction, H1Restriction > &&
+      sgbsr_mappings_supported;
+   static constexpr bool sgbsr_space_pair_supported =
+      sgbsr_mappings_supported &&
+      (std::is_same_v< TrialSpace, TestSpace > ||
+       sgbsr_both_l2 ||
+       sgbsr_both_scalar_h1);
+   static constexpr bool sgbsr_facet_supported =
+      !has_face_terms || sgbsr_both_l2;
    static constexpr bool value =
-      sgbsr_matching_spaces && sgbsr_h1_facet_supported;
+      sgbsr_space_pair_supported && sgbsr_facet_supported;
 };
 
 template<
@@ -421,28 +435,50 @@ consteval void ValidateSparseAssemblySpaceContract()
       if constexpr (Mode == SparseAssemblyMode::Full)
       {
          static_assert(
-            Contract::sgbsr_matching_spaces,
-            "SGBSR GenericAssembly currently requires matching trial/test FE spaces; mixed/rectangular spaces are unsupported.");
-         if constexpr (Contract::sgbsr_matching_spaces)
+            Contract::sgbsr_mappings_supported,
+            "SGBSR GenericAssembly requires independently supported default "
+            "trial gather and test scatter mappings (L2Restriction, scalar "
+            "H1Restriction, or compatible VectorH1Restriction)." );
+         if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
-               Contract::sgbsr_h1_facet_supported,
-               "SGBSR GenericAssembly currently supports H1Restriction/VectorH1Restriction cell terms only; H1/vector H1 boundary/interior facet terms are unsupported.");
+               Contract::sgbsr_space_pair_supported,
+               "SGBSR GenericAssembly supports distinct trial/test spaces only "
+               "for L2/L2 or scalar-H1/scalar-H1 pairs; cross-restriction and "
+               "distinct vector-H1 pairs are unsupported." );
+            if constexpr (Contract::sgbsr_space_pair_supported)
+            {
+               static_assert(
+                  Contract::sgbsr_facet_supported,
+                  "SGBSR GenericAssembly supports local facet terms only when "
+                  "both trial and test spaces use L2Restriction; H1/vector-H1 "
+                  "boundary and interior facet terms are unsupported." );
+            }
          }
       }
       else
       {
          static_assert(
-            Contract::sgbsr_matching_spaces,
-            "SGBSR element block-diagonal assembly currently requires matching "
-            "trial/test FE spaces; mixed/rectangular spaces are unsupported.");
-         if constexpr (Contract::sgbsr_matching_spaces)
+            Contract::sgbsr_mappings_supported,
+            "SGBSR element block-diagonal assembly requires independently "
+            "supported default trial gather and test scatter mappings "
+            "(L2Restriction, scalar H1Restriction, or compatible "
+            "VectorH1Restriction)." );
+         if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
-               Contract::sgbsr_h1_facet_supported,
-               "SGBSR element block-diagonal assembly currently supports "
-               "H1Restriction/VectorH1Restriction cell terms only; H1/vector H1 "
-               "boundary/interior facet terms are unsupported.");
+               Contract::sgbsr_space_pair_supported,
+               "SGBSR element block-diagonal assembly supports distinct "
+               "trial/test spaces only for L2/L2 or scalar-H1/scalar-H1 pairs; "
+               "cross-restriction and distinct vector-H1 pairs are unsupported." );
+            if constexpr (Contract::sgbsr_space_pair_supported)
+            {
+               static_assert(
+                  Contract::sgbsr_facet_supported,
+                  "SGBSR element block-diagonal assembly supports local facet "
+                  "terms only when both trial and test spaces use L2Restriction; "
+                  "H1/vector-H1 boundary and interior facet terms are unsupported." );
+            }
          }
       }
    }

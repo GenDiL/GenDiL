@@ -106,23 +106,35 @@ auto MakeIdentityDeviceBSR( const FiniteElementSpace & finite_element_space )
    return matrix;
 }
 
-template <
-   typename FiniteElementSpace,
-   typename TrialGather,
-   typename TestScatter >
-bool CheckDGVariant(
+template < typename Matrix >
+bool CheckDeviceWorkspaces( const Matrix & matrix )
+{
+   bool success = true;
+   success = Check(
+      matrix.x_bsr.IsDeviceValid() && !matrix.x_bsr.IsHostValid(),
+      "Device SGBSR gather did not leave its workspace device-valid." ) &&
+      success;
+   success = Check(
+      matrix.y_bsr.IsDeviceValid() && !matrix.y_bsr.IsHostValid(),
+      "Device SGBSR BSR output workspace was staged through host memory." ) &&
+      success;
+   return success;
+}
+
+template < typename FiniteElementSpace >
+bool CheckDGPipeline(
    const FiniteElementSpace & finite_element_space,
-   TrialGather trial_gather,
-   TestScatter test_scatter,
    const char * apply_message,
    const char * apply_add_message )
 {
    auto bsr_matrix = MakeIdentityDeviceBSR( finite_element_space );
    using BSRType = std::remove_cvref_t< decltype( bsr_matrix ) >;
+   using TrialGather = DGGatherToBsr< FiniteElementSpace >;
+   using TestScatter = DGScatterFromBsr< FiniteElementSpace >;
    SGBSRMatrix< BSRType, TrialGather, TestScatter > matrix(
       std::move( bsr_matrix ),
-      std::move( trial_gather ),
-      std::move( test_scatter ) );
+      TrialGather{ finite_element_space },
+      TestScatter{ finite_element_space } );
 
    const size_t size = static_cast< size_t >(
       finite_element_space.GetNumberOfFiniteElementDofs() );
@@ -139,20 +151,7 @@ bool CheckDGVariant(
       device_y.IsDeviceValid() && !device_y.IsHostValid(),
       "Device SGBSR Apply staged its output through host memory." ) &&
       success;
-   if constexpr ( !TrialGather::is_identity )
-   {
-      success = Check(
-         matrix.x_bsr.IsDeviceValid() && !matrix.x_bsr.IsHostValid(),
-         "Device SGBSR gather did not leave its workspace device-valid." ) &&
-         success;
-   }
-   if constexpr ( !TestScatter::is_identity )
-   {
-      success = Check(
-         matrix.y_bsr.IsDeviceValid() && !matrix.y_bsr.IsHostValid(),
-         "Device SGBSR BSR output workspace was staged through host memory." ) &&
-         success;
-   }
+   success = CheckDeviceWorkspaces( matrix ) && success;
 
    const auto * host_data = ReadHostVector( host_y );
    success =
@@ -162,6 +161,11 @@ bool CheckDGVariant(
    device_y = Real( 3 );
    ApplyAdd( HostBSRBackend<>{}, matrix, x, host_y );
    ApplyAdd( NativeDeviceBSRBackend<>{}, matrix, x, device_y );
+   success = Check(
+      device_y.IsDeviceValid() && !device_y.IsHostValid(),
+      "Device SGBSR ApplyAdd staged its output through host memory." ) &&
+      success;
+   success = CheckDeviceWorkspaces( matrix ) && success;
    host_data = ReadHostVector( host_y );
    success =
       CheckVector( device_y, host_data, size, apply_add_message ) && success;
@@ -186,37 +190,22 @@ bool TestDGMappings()
    auto finite_element_space =
       MakeFiniteElementSpace( mesh, ScalarFE{}, L2Restriction{} );
    using Space = decltype( finite_element_space );
-
-   bool success = true;
-   success = CheckDGVariant(
+   static_assert(
+      GatherOperatorType<
+         DGGatherToBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
+   static_assert(
+      ScatterOperatorType<
+         DGScatterFromBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
+   return CheckDGPipeline(
       finite_element_space,
-      IdentityBsrGather{},
-      IdentityBsrScatter{},
-      "Identity device SGBSR Apply disagrees with the host backend.",
-      "Identity device SGBSR ApplyAdd disagrees with the host backend." ) &&
-      success;
-   success = CheckDGVariant(
-      finite_element_space,
-      IdentityBsrGather{},
-      DGScatterFromBsr< Space >{ finite_element_space },
-      "Device SGBSR scatter-only Apply disagrees with the host backend.",
-      "Device SGBSR scatter-only ApplyAdd disagrees with the host backend." ) &&
-      success;
-   success = CheckDGVariant(
-      finite_element_space,
-      DGGatherToBsr< Space >{ finite_element_space },
-      IdentityBsrScatter{},
-      "Device SGBSR gather-only Apply disagrees with the host backend.",
-      "Device SGBSR gather-only ApplyAdd disagrees with the host backend." ) &&
-      success;
-   success = CheckDGVariant(
-      finite_element_space,
-      DGGatherToBsr< Space >{ finite_element_space },
-      DGScatterFromBsr< Space >{ finite_element_space },
       "Device SGBSR gather/scatter Apply disagrees with the host backend.",
-      "Device SGBSR gather/scatter ApplyAdd disagrees with the host backend." ) &&
-      success;
-   return success;
+      "Device SGBSR gather/scatter ApplyAdd disagrees with the host backend." );
 }
 
 HostDevicePointer< const int > MakeRestrictionView(
@@ -252,6 +241,18 @@ bool TestScalarH1AtomicScatter()
    auto finite_element_space =
       MakeFiniteElementSpace( mesh, ScalarFE{}, restriction );
    using Space = decltype( finite_element_space );
+   static_assert(
+      GatherOperatorType<
+         CGGatherToBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
+   static_assert(
+      ScatterOperatorType<
+         CGScatterFromBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
 
    auto bsr_matrix = MakeIdentityDeviceBSR( finite_element_space );
    using BSRType = std::remove_cvref_t< decltype( bsr_matrix ) >;
@@ -275,6 +276,7 @@ bool TestScalarH1AtomicScatter()
       device_y.IsDeviceValid() && !device_y.IsHostValid(),
       "Device scalar H1 scatter staged its output through host memory." ) &&
       success;
+   success = CheckDeviceWorkspaces( matrix ) && success;
    const Real expected =
       Real( 2 ) * Real( num_elements ) * Real( local_dofs );
    success = CheckVector(
@@ -291,6 +293,11 @@ bool TestScalarH1AtomicScatter()
 
    device_y = Real( 5 );
    ApplyAdd( matrix, x, device_y );
+   success = Check(
+      device_y.IsDeviceValid() && !device_y.IsHostValid(),
+      "Device scalar H1 ApplyAdd staged its output through host memory." ) &&
+      success;
+   success = CheckDeviceWorkspaces( matrix ) && success;
    const Real additive_expected = expected + Real( 5 );
    success = CheckVector(
       device_y,
@@ -332,6 +339,18 @@ bool TestVectorH1AtomicScatter()
          vector_finite_element,
          vector_restriction );
    using Space = decltype( finite_element_space );
+   static_assert(
+      GatherOperatorType<
+         VectorCGGatherToBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
+   static_assert(
+      ScatterOperatorType<
+         VectorCGScatterFromBsr< Space >,
+         NativeDeviceBSRBackend<>,
+         Vector,
+         Vector > );
 
    auto bsr_matrix = MakeIdentityDeviceBSR( finite_element_space );
    using BSRType = std::remove_cvref_t< decltype( bsr_matrix ) >;
@@ -363,6 +382,11 @@ bool TestVectorH1AtomicScatter()
       expected,
       2,
       "Atomic vector H1 device scatter lost shared-DoF contributions." );
+   success = Check(
+      device_y.IsDeviceValid() && !device_y.IsHostValid(),
+      "Device vector H1 scatter staged its output through host memory." ) &&
+      success;
+   success = CheckDeviceWorkspaces( matrix ) && success;
    success = CheckVector(
       host_y,
       expected,
@@ -376,6 +400,11 @@ bool TestVectorH1AtomicScatter()
       matrix,
       x,
       device_y );
+   success = Check(
+      device_y.IsDeviceValid() && !device_y.IsHostValid(),
+      "Device vector H1 ApplyAdd staged its output through host memory." ) &&
+      success;
+   success = CheckDeviceWorkspaces( matrix ) && success;
    const Real additive_expected[2]{
       expected[0] + Real( 4 ),
       expected[1] + Real( 4 ) };
