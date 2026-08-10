@@ -114,3 +114,4 @@ gendil_add_non_nvcc_test(test-generic-hp-adaptive-upwind test-generic-hp-adaptiv
 gendil_add_non_nvcc_test(test-mfem-point-matrix-decoder test-mfem-point-matrix-decoder.cpp)
 gendil_add_non_nvcc_test(test-mixed-integration-domain test-mixed-integration-domain.cpp)
 gendil_add_non_nvcc_test(test-partition-mixed-fes test-partition-mixed-fes.cpp)
+gendil_add_non_nvcc_test(test-tensor-product-facet-dof-io test-tensor-product-facet-dof-io.cpp)

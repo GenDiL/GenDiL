@@ -131,7 +131,7 @@ namespace details
          GlobalIndex tail_neighbor_index = neighbor.PlusSide().GetCellIndex();
 
          neighbor_index = head_index + HeadNumCells * tail_neighbor_index;
-         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.PlusSide().GetOrientation() ) );
+         Set< HeadDim >( orientation, static_cast< Permutation< TailDim > >( neighbor.PlusSide().GetOrientation() ) );
          boundary = neighbor.PlusSide().boundary;
       }
 

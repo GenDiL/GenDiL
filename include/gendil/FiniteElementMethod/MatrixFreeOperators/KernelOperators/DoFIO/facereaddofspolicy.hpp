@@ -8,6 +8,7 @@
 
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Utilities/debug.hpp"
+#include "gendil/Utilities/getrank.hpp"
 #include "gendil/Utilities/multiindex.hpp"
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
@@ -107,40 +108,44 @@ constexpr bool FaceReadDofsOrientationIsIdentity(
    return true;
 }
 
-template < typename DofShape >
-struct is_isotropic_shape;
-
-template <>
-struct is_isotropic_shape< std::index_sequence<> >
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr bool FaceReadDofsOrientationIsValid(
+   const Permutation< Dim > & orientation )
 {
-   static constexpr bool value = true;
-};
+   std::array< bool, Dim > seen{};
+   for ( Integer native_axis = 0; native_axis < Dim; ++native_axis )
+   {
+      const LocalIndex o = orientation( native_axis );
+      if ( o == 0 )
+      {
+         return false;
+      }
 
-template < size_t First >
-struct is_isotropic_shape< std::index_sequence< First > >
-{
-   static constexpr bool value = true;
-};
-
-template < size_t First, size_t Second, size_t... Rest >
-struct is_isotropic_shape< std::index_sequence< First, Second, Rest... > >
-{
-   static constexpr bool value =
-      ( Second == First ) && ( ( Rest == First ) && ... );
-};
-
-template < typename DofShape >
-inline constexpr bool is_isotropic_shape_v =
-   is_isotropic_shape< DofShape >::value;
+      const Integer reference_axis = static_cast< Integer >(
+         o > 0 ? o - 1 : -( o + 1 ) );
+      if ( reference_axis >= Dim || seen[ reference_axis ] )
+      {
+         return false;
+      }
+      seen[ reference_axis ] = true;
+   }
+   return true;
+}
 
 template < Integer Dim >
 GENDIL_HOST_DEVICE
-constexpr bool OrientedTensorDofShapeIsIsotropic(
-   const std::array< size_t, Dim > & sizes )
+constexpr bool OrientedTensorDofExtentsAreCompatible(
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
 {
-   for ( Integer i = 1; i < Dim; ++i )
+   for ( Integer native_axis = 0; native_axis < Dim; ++native_axis )
    {
-      if ( sizes[ i ] != sizes[ 0 ] )
+      const LocalIndex o = orientation( native_axis );
+      const Integer reference_axis = static_cast< Integer >(
+         o > 0 ? o - 1 : -( o + 1 ) );
+      if ( reference_axis >= Dim ||
+           sizes[ native_axis ] != sizes[ reference_axis ] )
       {
          return false;
       }
@@ -154,8 +159,8 @@ constexpr bool OrientedTensorDofShapeIsCompatible(
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
-   return OrientedTensorDofShapeIsIsotropic( sizes ) ||
-      FaceReadDofsOrientationIsIdentity( orientation );
+   return FaceReadDofsOrientationIsValid( orientation ) &&
+      OrientedTensorDofExtentsAreCompatible( sizes, orientation );
 }
 
 template < typename DofShape, Integer Dim >
@@ -167,11 +172,16 @@ void VerifyOrientedTensorDofShapeCompatibility(
       DofShape::size() == Dim,
       "Mismatching oriented tensor-product DOF shape and orientation dimensions." );
 
-   if constexpr ( !is_isotropic_shape_v< DofShape > )
+   const auto sizes = to_array( DofShape{} );
+   const bool valid = FaceReadDofsOrientationIsValid( orientation );
+   GENDIL_VERIFY(
+      valid,
+      "DOF orientation must be a signed permutation." );
+   if ( valid )
    {
       GENDIL_VERIFY(
-         FaceReadDofsOrientationIsIdentity( orientation ),
-         "anisotropic tensor-product DOF shapes currently support only identity face orientation; non-identity orientation requires future tensor-shape/basis-transform support." );
+         OrientedTensorDofExtentsAreCompatible( sizes, orientation ),
+         "DOF orientation permutes local tensor axes with incompatible extents." );
    }
 }
 
@@ -179,11 +189,8 @@ void VerifyOrientedTensorDofShapeCompatibility(
  * @brief Return whether the temporary oriented tensor-product DOF rule accepts
  * the shape/orientation pair.
  *
- * @details This conservative rule is policy-independent and applies to both
- * face ReadDofs and WriteDofs: isotropic tensor-product DOF shapes support all
- * orientations; anisotropic shapes currently support identity orientation only.
- * Non-identity anisotropic orientation requires a future tensor-shape/basis
- * transform abstraction.
+ * @details A valid orientation is a signed permutation. Each native local-DOF
+ * axis must have the same extent as the reference axis mapped onto it.
  */
 template < Integer Dim >
 GENDIL_HOST_DEVICE
@@ -195,6 +202,53 @@ constexpr bool FaceReadDofsOrientationIsShapeCompatible(
 }
 
 using FaceReadDofsSignedIndex = std::make_signed_t< GlobalIndex >;
+
+namespace detail
+{
+
+template < typename ViewType >
+struct is_explicitly_strided_element_view : std::false_type
+{
+};
+
+template < typename Container, Integer Rank >
+struct is_explicitly_strided_element_view<
+   View< Container, StridedLayout< Rank > > > : std::true_type
+{
+};
+
+template < typename ViewType >
+inline constexpr bool is_explicitly_strided_element_view_v =
+   is_explicitly_strided_element_view<
+      std::remove_cvref_t< ViewType > >::value;
+
+template < typename ViewType, Integer Dim, size_t... Is >
+GENDIL_HOST_DEVICE
+decltype(auto) OrientedGlobalDofValueAt(
+   ViewType && global_dofs,
+   const std::array< Integer, Dim > & native_indices,
+   const GlobalIndex element_index,
+   std::index_sequence< Is... > )
+{
+   return std::forward< ViewType >( global_dofs )(
+      native_indices[ Is ]..., element_index );
+}
+
+template < typename ViewType, Integer Dim >
+GENDIL_HOST_DEVICE
+decltype(auto) OrientedGlobalDofValueAt(
+   ViewType && global_dofs,
+   const std::array< Integer, Dim > & native_indices,
+   const GlobalIndex element_index )
+{
+   return OrientedGlobalDofValueAt(
+      std::forward< ViewType >( global_dofs ),
+      native_indices,
+      element_index,
+      std::make_index_sequence< Dim >{} );
+}
+
+} // namespace detail
 
 template < typename GlobalDofsView, Integer Dim >
 struct OrientedGlobalDofView
@@ -238,14 +292,89 @@ struct OrientedGlobalDofView
    }
 };
 
+namespace detail
+{
+
+/**
+ * @brief Layout-independent canonical-to-native local DOF view.
+ */
+template < typename GlobalDofsView, Integer Dim >
+struct GenericOrientedGlobalDofView
+{
+   GlobalDofsView global_dofs;
+   GlobalIndex element_index;
+   std::array< size_t, Dim > native_sizes;
+   Permutation< Dim > orientation;
+
+private:
+   template < typename Self, typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   static decltype(auto) Access( Self && self, Indices... indices )
+   {
+      static_assert(
+         sizeof...( Indices ) == Dim,
+         "Wrong number of local DOF indices." );
+      const std::array< Integer, Dim > reference_indices{
+         static_cast< Integer >( indices )... };
+      const auto native_indices = ReferenceToNativeIndex(
+         reference_indices,
+         self.native_sizes,
+         self.orientation );
+      return detail::OrientedGlobalDofValueAt(
+         std::forward< Self >( self ).global_dofs,
+         native_indices,
+         self.element_index );
+   }
+
+public:
+   template < typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   decltype(auto) operator()( Indices... indices )
+   {
+      return Access( *this, indices... );
+   }
+
+   template < typename... Indices >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   decltype(auto) operator()( Indices... indices ) const
+   {
+      return Access( *this, indices... );
+   }
+};
+
 template < typename GlobalDofsView, Integer Dim >
 GENDIL_HOST_DEVICE
-auto MakeOrientedGlobalDofView(
+auto MakeGenericOrientedGlobalDofView(
    const GlobalDofsView & global_dofs,
    const GlobalIndex element_index,
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
+   static_assert(
+      get_rank_v< GlobalDofsView > == Dim + 1,
+      "An oriented element-indexed view must have rank Dim + 1." );
+   GENDIL_VERIFY(
+      OrientedTensorDofShapeIsCompatible( sizes, orientation ),
+      "Invalid or extent-incompatible local DOF orientation." );
+   return GenericOrientedGlobalDofView< GlobalDofsView, Dim >{
+      global_dofs, element_index, sizes, orientation };
+}
+
+template < typename GlobalDofsView, Integer Dim >
+GENDIL_HOST_DEVICE
+auto MakeStridedOrientedGlobalDofView(
+   const GlobalDofsView & global_dofs,
+   const GlobalIndex element_index,
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
+{
+   static_assert(
+      get_rank_v< GlobalDofsView > == Dim + 1,
+      "An oriented element-indexed view must have rank Dim + 1." );
+   GENDIL_VERIFY(
+      OrientedTensorDofShapeIsCompatible( sizes, orientation ),
+      "Invalid or extent-incompatible local DOF orientation." );
+
    OrientedGlobalDofView< GlobalDofsView, Dim > view{
       global_dofs,
       element_index,
@@ -306,29 +435,40 @@ auto MakeOrientedGlobalDofView(
    return view;
 }
 
-template < typename View, Integer Dim, size_t... Is >
+} // namespace detail
+
+template < typename GlobalDofsView, Integer Dim >
 GENDIL_HOST_DEVICE
-decltype(auto) FaceReadDofsGlobalValueAt(
-   const View & global_dofs,
-   const std::array< GlobalIndex, Dim > & native_indices,
+auto MakeOrientedGlobalDofView(
+   const GlobalDofsView & global_dofs,
    const GlobalIndex element_index,
-   std::index_sequence< Is... > )
+   const std::array< size_t, Dim > & sizes,
+   const Permutation< Dim > & orientation )
 {
-   return global_dofs( native_indices[ Is ]..., element_index );
+   if constexpr (
+      detail::is_explicitly_strided_element_view_v< GlobalDofsView > )
+   {
+      return detail::MakeStridedOrientedGlobalDofView(
+         global_dofs, element_index, sizes, orientation );
+   }
+   else
+   {
+      return detail::MakeGenericOrientedGlobalDofView(
+         global_dofs, element_index, sizes, orientation );
+   }
 }
 
-template < typename View, Integer Dim >
+template < typename ViewType, Integer Dim >
 GENDIL_HOST_DEVICE
 decltype(auto) FaceReadDofsGlobalValueAt(
-   const View & global_dofs,
+   ViewType && global_dofs,
    const std::array< GlobalIndex, Dim > & native_indices,
    const GlobalIndex element_index )
 {
-   return FaceReadDofsGlobalValueAt(
-      global_dofs,
+   return detail::OrientedGlobalDofValueAt(
+      std::forward< ViewType >( global_dofs ),
       native_indices,
-      element_index,
-      std::make_index_sequence< Dim >{} );
+      element_index );
 }
 
 } // namespace gendil

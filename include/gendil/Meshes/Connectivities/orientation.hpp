@@ -62,10 +62,16 @@ template < size_t Offset, size_t Size, size_t Rank >
 GENDIL_HOST_DEVICE
 void Set( Permutation< Rank > & permutation, Permutation< Size > const & sub_permutation )
 {
+   static_assert(
+      Offset + Size <= Rank,
+      "Sub-permutation exceeds the destination permutation rank." );
+
    ConstexprLoop< Size >(
       [&](auto i) {
-         LocalIndex dim_index = sub_permutation( i );
-         permutation( Offset + i ) = (dim_index > 0) ? (Offset + dim_index) : - ( Offset + dim_index );
+         const LocalIndex dim_index = sub_permutation( i );
+         const LocalIndex offset = static_cast< LocalIndex >( Offset );
+         permutation( Offset + i ) =
+            dim_index > 0 ? offset + dim_index : dim_index - offset;
       }
    );
 }

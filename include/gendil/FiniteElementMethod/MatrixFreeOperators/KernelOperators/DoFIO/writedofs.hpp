@@ -660,8 +660,6 @@ void DirectGlobalSerialWriteDofs(
 
    Permutation< FiniteElementSpace::Dim > orientation =
       face_info.GetOrientation();
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
-
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -735,8 +733,6 @@ void DirectGlobalThreadedWriteDofs(
 
    Permutation< FiniteElementSpace::Dim > orientation =
       face_info.GetOrientation();
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
-
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -798,9 +794,6 @@ void DirectGlobalSerialWriteVectorFaceDofs(
    {
       using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
       const auto dofs_sizes = to_array( ComponentDofShape{} );
-      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
-         orientation );
-
       const auto & local_component = std::get< i >( local_dofs );
       auto & global_component = std::get< i >( global_dofs );
       auto oriented_global_dofs =
@@ -876,9 +869,6 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
          "Under-threaded strided coverage is not supported by this threaded "
          "helper yet." );
       const auto dofs_sizes = to_array( ComponentDofShape{} );
-      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
-         orientation );
-
       const auto & local_component = std::get< i >( local_dofs );
       auto & global_component = std::get< i >( global_dofs );
       auto oriented_global_dofs =

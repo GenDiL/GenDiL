@@ -137,17 +137,16 @@ auto ReadDofsToShared( const KernelContext & ctx,
  */
 template < 
    CellFaceView Face,
-   Integer Dim,
-   typename T,
+   typename GlobalTensor,
    typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 void ReadDofs(
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs,
+   const GlobalTensor & global_dofs,
    ElementDoF< FiniteElementSpace > & local_dofs )
 {
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    const GlobalIndex element_index = face_info.cell_index;
@@ -433,21 +432,16 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto SerialReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
@@ -505,21 +499,16 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto ThreadedReadDofs(
    KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
-   // static_assert(
-   //    get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
-   //    "Mismatching dimensions in ReadDofs."
-   // );
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using DofShape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
@@ -575,17 +564,16 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto DirectGlobalSerialReadDofs(
    const KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using DofShape =
@@ -599,35 +587,20 @@ auto DirectGlobalSerialReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+   const auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dof_sizes,
+         orientation );
 
-   if ( FaceReadDofsOrientationIsIdentity( orientation ) )
-   {
-      DofLoop< FiniteElementSpace >(
-         [&]( auto... indices )
-         {
-            local_dofs( indices... ) =
-               global_dofs( indices..., element_index );
-         }
-      );
-   }
-   else
-   {
-      const auto oriented_global_dofs =
-         MakeOrientedGlobalDofView(
-            global_dofs,
-            element_index,
-            dof_sizes,
-            orientation );
-
-      DofLoop< FiniteElementSpace >(
-         [&]( auto... indices )
-         {
-            local_dofs( indices... ) =
-               oriented_global_dofs( indices... );
-         }
-      );
-   }
+   DofLoop< FiniteElementSpace >(
+      [&]( auto... indices )
+      {
+         local_dofs( indices... ) =
+            oriented_global_dofs( indices... );
+      }
+   );
 
    return local_dofs;
 }
@@ -636,17 +609,16 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto DirectGlobalThreadedReadDofs(
    KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
    static_assert(
-      Dim == FiniteElementSpace::Dim + 1,
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
       "Mismatching dimensions in ReadDofs."
    );
    using DofShape =
@@ -666,37 +638,21 @@ auto DirectGlobalThreadedReadDofs(
    Permutation< space_dim > orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
+   const auto oriented_global_dofs =
+      MakeOrientedGlobalDofView(
+         global_dofs,
+         element_index,
+         dof_sizes,
+         orientation );
 
-   if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+   ThreadLoop< tshape >( thread, [&] ( auto... t )
    {
-      ThreadLoop< tshape >( thread, [&] ( auto... t )
+      UnitLoop< rshape >( [&] ( auto... k )
       {
-         UnitLoop< rshape >( [&] ( auto... k )
-         {
-            local_dofs( k... ) =
-               global_dofs( t..., k..., element_index );
-         });
+         local_dofs( k... ) =
+            oriented_global_dofs( t..., k... );
       });
-   }
-   else
-   {
-      const auto oriented_global_dofs =
-         MakeOrientedGlobalDofView(
-            global_dofs,
-            element_index,
-            dof_sizes,
-            orientation );
-
-      ThreadLoop< tshape >( thread, [&] ( auto... t )
-      {
-         UnitLoop< rshape >( [&] ( auto... k )
-         {
-            local_dofs( k... ) =
-               oriented_global_dofs( t..., k... );
-         });
-      });
-   }
+   });
 
    return local_dofs;
 }
@@ -1031,31 +987,17 @@ auto DirectGlobalReadVectorDofsSerial(
       auto & component_local_dofs = std::get<i>(local_dofs);
       const auto dof_sizes = to_array(component_dof_shape{});
 
-      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
-         orientation );
+      const auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            component_global_dofs,
+            element_index,
+            dof_sizes,
+            orientation );
 
-      if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+      UnitLoop<component_dof_shape>([&](auto... indices)
       {
-         UnitLoop<component_dof_shape>([&](auto... indices)
-         {
-            component_local_dofs(indices...) =
-               component_global_dofs(indices..., element_index);
-         });
-      }
-      else
-      {
-         const auto oriented_global_dofs =
-            MakeOrientedGlobalDofView(
-               component_global_dofs,
-               element_index,
-               dof_sizes,
-               orientation );
-
-         UnitLoop<component_dof_shape>([&](auto... indices)
-         {
-            component_local_dofs(indices...) = oriented_global_dofs(indices...);
-         });
-      }
+         component_local_dofs(indices...) = oriented_global_dofs(indices...);
+      });
    });
 
    return local_dofs;
@@ -1104,37 +1046,20 @@ auto DirectGlobalReadVectorDofsThreaded(
 
       const auto dof_sizes = to_array(component_dof_shape{});
 
-      VerifyOrientedTensorDofShapeCompatibility< component_dof_shape >(
-         orientation );
+      const auto oriented_global_dofs =
+         MakeOrientedGlobalDofView(
+            component_global_dofs,
+            element_index,
+            dof_sizes,
+            orientation );
 
-      if ( FaceReadDofsOrientationIsIdentity( orientation ) )
+      ThreadLoop<tshape>(thread, [&](auto... t)
       {
-         ThreadLoop<tshape>(thread, [&](auto... t)
+         UnitLoop<rshape>([&](auto... k)
          {
-            UnitLoop<rshape>([&](auto... k)
-            {
-               component_local_dofs(k...) =
-                  component_global_dofs(t..., k..., element_index);
-            });
+            component_local_dofs(k...) = oriented_global_dofs(t..., k...);
          });
-      }
-      else
-      {
-         const auto oriented_global_dofs =
-            MakeOrientedGlobalDofView(
-               component_global_dofs,
-               element_index,
-               dof_sizes,
-               orientation );
-
-         ThreadLoop<tshape>(thread, [&](auto... t)
-         {
-            UnitLoop<rshape>([&](auto... k)
-            {
-               component_local_dofs(k...) = oriented_global_dofs(t..., k...);
-            });
-         });
-      }
+      });
    });
 
    return local_dofs;
@@ -1179,15 +1104,18 @@ template <
    typename KernelContext,
    typename FiniteElementSpace,
    CellFaceView Face,
-   Integer Dim,
-   typename T >
+   typename GlobalTensor >
 GENDIL_HOST_DEVICE
 auto ReadScalarDofs(
    KernelContext & thread,
    const FiniteElementSpace & fe_space,
    const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
+   const GlobalTensor & global_dofs )
 {
+   static_assert(
+      get_rank_v< GlobalTensor > == FiniteElementSpace::Dim + 1,
+      "Mismatching dimensions in ReadDofs." );
+
    using FaceReadPolicy =
       face_read_dofs_policy_t<
          typename KernelContext::kernel_configuration_type >;
@@ -1244,22 +1172,6 @@ auto ReadScalarDofs(
  * @param global_dofs 
  * @param local_dofs  
  */
-template <
-   typename KernelContext,
-   typename FiniteElementSpace,
-   CellFaceView Face,
-   Integer Dim,
-   typename T >
-GENDIL_HOST_DEVICE
-auto ReadDofs(
-   KernelContext & thread,
-   const FiniteElementSpace & fe_space,
-   const Face & face_info,
-   const StridedView< Dim, T > & global_dofs )
-{
-   return ReadScalarDofs( thread, fe_space, face_info, global_dofs );
-}
-
 template <
    typename KernelContext,
    typename FiniteElementSpace,
