@@ -84,3 +84,9 @@ therefore bind `MakeIntegrationDomain<Name>(mesh)`.
 SGBSR assembly additionally requires matching trial and test finite-element
 spaces. Its H1 and vector-H1 assembly currently supports cell terms only;
 boundary and interior facet terms require the supported DG restriction path.
+
+RawCOO and its derived COO/CSR/CSC formats support conforming mesh-local
+boundary and interior facet terms for scalar/vector `L2Restriction` spaces and
+for scalar `H1Restriction` and direct-index `TensorProductRestriction` spaces.
+Vector H1, vector tensor-product, nonconforming, global-facet, and
+partition-domain sparse facet assembly remain unsupported.

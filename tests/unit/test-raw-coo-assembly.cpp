@@ -1554,6 +1554,161 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
    return success;
 }
 
+template < typename FESpace >
+bool CheckTensorProductFacetAssembly(
+   const FESpace & fe_space,
+   const bool expect_duplicate_coordinates )
+{
+   using KernelPolicy = SerialKernelConfiguration;
+   using Space = std::remove_cvref_t< FESpace >;
+   const auto & mesh =
+      static_cast< const typename Space::mesh_type & >( fe_space );
+
+   TrialSpace< "u" > u;
+   TestSpace< "u" > v;
+   const auto weak_form =
+      integrate(
+         InteriorFacets< "mesh" >{},
+         jump( u ) * jump( v ) ) +
+      integrate(
+         BoundaryFacets< "mesh" >{},
+         u * v );
+   const auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "u" >( fe_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   const auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} );
+
+   auto raw =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+   auto finalized = FinalizeRawCOOToCOOHost( raw );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+   auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+
+   const GlobalIndex num_dofs =
+      static_cast< GlobalIndex >(
+         fe_space.GetNumberOfFiniteElementDofs() );
+   bool success = true;
+   success = Check(
+      raw.num_rows == num_dofs && raw.num_cols == num_dofs,
+      "Tensor-product facet RawCOO has the wrong matrix dimensions." ) && success;
+   success = Check(
+      csr.num_rows == num_dofs && csr.num_cols == num_dofs,
+      "Tensor-product facet CSR has the wrong matrix dimensions." ) && success;
+   success = Check(
+      raw.nnz_raw ==
+         ExpectedRawCOONNZ< false, true, true >( fe_space ),
+      "Tensor-product facet RawCOO compact block count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+   success = CheckCanonicalCOOSortedUnique( finalized ) && success;
+   success = Check(
+      HasDuplicateCoordinate( raw ) == expect_duplicate_coordinates,
+      "Tensor-product facet RawCOO duplicate-coordinate behavior is wrong." ) && success;
+   if ( expect_duplicate_coordinates )
+   {
+      success = Check(
+         raw.nnz_raw > finalized.nnz,
+         "Tensor-product H1-factor RawCOO coordinates were not reduced." ) && success;
+   }
+
+   Vector input( num_dofs );
+   FillDeterministicInput( input );
+   Vector expected( num_dofs );
+   Vector raw_result( num_dofs );
+   Vector csr_result( num_dofs );
+   expected = 0.0;
+   raw_result = 0.0;
+   csr_result = 0.0;
+   generic( input, expected );
+   finalized( input, raw_result );
+   csr( input, csr_result );
+
+   success = CheckVectorNear(
+      raw_result,
+      expected,
+      "Finalized tensor-product facet RawCOO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckVectorNear(
+      csr_result,
+      expected,
+      "Tensor-product facet CSR action disagrees with MakeGenericOperator." ) && success;
+
+   return success;
+}
+
+bool TestTensorProductFacetRawCOOAndCSRAgainstGeneric()
+{
+   Cartesian1DMesh spatial_mesh( 0.5, 2 );
+   Cartesian1DMesh velocity_mesh( 0.5, 2 );
+   const auto product_mesh =
+      MakeCartesianProductMesh( spatial_mesh, velocity_mesh );
+
+   const auto spatial_l2_space =
+      MakeFiniteElementSpace(
+         spatial_mesh,
+         GLFiniteElement< 1 >{},
+         L2Restriction{} );
+   const auto velocity_dg_space =
+      MakeFiniteElementSpace(
+         velocity_mesh,
+         GLFiniteElement< 1 >{},
+         L2Restriction{} );
+   const auto l2_dg_restriction =
+      MakeTensorProductRestriction(
+         spatial_l2_space,
+         velocity_dg_space );
+   const auto l2_dg_space =
+      MakeFiniteElementSpace(
+         product_mesh,
+         GLFiniteElement< 1, 1 >{},
+         l2_dg_restriction );
+
+   std::array< int, 4 > spatial_h1_indices{ 0, 1, 1, 2 };
+   HostDevicePointer< const int > spatial_h1_pointer{};
+   spatial_h1_pointer.host_pointer = spatial_h1_indices.data();
+   const auto spatial_h1_space =
+      MakeFiniteElementSpace(
+         spatial_mesh,
+         GLLFiniteElement< 1 >{},
+         H1Restriction{ spatial_h1_pointer, 3 } );
+   const auto h1_dg_restriction =
+      MakeTensorProductRestriction(
+         spatial_h1_space,
+         velocity_dg_space );
+   using H1DGFiniteElement = FiniteElement<
+      HyperCube< 2 >,
+      TensorShapeFunctions<
+         GaussLobattoLegendreShapeFunctions< 1 >,
+         GaussLegendreShapeFunctions< 1 > > >;
+   const auto h1_dg_space =
+      MakeFiniteElementSpace(
+         product_mesh,
+         H1DGFiniteElement{},
+         h1_dg_restriction );
+
+   bool success = true;
+   success =
+      CheckTensorProductFacetAssembly(
+         l2_dg_space,
+         false ) && success;
+   success =
+      CheckTensorProductFacetAssembly(
+         h1_dg_space,
+         true ) && success;
+   return success;
+}
+
 template < typename Operator >
 Vector ApplyRectangularOperator(
    const Operator & op,
@@ -1576,6 +1731,280 @@ bool CheckRectangularAction(
    const auto actual =
       ApplyRectangularOperator( op, x, expected.Size() );
    return CheckVectorNear( actual, expected, message );
+}
+
+template <
+   typename WeakForm,
+   typename WeakFormContext,
+   typename IntegrationRule >
+bool CheckScalarH1FacetCase(
+   const WeakForm & weak_form,
+   const WeakFormContext & context,
+   const IntegrationRule & integration_rule,
+   const GlobalIndex num_rows,
+   const GlobalIndex num_cols,
+   const GlobalIndex expected_raw_nnz,
+   const bool require_duplicate_reduction,
+   const bool expect_zero_action,
+   const char * case_name )
+{
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto raw =
+      GenericAssembly< MatrixAssemblyType::RawCOO, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+   auto finalized = FinalizeRawCOOToCOOHost( raw );
+   auto csr =
+      GenericAssembly< MatrixAssemblyType::CSR, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+   auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule );
+
+   bool success = true;
+   success = Check(
+      raw.num_rows == num_rows && raw.num_cols == num_cols,
+      "Scalar H1 facet RawCOO has the wrong matrix dimensions." ) && success;
+   success = Check(
+      csr.num_rows == num_rows && csr.num_cols == num_cols,
+      "Scalar H1 facet CSR has the wrong matrix dimensions." ) && success;
+   success = Check(
+      raw.nnz_raw == expected_raw_nnz,
+      "Scalar H1 facet RawCOO compact block count is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+   success = CheckCanonicalCOOSortedUnique( finalized ) && success;
+
+   if ( require_duplicate_reduction )
+   {
+      success = Check(
+         HasDuplicateCoordinate( raw ),
+         "Scalar H1 facet RawCOO should contain duplicate shared-DoF coordinates." ) && success;
+      success = Check(
+         raw.nnz_raw > finalized.nnz,
+         "Scalar H1 facet RawCOO coordinates were not reduced." ) && success;
+   }
+
+   Vector input( num_cols );
+   FillDeterministicInput( input );
+   const auto expected =
+      ApplyRectangularOperator( generic, input, num_rows );
+   const auto raw_result =
+      ApplyRectangularOperator( finalized, input, num_rows );
+   const auto csr_result =
+      ApplyRectangularOperator( csr, input, num_rows );
+
+   success = CheckVectorNear(
+      raw_result,
+      expected,
+      "Finalized scalar H1 facet RawCOO action disagrees with MakeGenericOperator." ) && success;
+   success = CheckVectorNear(
+      csr_result,
+      expected,
+      "Scalar H1 facet CSR action disagrees with MakeGenericOperator." ) && success;
+
+   const Real * expected_data = expected.ReadHostData();
+   bool has_nonzero = false;
+   for ( GlobalIndex row = 0; row < num_rows; ++row )
+   {
+      has_nonzero =
+         has_nonzero || std::abs( expected_data[row] ) >= tolerance;
+      if ( expect_zero_action )
+      {
+         success = Check(
+            Near( expected_data[row], 0.0 ),
+            "Continuous scalar H1 jump action should be zero." ) && success;
+      }
+   }
+
+   if ( expect_zero_action )
+   {
+      for ( GlobalIndex entry = 0; entry < finalized.nnz; ++entry )
+      {
+         success = Check(
+            Near( ReadHost( finalized.values )[entry], 0.0 ),
+            "Canonical scalar H1 jump matrix should contain only zero values." ) && success;
+      }
+   }
+   else
+   {
+      if ( !has_nonzero )
+      {
+         std::cout << "Scalar H1 facet case was unexpectedly zero: "
+                   << case_name << '\n';
+      }
+      success = Check(
+         has_nonzero,
+         "Scalar H1 facet validation expected a nonzero operator action." ) && success;
+   }
+
+   return success;
+}
+
+bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
+{
+   Cartesian2DMesh mesh( 0.5, 2, 2 );
+   const auto h1_fe =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   const auto l2_fe =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+
+   const std::array< int, 16 > h1_map{
+      0, 1, 3, 4,
+      1, 2, 4, 5,
+      3, 4, 6, 7,
+      4, 5, 7, 8 };
+   HostDevicePointer< const int > h1_indices{};
+   h1_indices.host_pointer = h1_map.data();
+   const auto h1_space =
+      MakeFiniteElementSpace(
+         mesh,
+         h1_fe,
+         H1Restriction{ h1_indices, 9 } );
+   const auto l2_space = MakeFiniteElementSpace( mesh, l2_fe );
+   const auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} );
+
+   const GlobalIndex h1_dofs =
+      static_cast< GlobalIndex >(
+         h1_space.GetNumberOfFiniteElementDofs() );
+   const GlobalIndex l2_dofs =
+      static_cast< GlobalIndex >(
+         l2_space.GetNumberOfFiniteElementDofs() );
+   bool success = true;
+
+   {
+      TrialSpace< "h1" > u;
+      TestSpace< "h1" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            average( u ) * average( v ) ) +
+         integrate(
+            BoundaryFacets< "mesh" >{},
+            u * v );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "h1" >( h1_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckScalarH1FacetCase(
+            form,
+            context,
+            integration_rule,
+            h1_dofs,
+            h1_dofs,
+            ExpectedRawCOONNZ< false, true, true >( h1_space ),
+            true,
+            false,
+            "H1/H1 skeleton and boundary mass" ) && success;
+   }
+
+   {
+      TrialSpace< "h1_jump" > u;
+      TestSpace< "h1_jump" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            jump( u ) * jump( v ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "h1_jump" >( h1_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckScalarH1FacetCase(
+            form,
+            context,
+            integration_rule,
+            h1_dofs,
+            h1_dofs,
+            ExpectedRawCOONNZ< false, false, true >( h1_space ),
+            true,
+            true,
+            "H1/H1 jump cancellation" ) && success;
+   }
+
+   {
+      TrialSpace< "h1_trial" > u;
+      TestSpace< "l2_test" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            average( u ) * jump( v ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "h1_trial" >( h1_space ),
+            MakeTestField< "l2_test" >( l2_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckScalarH1FacetCase(
+            form,
+            context,
+            integration_rule,
+            l2_dofs,
+            h1_dofs,
+            ExpectedRawCOONNZ< false, false, true >( l2_space ),
+            false,
+            false,
+            "H1 trial to L2 test" ) && success;
+   }
+
+   {
+      TrialSpace< "l2_trial" > u;
+      TestSpace< "h1_test" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            jump( u ) * average( v ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "l2_trial" >( l2_space ),
+            MakeTestField< "h1_test" >( h1_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckScalarH1FacetCase(
+            form,
+            context,
+            integration_rule,
+            h1_dofs,
+            l2_dofs,
+            ExpectedRawCOONNZ< false, false, true >( l2_space ),
+            false,
+            true,
+            "L2 trial to H1 test" ) && success;
+   }
+
+   {
+      TrialSpace< "l2_average_trial" > u;
+      TestSpace< "h1_average_test" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            average( u ) * average( v ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "l2_average_trial" >( l2_space ),
+            MakeTestField< "h1_average_test" >( h1_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckScalarH1FacetCase(
+            form,
+            context,
+            integration_rule,
+            h1_dofs,
+            l2_dofs,
+            ExpectedRawCOONNZ< false, false, true >( l2_space ),
+            false,
+            false,
+            "L2 trial to H1 test side-symmetric mass" ) && success;
+   }
+
+   return success;
 }
 
 template < size_t NumNodes >
@@ -2266,6 +2695,8 @@ int main()
    success = TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR() && success;
    success = TestScalarInteriorJumpCOOAgainstGenericAndBSR() && success;
    success = TestScalarCombinedFaceCOOOffsetsAndAccumulation() && success;
+   success = TestTensorProductFacetRawCOOAndCSRAgainstGeneric() && success;
+   success = TestScalarH1FacetRawCOOAndCSRAgainstGeneric() && success;
    success = TestRectangularP1TrialP2TestCellAssembly() && success;
    success = TestRectangularP1TrialP2TestAffineBoundaryAssembly() && success;
    success = TestRectangularP2TrialP1TestOrientedInteriorAssembly() && success;

@@ -139,9 +139,28 @@ template < typename FESpace >
 struct IsRawCOOFaceAssemblySpace
 {
    using Space = std::remove_cvref_t< FESpace >;
+   using ShapeFunctions =
+      typename Space::finite_element_type::shape_functions;
+   using Restriction = typename Space::restriction_type;
+
+   static constexpr bool tensor_product_value = [] {
+      if constexpr ( is_tensor_product_restriction_v< Restriction > )
+      {
+         return
+            restriction_traits< Restriction >::is_direct_index_map &&
+            !is_vector_shape_functions_v< ShapeFunctions >;
+      }
+      else
+      {
+         return false;
+      }
+   }();
 
    static constexpr bool value =
-      std::is_same_v< typename Space::restriction_type, L2Restriction >;
+      std::is_same_v< Restriction, L2Restriction > ||
+      ( std::is_same_v< Restriction, H1Restriction > &&
+        !is_vector_shape_functions_v< ShapeFunctions > ) ||
+      tensor_product_value;
 };
 
 namespace details {
@@ -414,7 +433,8 @@ consteval void ValidateSparseAssemblySpaceContract()
             Contract::raw_coo_supported,
             "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
             "scalar/vector H1/CG cell-only terms, scalar tensor-product direct-index "
-            "cell-only terms, and scalar/vector L2/DG conforming face terms. H1 face "
+            "cell terms, and scalar/vector L2/DG, scalar H1/CG, or scalar "
+            "tensor-product direct-index conforming face terms. Vector H1 face "
             "terms, nonconforming faces, global face traversal, and "
             "variable-size hp emission are unsupported.");
       }
@@ -424,8 +444,9 @@ consteval void ValidateSparseAssemblySpaceContract()
             Contract::raw_coo_supported,
             "GenericRawCOOElementBlockDiagonalAssembly supports scalar/vector "
             "L2/DG cell-only terms, scalar/vector H1/CG cell-only terms, scalar "
-            "tensor-product direct-index cell-only terms, and scalar/vector L2/DG "
-            "conforming face terms. H1 face terms, nonconforming "
+            "tensor-product direct-index cell terms, and scalar/vector L2/DG, "
+            "scalar H1/CG, or scalar tensor-product direct-index conforming face "
+            "terms. Vector H1 face terms, nonconforming "
             "faces, global face traversal, and variable-size hp emission are "
             "unsupported.");
       }
