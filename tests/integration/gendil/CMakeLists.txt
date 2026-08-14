@@ -115,3 +115,7 @@ gendil_add_non_nvcc_test(test-mfem-point-matrix-decoder test-mfem-point-matrix-d
 gendil_add_non_nvcc_test(test-mixed-integration-domain test-mixed-integration-domain.cpp)
 gendil_add_non_nvcc_test(test-partition-mixed-fes test-partition-mixed-fes.cpp)
 gendil_add_non_nvcc_test(test-tensor-product-facet-dof-io test-tensor-product-facet-dof-io.cpp)
+gendil_add_non_nvcc_test(test-cartesian-product-partition-structure test-cartesian-product-partition-structure.cpp)
+gendil_add_non_nvcc_test(test-cartesian-product-partition-operators test-cartesian-product-partition-operators.cpp)
+gendil_add_non_nvcc_test(test-cartesian-product-partition-nonconforming test-cartesian-product-partition-nonconforming.cpp)
+gendil_add_test(test-cartesian-product-partition-device-smoke test-cartesian-product-partition-device-smoke.cpp)

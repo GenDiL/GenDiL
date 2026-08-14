@@ -11,6 +11,7 @@
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/NumericalIntegration/integrationrule.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/productcell.hpp"

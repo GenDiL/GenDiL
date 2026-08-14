@@ -6,7 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <concepts>
 #include <iostream>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
 using namespace gendil;
@@ -96,6 +100,196 @@ bool Check( const bool condition, const char * message )
       std::cerr << "FAILED: " << message << "\n";
    }
    return condition;
+}
+
+constexpr Real identity_tolerance = 1.0e-13;
+
+bool NearlyEqual( const Real left, const Real right )
+{
+   const Real scale = std::max(
+      Real{ 1.0 }, std::max( std::abs( left ), std::abs( right ) ) );
+   return std::abs( left - right ) <= identity_tolerance * scale;
+}
+
+template < typename T, size_t N >
+bool NearlyEqual(
+   const std::array< T, N > & left,
+   const std::array< T, N > & right )
+{
+   for ( size_t i = 0; i < N; ++i )
+   {
+      if ( !NearlyEqual( left[ i ], right[ i ] ) )
+      {
+         return false;
+      }
+   }
+   return true;
+}
+
+template < typename... T >
+bool NearlyEqual(
+   const std::tuple< T... > & left,
+   const std::tuple< T... > & right );
+
+template < typename... T, size_t... Is >
+bool NearlyEqualTuple(
+   const std::tuple< T... > & left,
+   const std::tuple< T... > & right,
+   std::index_sequence< Is... > )
+{
+   return ( NearlyEqual( std::get< Is >( left ), std::get< Is >( right ) ) &&
+            ... );
+}
+
+template < typename... T >
+bool NearlyEqual(
+   const std::tuple< T... > & left,
+   const std::tuple< T... > & right )
+{
+   return NearlyEqualTuple(
+      left, right, std::index_sequence_for< T... >{} );
+}
+
+struct ProductCellProbeDofToQuad
+{
+   std::array< std::array< Real, 3 >, 2 > value{
+      std::array< Real, 3 >{ 0.13, 0.61, 0.26 },
+      std::array< Real, 3 >{ 0.42, 0.17, 0.41 } };
+   std::array< std::array< Real, 3 >, 2 > gradient{
+      std::array< Real, 3 >{ -0.9, 0.2, 0.7 },
+      std::array< Real, 3 >{ -0.2, -0.4, 0.6 } };
+
+   Real values( const LocalIndex q, const LocalIndex dof ) const
+   {
+      return value[ q ][ dof ];
+   }
+
+   Real gradients( const LocalIndex q, const LocalIndex dof ) const
+   {
+      return gradient[ q ][ dof ];
+   }
+};
+
+LineCell< 3 > MakeNonAffineLineCell()
+{
+   static const Real nodes[]{ 0.2, 0.85, 2.1 };
+   static const int restriction[]{ 0, 1, 2 };
+   const StridedView< 1, const Real > node_view{
+      PointerContainer< const Real >{ nodes },
+      StridedLayout< 1 >{ GlobalIndex{ 1 } } };
+   HostDevicePointer< const int > restriction_pointer;
+   restriction_pointer.host_pointer = restriction;
+   const HostDeviceStridedView< 2, const int > restriction_view{
+      restriction_pointer,
+      StridedLayout< 2 >{ GlobalIndex{ 1 }, GlobalIndex{ 3 } } };
+   return { node_view, restriction_view, 0 };
+}
+
+QuadCell< 3 > MakeNonAffineQuadCell()
+{
+   static Real nodes[ 18 ];
+   static int restriction[ 9 ];
+   for ( int j = 0; j < 3; ++j )
+   {
+      for ( int i = 0; i < 3; ++i )
+      {
+         const int dof = i + 3 * j;
+         restriction[ dof ] = dof;
+         nodes[ 2 * dof ] =
+            1.0 + 0.4 * i + 0.07 * j + 0.02 * i * j;
+         nodes[ 2 * dof + 1 ] =
+            -0.3 + 0.1 * i + 0.8 * j + 0.03 * i * j;
+      }
+   }
+   const StridedView< 2, const Real > node_view{
+      PointerContainer< const Real >{ nodes },
+      StridedLayout< 2 >{ GlobalIndex{ 1 }, GlobalIndex{ 2 } } };
+   HostDevicePointer< const int > restriction_pointer;
+   restriction_pointer.host_pointer = restriction;
+   const HostDeviceStridedView< 3, const int > restriction_view{
+      restriction_pointer,
+      StridedLayout< 3 >{
+         GlobalIndex{ 1 }, GlobalIndex{ 3 }, GlobalIndex{ 9 } } };
+   return { node_view, restriction_view, 0 };
+}
+
+template < typename Orientation, typename Cell >
+concept CanApplyOrientationToProductCell = requires(
+   const Orientation & orientation,
+   Cell & cell )
+{
+   ApplyOrientationToCell( orientation, cell );
+};
+
+using HighOrderProductCell = ProductCell< LineCell< 3 >, QuadCell< 3 > >;
+
+static_assert(
+   CanApplyOrientationToProductCell<
+      IdentityOrientation< HighOrderProductCell::Dim >,
+      HighOrderProductCell > );
+static_assert(
+   !CanApplyOrientationToProductCell<
+      IdentityOrientation< HighOrderProductCell::Dim - 1 >,
+      HighOrderProductCell > );
+
+template < typename Product >
+bool CheckProductCellNodes(
+   const Product & left,
+   const Product & right,
+   const char * message )
+{
+   const auto & left_line = std::get< 0 >( left.Cells );
+   const auto & right_line = std::get< 0 >( right.Cells );
+   for ( LocalIndex i = 0; i < 3; ++i )
+   {
+      if ( left_line.nodes[ i ] != right_line.nodes[ i ] )
+      {
+         return Check( false, message );
+      }
+   }
+
+   const auto & left_quad = std::get< 1 >( left.Cells );
+   const auto & right_quad = std::get< 1 >( right.Cells );
+   for ( LocalIndex j = 0; j < 3; ++j )
+   {
+      for ( LocalIndex i = 0; i < 3; ++i )
+      {
+         for ( LocalIndex component = 0; component < 2; ++component )
+         {
+            if ( left_quad.nodes[ i ][ j ][ component ] !=
+                 right_quad.nodes[ i ][ j ][ component ] )
+            {
+               return Check( false, message );
+            }
+         }
+      }
+   }
+   return true;
+}
+
+template < typename Cell, typename QData >
+bool CheckCellEvaluation(
+   const Cell & left,
+   const Cell & right,
+   const QData & qdata,
+   const std::array< TensorIndex< Cell::Dim >, 3 > & quad_points,
+   const char * message )
+{
+   for ( const auto & quad_point : quad_points )
+   {
+      typename Cell::physical_coordinates left_x{};
+      typename Cell::physical_coordinates right_x{};
+      typename Cell::jacobian left_j{};
+      typename Cell::jacobian right_j{};
+      left.GetValuesAndJacobian( quad_point, qdata, left_x, left_j );
+      right.GetValuesAndJacobian( quad_point, qdata, right_x, right_j );
+      if ( !NearlyEqual( left_x, right_x ) ||
+           !NearlyEqual( left_j, right_j ) )
+      {
+         return Check( false, message );
+      }
+   }
+   return true;
 }
 
 template < Integer Dim >
@@ -444,6 +638,154 @@ bool TestRecursiveProductComposition()
          "recursive product did not lift the final factor orientation" );
 }
 
+bool TestRuntimeIdentityIsProductCellNoOp()
+{
+   const ProductCell original{
+      MakeNonAffineLineCell(), MakeNonAffineQuadCell() };
+   auto runtime_identity = original;
+   auto static_identity = original;
+   ApplyOrientationToCell(
+      MakeReferencePermutation< decltype( original )::Dim >(),
+      runtime_identity );
+   ApplyOrientationToCell(
+      IdentityOrientation< decltype( original )::Dim >{},
+      static_identity );
+
+   const ProductCellProbeDofToQuad basis{};
+   const auto line_qdata = MakeTensorProductData( basis );
+   const auto quad_qdata = MakeTensorProductData( basis, basis );
+   const auto product_qdata =
+      MakeTensorProductData( line_qdata, quad_qdata );
+   const std::array line_quad_points{
+      TensorIndex< 1 >{ GlobalIndex{ 0 } },
+      TensorIndex< 1 >{ GlobalIndex{ 1 } },
+      TensorIndex< 1 >{ GlobalIndex{ 0 } } };
+   const std::array quad_quad_points{
+      TensorIndex< 2 >{ GlobalIndex{ 0 }, GlobalIndex{ 0 } },
+      TensorIndex< 2 >{ GlobalIndex{ 1 }, GlobalIndex{ 0 } },
+      TensorIndex< 2 >{ GlobalIndex{ 0 }, GlobalIndex{ 1 } } };
+   const std::array product_quad_points{
+      TensorIndex< 3 >{
+         GlobalIndex{ 0 }, GlobalIndex{ 0 }, GlobalIndex{ 0 } },
+      TensorIndex< 3 >{
+         GlobalIndex{ 1 }, GlobalIndex{ 0 }, GlobalIndex{ 1 } },
+      TensorIndex< 3 >{
+         GlobalIndex{ 1 }, GlobalIndex{ 1 }, GlobalIndex{ 0 } } };
+
+   bool success = CheckProductCellNodes(
+      original,
+      runtime_identity,
+      "runtime identity changed ProductCell component nodes" );
+   success = CheckProductCellNodes(
+      original,
+      static_identity,
+      "static identity changed ProductCell component nodes" ) &&
+      success;
+   success = CheckCellEvaluation(
+      std::get< 0 >( original.Cells ),
+      std::get< 0 >( runtime_identity.Cells ),
+      line_qdata,
+      line_quad_points,
+      "runtime identity changed the line-cell component result" ) &&
+      success;
+   success = CheckCellEvaluation(
+      std::get< 1 >( original.Cells ),
+      std::get< 1 >( runtime_identity.Cells ),
+      quad_qdata,
+      quad_quad_points,
+      "runtime identity changed the quad-cell component result" ) &&
+      success;
+   success = CheckCellEvaluation(
+      std::get< 0 >( original.Cells ),
+      std::get< 0 >( static_identity.Cells ),
+      line_qdata,
+      line_quad_points,
+      "static identity changed the line-cell component result" ) &&
+      success;
+   success = CheckCellEvaluation(
+      std::get< 1 >( original.Cells ),
+      std::get< 1 >( static_identity.Cells ),
+      quad_qdata,
+      quad_quad_points,
+      "static identity changed the quad-cell component result" ) &&
+      success;
+   success = CheckCellEvaluation(
+      original,
+      runtime_identity,
+      product_qdata,
+      product_quad_points,
+      "runtime identity changed ProductCell coordinates or Jacobians" ) &&
+      success;
+   success = CheckCellEvaluation(
+      original,
+      static_identity,
+      product_qdata,
+      product_quad_points,
+      "static identity changed ProductCell coordinates or Jacobians" ) &&
+      success;
+
+   const ProductCell nested_original{ original, MakeNonAffineLineCell() };
+   auto nested_runtime_identity = nested_original;
+   auto nested_static_identity = nested_original;
+   ApplyOrientationToCell(
+      MakeReferencePermutation< decltype( nested_original )::Dim >(),
+      nested_runtime_identity );
+   ApplyOrientationToCell(
+      IdentityOrientation< decltype( nested_original )::Dim >{},
+      nested_static_identity );
+   const auto nested_qdata =
+      MakeTensorProductData( product_qdata, line_qdata );
+   const std::array nested_quad_points{
+      TensorIndex< 4 >{
+         GlobalIndex{ 0 }, GlobalIndex{ 0 }, GlobalIndex{ 0 },
+         GlobalIndex{ 1 } },
+      TensorIndex< 4 >{
+         GlobalIndex{ 1 }, GlobalIndex{ 0 }, GlobalIndex{ 1 },
+         GlobalIndex{ 0 } },
+      TensorIndex< 4 >{
+         GlobalIndex{ 1 }, GlobalIndex{ 1 }, GlobalIndex{ 0 },
+         GlobalIndex{ 1 } } };
+
+   success = CheckProductCellNodes(
+      std::get< 0 >( nested_original.Cells ),
+      std::get< 0 >( nested_runtime_identity.Cells ),
+      "runtime identity changed nested ProductCell component nodes" ) &&
+      success;
+   success = CheckProductCellNodes(
+      std::get< 0 >( nested_original.Cells ),
+      std::get< 0 >( nested_static_identity.Cells ),
+      "static identity changed nested ProductCell component nodes" ) &&
+      success;
+   for ( LocalIndex i = 0; i < 3; ++i )
+   {
+      success = Check(
+         std::get< 1 >( nested_original.Cells ).nodes[ i ] ==
+            std::get< 1 >( nested_runtime_identity.Cells ).nodes[ i ],
+         "runtime identity changed nested ProductCell tail nodes" ) &&
+         success;
+      success = Check(
+         std::get< 1 >( nested_original.Cells ).nodes[ i ] ==
+            std::get< 1 >( nested_static_identity.Cells ).nodes[ i ],
+         "static identity changed nested ProductCell tail nodes" ) &&
+         success;
+   }
+   success = CheckCellEvaluation(
+      nested_original,
+      nested_runtime_identity,
+      nested_qdata,
+      nested_quad_points,
+      "runtime identity changed nested ProductCell coordinates or Jacobians" ) &&
+      success;
+   success = CheckCellEvaluation(
+      nested_original,
+      nested_static_identity,
+      nested_qdata,
+      nested_quad_points,
+      "static identity changed nested ProductCell coordinates or Jacobians" ) &&
+      success;
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -459,5 +801,6 @@ int main()
    success = TestTensorProductTransformComposition() && success;
    success = TestProductMeshConnectivity() && success;
    success = TestRecursiveProductComposition() && success;
+   success = TestRuntimeIdentityIsProductCellNoOp() && success;
    return success ? 0 : 1;
 }

@@ -11,6 +11,7 @@
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/Utilities/MathHelperFunctions/sqrt.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {

@@ -23,3 +23,6 @@
 
 // A cartesian product mesh
 #include "gendil/Meshes/MeshDataStructures/TensorProductMesh/productmesh.hpp"
+
+// A cartesian product of partitions
+#include "gendil/Meshes/MeshDataStructures/TensorProductMesh/productpartition.hpp"

@@ -4,9 +4,13 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/Utilities/arraycat.hpp"
 #include "gendil/Utilities/productdim.hpp"
+#include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
+#include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Utilities/tensorproductdata.hpp"
 
@@ -193,6 +197,24 @@ void ApplyOrientationToCell( const Permutation< Dim > & orientation, ProductCell
       ApplyOrientationToCell( sub_orientation, std::get< cell_index >( cell.Cells ) );
       offset += sub_dim;
    });      
+}
+
+/**
+ * @brief Applies the statically encoded identity orientation to a product cell.
+ *
+ * Identity orientation is observationally a no-op for every component cell.
+ * Deriving the permutation dimension from the target ProductCell makes this
+ * overload unavailable for a static identity of the wrong dimension and for
+ * every statically encoded nonidentity permutation.
+ */
+template < typename... CellTypes >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(
+   const std::integral_constant<
+      Permutation< ProductCell< CellTypes... >::Dim >,
+      MakeReferencePermutation< ProductCell< CellTypes... >::Dim >() > &,
+   ProductCell< CellTypes... > & )
+{
 }
 
 }
