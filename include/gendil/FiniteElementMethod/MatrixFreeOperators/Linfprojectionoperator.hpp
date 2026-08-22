@@ -46,8 +46,8 @@ void LinfProjectionElementOperator(
    const MeshQuadData & mesh_quad_data,
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > & dofs_out )
 {
    using Mesh = typename TrialFiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -140,8 +140,8 @@ void LinfProjectionOperator(
    const MeshQuadData & mesh_quad_data,
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > & dofs_out )
 {
    GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
@@ -246,8 +246,8 @@ protected:
                            );
    TestElementQuadData test_element_quad_data;
 
-   using input = StridedView< TrialFiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< TestFiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< TrialFiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< TestFiniteElementSpace, Real >;
 
 public:
    /**
@@ -264,7 +264,7 @@ public:
       const TrialIntegrationRule & trial_int_rule,
       const TestIntegrationRule & test_int_rule ) :
 #ifdef GENDIL_USE_MFEM
-         mfem::Operator( test_finite_element_space.GetNumberOfFiniteElementDofs(), trial_finite_element_space.GetNumberOfFiniteElementDofs() ),
+         mfem::Operator( GetAlgebraicDofExtent( test_finite_element_space ), GetAlgebraicDofExtent( trial_finite_element_space ) ),
 #endif
          trial_finite_element_space( trial_finite_element_space ),
          test_finite_element_space( test_finite_element_space ),

@@ -2,6 +2,10 @@
 
 include(CMakeFindDependencyMacro)
 
+if (@USE_HYPRE@ AND NOT CMAKE_C_COMPILER_LOADED)
+    enable_language(C)
+endif()
+
 if (@USE_OPENMP@)
     find_dependency(OpenMP REQUIRED)
 endif()

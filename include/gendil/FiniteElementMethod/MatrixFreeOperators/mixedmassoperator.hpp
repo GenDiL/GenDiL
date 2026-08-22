@@ -46,8 +46,8 @@ void MixedMassElementOperator(
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
    Sigma & sigma,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > dofs_out )
 {
    using Mesh = typename TrialFiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -131,8 +131,8 @@ void MixedMassExplicitOperator(
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
    Sigma sigma,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > & dofs_out )
 {
    // Assumes same underlying mesh for trial_fe_space and test_fe_space
    mesh::CellIterator< KernelConfiguration >(
@@ -191,8 +191,8 @@ class MixedMassOperator
    using base = MatrixFreeMixedBilinearFiniteElementOperator< TrialFiniteElementSpace, TestFiniteElementSpace, IntegrationRule >;
    Sigma sigma;
 
-   using input = StridedView< TrialFiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< TestFiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< TrialFiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< TestFiniteElementSpace, Real >;
 
 public:
    /**

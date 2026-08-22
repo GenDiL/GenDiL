@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoolayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 
@@ -35,7 +35,7 @@ void AddRawCOOBlockEntries(
    using ValueType = typename Buffer::value_type;
    using IndexType = typename Buffer::index_type;
    using TestShapeFunctions =
-      typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< TestFESpace >;
    using TrialDescriptor = std::remove_cvref_t< TrialDofDescriptor >;
 
    constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
@@ -53,12 +53,11 @@ void AddRawCOOBlockEntries(
          trial_fe_space,
          typename TrialDescriptor::component{},
          trial_dof.indices );
-   const GlobalIndex global_col =
-      GlobalDofIndex(
+   const GlobalIndex algebraic_col =
+      GetGlobalDofIndex(
          trial_fe_space,
-         typename TrialDescriptor::component{},
          col_element_index,
-         trial_dof.indices );
+         trial_dof );
 
    // Compact RawCOO blocks can receive multiple terms. Coordinates are
    // rewritten deterministically on every contribution while values accumulate.
@@ -74,12 +73,11 @@ void AddRawCOOBlockEntries(
                test_fe_space,
                typename TestDescriptor::component{},
                test_dof.indices );
-         const GlobalIndex global_row =
-            GlobalDofIndex(
+         const GlobalIndex algebraic_row =
+            GetGlobalDofIndex(
                test_fe_space,
-               typename TestDescriptor::component{},
                row_element_index,
-               test_dof.indices );
+               test_dof );
          const GlobalIndex raw_index =
             raw_entry_base +
             local_col * ntest +
@@ -88,9 +86,15 @@ void AddRawCOOBlockEntries(
          GENDIL_VERIFY(
             raw_index < static_cast< GlobalIndex >( coo_buffer.nnz_raw ),
             "Raw COO emission wrote past the allocated triplet buffer." );
+         GENDIL_ASSERT(
+            algebraic_row < static_cast< GlobalIndex >( coo_buffer.num_rows ),
+            "Raw COO row coordinate exceeds the test algebraic DoF extent." );
+         GENDIL_ASSERT(
+            algebraic_col < static_cast< GlobalIndex >( coo_buffer.num_cols ),
+            "Raw COO column coordinate exceeds the trial algebraic DoF extent." );
 
-         coo_buffer.rows[raw_index] = static_cast< IndexType >( global_row );
-         coo_buffer.cols[raw_index] = static_cast< IndexType >( global_col );
+         coo_buffer.rows[raw_index] = static_cast< IndexType >( algebraic_row );
+         coo_buffer.cols[raw_index] = static_cast< IndexType >( algebraic_col );
          coo_buffer.values[raw_index] += static_cast< ValueType >( value );
       });
 }

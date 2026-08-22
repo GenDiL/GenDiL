@@ -473,7 +473,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename InputView,
+   typename OutputView >
 GENDIL_HOST_DEVICE
 void AdvectionLocalFaceOperator(
    KernelContext & kernel_conf,
@@ -485,8 +487,8 @@ void AdvectionLocalFaceOperator(
    const ElementFaceDofToQuad & face_quad_data,
    Adv & adv,
    BCType & boundary_field,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const InputView & dofs_in,
+   OutputView & dofs_out )
 {
    const auto face_info = face_mesh.GetGlobalFaceInfo( face_index );
    
@@ -851,7 +853,9 @@ template <
    typename MeshFaceDofToQuad,
    typename ElementFaceDofToQuad,
    typename Adv,
-   typename BCType >
+   typename BCType,
+   typename InputView,
+   typename OutputView >
 void AdvectionExplicitFaceOperator(
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
@@ -859,8 +863,8 @@ void AdvectionExplicitFaceOperator(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
    BCType & boundary_field,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const InputView dofs_in,
+   OutputView & dofs_out )
 {
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
@@ -1038,8 +1042,9 @@ public:
                output & dofs_out ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-         "AdvectionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpace::restriction_type >,
+         "AdvectionOperator::operator() requires an elementwise-independent broken-space restriction" );
       if constexpr ( !std::is_same_v< BCType, Empty > )
       {
          AdvectionExplicitOperatorWithBC< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >(
@@ -1117,8 +1122,8 @@ class AdvectionFaceOperator
    Adv adv;
    BCType boundary_field;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
 public:
    /**
@@ -1151,8 +1156,9 @@ public:
                output & dofs_out ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-         "AdvectionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpace::restriction_type >,
+         "AdvectionOperator::operator() requires an elementwise-independent broken-space restriction" );
       mesh::ForEachFaceMesh(
          face_meshes,
          [&] ( const auto & face_mesh ) mutable
@@ -1310,8 +1316,8 @@ public:
       BCType && boundary_field ) :
 #ifdef GENDIL_USE_MFEM
       Operator(
-         lhs_finite_element_space.GetNumberOfFiniteElementDofs() + rhs_finite_element_space.GetNumberOfFiniteElementDofs(),
-         lhs_finite_element_space.GetNumberOfFiniteElementDofs() + rhs_finite_element_space.GetNumberOfFiniteElementDofs() ),
+         GetAlgebraicDofExtent( lhs_finite_element_space ) + GetAlgebraicDofExtent( rhs_finite_element_space ),
+         GetAlgebraicDofExtent( lhs_finite_element_space ) + GetAlgebraicDofExtent( rhs_finite_element_space ) ),
 #endif // GENDIL_USE_MFEM
       finite_element_space_lhs( lhs_finite_element_space ),
       finite_element_space_rhs( rhs_finite_element_space ),
@@ -1334,11 +1340,13 @@ public:
       output_rhs & dofs_out_rhs ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpaceLHS::restriction_type, L2Restriction >,
-         "AdvectionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpaceLHS::restriction_type >,
+         "AdvectionOperator::operator() requires an elementwise-independent broken-space restriction" );
       static_assert(
-         std::is_same_v< typename FiniteElementSpaceRHS::restriction_type, L2Restriction >,
-         "AdvectionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpaceRHS::restriction_type >,
+         "AdvectionOperator::operator() requires an elementwise-independent broken-space restriction" );
       mesh::ForEachFaceMesh(
          face_meshes,
          [&] ( const auto & face_mesh ) mutable

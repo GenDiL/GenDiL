@@ -727,9 +727,9 @@ class PolicyAwareGlobalFaceAdvectionBenchmarkOperator
             typename finite_element_type::shape_functions,
             face_integration_rules >() );
    using input =
-      StridedView< FiniteElementSpace::Dim + 1, const Real >;
+      element_tensor_view_t< FiniteElementSpace, const Real >;
    using output =
-      StridedView< FiniteElementSpace::Dim + 1, Real >;
+      element_tensor_view_t< FiniteElementSpace, Real >;
 
    const FiniteElementSpace & fe_space;
    const FaceMeshes & face_meshes;
@@ -2102,7 +2102,7 @@ void RunFullSharedRegisterOnlyRepresentativeLayout(
 #endif
 
 template < Integer Dim, Integer Order >
-void RunGlobalFaceAdvectionTensorProductLayouts(
+void RunGlobalFaceAdvectionTensorProductRestrictionViews(
    const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_DEVICE )
@@ -2277,7 +2277,7 @@ void RunGlobalFaceAdvectionOrder(
    const GlobalIndex target_num_dofs )
 {
    RunSerialGlobalFaceAdvectionCase< Dim, Order >( target_num_dofs );
-   RunGlobalFaceAdvectionTensorProductLayouts< Dim, Order >(
+   RunGlobalFaceAdvectionTensorProductRestrictionViews< Dim, Order >(
       target_num_dofs );
 }
 

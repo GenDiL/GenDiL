@@ -7,7 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/Loop/kernelloop.hpp"
@@ -20,6 +20,9 @@ namespace gendil
 
 // Built-in mappings execute in the memory space selected by their matvec
 // backend. Parallel H1 mappings use atomic accumulation for shared true DoFs.
+// The current coordinate implementation requires one unit-weight entry per
+// restriction row. Multi-entry mappings can later retain the same element-block
+// representation by gathering through E and scattering through its adjoint.
 namespace details
 {
 
@@ -27,61 +30,14 @@ template < typename FiniteElementSpace >
 GlobalIndex BsrInternalSize(
    const FiniteElementSpace & finite_element_space )
 {
-   using Space = std::remove_cvref_t< FiniteElementSpace >;
-   using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
-   return finite_element_space.GetNumberOfFiniteElements() *
-      LocalDofCount< ShapeFunctions >();
+   return GetNumberOfLocalDofs( finite_element_space );
 }
 
 template < typename FiniteElementSpace >
 GlobalIndex BsrExternalSize(
    const FiniteElementSpace & finite_element_space )
 {
-   using Space = std::remove_cvref_t< FiniteElementSpace >;
-   using Restriction = typename Space::restriction_type;
-
-   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
-   {
-      return finite_element_space.restriction.shift +
-         finite_element_space.GetNumberOfFiniteElementDofs();
-   }
-   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
-   {
-      return static_cast< GlobalIndex >(
-         finite_element_space.restriction.num_dofs );
-   }
-   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
-   {
-      return static_cast< GlobalIndex >( Restriction::num_comp ) *
-         static_cast< GlobalIndex >(
-            finite_element_space.restriction.scalar_num_dofs );
-   }
-   else
-   {
-      static_assert(
-         dependent_false_v< FiniteElementSpace >,
-         "Built-in SGBSR external-size metadata supports only "
-         "L2Restriction, scalar H1Restriction, and VectorH1Restriction "
-         "finite element spaces." );
-   }
-}
-
-template < typename FiniteElementSpace >
-void VerifyDeviceRestrictionMap(
-   const FiniteElementSpace & finite_element_space,
-   const GlobalIndex num_elements )
-{
-   using Space = std::remove_cvref_t< FiniteElementSpace >;
-   using Restriction = typename Space::restriction_type;
-   if constexpr ( is_h1_restriction_v< Restriction > )
-   {
-      GENDIL_VERIFY(
-         num_elements == 0 ||
-            finite_element_space.restriction.indices.device_pointer != nullptr,
-         "Device SGBSR gather/scatter requires a device-resident H1 "
-         "restriction map." );
-   }
+   return GetAlgebraicDofExtent( finite_element_space );
 }
 
 template <
@@ -97,7 +53,7 @@ void GatherBsrElement(
 {
    using Space = std::remove_cvref_t< FiniteElementSpace >;
    using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< Space >;
    constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
 
    ForEachLocalDof(
@@ -112,12 +68,11 @@ void GatherBsrElement(
                finite_element_space,
                component,
                indices );
-         const GlobalIndex fe_index =
-            GlobalDofIndex(
-               finite_element_space,
-               component,
-               element_index,
-               indices );
+         const GlobalIndex fe_index = GetGlobalDofIndex(
+            finite_element_space,
+            component,
+            element_index,
+            indices );
          bsr_data[bsr_index] = fe_data[fe_index];
       } );
 }
@@ -137,7 +92,7 @@ void ScatterBsrElement(
 {
    using Space = std::remove_cvref_t< FiniteElementSpace >;
    using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< Space >;
    constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
 
    ForEachLocalDof(
@@ -152,12 +107,11 @@ void ScatterBsrElement(
                finite_element_space,
                component,
                indices );
-         const GlobalIndex fe_index =
-            GlobalDofIndex(
-               finite_element_space,
-               component,
-               element_index,
-               indices );
+         const GlobalIndex fe_index = GetGlobalDofIndex(
+            finite_element_space,
+            component,
+            element_index,
+            indices );
 
          if constexpr ( Atomic )
          {
@@ -293,12 +247,9 @@ void GatherBsr(
       else
 #endif
       {
-         if constexpr ( on_device )
-         {
-            VerifyDeviceRestrictionMap(
-               finite_element_space,
-               num_elements );
-         }
+         ValidateRestrictionMemoryAccess< on_device >(
+            GetRestriction( finite_element_space ),
+            num_elements );
          GatherBsrKernel< on_device >(
             finite_element_space,
             num_elements,
@@ -351,12 +302,9 @@ void ScatterBsr(
       else
 #endif
       {
-         if constexpr ( on_device )
-         {
-            VerifyDeviceRestrictionMap(
-               finite_element_space,
-               num_elements );
-         }
+         ValidateRestrictionMemoryAccess< on_device >(
+            GetRestriction( finite_element_space ),
+            num_elements );
          ScatterBsrKernel< Add, Injective, on_device >(
             finite_element_space,
             num_elements,
@@ -376,8 +324,39 @@ void ScatterBsr(
 
 } // namespace details
 
+/**
+ * @brief Whether a finite-element space has the semantic operations required
+ * by the default element-block BSR mapping.
+ */
+template < typename FESpace >
+concept DefaultBsrMappingSpace =
+   requires
+   {
+      typename std::remove_cvref_t< FESpace >::restriction_type;
+   } &&
+   ElementDoFRestriction<
+      typename std::remove_cvref_t< FESpace >::restriction_type > &&
+   static_restriction_entry_count_v<
+      typename std::remove_cvref_t< FESpace >::restriction_type > == 1 &&
+   restriction_supports_element_reference_view_v<
+      typename std::remove_cvref_t< FESpace >::restriction_type > &&
+   requires(
+      const typename std::remove_cvref_t<
+         FESpace >::restriction_type & restriction,
+      const GlobalIndex active_row_count )
+   {
+      ValidateRestrictionMemoryAccess< false >(
+         restriction,
+         active_row_count );
+      ValidateRestrictionMemoryAccess< true >(
+         restriction,
+         active_row_count );
+   };
+
+/** @brief Gather algebraic DoFs into the element-block BSR vector. */
 template < typename FiniteElementSpace >
-struct DGGatherToBsr
+   requires DefaultBsrMappingSpace< FiniteElementSpace >
+struct RestrictionGatherToBsr
 {
    FiniteElementSpace finite_element_space;
 
@@ -401,24 +380,22 @@ struct DGGatherToBsr
       OutputVector & x_bsr ) const
    {
       using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      static_assert(
-         std::is_same_v< typename Space::restriction_type, L2Restriction >,
-         "DGGatherToBsr only supports L2Restriction finite element spaces." );
-
+      using ShapeFunctions =
+         finite_element_space_shape_functions_t< Space >;
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size =
+         LocalDofCount< ShapeFunctions >();
 
       GENDIL_VERIFY(
          GetVectorSize( x_bsr ) ==
             static_cast< size_t >( num_elements * block_size ),
-         "DGGatherToBsr output vector has the wrong BSR size." );
+         "RestrictionGatherToBsr output vector has the wrong BSR size." );
       GENDIL_VERIFY(
          GetVectorSize( x_fe ) >= static_cast< size_t >(
-            finite_element_space.restriction.shift +
-            finite_element_space.GetNumberOfFiniteElementDofs() ),
-         "DGGatherToBsr input vector is too small for the finite element space." );
+            GetAlgebraicDofExtent( finite_element_space ) ),
+         "RestrictionGatherToBsr input vector is too small for the finite "
+         "element space." );
 
       details::GatherBsr(
          backend,
@@ -429,8 +406,10 @@ struct DGGatherToBsr
    }
 };
 
+/** @brief Scatter an element-block BSR vector through a completed restriction. */
 template < typename FiniteElementSpace >
-struct DGScatterFromBsr
+   requires DefaultBsrMappingSpace< FiniteElementSpace >
+struct RestrictionScatterFromBsr
 {
    FiniteElementSpace finite_element_space;
 
@@ -480,397 +459,71 @@ private:
       OutputVector & y_fe ) const
    {
       using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      static_assert(
-         std::is_same_v< typename Space::restriction_type, L2Restriction >,
-         "DGScatterFromBsr only supports L2Restriction finite element spaces." );
-
+      using Restriction = typename Space::restriction_type;
+      using ShapeFunctions =
+         finite_element_space_shape_functions_t< Space >;
       const GlobalIndex num_elements =
          finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
+      constexpr GlobalIndex block_size =
+         LocalDofCount< ShapeFunctions >();
 
       GENDIL_VERIFY(
          GetVectorSize( y_bsr ) ==
             static_cast< size_t >( num_elements * block_size ),
-         "DGScatterFromBsr input vector has the wrong BSR size." );
+         "RestrictionScatterFromBsr input vector has the wrong BSR size." );
       GENDIL_VERIFY(
          GetVectorSize( y_fe ) >= static_cast< size_t >(
-            finite_element_space.restriction.shift +
-            finite_element_space.GetNumberOfFiniteElementDofs() ),
-         "DGScatterFromBsr output vector is too small for the finite element space." );
+            GetAlgebraicDofExtent( finite_element_space ) ),
+         "RestrictionScatterFromBsr output vector is too small for the finite "
+         "element space." );
 
-      const GlobalIndex output_size =
-         finite_element_space.restriction.shift +
-         finite_element_space.GetNumberOfFiniteElementDofs();
-      details::ScatterBsr< Add, true >(
+      constexpr bool injective =
+         !restriction_may_share_global_dofs_v< Restriction >;
+      details::ScatterBsr< Add, injective >(
          backend,
          finite_element_space,
          num_elements,
-         output_size,
+         GetAlgebraicDofExtent( finite_element_space ),
          y_bsr,
          y_fe );
    }
 };
 
+// Compatibility names retained for one release. They contain no family
+// selection and all use the same semantic mapping implementation.
 template < typename FiniteElementSpace >
-struct CGGatherToBsr
-{
-   FiniteElementSpace finite_element_space;
-
-   GlobalIndex ExternalSize() const
-   {
-      return details::BsrExternalSize( finite_element_space );
-   }
-
-   GlobalIndex InternalSize() const
-   {
-      return details::BsrInternalSize( finite_element_space );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void operator()(
-      const Backend & backend,
-      const InputVector & x_fe,
-      OutputVector & x_bsr ) const
-   {
-      using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      static_assert(
-         std::is_same_v< typename Space::restriction_type, H1Restriction >,
-         "CGGatherToBsr only supports H1Restriction finite element spaces." );
-      static_assert(
-         !is_vector_shape_functions_v< ShapeFunctions >,
-         "CGGatherToBsr currently supports scalar H1 finite element spaces only." );
-
-      const GlobalIndex num_elements =
-         finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
-      const GlobalIndex expected_bsr_size =
-         num_elements * block_size;
-
-      GENDIL_VERIFY(
-         GetVectorSize( x_bsr ) == static_cast< size_t >( expected_bsr_size ),
-         "CGGatherToBsr output BSR vector size is inconsistent with the element-local DoF count." );
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) >=
-            static_cast< size_t >( finite_element_space.restriction.num_dofs ),
-         "CGGatherToBsr input vector is smaller than the conforming H1 vector size." );
-
-      // This gathers into the raw element-block BSR vector. The wrapped BSR
-      // matrix is not a true-DoF globally assembled sparse matrix.
-      details::GatherBsr(
-         backend,
-         finite_element_space,
-         num_elements,
-         x_fe,
-         x_bsr );
-   }
-};
+using DGGatherToBsr =
+   RestrictionGatherToBsr< FiniteElementSpace >;
 
 template < typename FiniteElementSpace >
-struct CGScatterFromBsr
-{
-   FiniteElementSpace finite_element_space;
-
-   GlobalIndex ExternalSize() const
-   {
-      return details::BsrExternalSize( finite_element_space );
-   }
-
-   GlobalIndex InternalSize() const
-   {
-      return details::BsrInternalSize( finite_element_space );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void operator()(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      Scatter< false >( backend, y_bsr, y_fe );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void ApplyAdd(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      Scatter< true >( backend, y_bsr, y_fe );
-   }
-
-private:
-   template <
-      bool Add,
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void Scatter(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      static_assert(
-         std::is_same_v< typename Space::restriction_type, H1Restriction >,
-         "CGScatterFromBsr only supports H1Restriction finite element spaces." );
-      static_assert(
-         !is_vector_shape_functions_v< ShapeFunctions >,
-         "CGScatterFromBsr currently supports scalar H1 finite element spaces only." );
-
-      const GlobalIndex num_elements =
-         finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
-      const GlobalIndex expected_bsr_size =
-         num_elements * block_size;
-
-      GENDIL_VERIFY(
-         GetVectorSize( y_bsr ) == static_cast< size_t >( expected_bsr_size ),
-         "CGScatterFromBsr input BSR vector size is inconsistent with the element-local DoF count." );
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) >=
-            static_cast< size_t >( finite_element_space.restriction.num_dofs ),
-         "CGScatterFromBsr output vector is smaller than the conforming H1 vector size." );
-
-      details::ScatterBsr< Add, false >(
-         backend,
-         finite_element_space,
-         num_elements,
-         static_cast< GlobalIndex >(
-            finite_element_space.restriction.num_dofs ),
-         y_bsr,
-         y_fe );
-   }
-};
+using DGScatterFromBsr =
+   RestrictionScatterFromBsr< FiniteElementSpace >;
 
 template < typename FiniteElementSpace >
-struct VectorCGGatherToBsr
-{
-   FiniteElementSpace finite_element_space;
-
-   GlobalIndex ExternalSize() const
-   {
-      return details::BsrExternalSize( finite_element_space );
-   }
-
-   GlobalIndex InternalSize() const
-   {
-      return details::BsrInternalSize( finite_element_space );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void operator()(
-      const Backend & backend,
-      const InputVector & x_fe,
-      OutputVector & x_bsr ) const
-   {
-      using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      using Restriction = typename Space::restriction_type;
-      static_assert(
-         is_vector_h1_restriction_v< Restriction >,
-         "VectorCGGatherToBsr only supports VectorH1Restriction<NComp> finite element spaces." );
-      static_assert(
-         is_vector_shape_functions_v< ShapeFunctions >,
-         "VectorCGGatherToBsr requires a vector finite element space." );
-      static_assert(
-         Restriction::num_comp == ShapeFunctions::vector_dim,
-         "VectorH1Restriction<NComp> must match the vector finite element component count." );
-      static_assert(
-         VectorComponentDofShapesMatchFirst< ShapeFunctions >(),
-         "VectorH1Restriction currently requires identical scalar component DoF shapes." );
-
-      const GlobalIndex num_elements =
-         finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
-      const GlobalIndex expected_bsr_size =
-         num_elements * block_size;
-      const GlobalIndex expected_fe_size =
-         static_cast< GlobalIndex >( Restriction::num_comp ) *
-         static_cast< GlobalIndex >(
-            finite_element_space.restriction.scalar_num_dofs );
-
-      GENDIL_VERIFY(
-         GetVectorSize( x_bsr ) == static_cast< size_t >( expected_bsr_size ),
-         "VectorCGGatherToBsr output BSR vector size is inconsistent with the element-local DoF count." );
-      GENDIL_VERIFY(
-         GetVectorSize( x_fe ) >= static_cast< size_t >( expected_fe_size ),
-         "VectorCGGatherToBsr input vector is smaller than the vector conforming H1 vector size." );
-
-      // Gather from component-major vector true DoFs into the element-block
-      // BSR layout. The BSR local position is still the full vector local DoF.
-      details::GatherBsr(
-         backend,
-         finite_element_space,
-         num_elements,
-         x_fe,
-         x_bsr );
-   }
-};
+using CGGatherToBsr =
+   RestrictionGatherToBsr< FiniteElementSpace >;
 
 template < typename FiniteElementSpace >
-struct VectorCGScatterFromBsr
-{
-   FiniteElementSpace finite_element_space;
+using CGScatterFromBsr =
+   RestrictionScatterFromBsr< FiniteElementSpace >;
 
-   GlobalIndex ExternalSize() const
-   {
-      return details::BsrExternalSize( finite_element_space );
-   }
+template < typename FiniteElementSpace >
+using VectorCGGatherToBsr =
+   RestrictionGatherToBsr< FiniteElementSpace >;
 
-   GlobalIndex InternalSize() const
-   {
-      return details::BsrInternalSize( finite_element_space );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void operator()(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      Scatter< false >( backend, y_bsr, y_fe );
-   }
-
-   template <
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void ApplyAdd(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      Scatter< true >( backend, y_bsr, y_fe );
-   }
-
-private:
-   template <
-      bool Add,
-      typename Backend,
-      typename InputVector,
-      typename OutputVector >
-   void Scatter(
-      const Backend & backend,
-      const InputVector & y_bsr,
-      OutputVector & y_fe ) const
-   {
-      using Space = std::remove_cvref_t< FiniteElementSpace >;
-      using ShapeFunctions = typename Space::finite_element_type::shape_functions;
-      using Restriction = typename Space::restriction_type;
-      static_assert(
-         is_vector_h1_restriction_v< Restriction >,
-         "VectorCGScatterFromBsr only supports VectorH1Restriction<NComp> finite element spaces." );
-      static_assert(
-         is_vector_shape_functions_v< ShapeFunctions >,
-         "VectorCGScatterFromBsr requires a vector finite element space." );
-      static_assert(
-         Restriction::num_comp == ShapeFunctions::vector_dim,
-         "VectorH1Restriction<NComp> must match the vector finite element component count." );
-      static_assert(
-         VectorComponentDofShapesMatchFirst< ShapeFunctions >(),
-         "VectorH1Restriction currently requires identical scalar component DoF shapes." );
-
-      const GlobalIndex num_elements =
-         finite_element_space.GetNumberOfFiniteElements();
-      constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
-      const GlobalIndex expected_bsr_size =
-         num_elements * block_size;
-      const GlobalIndex expected_fe_size =
-         static_cast< GlobalIndex >( Restriction::num_comp ) *
-         static_cast< GlobalIndex >(
-            finite_element_space.restriction.scalar_num_dofs );
-
-      GENDIL_VERIFY(
-         GetVectorSize( y_bsr ) == static_cast< size_t >( expected_bsr_size ),
-         "VectorCGScatterFromBsr input BSR vector size is inconsistent with the element-local DoF count." );
-      GENDIL_VERIFY(
-         GetVectorSize( y_fe ) >= static_cast< size_t >( expected_fe_size ),
-         "VectorCGScatterFromBsr output vector is smaller than the vector conforming H1 vector size." );
-
-      details::ScatterBsr< Add, false >(
-         backend,
-         finite_element_space,
-         num_elements,
-         expected_fe_size,
-         y_bsr,
-         y_fe );
-   }
-};
+template < typename FiniteElementSpace >
+using VectorCGScatterFromBsr =
+   RestrictionScatterFromBsr< FiniteElementSpace >;
 
 template < typename FESpace >
-struct IsDefaultBsrMappingSpace
-{
-   using Space = std::remove_cvref_t< FESpace >;
-   using Restriction = typename Space::restriction_type;
-   using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
-
-   static constexpr bool value = [] {
-      if constexpr ( std::is_same_v< Restriction, L2Restriction > )
-      {
-         return true;
-      }
-      else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
-      {
-         return !is_vector_shape_functions_v< ShapeFunctions >;
-      }
-      else if constexpr ( is_vector_h1_restriction_v< Restriction > )
-      {
-         if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
-         {
-            return Restriction::num_comp == ShapeFunctions::vector_dim &&
-               VectorComponentDofShapesMatchFirst< ShapeFunctions >();
-         }
-         else
-         {
-            return false;
-         }
-      }
-      else
-      {
-         return false;
-      }
-   }();
-};
-
-template < typename FESpace >
-inline constexpr bool is_default_bsr_mapping_space_v =
-   IsDefaultBsrMappingSpace< FESpace >::value;
-
-template <
-   typename FESpace,
-   typename Restriction =
-      typename std::remove_cvref_t< FESpace >::restriction_type >
 struct DefaultBsrGatherFor
 {
+   using space_type = std::remove_cvref_t< FESpace >;
    static_assert(
-      dependent_false_v< FESpace >,
-      "DefaultBsrGatherFor supports only L2Restriction, scalar H1Restriction, and VectorH1Restriction finite element spaces." );
-};
-
-template < typename FESpace >
-struct DefaultBsrGatherFor< FESpace, L2Restriction >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using type = DGGatherToBsr< space_type >;
+      DefaultBsrMappingSpace< space_type >,
+      "DefaultBsrGatherFor requires a statically one-entry, unit-weight "
+      "completed restriction with backend-access validation." );
+   using type = RestrictionGatherToBsr< space_type >;
 
    static type Make( const space_type & finite_element_space )
    {
@@ -879,55 +532,18 @@ struct DefaultBsrGatherFor< FESpace, L2Restriction >
 };
 
 template < typename FESpace >
-struct DefaultBsrGatherFor< FESpace, H1Restriction >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions =
-      typename space_type::finite_element_type::shape_functions;
-
-   static_assert(
-      !is_vector_shape_functions_v< ShapeFunctions >,
-      "CGGatherToBsr currently supports scalar H1 finite element spaces only." );
-
-   using type = CGGatherToBsr< space_type >;
-
-   static type Make( const space_type & finite_element_space )
-   {
-      return type{ finite_element_space };
-   }
-};
-
-template < typename FESpace, size_t NComp >
-struct DefaultBsrGatherFor< FESpace, VectorH1Restriction< NComp > >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using type = VectorCGGatherToBsr< space_type >;
-
-   static type Make( const space_type & finite_element_space )
-   {
-      return type{ finite_element_space };
-   }
-};
+using default_bsr_gather_t =
+   typename DefaultBsrGatherFor< FESpace >::type;
 
 template < typename FESpace >
-using default_bsr_gather_t = typename DefaultBsrGatherFor< FESpace >::type;
-
-template <
-   typename FESpace,
-   typename Restriction =
-      typename std::remove_cvref_t< FESpace >::restriction_type >
 struct DefaultBsrScatterFor
 {
+   using space_type = std::remove_cvref_t< FESpace >;
    static_assert(
-      dependent_false_v< FESpace >,
-      "DefaultBsrScatterFor supports only L2Restriction, scalar H1Restriction, and VectorH1Restriction finite element spaces." );
-};
-
-template < typename FESpace >
-struct DefaultBsrScatterFor< FESpace, L2Restriction >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using type = DGScatterFromBsr< space_type >;
+      DefaultBsrMappingSpace< space_type >,
+      "DefaultBsrScatterFor requires a statically one-entry, unit-weight "
+      "completed restriction with backend-access validation." );
+   using type = RestrictionScatterFromBsr< space_type >;
 
    static type Make( const space_type & finite_element_space )
    {
@@ -936,37 +552,7 @@ struct DefaultBsrScatterFor< FESpace, L2Restriction >
 };
 
 template < typename FESpace >
-struct DefaultBsrScatterFor< FESpace, H1Restriction >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions =
-      typename space_type::finite_element_type::shape_functions;
-
-   static_assert(
-      !is_vector_shape_functions_v< ShapeFunctions >,
-      "CGScatterFromBsr currently supports scalar H1 finite element spaces only." );
-
-   using type = CGScatterFromBsr< space_type >;
-
-   static type Make( const space_type & finite_element_space )
-   {
-      return type{ finite_element_space };
-   }
-};
-
-template < typename FESpace, size_t NComp >
-struct DefaultBsrScatterFor< FESpace, VectorH1Restriction< NComp > >
-{
-   using space_type = std::remove_cvref_t< FESpace >;
-   using type = VectorCGScatterFromBsr< space_type >;
-
-   static type Make( const space_type & finite_element_space )
-   {
-      return type{ finite_element_space };
-   }
-};
-
-template < typename FESpace >
-using default_bsr_scatter_t = typename DefaultBsrScatterFor< FESpace >::type;
+using default_bsr_scatter_t =
+   typename DefaultBsrScatterFor< FESpace >::type;
 
 } // namespace gendil

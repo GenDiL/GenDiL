@@ -53,13 +53,13 @@ void bench_face_components_once_3D(Integer nx_full, Integer ny, Integer nz,
   auto feL = MakeLobattoFiniteElement(FiniteElementOrders<pL,pL,pL>{});
   auto feR = MakeLobattoFiniteElement(FiniteElementOrders<pR,pR,pR>{});
 
-  L2Restriction resL{0};
+  ContiguousL2RestrictionSpecification resL{0};
   auto fe_space_L = MakeFiniteElementSpace(meshL, feL, resL);
-  const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
+  const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
 
-  L2Restriction resR{ndofsL};
+  ContiguousL2RestrictionSpecification resR{ndofsL};
   auto fe_space_R = MakeFiniteElementSpace(meshR, feR, resR);
-  const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+  const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
   out_ndofsL = ndofsL;
   out_ndofsR = ndofsR;

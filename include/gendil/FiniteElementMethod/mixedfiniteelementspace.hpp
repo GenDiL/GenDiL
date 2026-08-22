@@ -347,7 +347,7 @@ constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
 /**
  * @brief Request contiguous discontinuous-Galerkin direct-sum numbering.
  *
- * The corresponding factory overload creates one `L2Restriction` per cell
+ * The corresponding factory overload creates one `ContiguousL2RestrictionSpecification` per cell
  * part. Offsets begin at zero and advance by each preceding cell space's DoF
  * count.
  */

@@ -820,7 +820,7 @@ void RunMassLayout(
 #endif
 
 template < Integer Dim, Integer Order >
-void RunMassTensorProductLayouts( const GlobalIndex target_num_dofs )
+void RunMassTensorProductRestrictionViews( const GlobalIndex target_num_dofs )
 {
 #if defined( GENDIL_USE_DEVICE )
    RunMassLayout< Dim, Order, ThreadBlockLayout<> >(
@@ -905,7 +905,7 @@ template < Integer Dim, Integer Order >
 void RunMassOrder( const GlobalIndex target_num_dofs )
 {
    RunSerialMassCase< Dim, Order >( target_num_dofs );
-   RunMassTensorProductLayouts< Dim, Order >( target_num_dofs );
+   RunMassTensorProductRestrictionViews< Dim, Order >( target_num_dofs );
 }
 
 template < Integer Dim >

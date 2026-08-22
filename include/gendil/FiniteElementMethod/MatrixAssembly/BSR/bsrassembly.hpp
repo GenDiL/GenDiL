@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/sparseassemblyvalidation.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
@@ -46,9 +47,9 @@ auto GenericBSRElementBlockDiagonalAssembly(
       using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
       using TestSpace = std::remove_cvref_t<decltype(test_space)>;
       using TrialShapeFunctions =
-         typename TrialSpace::finite_element_type::shape_functions;
+         finite_element_space_shape_functions_t< TrialSpace >;
       using TestShapeFunctions =
-         typename TestSpace::finite_element_type::shape_functions;
+         finite_element_space_shape_functions_t< TestSpace >;
 
       constexpr GlobalIndex ntrial =
          LocalDofCount<TrialShapeFunctions>();
@@ -156,9 +157,9 @@ auto MakeDefaultBSRBackend(
       using TestSpace =
          std::remove_cvref_t< decltype( test_space ) >;
       using TrialShapeFunctions =
-         typename TrialSpace::finite_element_type::shape_functions;
+         finite_element_space_shape_functions_t< TrialSpace >;
       using TestShapeFunctions =
-         typename TestSpace::finite_element_type::shape_functions;
+         finite_element_space_shape_functions_t< TestSpace >;
 
 #if defined(GENDIL_USE_DEVICE)
    constexpr GlobalIndex ntrial =

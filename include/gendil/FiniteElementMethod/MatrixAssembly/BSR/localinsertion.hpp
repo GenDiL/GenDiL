@@ -6,7 +6,8 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrix.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/finiteelementdoflayout.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/localdoforientation.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/localdofoperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
@@ -78,23 +79,21 @@ void SetSparseMatrixEntry(
       BSRMatrixView< ViewValueType, ViewIndexType, Layout >;
    using ValueType = typename MatrixView::value_type;
    using IndexType = typename MatrixView::index_type;
-   using TrialFE =
-      typename std::remove_cvref_t< TrialFESpace >::finite_element_type;
-   using TestFE =
-      typename std::remove_cvref_t< TestFESpace >::finite_element_type;
+   using TrialShapeFunctions =
+      finite_element_space_shape_functions_t< TrialFESpace >;
+   using TestShapeFunctions =
+      finite_element_space_shape_functions_t< TestFESpace >;
 
    using TrialDofShape =
-      orders_to_num_dofs< typename TrialFE::shape_functions::orders >;
+      orders_to_num_dofs< typename TrialShapeFunctions::orders >;
    using TestDofShape =
-      orders_to_num_dofs< typename TestFE::shape_functions::orders >;
+      orders_to_num_dofs< typename TestShapeFunctions::orders >;
 
    const LocalIndex local_col =
       FlattenMultiIndex< TrialDofShape >( trial_dof_indices );
    const GlobalIndex block_index = element_index;
 
-   using DofShape =
-      orders_to_num_dofs<
-         typename TestFESpace::finite_element_type::shape_functions::orders >;
+   using DofShape = TestDofShape;
    using tshape =
       subsequence_t<
          DofShape,
@@ -216,15 +215,15 @@ void AddSparseMatrixEntry(
       BSRMatrixView< ViewValueType, ViewIndexType, Layout >;
    using ValueType = typename MatrixView::value_type;
    using IndexType = typename MatrixView::index_type;
-   using TrialFE =
-      typename std::remove_cvref_t< TrialFESpace >::finite_element_type;
-   using TestFE =
-      typename std::remove_cvref_t< TestFESpace >::finite_element_type;
+   using TrialShapeFunctions =
+      finite_element_space_shape_functions_t< TrialFESpace >;
+   using TestShapeFunctions =
+      finite_element_space_shape_functions_t< TestFESpace >;
 
    using TrialDofShape =
-      orders_to_num_dofs< typename TrialFE::shape_functions::orders >;
+      orders_to_num_dofs< typename TrialShapeFunctions::orders >;
    using TestDofShape =
-      orders_to_num_dofs< typename TestFE::shape_functions::orders >;
+      orders_to_num_dofs< typename TestShapeFunctions::orders >;
 
    const LocalIndex local_col =
       FlattenMultiIndex< TrialDofShape >( trial_dof_indices );
@@ -240,9 +239,7 @@ void AddSparseMatrixEntry(
       block_index != Invalid,
       "Missing BSR block for row element / col element pair." );
 
-   using DofShape =
-      orders_to_num_dofs<
-         typename TestFESpace::finite_element_type::shape_functions::orders >;
+   using DofShape = TestDofShape;
    using tshape =
       subsequence_t<
          DofShape,

@@ -7,10 +7,10 @@
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixview.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Utilities/checkedarithmetic.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
 #include <cstddef>
-#include <limits>
 #include <type_traits>
 
 namespace gendil
@@ -58,19 +58,14 @@ GlobalIndex CheckBSRApplyDimensions(
       static_cast< GlobalIndex >( matrix.block_cols );
    const GlobalIndex block_rows =
       static_cast< GlobalIndex >( matrix.block_rows );
-   constexpr GlobalIndex maximum =
-      std::numeric_limits< GlobalIndex >::max();
-   GENDIL_VERIFY(
-      num_col_blocks == 0 ||
-      block_cols <= maximum / num_col_blocks,
+   const GlobalIndex expected_x_size = CheckedMultiply(
+      num_col_blocks,
+      block_cols,
       "Apply(BSR backend, ...) input dimension overflows GlobalIndex." );
-   GENDIL_VERIFY(
-      num_row_blocks == 0 ||
-      block_rows <= maximum / num_row_blocks,
+   const GlobalIndex expected_y_size = CheckedMultiply(
+      num_row_blocks,
+      block_rows,
       "Apply(BSR backend, ...) output dimension overflows GlobalIndex." );
-
-   const GlobalIndex expected_x_size = num_col_blocks * block_cols;
-   const GlobalIndex expected_y_size = num_row_blocks * block_rows;
 
    GENDIL_VERIFY(
       x_size == static_cast< size_t >( expected_x_size ),

@@ -50,8 +50,8 @@ void MassAdvectionElementOperator(
    const ElementQuadData & element_quad_data,
    Adv & adv,
    Sigma & sigma,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    using Mesh = typename FiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -161,8 +161,8 @@ void MassAdvectionFaceOperator(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv & adv,
    Sigma & sigma,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
@@ -269,8 +269,8 @@ void MassAdvectionExplicitOperator(
    const ElementFaceDofToQuad & element_face_quad_data,
    Adv adv,
    Sigma sigma,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelConfiguration );
 
@@ -333,8 +333,8 @@ class MassAdvectionOperator
    Adv adv;
    Sigma sigma;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
 public:
    /**
@@ -364,8 +364,9 @@ public:
                output & dofs_out ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-         "MassAdvectionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpace::restriction_type >,
+         "MassAdvectionOperator::operator() requires an elementwise-independent broken-space restriction" );
       MassAdvectionExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,

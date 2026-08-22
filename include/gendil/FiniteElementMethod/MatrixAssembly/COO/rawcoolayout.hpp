@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/COO/rawcooview.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
+#include "gendil/Utilities/checkedarithmetic.hpp"
 
 #include <limits>
 #include <type_traits>
@@ -311,20 +312,14 @@ inline GlobalIndex RawCOOFaceOffsetArrayIndex(
    GENDIL_VERIFY(
       local_face_index < layout.num_faces,
       "RawCOO face offset local face index is out of range." );
-   GENDIL_VERIFY(
-      layout.num_faces == 0 ||
-         element_index <=
-            std::numeric_limits< GlobalIndex >::max() / layout.num_faces,
+   const GlobalIndex element_base = CheckedMultiply(
+      element_index,
+      layout.num_faces,
       "RawCOO face offset array index overflow." );
-
-   const GlobalIndex element_base = element_index * layout.num_faces;
-
-   GENDIL_VERIFY(
-      local_face_index <=
-         std::numeric_limits< GlobalIndex >::max() - element_base,
+   return CheckedAdd(
+      element_base,
+      local_face_index,
       "RawCOO face offset array index overflow." );
-
-   return element_base + local_face_index;
 }
 
 template < typename ValueType, typename IndexType >
@@ -354,28 +349,6 @@ GlobalIndex RawCOOOffdiagBlockOffset(
    return coo_target.offdiag_offsets[offset_index];
 }
 
-inline GlobalIndex CheckedRawCOOAdd(
-   const GlobalIndex lhs,
-   const GlobalIndex rhs,
-   const char * message )
-{
-   GENDIL_VERIFY(
-      rhs <= std::numeric_limits< GlobalIndex >::max() - lhs,
-      message );
-   return lhs + rhs;
-}
-
-inline GlobalIndex CheckedRawCOOMultiply(
-   const GlobalIndex lhs,
-   const GlobalIndex rhs,
-   const char * message )
-{
-   GENDIL_VERIFY(
-      lhs == 0 || rhs <= std::numeric_limits< GlobalIndex >::max() / lhs,
-      message );
-   return lhs * rhs;
-}
-
 inline auto AllocateRawCOOOffsetArray( const GlobalIndex count )
 {
    return MakeSyncHostDeviceArray< GlobalIndex >( count );
@@ -396,7 +369,7 @@ inline void ActivateRawCOODiagonalBlock(
    {
       diagonal_offsets[element_index] = next_offset;
       next_offset =
-         CheckedRawCOOAdd(
+         CheckedAdd(
             next_offset,
             block_entry_count,
             "RawCOO diagonal block offset overflow." );
@@ -424,7 +397,7 @@ auto MakeRawCOOAssemblyLayout(
    layout.block_entry_count = block_entry_count;
 
    const GlobalIndex face_offset_count =
-      CheckedRawCOOMultiply(
+      CheckedMultiply(
          layout.num_elements,
          layout.num_faces,
          "RawCOO face offset array size overflow." );
@@ -490,7 +463,7 @@ auto MakeRawCOOAssemblyLayout(
 
                offdiag_offsets[offset_index] = next_offset;
                next_offset =
-                  CheckedRawCOOAdd(
+                  CheckedAdd(
                      next_offset,
                      block_entry_count,
                      "RawCOO interior offdiag block offset overflow." );

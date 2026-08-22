@@ -464,8 +464,9 @@ public:
                output & dofs_out ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-         "DiffusionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpace::restriction_type >,
+         "DiffusionOperator::operator() requires an elementwise-independent broken-space restriction" );
       DiffusionExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,

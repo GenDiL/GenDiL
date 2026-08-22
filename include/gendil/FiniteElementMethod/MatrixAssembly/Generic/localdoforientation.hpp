@@ -5,7 +5,8 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/finiteelementdoflayout.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofdescriptor.hpp"
 #include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Utilities/toarray.hpp"
@@ -66,7 +67,8 @@ auto OrientReferenceDofToNative(
    const Orientation & orientation_ )
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
    using DofDescriptor = std::remove_cvref_t< Descriptor >;
    using ComponentDofShape =
       component_dof_shape_t< ShapeFunctions, DofDescriptor::component_id >;
@@ -76,7 +78,7 @@ auto OrientReferenceDofToNative(
 
    auto native_indices = [&]
    {
-      if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+      if constexpr ( is_vector_finite_element_space_v< Space > )
       {
          // Match the vector DoF read path. Scalar keeps the previously
          // validated ReferenceToNativeIndex path below.

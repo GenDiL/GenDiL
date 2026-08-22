@@ -208,13 +208,15 @@ public:
 
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
-      if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+      if constexpr (
+         !restriction_may_share_global_dofs_v<
+            typename FiniteElementSpace::restriction_type > )
       {
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
          auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
          Apply( dofs_in, dofs_out );
       }
-      else // H1
+      else // Potentially shared restriction rows.
       {
          dofs_vector_out = 0.0;
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
@@ -233,13 +235,15 @@ public:
    void Mult( const mfem::Vector & dofs_vector_in,
               mfem::Vector & dofs_vector_out ) const override
    {
-      if constexpr ( std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction > )
+      if constexpr (
+         !restriction_may_share_global_dofs_v<
+            typename FiniteElementSpace::restriction_type > )
       {
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
          auto dofs_out = MakeWriteOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_out );
          Apply( dofs_in, dofs_out );
       }
-      else // H1
+      else // Potentially shared restriction rows.
       {
          dofs_vector_out = 0.0;
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );

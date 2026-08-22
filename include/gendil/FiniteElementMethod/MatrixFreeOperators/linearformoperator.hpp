@@ -198,7 +198,7 @@ public:
    LinearForm( const FiniteElementSpace & finite_element_space,
                const IntegrationRule & int_rules,
                Lambda && lambda ) :
-      Vector( finite_element_space.GetNumberOfFiniteElementDofs() ),
+      Vector( GetAlgebraicDofExtent( finite_element_space ) ),
       finite_element_space( finite_element_space ),
       int_rules( int_rules )
    {
@@ -206,9 +206,8 @@ public:
       ElementQuadData element_quad_data;
 
       if constexpr (
-         std::is_same_v<
-            typename FiniteElementSpace::restriction_type,
-            L2Restriction > )
+         !restriction_may_share_global_dofs_v<
+            typename FiniteElementSpace::restriction_type > )
       {
          auto dofs_out =
             MakeWriteOnlyElementTensorView< KernelPolicy >(

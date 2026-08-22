@@ -30,9 +30,9 @@ auto MakeSGBSRInternalPattern(
 {
    using I = std::remove_cvref_t< WeakForm >;
    using TrialShapeFunctions =
-      typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< TrialFESpace >;
    using TestShapeFunctions =
-      typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< TestFESpace >;
    constexpr GlobalIndex block_cols =
       LocalDofCount< TrialShapeFunctions >();
    constexpr GlobalIndex block_rows =

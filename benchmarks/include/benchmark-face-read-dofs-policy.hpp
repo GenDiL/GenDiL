@@ -765,7 +765,7 @@ void RunDeviceFaceLayout(
 #endif
 
 template < Integer Dim, Integer Order >
-void RunFaceTensorProductLayouts()
+void RunFaceTensorProductRestrictionViews()
 {
 #if defined( GENDIL_USE_DEVICE )
    RunDeviceFaceLayout< Dim, Order, ThreadBlockLayout<> >(
@@ -846,7 +846,7 @@ template < Integer Dim, Integer Order >
 void RunFaceOrder()
 {
    RunSerialFaceCases< Dim, Order >();
-   RunFaceTensorProductLayouts< Dim, Order >();
+   RunFaceTensorProductRestrictionViews< Dim, Order >();
 }
 
 template < Integer Dim >

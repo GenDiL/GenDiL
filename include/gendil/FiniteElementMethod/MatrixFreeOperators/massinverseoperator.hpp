@@ -116,8 +116,8 @@ void MassInverseExplicitOperator(
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
    Sigma & sigma,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out,
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out,
    const Integer max_iters,
    const Real tolerance )
 {
@@ -181,8 +181,8 @@ class MassInverseFiniteElementOperator
    Integer max_iters;
    Real tolerance;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
 public:
    /**

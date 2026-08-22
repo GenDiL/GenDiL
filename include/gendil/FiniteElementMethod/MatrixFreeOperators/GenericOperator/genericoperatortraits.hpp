@@ -150,7 +150,7 @@ inline constexpr auto generic_operator_domain_kind_v =
 } // namespace generic_operator_detail
 
 template<class Space>
-consteval bool IsScalarL2OrH1ValueGradientSpace()
+consteval bool IsScalarValueGradientSpace()
 {
    using SpaceType = std::remove_cvref_t<Space>;
    using FE = typename SpaceType::finite_element_type;
@@ -158,8 +158,7 @@ consteval bool IsScalarL2OrH1ValueGradientSpace()
    using Restriction = typename SpaceType::restriction_type;
 
    return !is_vector_shape_functions_v<ShapeFunctions> &&
-          (std::is_same_v<Restriction, L2Restriction> ||
-           std::is_same_v<Restriction, H1Restriction>);
+      TensorElementDoFRestriction<Restriction>;
 }
 
 template<
@@ -178,13 +177,13 @@ consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
       !FaceInfo::plus_side_type::is_conforming)
    {
       static_assert(
-         IsScalarL2OrH1ValueGradientSpace<TrialMinusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TrialPlusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TestMinusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TestPlusSpace>(),
+         IsScalarValueGradientSpace<TrialMinusSpace>() &&
+         IsScalarValueGradientSpace<TrialPlusSpace>() &&
+         IsScalarValueGradientSpace<TestMinusSpace>() &&
+         IsScalarValueGradientSpace<TestPlusSpace>(),
          "Nonconforming global interior GenericOperator currently supports "
-         "only scalar value/gradient facet semantics on scalar L2 or scalar "
-         "H1 finite element spaces. Vector-valued, Piola, H(div), H(curl), "
+         "only scalar value/gradient facet semantics on scalar tensor finite "
+         "element spaces. Vector-valued, Piola, H(div), H(curl), "
          "and de Rham-style nonconforming facet transforms require separate "
          "support and tests.");
    }

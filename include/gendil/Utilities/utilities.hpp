@@ -34,5 +34,8 @@
 // Debugging macros
 #include "debug.hpp"
 
+// Checked arithmetic for unsigned counts, sizes, and offsets.
+#include "checkedarithmetic.hpp"
+
 // A map structure with static string keys.
 #include "gendil/Utilities/staticmap.hpp"

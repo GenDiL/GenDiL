@@ -7,7 +7,7 @@
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictiontraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
@@ -42,8 +42,9 @@ void WriteDofs( const GlobalIndex element_index,
    );
    
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -52,7 +53,7 @@ void WriteDofs( const GlobalIndex element_index,
          }
       );
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -86,8 +87,9 @@ void SerialWriteDofs(
       "Mismatching dimensions in ReadDofs."
    );
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
@@ -100,7 +102,7 @@ void SerialWriteDofs(
             global_dofs( indices..., element_index ) = x( indices... );
       });
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -136,8 +138,9 @@ void ThreadedWriteDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       ThreadLoop< tshape >( thread, [&] ( auto... t )
       {
@@ -205,8 +208,9 @@ void WriteVectorDofsSerial(
    constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
@@ -221,7 +225,7 @@ void WriteVectorDofsSerial(
          });
       });
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
@@ -259,8 +263,10 @@ void WriteVectorDofsThreaded(
       {
          UnitLoop< std::tuple_element_t< i, r_shapes > >( [&] ( auto... k )
          {
-            if constexpr ( !Add && restriction_traits<
-               typename FiniteElementSpace::restriction_type >::is_injective )
+            if constexpr (
+               !Add &&
+               !restriction_may_share_global_dofs_v<
+                  typename FiniteElementSpace::restriction_type > )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else
                AtomicAddInPlace( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );

@@ -9,6 +9,9 @@
 // Collection of shape functions.
 #include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
 
+// Element-local to algebraic DoF restriction abstractions.
+#include "gendil/FiniteElementMethod/Restrictions/restrictions.hpp"
+
 // A generic high-dimension finite element space inheriting from a Mesh and a FiniteElement.
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 

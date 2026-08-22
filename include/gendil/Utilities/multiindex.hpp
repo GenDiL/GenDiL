@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <array>
+
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/get.hpp"
 
@@ -71,7 +73,37 @@ GENDIL_HOST_DEVICE
 constexpr GlobalIndex FlattenMultiIndex(
    const std::array< GlobalIndex, Dim > & indices )
 {
+   static_assert(
+      Dim > 0,
+      "A local DoF multi-index must have positive rank." );
+   static_assert(
+      Dim == static_cast< Integer >( Shape::size() ),
+      "Multi-index rank must match the static DoF shape rank." );
    return FlattenMultiIndex_impl< 0, Shape >( indices );
+}
+
+template < typename Shape, Integer Dim, size_t... I >
+GENDIL_HOST_DEVICE
+constexpr std::array< GlobalIndex, Dim > UnflattenMultiIndex_impl(
+   GlobalIndex ordinal,
+   std::index_sequence< I... > )
+{
+   std::array< GlobalIndex, Dim > index{};
+   ( ( index[I] = ordinal % seq_get_v< I, Shape >,
+       ordinal /= seq_get_v< I, Shape > ),
+     ... );
+   return index;
+}
+
+template < typename Shape >
+GENDIL_HOST_DEVICE
+constexpr auto UnflattenMultiIndex( const GlobalIndex ordinal )
+{
+   constexpr Integer Dim = static_cast< Integer >( Shape::size() );
+   static_assert( Dim > 0, "A local DoF tensor index must have positive rank." );
+   return UnflattenMultiIndex_impl< Shape, Dim >(
+      ordinal,
+      std::make_index_sequence< Dim >{} );
 }
 
 } // namespace gendil
