@@ -10,7 +10,8 @@
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/restrictedweakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictionconcepts.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictiontraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
@@ -90,77 +91,65 @@ inline constexpr bool weak_form_uses_partition_integration_domain_v =
       std::remove_cvref_t<WeakForm>,
       std::remove_cvref_t<WFContext>>::value;
 
-template<class WeakForm, class WFContext>
-consteval void ValidateSparseAssemblyDomainSupport()
+namespace details {
+
+template<class Restriction>
+concept RawCOOCoordinateRestriction =
+   ElementDoFRestriction<Restriction> &&
+   static_restriction_entry_count_v<Restriction> == 1 &&
+   restriction_supports_element_reference_view_v<Restriction>;
+
+template<class CellSpacesTuple, size_t... I>
+consteval bool IsRawCOOPartitionCellAssemblySpace(
+   std::index_sequence<I...>)
 {
-   static_assert(
-      !weak_form_uses_partition_integration_domain_v<
-         WeakForm,
-         WFContext>,
-      "GenericAssembly: PartitionIntegrationDomain is unsupported by sparse "
-      "assembly; use a MeshIntegrationDomain or matrix-free GenericOperator.");
+   return (
+      RawCOOCoordinateRestriction<
+          typename std::tuple_element_t<
+             I,
+             CellSpacesTuple>::restriction_type> && ...);
 }
+
+} // namespace details
 
 template < typename FESpace >
 struct IsRawCOOCellAssemblySpace
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
-   using Restriction = typename Space::restriction_type;
-
-   static constexpr bool vector_h1_value = [] {
-      if constexpr ( is_vector_h1_restriction_v< Restriction > )
+   static constexpr bool value = []
+   {
+      if constexpr ( is_mixed_finite_element_space_v<Space> )
       {
-         static_assert(
-            !is_vector_shape_functions_v< ShapeFunctions > ||
-               Restriction::num_comp == ShapeFunctions::vector_dim,
-            "VectorH1Restriction<NComp> must match the vector finite element component count." );
-
-         return is_vector_shape_functions_v< ShapeFunctions >;
+         using CellSpaces = typename Space::cell_spaces_type;
+         return details::IsRawCOOPartitionCellAssemblySpace<CellSpaces>(
+            std::make_index_sequence<std::tuple_size_v<CellSpaces>>{});
       }
       else
       {
-         return false;
+         using Restriction = typename Space::restriction_type;
+         return details::RawCOOCoordinateRestriction<Restriction>;
       }
    }();
-
-   static constexpr bool value =
-      restriction_traits< Restriction >::is_direct_index_map &&
-      ( std::is_same_v< Restriction, L2Restriction > ||
-        ( std::is_same_v< Restriction, H1Restriction > &&
-          !is_vector_shape_functions_v< ShapeFunctions > ) ||
-        ( is_tensor_product_restriction_v< Restriction > &&
-          !is_vector_shape_functions_v< ShapeFunctions > ) ||
-        vector_h1_value );
 };
 
 template < typename FESpace >
 struct IsRawCOOFaceAssemblySpace
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions =
-      typename Space::finite_element_type::shape_functions;
-   using Restriction = typename Space::restriction_type;
-
-   static constexpr bool tensor_product_value = [] {
-      if constexpr ( is_tensor_product_restriction_v< Restriction > )
+   static constexpr bool value = []
+   {
+      if constexpr ( is_mixed_finite_element_space_v<Space> )
       {
-         return
-            restriction_traits< Restriction >::is_direct_index_map &&
-            !is_vector_shape_functions_v< ShapeFunctions >;
+         using CellSpaces = typename Space::cell_spaces_type;
+         return details::IsRawCOOPartitionCellAssemblySpace<CellSpaces>(
+            std::make_index_sequence<std::tuple_size_v<CellSpaces>>{});
       }
       else
       {
-         return false;
+         using Restriction = typename Space::restriction_type;
+         return details::RawCOOCoordinateRestriction<Restriction>;
       }
    }();
-
-   static constexpr bool value =
-      std::is_same_v< Restriction, L2Restriction > ||
-      ( std::is_same_v< Restriction, H1Restriction > &&
-        !is_vector_shape_functions_v< ShapeFunctions > ) ||
-      tensor_product_value;
 };
 
 namespace details {
@@ -191,6 +180,24 @@ struct SparseAssemblyFormTraits
    static constexpr bool value =
       has_trial && has_test && has_active_domain;
 };
+
+template<
+   MatrixAssemblyType Format,
+   SparseAssemblyMode Mode,
+   class WeakForm,
+   class WFContext>
+consteval void ValidateSparseAssemblyDomainSupport()
+{
+   if constexpr (
+      weak_form_uses_partition_integration_domain_v<WeakForm, WFContext>)
+   {
+      static_assert(
+         Format == MatrixAssemblyType::RawCOO &&
+            Mode == SparseAssemblyMode::Full,
+         "Partition sparse assembly is supported only by full RawCOO "
+         "assembly and its derived COO/CSR/CSC/HypreCSR conversions.");
+   }
+}
 
 template<
    MatrixAssemblyType Format,
@@ -384,29 +391,12 @@ struct SparseAssemblySpaceContract<
    TrialSpace,
    TestSpace>
 {
-   static constexpr bool has_face_terms =
-      SparseAssemblyFormTraits<WeakForm>::has_face_terms;
-   using TrialRestriction = typename TrialSpace::restriction_type;
-   using TestRestriction = typename TestSpace::restriction_type;
    static constexpr bool sgbsr_mappings_supported =
-      is_default_bsr_mapping_space_v< TrialSpace > &&
-      is_default_bsr_mapping_space_v< TestSpace >;
-   static constexpr bool sgbsr_both_l2 =
-      std::is_same_v< TrialRestriction, L2Restriction > &&
-      std::is_same_v< TestRestriction, L2Restriction >;
-   static constexpr bool sgbsr_both_scalar_h1 =
-      std::is_same_v< TrialRestriction, H1Restriction > &&
-      std::is_same_v< TestRestriction, H1Restriction > &&
-      sgbsr_mappings_supported;
+      DefaultBsrMappingSpace< TrialSpace > &&
+      DefaultBsrMappingSpace< TestSpace >;
    static constexpr bool sgbsr_space_pair_supported =
-      sgbsr_mappings_supported &&
-      (std::is_same_v< TrialSpace, TestSpace > ||
-       sgbsr_both_l2 ||
-       sgbsr_both_scalar_h1);
-   static constexpr bool sgbsr_facet_supported =
-      !has_face_terms || sgbsr_both_l2;
-   static constexpr bool value =
-      sgbsr_space_pair_supported && sgbsr_facet_supported;
+      sgbsr_mappings_supported;
+   static constexpr bool value = sgbsr_space_pair_supported;
 };
 
 template<
@@ -431,24 +421,20 @@ consteval void ValidateSparseAssemblySpaceContract()
       {
          static_assert(
             Contract::raw_coo_supported,
-            "GenericAssembly<RawCOO> supports scalar/vector L2/DG cell-only terms, "
-            "scalar/vector H1/CG cell-only terms, scalar tensor-product direct-index "
-            "cell terms, and scalar/vector L2/DG, scalar H1/CG, or scalar "
-            "tensor-product direct-index conforming face terms. Vector H1 face "
-            "terms, nonconforming faces, global face traversal, and "
-            "variable-size hp emission are unsupported.");
+            "GenericAssembly<RawCOO> requires statically one-entry, unit-weight "
+            "reference-addressable completed restrictions. Unsupported "
+            "nonconforming FE transforms, multi-entry rows, and variable-size "
+            "runtime emission remain unsupported.");
       }
       else
       {
          static_assert(
             Contract::raw_coo_supported,
-            "GenericRawCOOElementBlockDiagonalAssembly supports scalar/vector "
-            "L2/DG cell-only terms, scalar/vector H1/CG cell-only terms, scalar "
-            "tensor-product direct-index cell terms, and scalar/vector L2/DG, "
-            "scalar H1/CG, or scalar tensor-product direct-index conforming face "
-            "terms. Vector H1 face terms, nonconforming "
-            "faces, global face traversal, and variable-size hp emission are "
-            "unsupported.");
+            "GenericRawCOOElementBlockDiagonalAssembly requires statically "
+            "one-entry, unit-weight reference-addressable completed "
+            "restrictions. Mixed-space faces, unsupported "
+            "nonconforming FE transforms, global face traversal, multi-entry "
+            "rows, and variable-size hp emission remain unsupported.");
       }
    }
    else if constexpr (Format == MatrixAssemblyType::SGBSR)
@@ -457,24 +443,14 @@ consteval void ValidateSparseAssemblySpaceContract()
       {
          static_assert(
             Contract::sgbsr_mappings_supported,
-            "SGBSR GenericAssembly requires independently supported default "
-            "trial gather and test scatter mappings (L2Restriction, scalar "
-            "H1Restriction, or compatible VectorH1Restriction)." );
+            "SGBSR GenericAssembly requires statically one-entry, unit-weight "
+            "trial and test restrictions with backend-access validation." );
          if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
                Contract::sgbsr_space_pair_supported,
-               "SGBSR GenericAssembly supports distinct trial/test spaces only "
-               "for L2/L2 or scalar-H1/scalar-H1 pairs; cross-restriction and "
-               "distinct vector-H1 pairs are unsupported." );
-            if constexpr (Contract::sgbsr_space_pair_supported)
-            {
-               static_assert(
-                  Contract::sgbsr_facet_supported,
-                  "SGBSR GenericAssembly supports local facet terms only when "
-                  "both trial and test spaces use L2Restriction; H1/vector-H1 "
-                  "boundary and interior facet terms are unsupported." );
-            }
+               "SGBSR GenericAssembly requires independently supported trial "
+               "gather and test scatter mappings." );
          }
       }
       else
@@ -482,24 +458,14 @@ consteval void ValidateSparseAssemblySpaceContract()
          static_assert(
             Contract::sgbsr_mappings_supported,
             "SGBSR element block-diagonal assembly requires independently "
-            "supported default trial gather and test scatter mappings "
-            "(L2Restriction, scalar H1Restriction, or compatible "
-            "VectorH1Restriction)." );
+            "supported, statically one-entry, unit-weight trial gather and "
+            "test scatter mappings with backend-access validation." );
          if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
                Contract::sgbsr_space_pair_supported,
-               "SGBSR element block-diagonal assembly supports distinct "
-               "trial/test spaces only for L2/L2 or scalar-H1/scalar-H1 pairs; "
-               "cross-restriction and distinct vector-H1 pairs are unsupported." );
-            if constexpr (Contract::sgbsr_space_pair_supported)
-            {
-               static_assert(
-                  Contract::sgbsr_facet_supported,
-                  "SGBSR element block-diagonal assembly supports local facet "
-                  "terms only when both trial and test spaces use L2Restriction; "
-                  "H1/vector-H1 boundary and interior facet terms are unsupported." );
-            }
+               "SGBSR element block-diagonal assembly requires independently "
+               "supported trial gather and test scatter mappings." );
          }
       }
    }
@@ -512,6 +478,7 @@ struct SparseAssemblyKernelContract
       is_host_configuration_v<KernelPolicy> !=
       is_device_configuration_v<KernelPolicy>;
    static constexpr bool batching_supported =
+      Format == MatrixAssemblyType::RawCOO ||
       is_unbatched_operator_configuration_allowed_v<KernelPolicy>;
    static constexpr bool value =
       placement_supported && batching_supported;
@@ -553,11 +520,6 @@ consteval void ValidateSparseAssemblyExecutionKernelContract()
       is_host_configuration_v<KernelPolicy> !=
          is_device_configuration_v<KernelPolicy>,
       "Sparse assembly execution requires a host or device kernel policy.");
-   static_assert(
-      is_unbatched_operator_configuration_allowed_v<KernelPolicy>,
-      "This operator has not been audited for batched device execution. "
-      "Use BatchSize == 1 or audit this operator before enabling "
-      "BatchSize > 1.");
 }
 
 template<
@@ -590,6 +552,16 @@ struct SparseAssemblyBackendContract
          return true;
       }
    }();
+};
+
+template<class Backend, class TrialSpace, class TestSpace>
+struct SparseAssemblyBackendContract<
+   MatrixAssemblyType::RawCOO,
+   Backend,
+   TrialSpace,
+   TestSpace>
+{
+   static constexpr bool value = true;
 };
 
 template<
@@ -627,10 +599,17 @@ consteval bool SparseAssemblyCanInstantiate()
 {
    using FormTraits = SparseAssemblyFormTraits<WeakForm>;
    using Context = std::remove_cvref_t<WeakFormContext>;
+   constexpr bool uses_partition =
+      weak_form_uses_partition_integration_domain_v<WeakForm, Context>;
+   constexpr bool domain_supported =
+      SparseAssemblyUsesMeshDomain<WeakForm, Context>() ||
+      (Format == MatrixAssemblyType::RawCOO &&
+       Mode == SparseAssemblyMode::Full &&
+       uses_partition);
    if constexpr (
       !FormTraits::value ||
       has_active_trial_coefficient_dependency_v<WeakForm> ||
-      !SparseAssemblyUsesMeshDomain<WeakForm, Context>() ||
+      !domain_supported ||
       !SparseAssemblyContextBindingsAvailable<WeakForm, Context>())
    {
       return false;
@@ -685,18 +664,25 @@ auto ValidateSparseAssemblyInputs(
       ValidateSparseLinearAssemblyCoefficientInputs<WeakForm>();
       if constexpr (!has_active_trial_coefficient_dependency_v<WeakForm>)
       {
-         ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
-         if constexpr (
-            !weak_form_uses_partition_integration_domain_v<
+         ValidateSparseAssemblyDomainSupport<
+            Format,
+            Mode,
+            WeakForm,
+            WeakFormContext>();
+         constexpr bool domain_supported =
+            SparseAssemblyUsesMeshDomain<
                WeakForm,
-               WeakFormContext>)
+               WeakFormContext>() ||
+            (Format == MatrixAssemblyType::RawCOO &&
+             Mode == SparseAssemblyMode::Full &&
+             weak_form_uses_partition_integration_domain_v<
+                WeakForm,
+                WeakFormContext>);
+         if constexpr (domain_supported)
          {
             ValidateWeakFormContext(weak_form, wf_ctx);
 
             if constexpr (
-               SparseAssemblyUsesMeshDomain<
-                  WeakForm,
-                  WeakFormContext>() &&
                SparseAssemblyContextBindingsAvailable<
                   WeakForm,
                   WeakFormContext>())
@@ -763,7 +749,11 @@ void ValidateSparseAssemblyExecutionInputs(
       ValidateSparseLinearAssemblyCoefficientInputs<WeakForm>();
       if constexpr (!has_active_trial_coefficient_dependency_v<WeakForm>)
       {
-         ValidateSparseAssemblyDomainSupport<WeakForm, WeakFormContext>();
+         ValidateSparseAssemblyDomainSupport<
+            MatrixAssemblyType::RawCOO,
+            Mode,
+            WeakForm,
+            WeakFormContext>();
          if constexpr (
             !weak_form_uses_partition_integration_domain_v<
                WeakForm,

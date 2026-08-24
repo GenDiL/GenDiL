@@ -76,17 +76,39 @@ auto global_context = MakeWeakFormContext(
    MakeIntegrationDomain<"skeleton">(partition));
 ```
 
-Matrix-free operators support mesh and partition domain kinds. Sparse assembly
-currently supports mesh domains only and rejects a partition integration
-domain with a focused compile-time diagnostic. Homogeneous assembly contexts
-therefore bind `MakeIntegrationDomain<Name>(mesh)`.
+Matrix-free operators support mesh and partition domain kinds. Full RawCOO
+assembly supports partition cell, boundary-face, same-part interior-face, and
+cross-part interior-face terms. COO, CSR, CSC, and process-local HypreCSR obtain
+the same support through RawCOO finalization. Homogeneous assembly contexts
+bind `MakeIntegrationDomain<Name>(mesh)`.
 
-SGBSR assembly additionally requires matching trial and test finite-element
-spaces. Its H1 and vector-H1 assembly currently supports cell terms only;
-boundary and interior facet terms require the supported DG restriction path.
+SGBSR cell assembly accepts independently supported trial gather and test
+scatter mappings, including rectangular pairs. The same independently valid
+mappings are accepted for boundary and interior facet terms; potentially
+sharing restrictions use zeroing plus atomic accumulation during scatter. The
+default `RestrictionGatherToBsr<Space>` and
+`RestrictionScatterFromBsr<Space>` mappings require the restriction
+to provide `ValidateRestrictionMemoryAccess<OnDevice>(restriction,
+num_elements)` through normal lookup or ADL. This operation validates any
+borrowed mapping storage for the memory space selected by the matvec backend;
+contiguous restrictions implement it as a no-op, while vector and tensor
+products recurse into their children. Current mappings require one unit-weight
+entry per row. Multi-entry mappings can retain the element-block matrix by
+gathering through the restriction and scattering through its adjoint once a
+general weight protocol is available.
 
-RawCOO and its derived COO/CSR/CSC formats support conforming mesh-local
-boundary and interior facet terms for scalar/vector `L2Restriction` spaces and
-for scalar `H1Restriction` and direct-index `TensorProductRestriction` spaces.
-Vector H1, vector tensor-product, nonconforming, global-facet, and
-partition-domain sparse facet assembly remain unsupported.
+RawCOO and its derived COO/CSR/CSC formats support conforming mesh-local and
+partition global-facet terms for statically one-entry, unit-weight,
+reference-addressable completed restrictions. Partition assembly emits one
+monolithic matrix in the trial/test algebraic extents and preserves explicit
+placement, automatic L2 direct sums, and shared H1 aliases as duplicate raw
+coordinates. Each interior-face part owns exact `--`, `-+`, `+-`, and `++`
+segments; canonical finalization reduces duplicates within and across parts.
+
+Nonconforming global facets support scalar and componentwise
+`VectorShapeFunctions` value/gradient transformations. Geometric Piola,
+H(div), H(curl), and de Rham-style transformations remain unsupported. The
+partition output is process-local; HypreCSR continues to use
+`hypre_MPI_COMM_SELF`. RawCOO execution may use batched device policies through
+the existing `BlockLoop`; BSR/SGBSR batching and partition assembly remain
+outside this path.

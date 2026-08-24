@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
 #include <type_traits>
 

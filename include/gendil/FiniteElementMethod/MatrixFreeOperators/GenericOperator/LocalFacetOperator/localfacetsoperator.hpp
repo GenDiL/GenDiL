@@ -429,6 +429,7 @@ void GenericLocalCellBatchOperator(
          WeakForm,
          DofsInView,
          DofsOutView>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    mesh::CellIterator<KernelPolicy>(
       domain_mesh,
@@ -438,8 +439,8 @@ void GenericLocalCellBatchOperator(
          (void)batch_op_ctx;
          (void)weak_form;
 
-         GENDIL_SHARED Real _shared_mem[required_shared_mem];
-         KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
 
          auto u_elem =
             ReadDofs(kernel, trial_space, element_index, dofs_in);

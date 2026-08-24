@@ -210,13 +210,11 @@ void L2ProjectionOperator(
                   typename TestIntegrationRule::points::
                      num_points_tensor{} ) // Accumulation at quadrature point
             );
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               TrialKernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< TrialKernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< TrialKernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          L2ProjectionElementOperator<
             TrialIntegrationRule,
@@ -243,13 +241,11 @@ void L2ProjectionOperator(
                TestIntegrationRule > +
             required_threaded_dot_shared_memory_v<
                TestKernelConfiguration >;
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               TestKernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< TestKernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< TestKernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          auto op = [&]( const auto & in, auto & out )
          {

@@ -727,9 +727,11 @@ void AdvectionExplicitOperatorWithoutBC(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          AdvectionFusedOperatorWithoutBC(
             kernel_conf,
@@ -802,9 +804,11 @@ void AdvectionExplicitOperatorWithBC(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          AdvectionFusedOperatorWithBC(
             kernel_conf,
@@ -875,16 +879,11 @@ void AdvectionExplicitFaceOperator(
                KernelConfiguration,
                IntegrationRule,
                FiniteElementSpace >;
-         constexpr size_t shared_memory_block_size =
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size;
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          AdvectionLocalFaceOperator(
             kernel_conf,
@@ -965,9 +964,11 @@ void AdvectionExplicitNonconformingFaceOperator(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
       {
          constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          AdvectionNonconformingLocalFaceOperator(
             kernel_conf,

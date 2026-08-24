@@ -4,9 +4,11 @@
 
 #pragma once
 
-#include "gendil/Utilities/IndexSequenceHelperFunctions/print.hpp"
+#include "gendil/Utilities/IndexSequenceHelperFunctions/cat.hpp"
+#include "gendil/Utilities/IndexSequenceHelperFunctions/headtail.hpp"
 #include "gendil/Utilities/KernelContext/KernelConfigurations/helpers.hpp"
 #include "gendil/Utilities/KernelContext/threadlayout.hpp"
+#include "gendil/Utilities/MathHelperFunctions/min.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/debug.hpp"
 

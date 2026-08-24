@@ -469,6 +469,7 @@ void GenericLocalFacetAssembly(
 
    constexpr size_t required_shared_mem =
       required_shared_memory_v<KernelPolicy, IntegrationRule>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    mesh::CellIterator<KernelPolicy>(
       domain_mesh,
@@ -480,9 +481,8 @@ void GenericLocalFacetAssembly(
          (void)sparse_matrix;
          (void)domain_mesh;
 
-         GENDIL_SHARED Real _shared_mem[required_shared_mem];
-         KernelContext<KernelPolicy, required_shared_mem>
-            kernel_ctx(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel_ctx(_shared_mem);
 
          if constexpr (has_cell_contributions_v<WeakForm>)
          {
@@ -563,6 +563,7 @@ void AssembleElementBlockDiagonalSparseTarget(
 
    constexpr size_t required_shared_mem =
       required_shared_memory_v<KernelPolicy, IntegrationRule>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    mesh::CellIterator<KernelPolicy>(
       domain_mesh,
@@ -574,9 +575,8 @@ void AssembleElementBlockDiagonalSparseTarget(
          (void)sparse_matrix;
          (void)domain_mesh;
 
-         GENDIL_SHARED Real _shared_mem[required_shared_mem];
-         KernelContext<KernelPolicy, required_shared_mem>
-            kernel_ctx(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel_ctx(_shared_mem);
 
          if constexpr (has_cell_contributions_v<WeakForm>)
          {

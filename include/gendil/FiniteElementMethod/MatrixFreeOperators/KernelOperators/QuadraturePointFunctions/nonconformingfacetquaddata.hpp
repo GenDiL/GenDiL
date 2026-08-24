@@ -197,6 +197,31 @@ auto MakeNonconformingMappedPointSetTuple(
       std::make_index_sequence<sizeof...(PointSets)>{});
 }
 
+template<class Face, class... ScalarMaps, size_t... Component>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingVectorDofToQuadDataImpl(
+   const Face& face,
+   const VectorDofToQuad<ScalarMaps...>& local_face_qd,
+   std::index_sequence<Component...>)
+{
+   return MakeVectorDofToQuad(
+      MakeNestedNonconformingDofToQuadData(
+         face,
+         GetVectorComponent<Component>(local_face_qd))...);
+}
+
+template<class Face, class... ScalarMaps>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingVectorDofToQuadData(
+   const Face& face,
+   const VectorDofToQuad<ScalarMaps...>& local_face_qd)
+{
+   return MakeNonconformingVectorDofToQuadDataImpl(
+      face,
+      local_face_qd,
+      std::index_sequence_for<ScalarMaps...>{});
+}
+
 template<class Face, class LocalFaceQData>
 GENDIL_HOST_DEVICE
 auto MakeNonconformingFacetQuadData(
@@ -205,9 +230,9 @@ auto MakeNonconformingFacetQuadData(
 {
    if constexpr (is_vector_dof_to_quad_v<LocalFaceQData>)
    {
-      static_assert(
-         dependent_false_v<Face, LocalFaceQData>,
-         "Nonconforming facet qdata for VectorDofToQuad is unsupported.");
+      return MakeNonconformingVectorDofToQuadData(
+         face,
+         local_face_qd);
    }
    else if constexpr (
       IsSupportedNonconformingFacetDofToQuadTuple_v<LocalFaceQData>)

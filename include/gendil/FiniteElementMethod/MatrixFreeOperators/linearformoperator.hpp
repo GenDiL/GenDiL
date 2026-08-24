@@ -123,13 +123,11 @@ void LinearFormOperator( const FiniteElementSpace & fe_space,
       {
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          LinearFormElementOperator(
             kernel_conf,

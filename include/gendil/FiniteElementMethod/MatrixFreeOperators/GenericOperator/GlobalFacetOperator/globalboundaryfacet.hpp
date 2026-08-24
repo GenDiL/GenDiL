@@ -167,10 +167,7 @@ void GenericGlobalBoundaryFacetDomainOperator(
             KernelPolicy,
             std::remove_cvref_t<decltype(test_space)>,
             DofsOutView>);
-   constexpr size_t shared_memory_block_size =
-      KernelContext<
-         KernelPolicy,
-         required_shared_mem >::shared_memory_block_size;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    const auto& face_mesh = face_domain.GetFaceMesh();
    auto facet_op_ctx =
@@ -187,11 +184,8 @@ void GenericGlobalBoundaryFacetDomainOperator(
          (void)facet_op_ctx;
          (void)integrand;
 
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
-         KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
 
          const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
 

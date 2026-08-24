@@ -112,6 +112,214 @@ struct RawCOOAssemblyTarget
    const offset_type * offdiag_offsets = nullptr;
 };
 
+/**
+ * @brief Describe a contiguous RawCOO segment with one dense block per entity.
+ *
+ * Entity @c i occupies the half-open range
+ * `[i * block_entry_count, (i + 1) * block_entry_count)` within its triplet
+ * segment.  Unlike RawCOOAssemblyLayout, every entity has the same block size,
+ * so no host/device offset arrays are required.
+ *
+ * The partition assembly path uses this layout for boundary-face batches and
+ * for each directed test-side/trial-side block of an interior-face batch.  The
+ * layout contains metadata only and does not own triplet storage.
+ */
+struct RawCOOEntityBlockLayout
+{
+   /// Number of semantic entities represented by the segment.
+   GlobalIndex num_entities = 0;
+
+   /// Number of RawCOO entries reserved for each entity's dense local block.
+   GlobalIndex block_entry_count = 0;
+
+   /// Total segment capacity: @c num_entities * @c block_entry_count.
+   GlobalIndex nnz_raw = 0;
+};
+
+/**
+ * @brief Construct metadata for a uniform entity-block RawCOO segment.
+ *
+ * This function computes the required triplet capacity but does not allocate
+ * any storage.
+ *
+ * @param num_entities Number of semantic entities in the segment.
+ * @param block_entry_count Number of dense local entries written per entity.
+ * @return A layout whose @c nnz_raw is the product of the two arguments.
+ *
+ * A verification failure is reported if the capacity product cannot be
+ * represented by GlobalIndex.
+ */
+inline RawCOOEntityBlockLayout MakeRawCOOEntityBlockLayout(
+   const GlobalIndex num_entities,
+   const GlobalIndex block_entry_count )
+{
+   return RawCOOEntityBlockLayout{
+      num_entities,
+      block_entry_count,
+      CheckedMultiply(
+         num_entities,
+         block_entry_count,
+         "RawCOO entity-block capacity overflow." ) };
+}
+
+/**
+ * @brief Borrowed, device-copyable target for a uniform entity-block segment.
+ *
+ * The row, column, and value pointers address one contiguous slice of a RawCOO
+ * triplet buffer.  Entity @c i starts at RawCOOEntityBlockOffset(target, i).
+ * The matrix dimensions describe the complete monolithic matrix, not merely
+ * the local block represented by this slice.
+ *
+ * This type does not own storage.  Its pointers remain valid only while the
+ * RawCOO buffer from which the target was made remains alive and unmoved.
+ * ValueType and IndexType may be const-qualified to create read-only views.
+ */
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex >
+struct RawCOOEntityBlockTarget
+{
+   /// Unqualified scalar type stored in the value array.
+   using value_type = std::remove_const_t<ValueType>;
+
+   /// Unqualified scalar type stored in the row and column arrays.
+   using index_type = std::remove_const_t<IndexType>;
+
+   /// Global algebraic row extent of the complete RawCOO matrix.
+   index_type num_rows = 0;
+
+   /// Global algebraic column extent of the complete RawCOO matrix.
+   index_type num_cols = 0;
+
+   /// Number of triplets available in this target's contiguous slice.
+   index_type nnz_raw = 0;
+
+   /// Borrowed row-coordinate storage for this segment.
+   IndexType* rows = nullptr;
+
+   /// Borrowed column-coordinate storage for this segment.
+   IndexType* cols = nullptr;
+
+   /// Borrowed value storage for this segment.
+   ValueType* values = nullptr;
+
+   /// Number of semantic entities represented by this target.
+   GlobalIndex num_entities = 0;
+
+   /// Number of consecutive RawCOO entries reserved for each entity.
+   GlobalIndex block_entry_count = 0;
+};
+
+/**
+ * @brief Group the four directed blocks of one interior-face partition part.
+ *
+ * The first sign identifies the test (row) side and the second sign identifies
+ * the trial (column) side.  For example, @c minus_plus stores the block mapping
+ * trial data from the plus side into test residuals on the minus side.
+ *
+ * The four template parameters are independent so heterogeneous minus/plus
+ * spaces can have different block sizes.  The aggregate is used for both
+ * RawCOOEntityBlockLayout objects and RawCOOEntityBlockTarget objects.
+ */
+template<class MinusMinus, class MinusPlus, class PlusMinus, class PlusPlus>
+struct RawCOOInteriorFaceTargets
+{
+   /// Test-minus by trial-minus block.
+   MinusMinus minus_minus;
+
+   /// Test-minus by trial-plus block.
+   MinusPlus minus_plus;
+
+   /// Test-plus by trial-minus block.
+   PlusMinus plus_minus;
+
+   /// Test-plus by trial-plus block.
+   PlusPlus plus_plus;
+};
+
+/**
+ * @brief Collect all RawCOO targets required by partition assembly kernels.
+ *
+ * @c cells is ordered like the partition's cell parts, @c boundaries like its
+ * boundary-face parts, and @c interiors like its interior-face parts.  Each
+ * interior entry is a RawCOOInteriorFaceTargets aggregate containing the four
+ * directed side combinations.
+ *
+ * The contained targets are non-owning views into a single monolithic RawCOO
+ * triplet buffer.  The bundle may be copied into device kernels, but it must
+ * not outlive or be used after moving the underlying buffer.
+ */
+template<class CellTargets, class BoundaryTargets, class InteriorTargets>
+struct PartitionRawCOOAssemblyTargets
+{
+   /// Tuple of targets for cell-part batches.
+   CellTargets cells;
+
+   /// Tuple of targets for boundary-face-part batches.
+   BoundaryTargets boundaries;
+
+   /// Tuple of four-block target groups for interior-face-part batches.
+   InteriorTargets interiors;
+};
+
+/**
+ * @brief Bind an entity-block layout to a borrowed RawCOO triplet slice.
+ *
+ * @param triplets Contiguous triplet slice that will receive the entity blocks.
+ * @param layout Metadata describing the entities and per-entity block size.
+ * @return A device-copyable target borrowing the triplet slice's storage.
+ *
+ * The triplet slice must have exactly @c layout.nnz_raw entries.  A verification
+ * failure is reported when the capacities disagree.  The returned target must
+ * not outlive or be used after moving the storage referenced by @p triplets.
+ */
+template<typename ValueType, typename IndexType>
+auto MakeRawCOOEntityBlockTarget(
+   const RawCOOTripletView<ValueType, IndexType> triplets,
+   const RawCOOEntityBlockLayout layout )
+{
+   GENDIL_VERIFY(
+      static_cast<GlobalIndex>(triplets.nnz_raw) == layout.nnz_raw,
+      "RawCOO entity target and layout capacities disagree." );
+   return RawCOOEntityBlockTarget<ValueType, IndexType>{
+      triplets.num_rows,
+      triplets.num_cols,
+      triplets.nnz_raw,
+      triplets.rows,
+      triplets.cols,
+      triplets.values,
+      layout.num_entities,
+      layout.block_entry_count };
+}
+
+/**
+ * @brief Return the first RawCOO entry reserved for an entity.
+ *
+ * The returned offset is relative to the beginning of @p target's triplet
+ * slice and equals @p entity_index times @c target.block_entry_count.
+ *
+ * @param target Entity-block target whose segment is being indexed.
+ * @param entity_index Zero-based entity index within @p target.
+ * @return Offset of the entity's dense block within the target slice.
+ *
+ * A verification failure is reported for an out-of-range entity or an
+ * unrepresentable offset product.
+ */
+template<typename ValueType, typename IndexType>
+GENDIL_HOST_DEVICE
+GlobalIndex RawCOOEntityBlockOffset(
+   const RawCOOEntityBlockTarget<ValueType, IndexType>& target,
+   const GlobalIndex entity_index )
+{
+   GENDIL_VERIFY(
+      entity_index < target.num_entities,
+      "RawCOO entity index is out of range." );
+   return CheckedMultiply(
+      entity_index,
+      target.block_entry_count,
+      "RawCOO entity-block offset overflow." );
+}
+
 /// Combine prepared triplet and layout views into a borrowed assembly target.
 template <
    typename ValueType,

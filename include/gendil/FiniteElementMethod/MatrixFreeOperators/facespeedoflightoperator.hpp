@@ -230,16 +230,11 @@ void FaceSpeedOfLightExplicitFaceOperator(
             global_face_speed_of_light_required_shared_memory_v<
                KernelConfiguration,
                FiniteElementSpace >;
-         constexpr size_t shared_memory_block_size =
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size;
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          ReadWriteSpeedOfLightFaceOperator(
             kernel_conf,
@@ -284,16 +279,11 @@ void FaceSpeedOfLightExplicitOperator(
                KernelType,
                KernelConfiguration,
                FiniteElementSpace >;
-         constexpr size_t shared_memory_block_size =
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size;
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          FaceReadSpeedOfLightElementOperator(
             kernel_conf,
@@ -312,9 +302,11 @@ void FaceSpeedOfLightExplicitOperator(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          FaceWriteSpeedOfLightElementOperator(
             kernel_conf,

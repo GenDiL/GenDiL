@@ -10,10 +10,12 @@
  */
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/checkedarithmetic.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tupletraits.hpp"
 #include "gendil/Meshes/partition.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -138,15 +140,17 @@ struct MixedFiniteElementSpace
          });
    }
 
-   /** @brief Return the sum of the cell spaces' finite-element DoF counts. */
+   /** @brief Return the checked logical global DoF count over all parts. */
    Integer GetNumberOfFiniteElementDofs() const
    {
-      return SumMixedFiniteElementSpaceCounts(
-         cell_spaces,
-         [] (const auto& space)
-         {
-            return space.GetNumberOfFiniteElementDofs();
-         });
+      const GlobalIndex num_global_dofs =
+         GetNumberOfGlobalDofs(*this);
+      GENDIL_VERIFY(
+         num_global_dofs <=
+            static_cast<GlobalIndex>(
+               std::numeric_limits<Integer>::max()),
+         "Mixed finite-element logical global DoF count is not representable as Integer.");
+      return static_cast<Integer>(num_global_dofs);
    }
 
    /** @brief Return the total number of field-owned interior faces. */
@@ -171,6 +175,58 @@ struct MixedFiniteElementSpace
          });
    }
 };
+
+template<class CellSpacesTuple, class Partition>
+GlobalIndex GetNumberOfLocalDofs(
+   const MixedFiniteElementSpace<CellSpacesTuple, Partition>& space)
+{
+   GlobalIndex total = 0;
+   space.ForEachCellFiniteElementSpace(
+      [&] (const auto& cell_space)
+      {
+         total = CheckedAdd(
+            total,
+            GetNumberOfLocalDofs(cell_space),
+            "Mixed finite-element local DoF extent overflow.");
+      });
+   return total;
+}
+
+template<class CellSpacesTuple, class Partition>
+GlobalIndex GetNumberOfGlobalDofs(
+   const MixedFiniteElementSpace<CellSpacesTuple, Partition>& space)
+{
+   GlobalIndex total = 0;
+   space.ForEachCellFiniteElementSpace(
+      [&] (const auto& cell_space)
+      {
+         total = CheckedAdd(
+            total,
+            GetNumberOfGlobalDofs(cell_space),
+            "Mixed finite-element global DoF count overflow.");
+      });
+   return total;
+}
+
+template<class CellSpacesTuple, class Partition>
+GlobalIndex GetAlgebraicDofExtent(
+   const MixedFiniteElementSpace<CellSpacesTuple, Partition>& space)
+{
+   static_assert(
+      std::tuple_size_v<CellSpacesTuple> > 0,
+      "Mixed finite-element spaces require at least one cell part.");
+   const GlobalIndex algebraic_dof_extent =
+      GetAlgebraicDofExtent(
+         space.template GetCellFiniteElementSpace<0>());
+   space.ForEachCellFiniteElementSpace(
+      [&] (const auto& cell_space)
+      {
+         GENDIL_VERIFY(
+            GetAlgebraicDofExtent(cell_space) == algebraic_dof_extent,
+            "Every mixed finite-element part restriction must report the same field-wide algebraic extent.");
+      });
+   return algebraic_dof_extent;
+}
 
 /** @brief Detect a `MixedFiniteElementSpace` type. */
 template<class T>
@@ -337,11 +393,13 @@ constexpr auto MakeMixedFiniteElementSpace(Spaces&&... spaces)
       details::MakeCellOnlyPartitionFromSpaces(cell_spaces);
    using Partition = std::remove_cvref_t<decltype(partition)>;
 
-   return MixedFiniteElementSpace<
+   auto mixed_space = MixedFiniteElementSpace<
       CellSpaces,
       Partition>{
          std::move(cell_spaces),
          std::move(partition) };
+   (void)GetAlgebraicDofExtent(mixed_space);
+   return mixed_space;
 }
 
 /**
@@ -392,15 +450,72 @@ constexpr auto MakePartitionCellFiniteElementSpaceTuple(
    }
 }
 
-template<size_t I, class CellPartsTuple, class FiniteElementsTuple>
-constexpr auto MakeDGDirectSumRestrictionTuple(
+template<size_t NumCellParts>
+struct PartitionL2DirectSumPlan
+{
+   std::array<GlobalIndex, NumCellParts> num_local_dofs{};
+   std::array<GlobalIndex, NumCellParts> shifts{};
+   GlobalIndex algebraic_dof_extent = 0;
+};
+
+template<
+   class CellPartsTuple,
+   class FiniteElementsTuple,
+   size_t... I>
+auto MakePartitionL2DirectSumPlan(
    const CellPartsTuple& cell_parts,
    const FiniteElementsTuple& finite_elements,
-   GlobalIndex shift)
+   std::index_sequence<I...>)
+{
+   constexpr size_t NumCellParts = sizeof...(I);
+   PartitionL2DirectSumPlan<NumCellParts> plan{};
+   plan.num_local_dofs = std::array<GlobalIndex, NumCellParts>{
+      CheckedElementLocalDofCount<
+         typename std::remove_cvref_t<decltype(
+            std::get<I>(finite_elements))>::shape_functions>(
+               static_cast<GlobalIndex>(
+                  std::get<I>(cell_parts).mesh.GetNumberOfCells()))...};
+
+   GlobalIndex shift = 0;
+   for (size_t part = 0; part < NumCellParts; ++part)
+   {
+      plan.shifts[part] = shift;
+      shift = CheckedAdd(
+         shift,
+         plan.num_local_dofs[part],
+         "Partition L2 direct-sum global extent overflow.");
+   }
+   plan.algebraic_dof_extent = shift;
+   return plan;
+}
+
+template<class CellPartsTuple, class FiniteElementsTuple>
+auto MakePartitionL2DirectSumPlan(
+   const CellPartsTuple& cell_parts,
+   const FiniteElementsTuple& finite_elements)
 {
    constexpr size_t NumCellParts =
       std::tuple_size_v<std::remove_cvref_t<CellPartsTuple>>;
+   return MakePartitionL2DirectSumPlan(
+      cell_parts,
+      finite_elements,
+      std::make_index_sequence<NumCellParts>{});
+}
 
+template<
+   size_t I,
+   class CellPartsTuple,
+   class FiniteElementsTuple,
+   class SpecificationsTuple,
+   class Plan>
+auto MakePartitionL2CellFiniteElementSpaceTuple(
+   const CellPartsTuple& cell_parts,
+   const FiniteElementsTuple& finite_elements,
+   const SpecificationsTuple& specifications,
+   const Plan& plan)
+{
+   constexpr size_t NumCellParts =
+      std::tuple_size_v<std::remove_cvref_t<CellPartsTuple>>;
    if constexpr (I == NumCellParts)
    {
       return std::tuple{};
@@ -409,22 +524,72 @@ constexpr auto MakeDGDirectSumRestrictionTuple(
    {
       const auto& cell_part = std::get<I>(cell_parts);
       const auto& finite_element = std::get<I>(finite_elements);
-      L2Restriction restriction{ shift };
+      const auto& specification = std::get<I>(specifications);
+      GENDIL_VERIFY(
+         !specification.shift.has_value() ||
+            *specification.shift == plan.shifts[I],
+         "Explicit partition L2 shift does not match direct-sum planning.");
+      GENDIL_VERIFY(
+         !specification.algebraic_dof_extent.has_value() ||
+            *specification.algebraic_dof_extent ==
+               plan.algebraic_dof_extent,
+         "Explicit partition L2 algebraic extent does not match direct-sum planning.");
+      const ContiguousL2RestrictionSpecification effective_specification{
+         plan.shifts[I],
+         plan.algebraic_dof_extent};
       auto finite_element_space =
          MakeFiniteElementSpace(
             cell_part.mesh,
             finite_element,
-            restriction);
-      const GlobalIndex next_shift =
-         shift + finite_element_space.GetNumberOfFiniteElementDofs();
+            effective_specification);
+      const auto& restriction = GetRestriction(finite_element_space);
+      GENDIL_VERIFY(
+         GetNumberOfLocalDofs(restriction) == plan.num_local_dofs[I],
+         "Completed partition L2 restriction local count disagrees with the direct-sum plan.");
+      GENDIL_VERIFY(
+         GetNumberOfGlobalDofs(restriction) == plan.num_local_dofs[I],
+         "Completed partition L2 restriction logical global count disagrees with the direct-sum plan.");
+      GENDIL_VERIFY(
+         GetAlgebraicDofExtent(restriction) ==
+            plan.algebraic_dof_extent,
+         "Completed partition L2 restriction algebraic extent disagrees with the direct-sum plan.");
 
       return std::tuple_cat(
-         std::tuple{ restriction },
-         MakeDGDirectSumRestrictionTuple<I + 1>(
+         std::tuple{finite_element_space},
+         MakePartitionL2CellFiniteElementSpaceTuple<I + 1>(
             cell_parts,
             finite_elements,
-            next_shift));
+            specifications,
+            plan));
    }
+}
+
+template<size_t... I>
+constexpr auto MakeDefaultContiguousL2SpecificationTuple(
+   std::index_sequence<I...>)
+{
+   return std::tuple{
+      (static_cast<void>(I),
+       ContiguousL2RestrictionSpecification{})...};
+}
+
+template<class Tuple, size_t... I>
+consteval bool TupleContainsOnlyContiguousL2Specifications(
+   std::index_sequence<I...>)
+{
+   return (
+      std::is_same_v<
+         std::remove_cvref_t<std::tuple_element_t<I, Tuple>>,
+         ContiguousL2RestrictionSpecification> && ...);
+}
+
+template<class Tuple, size_t... I>
+consteval bool TupleContainsOnlyCompletedRestrictions(
+   std::index_sequence<I...>)
+{
+   return (
+      ElementDoFRestriction<
+         std::remove_cvref_t<std::tuple_element_t<I, Tuple>>> && ...);
 }
 
 } // namespace details
@@ -493,17 +658,59 @@ constexpr auto MakeMixedFiniteElementSpace(
       tuple_size_or_zero_v<Restrictions> ==
          Partition::num_cell_parts)
    {
-      auto cell_fes_tuple =
-         details::MakePartitionCellFiniteElementSpaceTuple<0>(
-            partition.CellParts(),
-            finite_elements,
-            restrictions);
+      constexpr auto Indices =
+         std::make_index_sequence<Partition::num_cell_parts>{};
+      constexpr bool AllContiguousL2Specifications =
+         details::TupleContainsOnlyContiguousL2Specifications<Restrictions>(
+            Indices);
+      constexpr bool AllCompletedRestrictions =
+         details::TupleContainsOnlyCompletedRestrictions<Restrictions>(
+            Indices);
 
-      return MixedFiniteElementSpace<
+      static_assert(
+         AllContiguousL2Specifications || AllCompletedRestrictions,
+         "MakeMixedFiniteElementSpace: the restriction tuple must contain "
+         "either only ContiguousL2RestrictionSpecification values or only "
+         "completed element-DoF restrictions. Other partition restriction "
+         "specification families are not supported.");
+
+      auto cell_fes_tuple = [&]
+      {
+         if constexpr (AllContiguousL2Specifications)
+         {
+            const auto plan =
+               details::MakePartitionL2DirectSumPlan(
+                  partition.CellParts(),
+                  finite_elements);
+            return details::MakePartitionL2CellFiniteElementSpaceTuple<0>(
+               partition.CellParts(),
+               finite_elements,
+               restrictions,
+               plan);
+         }
+         else
+         {
+            return details::MakePartitionCellFiniteElementSpaceTuple<0>(
+               partition.CellParts(),
+               finite_elements,
+               restrictions);
+         }
+      }();
+
+      auto mixed_space = MixedFiniteElementSpace<
          std::remove_cvref_t<decltype(cell_fes_tuple)>,
          Partition>{
             std::move(cell_fes_tuple),
             Partition{ partition } };
+      (void)GetAlgebraicDofExtent(mixed_space);
+      if constexpr (AllContiguousL2Specifications)
+      {
+         GENDIL_VERIFY(
+            GetNumberOfGlobalDofs(mixed_space) ==
+               GetAlgebraicDofExtent(mixed_space),
+            "Compact partition L2 global count must equal its algebraic extent.");
+      }
+      return mixed_space;
    }
    else
    {
@@ -516,7 +723,7 @@ constexpr auto MakeMixedFiniteElementSpace(
 /**
  * @brief Construct a DG mixed space with contiguous direct-sum DoF numbering.
  *
- * Creates an `L2Restriction` for every partition cell part. The first part
+ * Creates an `ContiguousL2RestrictionSpecification` for every partition cell part. The first part
  * starts at global DoF zero, and each subsequent part starts after all DoFs of
  * the preceding parts.
  *
@@ -558,10 +765,8 @@ constexpr auto MakeMixedFiniteElementSpace(
          Partition::num_cell_parts)
    {
       auto restrictions =
-         details::MakeDGDirectSumRestrictionTuple<0>(
-            partition.CellParts(),
-            finite_elements,
-            GlobalIndex{0});
+         details::MakeDefaultContiguousL2SpecificationTuple(
+            std::make_index_sequence<Partition::num_cell_parts>{});
 
       return MakeMixedFiniteElementSpace(
          std::forward<PartitionType>(partition),

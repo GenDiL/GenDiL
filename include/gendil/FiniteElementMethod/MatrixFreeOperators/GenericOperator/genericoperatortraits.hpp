@@ -150,15 +150,25 @@ inline constexpr auto generic_operator_domain_kind_v =
 } // namespace generic_operator_detail
 
 template<class Space>
-consteval bool IsScalarValueGradientSpace()
+consteval bool SupportsComponentwiseNonconformingFacetTransform()
 {
    using SpaceType = std::remove_cvref_t<Space>;
    using FE = typename SpaceType::finite_element_type;
    using ShapeFunctions = typename FE::shape_functions;
    using Restriction = typename SpaceType::restriction_type;
 
-   return !is_vector_shape_functions_v<ShapeFunctions> &&
-      TensorElementDoFRestriction<Restriction>;
+   if constexpr (is_vector_shape_functions_v<ShapeFunctions>)
+   {
+      return VectorElementDoFRestrictionForShapeFunctions<
+         Restriction,
+         ShapeFunctions>;
+   }
+   else
+   {
+      return TensorElementDoFRestrictionForShapeFunctions<
+         Restriction,
+         ShapeFunctions>;
+   }
 }
 
 template<
@@ -177,15 +187,15 @@ consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
       !FaceInfo::plus_side_type::is_conforming)
    {
       static_assert(
-         IsScalarValueGradientSpace<TrialMinusSpace>() &&
-         IsScalarValueGradientSpace<TrialPlusSpace>() &&
-         IsScalarValueGradientSpace<TestMinusSpace>() &&
-         IsScalarValueGradientSpace<TestPlusSpace>(),
+         SupportsComponentwiseNonconformingFacetTransform<TrialMinusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TrialPlusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TestMinusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TestPlusSpace>(),
          "Nonconforming global interior GenericOperator currently supports "
-         "only scalar value/gradient facet semantics on scalar tensor finite "
-         "element spaces. Vector-valued, Piola, H(div), H(curl), "
-         "and de Rham-style nonconforming facet transforms require separate "
-         "support and tests.");
+         "scalar and componentwise-vector value/gradient facet semantics on "
+         "compatible tensor finite-element restrictions. Piola, H(div), "
+         "H(curl), and de Rham-style nonconforming facet transforms require "
+         "separate support and tests.");
    }
 }
 
