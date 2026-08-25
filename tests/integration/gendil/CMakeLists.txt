@@ -1,5 +1,9 @@
 
 gendil_add_non_nvcc_test(test-mass-3d-generic test-mass-3d-generic.cpp)
+gendil_add_test(
+  test-nodal-subspace-projection
+  test-nodal-subspace-projection.cpp
+)
 if(USE_CUDA OR USE_HIP)
   gendil_add_test(test-batched-mass-operator test-batched-mass-operator.cpp)
   gendil_add_test(

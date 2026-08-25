@@ -101,7 +101,7 @@ int TestH1MassSGBSR()
    mfem::H1_FECollection fec( order, dim );
    mfem::FiniteElementSpace mfem_fes( &mfem_mesh, &fec );
 
-   auto restriction = GetH1Restriction( mfem_fes );
+   auto restriction = GetIndirectH1RestrictionSpecification( mfem_fes );
    auto fe_space = MakeFiniteElementSpace( mesh, finite_element, restriction );
 
    constexpr Integer num_quad_1d = order + 3;

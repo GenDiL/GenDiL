@@ -33,13 +33,13 @@ int main(int, char**)
    auto feL = MakeLobattoFiniteElement(FiniteElementOrders<pL, pL, pL>{});
    auto feR = MakeLobattoFiniteElement(FiniteElementOrders<pR, pR, pR>{});
 
-   L2Restriction resL{0};
+   ContiguousL2RestrictionSpecification resL{0};
    auto fe_space_L = MakeFiniteElementSpace(meshL, feL, resL);
-   const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
+   const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
 
-   L2Restriction resR{ndofsL};
+   ContiguousL2RestrictionSpecification resR{ndofsL};
    auto fe_space_R = MakeFiniteElementSpace(meshR, feR, resR);
-   const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+   const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
    constexpr Integer Dim = GetDim(fe_space_L);
    static_assert(Dim == 3, "This test is set up for 3D.");

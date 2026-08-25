@@ -44,6 +44,15 @@ void ApplyOrientationToCell(
    cell.applied_orientation = orientation;
 }
 
+template < Integer Dim >
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(
+   const IdentityOrientation< Dim > &,
+   RecordingCell< Dim > & cell )
+{
+   cell.applied_orientation = MakeReferencePermutation< Dim >();
+}
+
 template < Integer MeshDim >
 struct OrientedMesh
 {
@@ -231,6 +240,17 @@ static_assert(
    !CanApplyOrientationToProductCell<
       IdentityOrientation< HighOrderProductCell::Dim - 1 >,
       HighOrderProductCell > );
+static_assert(
+   !CanApplyOrientationToProductCell<
+      Permutation< HighOrderProductCell::Dim >,
+      HighOrderProductCell > );
+using HighOrderProductOrientation = TensorProductOrientation<
+   Permutation< LineCell< 3 >::Dim >,
+   Permutation< QuadCell< 3 >::Dim > >;
+static_assert(
+   CanApplyOrientationToProductCell<
+      HighOrderProductOrientation,
+      HighOrderProductCell > );
 
 template < typename Product >
 bool CheckProductCellNodes(
@@ -372,24 +392,45 @@ bool TestValidityAndExtents()
 {
    const std::array< size_t, 3 > anisotropic{ 2, 3, 4 };
    const std::array< size_t, 3 > repeated{ 2, 3, 2 };
+   const auto structured_valid = MakeTensorProductOrientation(
+      IdentityOrientation< 1 >{},
+      Permutation< 2 >{ { -1, 2 } } );
+   const auto structured_invalid = MakeTensorProductOrientation(
+      IdentityOrientation< 1 >{},
+      Permutation< 2 >{ { 0, 2 } } );
+   const TensorProductOrientation nested_valid{
+      IdentityOrientation< 1 >{},
+      TensorProductOrientation{
+         Permutation< 1 >{ { -1 } },
+         IdentityOrientation< 1 >{} } };
 
    bool success = true;
+   static_assert( IsValidOrientation( IdentityOrientation< 3 >{} ) );
    success = Check(
-      FaceReadDofsOrientationIsValid(
+      IsValidOrientation(
          Permutation< 3 >{ { -1, 2, -3 } } ),
       "valid signed permutation rejected" ) && success;
    success = Check(
-      !FaceReadDofsOrientationIsValid(
+      !IsValidOrientation(
          Permutation< 3 >{ { 0, 2, 3 } } ),
       "zero orientation entry accepted" ) && success;
    success = Check(
-      !FaceReadDofsOrientationIsValid(
+      !IsValidOrientation(
          Permutation< 3 >{ { 1, 1, 3 } } ),
       "duplicate orientation axis accepted" ) && success;
    success = Check(
-      !FaceReadDofsOrientationIsValid(
+      !IsValidOrientation(
          Permutation< 3 >{ { 1, 2, 4 } } ),
       "out-of-range orientation axis accepted" ) && success;
+   success = Check(
+      IsValidOrientation( structured_valid ),
+      "valid structured orientation rejected" ) && success;
+   success = Check(
+      !IsValidOrientation( structured_invalid ),
+      "invalid structured orientation accepted" ) && success;
+   success = Check(
+      IsValidOrientation( nested_valid ),
+      "valid nested structured orientation rejected" ) && success;
    success = Check(
       OrientedTensorDofShapeIsCompatible(
          anisotropic, Permutation< 3 >{ { -1, 2, -3 } } ),
@@ -402,6 +443,17 @@ bool TestValidityAndExtents()
       OrientedTensorDofShapeIsCompatible(
          repeated, Permutation< 3 >{ { 3, 2, -1 } } ),
       "equal-extent permutation rejected" ) && success;
+   success = Check(
+      OrientedTensorDofShapeIsCompatible(
+         anisotropic, structured_valid ),
+      "compatible structured orientation rejected" ) && success;
+   success = Check(
+      !OrientedTensorDofShapeIsCompatible(
+         anisotropic,
+         MakeTensorProductOrientation(
+            IdentityOrientation< 1 >{},
+            Permutation< 2 >{ { 2, 1 } } ) ),
+      "structured unequal-extent permutation accepted" ) && success;
    return success;
 }
 
@@ -444,19 +496,36 @@ bool TestDirectSumTransform(
       product_sizes[ HeadDim + axis ] = tail_sizes[ axis ];
    }
 
-   auto product_orientation = MakeReferencePermutation< product_dim >();
-   Set< 0 >( product_orientation, head_orientation );
-   Set< HeadDim >( product_orientation, tail_orientation );
+   const auto product_orientation = MakeTensorProductOrientation(
+      head_orientation, tail_orientation );
+   const auto flattened_orientation = FlattenOrientation(
+      product_orientation );
+   auto flat_oracle = MakeReferencePermutation< product_dim >();
+   Set< 0 >( flat_oracle, head_orientation );
+   Set< HeadDim >( flat_oracle, tail_orientation );
 
    bool success = true;
    success = Check(
-      GetSubPermutation< HeadDim >( product_orientation, 0 ) ==
-         head_orientation,
-      "product orientation changed the head-factor block" ) && success;
+      flattened_orientation == flat_oracle,
+      "structured product orientation does not match its flat oracle" ) &&
+      success;
+   const auto structured_layout = MakeOrientedLayout(
+      product_sizes,
+      product_orientation );
+   const auto flat_layout = MakeOrientedLayout(
+      product_sizes,
+      flat_oracle );
    success = Check(
-      GetSubPermutation< TailDim >( product_orientation, HeadDim ) ==
-         tail_orientation,
-      "product orientation changed the tail-factor block" ) && success;
+      structured_layout.offset == flat_layout.offset,
+      "structured product layout offset does not match its flat oracle" ) &&
+      success;
+   for ( Integer axis = 0; axis < product_dim; ++axis )
+   {
+      success = Check(
+         structured_layout.strides[ axis ] == flat_layout.strides[ axis ],
+         "structured product layout stride does not match its flat oracle" ) &&
+         success;
+   }
 
    std::array< Integer, product_dim > product_reference{};
    while ( true )
@@ -474,6 +543,8 @@ bool TestDirectSumTransform(
 
       const auto product_native = ReferenceToNativeIndex(
          product_reference, product_sizes, product_orientation );
+      const auto flat_native = ReferenceToNativeIndex(
+         product_reference, product_sizes, flat_oracle );
       const auto head_native = ReferenceToNativeIndex(
          head_reference, head_sizes, head_orientation );
       const auto tail_native = ReferenceToNativeIndex(
@@ -481,14 +552,16 @@ bool TestDirectSumTransform(
       for ( Integer axis = 0; axis < HeadDim; ++axis )
       {
          success = Check(
-            product_native[ axis ] == head_native[ axis ],
+            product_native[ axis ] == head_native[ axis ] &&
+               product_native[ axis ] == flat_native[ axis ],
             "product index transform crossed the head-factor boundary" ) &&
             success;
       }
       for ( Integer axis = 0; axis < TailDim; ++axis )
       {
          success = Check(
-            product_native[ HeadDim + axis ] == tail_native[ axis ],
+            product_native[ HeadDim + axis ] == tail_native[ axis ] &&
+               product_native[ HeadDim + axis ] == flat_native[ HeadDim + axis ],
             "product index transform crossed the tail-factor boundary" ) &&
             success;
       }
@@ -513,6 +586,29 @@ bool TestDirectSumTransform(
 
 bool TestTensorProductTransformComposition()
 {
+   using MixedOrientation = decltype( MakeTensorProductOrientation(
+      Permutation< 2 >{}, IdentityOrientation< 4 >{} ) );
+   static_assert( sizeof( MixedOrientation ) == sizeof( Permutation< 2 > ) );
+   using AllRuntimeOrientation = decltype( MakeTensorProductOrientation(
+      Permutation< 2 >{}, Permutation< 1 >{} ) );
+   static_assert(
+      is_runtime_permutation_orientation_v< AllRuntimeOrientation > );
+   static_assert(
+      !is_runtime_permutation_orientation_v< MixedOrientation > );
+   static_assert(
+      sizeof( AllRuntimeOrientation ) ==
+         sizeof( Permutation< 2 > ) + sizeof( Permutation< 1 > ) );
+   using NestedRuntimeOrientation = TensorProductOrientation<
+      Permutation< 2 >,
+      TensorProductOrientation< Permutation< 2 >, Permutation< 2 > > >;
+   static_assert(
+      sizeof( NestedRuntimeOrientation ) ==
+         3 * sizeof( Permutation< 2 > ) );
+   static_assert( std::same_as<
+      decltype( MakeTensorProductOrientation(
+         IdentityOrientation< 2 >{}, IdentityOrientation< 4 >{} ) ),
+      IdentityOrientation< 6 > > );
+
    bool success = true;
    success = TestDirectSumTransform< 1, 1 >(
       { 3 }, Permutation< 1 >{ { -1 } },
@@ -545,6 +641,34 @@ bool TestTensorProductTransformComposition()
    return success;
 }
 
+bool TestExhaustiveTensorProductTransformComposition()
+{
+   bool success = true;
+   const auto head_orientations = MakeAllSignedPermutations< 2 >();
+   const auto tail_orientations = MakeAllSignedPermutations< 2 >();
+   for ( const auto & head : head_orientations )
+   {
+      for ( const auto & tail : tail_orientations )
+      {
+         success = TestDirectSumTransform< 2, 2 >(
+            { 2, 2 }, head,
+            { 3, 3 }, tail ) && success;
+      }
+   }
+   const auto three_dimensional_orientations =
+      MakeAllSignedPermutations< 3 >();
+   for ( const auto & head : head_orientations )
+   {
+      for ( const auto & tail : three_dimensional_orientations )
+      {
+         success = TestDirectSumTransform< 2, 3 >(
+            { 2, 2 }, head,
+            { 2, 2, 2 }, tail ) && success;
+      }
+   }
+   return success;
+}
+
 bool TestProductMeshConnectivity()
 {
    using orientation_test::OrientedMesh;
@@ -563,18 +687,17 @@ bool TestProductMeshConnectivity()
    using TailInfo = std::remove_cvref_t< decltype( tail_face ) >;
    bool success = true;
    success = Check(
-      head_face.PlusSide().GetOrientation() ==
+      FlattenOrientation( head_face.PlusSide().GetOrientation() ) ==
          Permutation< 3 >{ { -2, 1, 3 } },
       "head-factor orientation was not embedded as a leading block" ) &&
       success;
    success = Check(
-      tail_face.PlusSide().GetOrientation() ==
+      FlattenOrientation( tail_face.PlusSide().GetOrientation() ) ==
          Permutation< 3 >{ { 1, 2, -3 } },
       "tail-factor orientation was not lifted by the full head rank" ) &&
       success;
    success = Check(
-      static_cast< Permutation< 3 > >(
-         head_face.MinusSide().GetOrientation() ) ==
+      FlattenOrientation( head_face.MinusSide().GetOrientation() ) ==
          MakeReferencePermutation< 3 >(),
       "product global-face minus orientation is not canonical" ) && success;
    success = Check(
@@ -600,7 +723,9 @@ bool TestProductMeshConnectivity()
       "product tail normals are incorrect" ) && success;
 
    auto cell = mesh.GetCell( 0 );
-   const Permutation< 3 > cell_orientation{ { -2, 1, -3 } };
+   const auto cell_orientation = MakeTensorProductOrientation(
+      Permutation< 2 >{ { -2, 1 } },
+      Permutation< 1 >{ { -1 } } );
    ApplyOrientationToCell( cell_orientation, cell );
    success = Check(
       std::get< 0 >( cell.Cells ).applied_orientation ==
@@ -623,19 +748,44 @@ bool TestRecursiveProductComposition()
       2, Permutation< 1 >{ { -1 } } };
    const auto nested = MakeCartesianProductMesh( first, second );
    const auto recursive = MakeCartesianProductMesh( nested, third );
+   const auto right_nested = MakeCartesianProductMesh( second, third );
+   const auto right_recursive = MakeCartesianProductMesh( first, right_nested );
 
    const auto second_factor_face = recursive.GetLocalFaceInfo(
       GlobalIndex{ 0 }, std::integral_constant< Integer, 2 >{} );
    const auto third_factor_face = recursive.GetLocalFaceInfo(
       GlobalIndex{ 0 }, std::integral_constant< Integer, 3 >{} );
+   const auto right_second_factor_face = right_recursive.GetLocalFaceInfo(
+      GlobalIndex{ 0 }, std::integral_constant< Integer, 2 >{} );
+   using RightOrientation = std::remove_cvref_t< decltype(
+      right_second_factor_face.PlusSide().GetOrientation() ) >;
+   static_assert( RightOrientation::num_components == 2 );
+   static_assert( is_tensor_product_orientation_v<
+      std::tuple_element_t< 1, typename RightOrientation::component_types > > );
+
+   auto right_cell = right_recursive.GetCell( 0 );
+   ApplyOrientationToCell(
+      right_second_factor_face.PlusSide().GetOrientation(),
+      right_cell );
+
    return Check(
-      second_factor_face.PlusSide().GetOrientation() ==
+      FlattenOrientation( second_factor_face.PlusSide().GetOrientation() ) ==
          Permutation< 4 >{ { 1, 2, -3, 4 } },
       "recursive product did not preserve the nested factor block" ) &&
       Check(
-         third_factor_face.PlusSide().GetOrientation() ==
+         FlattenOrientation( third_factor_face.PlusSide().GetOrientation() ) ==
             Permutation< 4 >{ { 1, 2, 3, -4 } },
-         "recursive product did not lift the final factor orientation" );
+         "recursive product did not lift the final factor orientation" ) &&
+      Check(
+         FlattenOrientation(
+            right_second_factor_face.PlusSide().GetOrientation() ) ==
+            Permutation< 4 >{ { 1, 2, -3, 4 } },
+         "right-nested product did not preserve the nested factor block" ) &&
+      Check(
+         std::get< 0 >(
+            std::get< 1 >( right_cell.Cells ).Cells ).applied_orientation ==
+            Permutation< 1 >{ { -1 } },
+         "right-nested product-cell orientation did not reach its leaf" );
 }
 
 bool TestRuntimeIdentityIsProductCellNoOp()
@@ -644,8 +794,11 @@ bool TestRuntimeIdentityIsProductCellNoOp()
       MakeNonAffineLineCell(), MakeNonAffineQuadCell() };
    auto runtime_identity = original;
    auto static_identity = original;
+   const auto runtime_identity_orientation = MakeTensorProductOrientation(
+      Permutation< 1 >{ { 1 } },
+      Permutation< 2 >{ { 1, 2 } } );
    ApplyOrientationToCell(
-      MakeReferencePermutation< decltype( original )::Dim >(),
+      runtime_identity_orientation,
       runtime_identity );
    ApplyOrientationToCell(
       IdentityOrientation< decltype( original )::Dim >{},
@@ -727,8 +880,12 @@ bool TestRuntimeIdentityIsProductCellNoOp()
    const ProductCell nested_original{ original, MakeNonAffineLineCell() };
    auto nested_runtime_identity = nested_original;
    auto nested_static_identity = nested_original;
+   const auto nested_runtime_identity_orientation =
+      MakeTensorProductOrientation(
+         runtime_identity_orientation,
+         Permutation< 1 >{ { 1 } } );
    ApplyOrientationToCell(
-      MakeReferencePermutation< decltype( nested_original )::Dim >(),
+      nested_runtime_identity_orientation,
       nested_runtime_identity );
    ApplyOrientationToCell(
       IdentityOrientation< decltype( nested_original )::Dim >{},
@@ -799,6 +956,7 @@ int main()
    success = TestValidityAndExtents() && success;
    success = TestSetAndGetSubPermutation() && success;
    success = TestTensorProductTransformComposition() && success;
+   success = TestExhaustiveTensorProductTransformComposition() && success;
    success = TestProductMeshConnectivity() && success;
    success = TestRecursiveProductComposition() && success;
    success = TestRuntimeIdentityIsProductCellNoOp() && success;

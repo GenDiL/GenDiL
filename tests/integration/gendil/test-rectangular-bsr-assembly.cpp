@@ -801,11 +801,11 @@ bool TestScalarH1RectangularCellSGBSR()
    auto p1_space = MakeFiniteElementSpace(
       mesh,
       p1_fe,
-      H1Restriction{ p1_indices, 3 } );
+      IndirectH1RestrictionSpecification{ p1_indices, 3 } );
    auto p2_space = MakeFiniteElementSpace(
       mesh,
       p2_fe,
-      H1Restriction{ p2_indices, 5 } );
+      IndirectH1RestrictionSpecification{ p2_indices, 5 } );
 
    bool success = RunScalarH1RectangularCellCase(
       mesh,
@@ -859,6 +859,156 @@ bool TestScalarH1RectangularCellSGBSR()
       Near( p1_global_data[2], 1.0 ),
       "Scalar H1 p1 scatter did not accumulate the shared cell endpoint." ) &&
       success;
+   return success;
+}
+
+bool TestScalarCrossFamilyCellSGBSR()
+{
+   Cartesian1DMesh mesh( 0.5, 2 );
+   const auto finite_element =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
+   const auto l2_space = MakeFiniteElementSpace( mesh, finite_element );
+
+   const std::array< int, 4 > h1_map{ 0, 1, 1, 2 };
+   HostDevicePointer< const int > h1_indices{};
+   h1_indices.host_pointer = h1_map.data();
+   const auto h1_space =
+      MakeFiniteElementSpace(
+         mesh,
+         finite_element,
+         IndirectH1RestrictionSpecification{ h1_indices, 3 } );
+
+   bool success = RunScalarH1RectangularCellCase(
+      mesh,
+      l2_space,
+      h1_space,
+      4,
+      3,
+      2,
+      2,
+      "Scalar L2 -> H1 SGBSR dimensions are incorrect.",
+      "Scalar L2 -> H1 SGBSR action is incorrect." );
+   success = RunScalarH1RectangularCellCase(
+      mesh,
+      h1_space,
+      l2_space,
+      3,
+      4,
+      2,
+      2,
+      "Scalar H1 -> L2 SGBSR dimensions are incorrect.",
+      "Scalar H1 -> L2 SGBSR action is incorrect." ) && success;
+   return success;
+}
+
+template < typename TrialFESpace, typename TestFESpace >
+bool RunVectorH1RectangularCellCase(
+   const Cartesian1DMesh & mesh,
+   const TrialFESpace & trial_space,
+   const TestFESpace & test_space,
+   const GlobalIndex expected_cols,
+   const GlobalIndex expected_rows,
+   const GlobalIndex expected_block_cols,
+   const GlobalIndex expected_block_rows,
+   const char * dimension_message,
+   const char * action_message )
+{
+   VectorTrialSpace< "vector_u" > u;
+   VectorTestSpace< "vector_v" > v;
+   const auto form =
+      integrate( Cells< "mesh" >{}, dot( u, v ) );
+   const auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "vector_u" >( trial_space ),
+         MakeTestField< "vector_v" >( test_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   const auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4 >{} );
+   using KernelPolicy = SerialKernelConfiguration;
+
+   auto matrix =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule,
+         HostBSRBackend<>{} );
+   const auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+
+   bool success = Check(
+      matrix.NumCols() == expected_cols &&
+      matrix.NumRows() == expected_rows &&
+      matrix.TrialBsrSize() == 2 * expected_block_cols &&
+      matrix.TestBsrSize() == 2 * expected_block_rows &&
+      matrix.bsr_matrix.block_cols == expected_block_cols &&
+      matrix.bsr_matrix.block_rows == expected_block_rows,
+      dimension_message );
+
+   Vector x( expected_cols );
+   FillDeterministicInput( x );
+   const auto expected = ApplyOperator( generic, x, expected_rows );
+   success = CheckAction(
+      matrix,
+      x,
+      expected,
+      action_message ) && success;
+   return success;
+}
+
+bool TestDistinctVectorH1RectangularCellSGBSR()
+{
+   Cartesian1DMesh mesh( 0.5, 2 );
+   const auto p1_scalar =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
+   const auto p2_scalar =
+      MakeLobattoFiniteElement( FiniteElementOrders< 2 >{} );
+   const auto p1_vector =
+      MakeVectorFiniteElement( p1_scalar, p1_scalar );
+   const auto p2_vector =
+      MakeVectorFiniteElement( p2_scalar, p2_scalar );
+
+   const std::array< int, 4 > p1_map{ 0, 1, 1, 2 };
+   const std::array< int, 6 > p2_map{ 0, 1, 2, 2, 3, 4 };
+   HostDevicePointer< const int > p1_indices{};
+   HostDevicePointer< const int > p2_indices{};
+   p1_indices.host_pointer = p1_map.data();
+   p2_indices.host_pointer = p2_map.data();
+   const auto p1_space =
+      MakeFiniteElementSpace(
+         mesh,
+         p1_vector,
+         MakeVectorIndirectH1RestrictionSpecification< 2 >(
+            IndirectH1RestrictionSpecification{ p1_indices, 3 } ) );
+   const auto p2_space =
+      MakeFiniteElementSpace(
+         mesh,
+         p2_vector,
+         MakeVectorIndirectH1RestrictionSpecification< 2 >(
+            IndirectH1RestrictionSpecification{ p2_indices, 5 } ) );
+
+   bool success = RunVectorH1RectangularCellCase(
+      mesh,
+      p1_space,
+      p2_space,
+      6,
+      10,
+      4,
+      6,
+      "Vector H1 p1 -> p2 SGBSR dimensions are incorrect.",
+      "Vector H1 p1 -> p2 SGBSR action is incorrect." );
+   success = RunVectorH1RectangularCellCase(
+      mesh,
+      p2_space,
+      p1_space,
+      10,
+      6,
+      6,
+      4,
+      "Vector H1 p2 -> p1 SGBSR dimensions are incorrect.",
+      "Vector H1 p2 -> p1 SGBSR action is incorrect." ) && success;
    return success;
 }
 
@@ -941,6 +1091,8 @@ int main()
    success = TestReverseOrientedInteriorBSR() && success;
 #endif
    success = TestScalarH1RectangularCellSGBSR() && success;
+   success = TestScalarCrossFamilyCellSGBSR() && success;
+   success = TestDistinctVectorH1RectangularCellSGBSR() && success;
 #if !defined(GENDIL_USE_DEVICE)
    success = TestVectorL2ReverseOrientedInteriorSGBSR() && success;
 #endif

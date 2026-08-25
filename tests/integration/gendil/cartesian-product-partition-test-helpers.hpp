@@ -159,7 +159,45 @@ struct NonconformingFactorConnectivity
 
 inline auto MakeNonconformingFactor()
 {
-   Cartesian2DMesh mesh(0.5, 0.5, 2, 2, Point<2>{0.0, 0.0});
+   static const std::array<Real, 32> nodes = []
+   {
+      std::array<Real, 32> result{};
+      for (Integer element = 0; element < 4; ++element)
+      {
+         const Integer cell_x = element % 2;
+         const Integer cell_y = element / 2;
+         for (Integer j = 0; j < 2; ++j)
+         {
+            for (Integer i = 0; i < 2; ++i)
+            {
+               const Integer dof = 4 * element + i + 2 * j;
+               result[2 * dof] = Real{0.5} * (cell_x + i);
+               result[2 * dof + 1] = Real{0.5} * (cell_y + j);
+            }
+         }
+      }
+      return result;
+   }();
+   static const std::array<int, 16> restriction = []
+   {
+      std::array<int, 16> result{};
+      for (Integer i = 0; i < 16; ++i)
+      {
+         result[i] = static_cast<int>(i);
+      }
+      return result;
+   }();
+
+   const StridedView<2, const Real> node_view{
+      PointerContainer<const Real>{nodes.data()},
+      StridedLayout<2>{GlobalIndex{1}, GlobalIndex{2}}};
+   HostDevicePointer<const int> restriction_pointer{};
+   restriction_pointer.host_pointer = restriction.data();
+   const HostDeviceStridedView<3, const int> restriction_view{
+      restriction_pointer,
+      StridedLayout<3>{
+         GlobalIndex{1}, GlobalIndex{2}, GlobalIndex{4}}};
+   const QuadCellMesh<1> mesh{node_view, restriction_view, 4};
    return MakePartition(
       MakeCellPart(mesh),
       MakeInteriorFacePart<0, 0>(NonconformingFactorConnectivity{}));

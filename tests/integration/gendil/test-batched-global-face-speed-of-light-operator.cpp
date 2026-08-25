@@ -593,7 +593,9 @@ void CheckSharedMemoryRequirements()
       FiniteElementSpace<
          Cartesian1DMesh,
          GLLFiniteElement< 3 >,
-         L2Restriction >;
+         ContiguousL2Restriction<
+            finite_element_dof_shape_t<
+               typename GLLFiniteElement< 3 >::shape_functions > > >;
    using DirectGlobalEmpty =
       DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 2 >;
    using FullSharedEmpty =

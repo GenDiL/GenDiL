@@ -197,6 +197,78 @@ bool TestNonconformingFacetQuadDataMappingAndLifetime()
    return success;
 }
 
+bool TestNonconformingVectorFacetQuadDataMapsEveryComponent()
+{
+   using QuadraticShape1D = GaussLobattoLegendreShapeFunctions<2>;
+   using QuadraticDofToQuad1D =
+      CachedDofToQuad<QuadraticShape1D, Points1D>;
+
+   const auto linear_component = MakeTensorProductData(
+      DofToQuad1D{},
+      DofToQuad1D{});
+   const auto quadratic_component = MakeTensorProductData(
+      QuadraticDofToQuad1D{},
+      QuadraticDofToQuad1D{});
+   const auto vector_qd = MakeVectorDofToQuad(
+      linear_component,
+      quadratic_component);
+   const auto mapped = MakeNonconformingFacetQuadData(
+      MakeNonconformingFace(),
+      vector_qd);
+
+   using Mapped = std::remove_cvref_t<decltype(mapped)>;
+   static_assert(is_vector_dof_to_quad_v<Mapped>);
+   static_assert(
+      std::tuple_size_v<typename Mapped::components_type> == 2);
+
+   const Real q0 = Points1D::GetCoord(0);
+   const Real mapped_x = 0.25 + 0.5 * q0;
+   const Real mapped_y = 0.5 + 0.25 * q0;
+   const auto& linear = GetVectorComponent<0>(mapped);
+   const auto& quadratic = GetVectorComponent<1>(mapped);
+
+   bool success = true;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).values(0, 1),
+      mapped_x,
+      "mapped vector linear-component value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(linear).values(0, 1),
+      mapped_y,
+      "mapped vector linear-component tangential value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(quadratic).values(0, 1),
+      Real{4} * mapped_x * (Real{1} - mapped_x),
+      "mapped vector quadratic-component value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(quadratic).values(0, 1),
+      Real{4} * mapped_y * (Real{1} - mapped_y),
+      "mapped vector quadratic-component tangential value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).gradients(0, 1),
+      Real{1},
+      "mapped vector linear-component gradient") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(quadratic).gradients(0, 1),
+      Real{4} - Real{8} * mapped_x,
+      "mapped vector quadratic-component gradient") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(linear).weights(0),
+      Points1D::GetWeight(0),
+      "mapped vector linear-component weight") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(quadratic).weights(0),
+      Points1D::GetWeight(0),
+      "mapped vector quadratic-component weight") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).quad_gradients(0, 1),
+      LagrangeShapeFunctions<Points1D>::ComputeGradientValue(
+         1,
+         mapped_x),
+      "mapped vector linear-component quadrature gradient") && success;
+   return success;
+}
+
 bool TestInterpolateValuesUsesFacetQuadData()
 {
    auto face_quad_data = MakeSparseFaceQData();
@@ -443,10 +515,10 @@ bool TestNestedNonconformingQDataRootOffset()
             NonconformingFace3D,
             2>>>;
    using ActualDofQData = decltype(
-      MakeNestedNonconformingDofToQuadData(face, nested_dof_qdata));
+      MakeNonconformingFacetQuadData(face, nested_dof_qdata));
    static_assert(std::same_as<ActualDofQData, ExpectedDofQData>);
    const auto mapped_dof_qdata =
-      MakeNestedNonconformingDofToQuadData(face, nested_dof_qdata);
+      MakeNonconformingFacetQuadData(face, nested_dof_qdata);
 
    using MappedDofQData = decltype(mapped_dof_qdata);
    using FirstDofGroup = tensor_product_entry_t<0, MappedDofQData>;
@@ -500,12 +572,63 @@ bool TestNestedNonconformingQDataRootOffset()
             NonconformingFace3D,
             2>>>;
    using ActualPointQData = decltype(
-      MakeNestedNonconformingMappedPointSetData(
+      MakeNonconformingFacetQuadData(
          face,
          nested_point_qdata));
    static_assert(std::same_as<ActualPointQData, ExpectedPointQData>);
    const auto mapped_point_qdata =
-      MakeNestedNonconformingMappedPointSetData(face, nested_point_qdata);
+      MakeNonconformingFacetQuadData(face, nested_point_qdata);
+
+   using SingleDofQData = decltype(
+      MakeNonconformingFacetQuadData(face, DofToQuad1D{}));
+   using SinglePointQData = decltype(
+      MakeNonconformingFacetQuadData(face, Points1D{}));
+   static_assert(std::same_as<
+      SingleDofQData,
+      NonconformingDofToQuad<
+         Shape1D,
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   static_assert(std::same_as<
+      SinglePointQData,
+      NonconformingMappedPointSet1D<
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   const auto mapped_single_dof =
+      MakeNonconformingFacetQuadData(face, DofToQuad1D{});
+   const auto mapped_single_point =
+      MakeNonconformingFacetQuadData(face, Points1D{});
+
+   const auto mixed_qdata = MakeTensorProductData(
+      MakeTensorProductData(DofToQuad1D{}),
+      MakeTensorProductData(
+         Points1D{},
+         MakeTensorProductData(DofToQuad1D{})));
+   using ExpectedMixedQData = TensorProductData<
+      TensorProductData<
+         NonconformingDofToQuad<
+            Shape1D,
+            Points1D,
+            NonconformingFace3D,
+            0>>,
+      TensorProductData<
+         NonconformingMappedPointSet1D<
+            Points1D,
+            NonconformingFace3D,
+            1>,
+         TensorProductData<
+            NonconformingDofToQuad<
+               Shape1D,
+               Points1D,
+               NonconformingFace3D,
+               2>>>>;
+   using ActualMixedQData = decltype(
+      MakeNonconformingFacetQuadData(face, mixed_qdata));
+   static_assert(std::same_as<ActualMixedQData, ExpectedMixedQData>);
+   const auto mapped_mixed_qdata =
+      MakeNonconformingFacetQuadData(face, mixed_qdata);
 
    using MappedPointQData = decltype(mapped_point_qdata);
    using FirstPointGroup = tensor_product_entry_t<0, MappedPointQData>;
@@ -552,8 +675,25 @@ bool TestNestedNonconformingQDataRootOffset()
       GetTensorProductEntry<1>(mapped_point_qdata));
    const auto& mapped_point_z = GetTensorProductEntry<1>(
       GetTensorProductEntry<1>(mapped_point_qdata));
+   const auto& mapped_mixed_y = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(mapped_mixed_qdata));
+   const auto& mapped_mixed_z = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(
+         GetTensorProductEntry<1>(mapped_mixed_qdata)));
 
    bool success = true;
+   success =
+      CheckClose(
+         mapped_single_dof.values(q, 1),
+         0.1 + 0.25 * reference_coord,
+         "single mapped dof x coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_single_point.coord(q),
+         0.1 + 0.25 * reference_coord,
+         "single mapped point x coordinate") &&
+      success;
    success =
       CheckClose(
          mapped_dof_x.values(q, 1),
@@ -602,6 +742,32 @@ bool TestNestedNonconformingQDataRootOffset()
          reference_weight,
          "nested mapped point weight") &&
       success;
+   success =
+      CheckClose(
+         mapped_mixed_y.coord(q),
+         0.2 + 0.5 * reference_coord,
+         "mixed nested mapped point y coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.values(q, 1),
+         0.3 + 0.75 * reference_coord,
+         "mixed nested mapped dof z coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.gradients(q, 1),
+         1.0,
+         "mixed nested mapped dof gradient") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.quad_gradients(q, 1),
+         LagrangeShapeFunctions<Points1D>::ComputeGradientValue(
+            1,
+            0.3 + 0.75 * reference_coord),
+         "mixed nested mapped quadrature gradient") &&
+      success;
 
    const TensorIndex<3> qi{
       static_cast<GlobalIndex>(q),
@@ -620,6 +786,12 @@ bool TestNestedNonconformingQDataRootOffset()
          GetWeight(qi, mapped_point_qdata),
          expected_weight,
          "nested mapped point product weight") &&
+      success;
+   success =
+      CheckClose(
+         GetWeight(qi, mapped_mixed_qdata),
+         expected_weight,
+         "mixed nested mapped product weight") &&
       success;
    return success;
 }
@@ -672,6 +844,7 @@ int main()
    success = TestConformingFacetQuadDataReference() && success;
    success = TestEmptyFacetQuadDataTrait() && success;
    success = TestNonconformingFacetQuadDataMappingAndLifetime() && success;
+   success = TestNonconformingVectorFacetQuadDataMapsEveryComponent() && success;
    success = TestInterpolateValuesUsesFacetQuadData() && success;
    success = TestAffineMappedQDataFixedCoordinateFirst() && success;
    success = TestAffineMappedQDataFixedCoordinateLast() && success;

@@ -15,14 +15,16 @@ using namespace gendil::test;
 namespace
 {
 
-template<Integer Dim>
+template<class Orientation, size_t Dim>
 bool CheckPermutation(
-   const Permutation<Dim>& got,
+   const Orientation& orientation,
    const std::array<LocalIndex, Dim>& expected,
    const std::string& label)
 {
+   static_assert(orientation_dimension_v<Orientation> == Dim);
+   const auto got = FlattenOrientation(orientation);
    bool success = true;
-   for (Integer d = 0; d < Dim; ++d)
+   for (size_t d = 0; d < Dim; ++d)
    {
       success = Check(got(d) == expected[d], label) && success;
    }
@@ -222,7 +224,7 @@ bool TestAsymmetricStructure()
       IdentityOrientation<3>>);
    static_assert(std::same_as<
       typename decltype(first0)::plus_side_type::orientation_type,
-      Permutation<3>>);
+      TensorProductOrientation<Permutation<2>, IdentityOrientation<1>>>);
    static_assert(FirstMinus::local_face_index_type::value == 3);
    static_assert(FirstMinus::normal_type::index == 0);
    static_assert(FirstMinus::normal_type::sign == 1);
@@ -245,7 +247,7 @@ bool TestAsymmetricStructure()
       IdentityOrientation<3>>);
    static_assert(std::same_as<
       typename decltype(second0)::plus_side_type::orientation_type,
-      Permutation<3>>);
+      TensorProductOrientation<IdentityOrientation<1>, Permutation<2>>>);
    static_assert(SecondMinus::local_face_index_type::value == 4);
    static_assert(SecondMinus::normal_type::index == 1);
    static_assert(SecondMinus::normal_type::sign == 1);
@@ -328,10 +330,14 @@ bool TestNestedMiddleFactorLifting()
    static_assert(RightMinus::normal_type::sign == 1);
    static_assert(std::same_as<
       typename LeftInfo::plus_side_type::orientation_type,
-      Permutation<4>>);
+      TensorProductOrientation<
+         TensorProductOrientation<IdentityOrientation<1>, Permutation<2>>,
+         IdentityOrientation<1>>>);
    static_assert(std::same_as<
       typename RightInfo::plus_side_type::orientation_type,
-      Permutation<4>>);
+      TensorProductOrientation<
+         IdentityOrientation<1>,
+         TensorProductOrientation<Permutation<2>, IdentityOrientation<1>>>>);
 
    bool success = Check(
       left_info.MinusSide().GetCellIndex() == 18 &&
@@ -348,8 +354,8 @@ bool TestNestedMiddleFactorLifting()
       std::array<LocalIndex, 4>{1, 2, -3, 4},
       "right-associated middle-factor signed orientation") && success;
    success = Check(
-      left_info.PlusSide().GetOrientation() ==
-         right_info.PlusSide().GetOrientation(),
+      FlattenOrientation(left_info.PlusSide().GetOrientation()) ==
+         FlattenOrientation(right_info.PlusSide().GetOrientation()),
       "middle-factor orientation values agree by association") && success;
    const auto& left_map = left_info.MinusSide().conformity;
    const auto& right_map = right_info.MinusSide().conformity;

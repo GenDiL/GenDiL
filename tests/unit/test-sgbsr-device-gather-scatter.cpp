@@ -188,7 +188,7 @@ bool TestDGMappings()
    constexpr Integer num_elements = 16;
    Cartesian1DMesh mesh( Real( 1 ) / num_elements, num_elements );
    auto finite_element_space =
-      MakeFiniteElementSpace( mesh, ScalarFE{}, L2Restriction{} );
+      MakeFiniteElementSpace( mesh, ScalarFE{}, ContiguousL2RestrictionSpecification{} );
    using Space = decltype( finite_element_space );
    static_assert(
       GatherOperatorType<
@@ -235,7 +235,7 @@ bool TestScalarH1AtomicScatter()
    }
    Sync( restriction_indices );
 
-   H1Restriction restriction{
+   IndirectH1RestrictionSpecification restriction{
       MakeRestrictionView( restriction_indices ),
       1 };
    auto finite_element_space =
@@ -326,11 +326,11 @@ bool TestVectorH1AtomicScatter()
    }
    Sync( restriction_indices );
 
-   H1Restriction scalar_restriction{
+   IndirectH1RestrictionSpecification scalar_restriction{
       MakeRestrictionView( restriction_indices ),
       1 };
    auto vector_restriction =
-      MakeVectorH1Restriction< 2 >( scalar_restriction );
+      MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto vector_finite_element =
       MakeVectorFiniteElement( ScalarFE{}, ScalarFE{} );
    auto finite_element_space =
@@ -423,7 +423,7 @@ bool TestMFEMAndMixedDeviceVectors()
    constexpr Integer num_elements = 8;
    Cartesian1DMesh mesh( Real( 1 ) / num_elements, num_elements );
    auto finite_element_space =
-      MakeFiniteElementSpace( mesh, ScalarFE{}, L2Restriction{} );
+      MakeFiniteElementSpace( mesh, ScalarFE{}, ContiguousL2RestrictionSpecification{} );
    using Space = decltype( finite_element_space );
 
    auto bsr_matrix = MakeIdentityDeviceBSR( finite_element_space );

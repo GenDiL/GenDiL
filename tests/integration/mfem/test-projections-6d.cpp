@@ -132,8 +132,12 @@ int main(int argc, char *argv[])
 #endif
 
    auto L2_projection_operator = MakeL2Projection< TrialKernelPolicy, TestKernelPolicy >( fe_space_6D, fe_space_3D, int_rule_6D, int_rule_3D );
-   // auto L2_projection_operator = MakeLinfProjection< TrialKernelPolicy >( fe_space_6D, fe_space_3D, int_rule_6D, int_rule_3D );
-   auto Linf_projection_operator = MakeLinfProjection< TrialKernelPolicy >( fe_space_6D, fe_space_3D, int_rule_6D, int_rule_3D );
+   auto nodal_subspace_projection_operator =
+      MakeNodalSubspaceProjection< TrialKernelPolicy >(
+         fe_space_6D,
+         fe_space_3D,
+         int_rule_6D,
+         int_rule_3D );
 
    const Integer num_dofs_6D = fe_space_6D.GetNumberOfFiniteElementDofs();
    const Integer num_dofs_3D = fe_space_3D.GetNumberOfFiniteElementDofs();
@@ -169,11 +173,11 @@ int main(int argc, char *argv[])
 
    {
       const auto start = std::chrono::steady_clock::now();
-      Linf_projection_operator.Mult( dofs_in, dofs_out );
+      nodal_subspace_projection_operator.Mult( dofs_in, dofs_out );
       MFEM_DEVICE_SYNC;
       const auto end = std::chrono::steady_clock::now();
 
-      std::cout << "\n Linf projection 6D\n";
+      std::cout << "\n Nodal subspace projection 6D\n";
       const std::chrono::duration<double> elapsed_seconds = end - start;
       std::cout << "Total time:" << elapsed_seconds.count() << "s\n";
       const double time_per_iter = elapsed_seconds.count() / total_iter;

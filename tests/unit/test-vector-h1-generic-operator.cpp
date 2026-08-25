@@ -127,8 +127,8 @@ bool TestVectorH1GenericOperatorCellMass()
    };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction scalar_restriction{ restriction_indices, 3 };
-   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   IndirectH1RestrictionSpecification scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto fe_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
 
    Cells< "mesh" > cells;

@@ -14,10 +14,10 @@ using namespace gendil;
 namespace
 {
 
-template < Integer Dim >
+template < Integer Dim, class Orientation = Permutation< Dim > >
 struct TestFaceView
 {
-   using orientation_type = Permutation< Dim >;
+   using orientation_type = Orientation;
 
    static constexpr Integer dim = Dim;
    static constexpr bool is_conforming = true;
@@ -61,6 +61,27 @@ struct FullSharedSerialKernelConfiguration :
    using face_read_dofs_policy = FullSharedFaceReadDofsPolicy;
    using face_write_dofs_policy = FullSharedFaceWriteDofsPolicy;
 };
+
+using HeterogeneousComponent0Shape =
+   TensorShapeFunctions<
+      GaussLegendreShapeFunctions< 1 >,
+      GaussLegendreShapeFunctions< 1 >,
+      GaussLegendreShapeFunctions< 1 > >;
+using HeterogeneousComponent1Shape =
+   TensorShapeFunctions<
+      GaussLegendreShapeFunctions< 3 >,
+      GaussLegendreShapeFunctions< 2 >,
+      GaussLegendreShapeFunctions< 2 > >;
+using HeterogeneousVectorFE =
+   FiniteElement<
+      HyperCube< 3 >,
+      VectorShapeFunctions<
+         HeterogeneousComponent0Shape,
+         HeterogeneousComponent1Shape > >;
+using HeterogeneousVectorSpace =
+   TestFiniteElementSpaceFromFiniteElement< 3, HeterogeneousVectorFE >;
+using HeterogeneousDofShapes =
+   typename HeterogeneousVectorFE::shape_functions::dof_shape;
 
 template < Integer Dim >
 void PrintIndex( const std::array< GlobalIndex, Dim > & index )
@@ -494,6 +515,243 @@ bool RunVectorWriteDofsPolicySmoke()
       RunVectorWriteDofsPolicySmokeForOp< WriteSub >();
 }
 
+template < class Orientation >
+bool RunHeterogeneousVectorReadForOrientation(
+   const Orientation & orientation )
+{
+   constexpr GlobalIndex num_elements = 2;
+   constexpr GlobalIndex element_index = 1;
+   constexpr size_t NumDofs0 = Product( HeterogeneousComponent0Shape::dof_shape{} );
+   constexpr size_t NumDofs1 = Product( HeterogeneousComponent1Shape::dof_shape{} );
+
+   std::array< Real, NumDofs0 * num_elements > global_data_0{};
+   std::array< Real, NumDofs1 * num_elements > global_data_1{};
+   for ( size_t i = 0; i < global_data_0.size(); ++i )
+   {
+      global_data_0[i] = static_cast< Real >( 1000 + i );
+   }
+   for ( size_t i = 0; i < global_data_1.size(); ++i )
+   {
+      global_data_1[i] = static_cast< Real >( 2000 + i );
+   }
+
+   auto component_0 = MakeFIFOView(
+      global_data_0.data(),
+      GlobalIndex{2},
+      GlobalIndex{2},
+      GlobalIndex{2},
+      num_elements );
+   auto component_1 = MakeFIFOView(
+      global_data_1.data(),
+      GlobalIndex{4},
+      GlobalIndex{3},
+      GlobalIndex{3},
+      num_elements );
+   auto global_dofs = std::make_tuple( component_0, component_1 );
+
+   HeterogeneousVectorSpace fe_space{};
+   Real * no_shared_memory = nullptr;
+   KernelContext< FullSharedSerialKernelConfiguration, 0 >
+      full_shared_context( no_shared_memory );
+   KernelContext< HostKernelConfiguration, 0 >
+      direct_global_context( no_shared_memory );
+   const TestFaceView< 3, Orientation > face{
+      element_index,
+      orientation };
+
+   const auto full_shared = ReadDofs(
+      full_shared_context,
+      fe_space,
+      face,
+      global_dofs );
+   const auto direct_global = ReadDofs(
+      direct_global_context,
+      fe_space,
+      face,
+      global_dofs );
+
+   bool success = true;
+   ConstexprLoop< 2 >( [&] ( auto component )
+   {
+      using ComponentDofShape =
+         std::tuple_element_t< component, HeterogeneousDofShapes >;
+      UnitLoop< ComponentDofShape >( [&] ( auto... k )
+      {
+         success =
+            std::get< component >( full_shared )( k... ) ==
+               std::get< component >( direct_global )( k... ) &&
+            success;
+      });
+   });
+   if ( !success )
+   {
+      std::cerr
+         << "Heterogeneous vector FullShared and DirectGlobal reads differ.\n";
+   }
+   return success;
+}
+
+template < WriteOp Op, class Orientation >
+bool RunHeterogeneousVectorWriteForOrientation(
+   const Orientation & orientation )
+{
+   constexpr GlobalIndex num_elements = 2;
+   constexpr GlobalIndex element_index = 1;
+   constexpr size_t NumDofs0 = Product( HeterogeneousComponent0Shape::dof_shape{} );
+   constexpr size_t NumDofs1 = Product( HeterogeneousComponent1Shape::dof_shape{} );
+
+   auto local_dofs = MakeVectorDofs(
+      HeterogeneousDofShapes{},
+      std::make_index_sequence< 2 >{} );
+   ConstexprLoop< 2 >( [&] ( auto component )
+   {
+      using ComponentDofShape =
+         std::tuple_element_t< component, HeterogeneousDofShapes >;
+      auto & local_component = std::get< component >( local_dofs );
+      UnitLoop< ComponentDofShape >( [&] ( auto... k )
+      {
+         const std::array< GlobalIndex, 3 > indices{
+            static_cast< GlobalIndex >( k )... };
+         local_component( k... ) = static_cast< Real >(
+            10000 * ( component + 1 ) +
+            FlattenMultiIndex< ComponentDofShape >( indices ) );
+      });
+   });
+
+   std::array< Real, NumDofs0 * num_elements > full_shared_data_0{};
+   std::array< Real, NumDofs1 * num_elements > full_shared_data_1{};
+   std::array< Real, NumDofs0 * num_elements > direct_global_data_0{};
+   std::array< Real, NumDofs1 * num_elements > direct_global_data_1{};
+   for ( size_t i = 0; i < full_shared_data_0.size(); ++i )
+   {
+      full_shared_data_0[i] = static_cast< Real >( -1000 - i );
+      direct_global_data_0[i] = full_shared_data_0[i];
+   }
+   for ( size_t i = 0; i < full_shared_data_1.size(); ++i )
+   {
+      full_shared_data_1[i] = static_cast< Real >( -2000 - i );
+      direct_global_data_1[i] = full_shared_data_1[i];
+   }
+
+   auto full_shared_global_dofs = std::make_tuple(
+      MakeFIFOView(
+         full_shared_data_0.data(),
+         GlobalIndex{2},
+         GlobalIndex{2},
+         GlobalIndex{2},
+         num_elements ),
+      MakeFIFOView(
+         full_shared_data_1.data(),
+         GlobalIndex{4},
+         GlobalIndex{3},
+         GlobalIndex{3},
+         num_elements ) );
+   auto direct_global_dofs = std::make_tuple(
+      MakeFIFOView(
+         direct_global_data_0.data(),
+         GlobalIndex{2},
+         GlobalIndex{2},
+         GlobalIndex{2},
+         num_elements ),
+      MakeFIFOView(
+         direct_global_data_1.data(),
+         GlobalIndex{4},
+         GlobalIndex{3},
+         GlobalIndex{3},
+         num_elements ) );
+
+   HeterogeneousVectorSpace fe_space{};
+   Real * no_shared_memory = nullptr;
+   KernelContext< FullSharedSerialKernelConfiguration, 0 >
+      full_shared_context( no_shared_memory );
+   KernelContext< HostKernelConfiguration, 0 >
+      direct_global_context( no_shared_memory );
+   const TestFaceView< 3, Orientation > face{
+      element_index,
+      orientation };
+
+   ApplyFaceWriteOp< Op >(
+      full_shared_context,
+      fe_space,
+      face,
+      local_dofs,
+      full_shared_global_dofs );
+   ApplyFaceWriteOp< Op >(
+      direct_global_context,
+      fe_space,
+      face,
+      local_dofs,
+      direct_global_dofs );
+
+   const bool success =
+      full_shared_data_0 == direct_global_data_0 &&
+      full_shared_data_1 == direct_global_data_1;
+   if ( !success )
+   {
+      std::cerr
+         << "Heterogeneous vector FullShared and DirectGlobal writes differ.\n";
+   }
+   return success;
+}
+
+template < class Orientation >
+bool RunHeterogeneousVectorPoliciesForOrientation(
+   const Orientation & orientation )
+{
+   bool success = true;
+   success = RunHeterogeneousVectorReadForOrientation(
+      orientation ) && success;
+   success = RunHeterogeneousVectorWriteForOrientation< Write >(
+      orientation ) && success;
+   success = RunHeterogeneousVectorWriteForOrientation< WriteAdd >(
+      orientation ) && success;
+   success = RunHeterogeneousVectorWriteForOrientation< WriteSub >(
+      orientation ) && success;
+   return success;
+}
+
+bool RunHeterogeneousVectorPolicyCoverage()
+{
+   bool success = true;
+   for ( Integer swap_equal_axes = 0;
+         swap_equal_axes < 2;
+         ++swap_equal_axes )
+   {
+      for ( Integer reversal_mask = 0;
+            reversal_mask < 8;
+            ++reversal_mask )
+      {
+         Permutation< 3 > orientation = swap_equal_axes == 0
+            ? Permutation< 3 >{ { 1, 2, 3 } }
+            : Permutation< 3 >{ { 1, 3, 2 } };
+         for ( Integer axis = 0; axis < 3; ++axis )
+         {
+            if ( reversal_mask & ( 1 << axis ) )
+            {
+               orientation( axis ) = -orientation( axis );
+            }
+         }
+         success = RunHeterogeneousVectorPoliciesForOrientation(
+            orientation ) && success;
+      }
+   }
+
+   success = RunHeterogeneousVectorPoliciesForOrientation(
+      IdentityOrientation< 3 >{} ) && success;
+   success = RunHeterogeneousVectorPoliciesForOrientation(
+      MakeTensorProductOrientation(
+         IdentityOrientation< 1 >{},
+         Permutation< 2 >{ { 2, -1 } } ) ) && success;
+
+   if ( success )
+   {
+      std::cout
+         << "PASS heterogeneous vector face I/O policy coverage: all "
+         << "supported flat, static, and mixed structured orientations\n";
+   }
+   return success;
+}
+
 bool RunVectorFaceReadAudit()
 {
    std::cout
@@ -511,7 +769,8 @@ int main()
 {
    return RunVectorFaceReadAudit() &&
          RunVectorReadDofsPolicySmoke() &&
-         RunVectorWriteDofsPolicySmoke()
+         RunVectorWriteDofsPolicySmoke() &&
+         RunHeterogeneousVectorPolicyCoverage()
       ? 0
       : 1;
 }

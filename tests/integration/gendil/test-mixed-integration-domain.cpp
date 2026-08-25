@@ -110,13 +110,13 @@ bool TestMixedSpaceOwnsOnlyCellsAndPartition()
    const auto& fe2 = std::get<3>(fixture);
    const auto& partition = std::get<4>(fixture);
 
-   auto space0 = MakeFiniteElementSpace(mesh0, fe1, L2Restriction{0});
-   const GlobalIndex shift = space0.GetNumberOfFiniteElementDofs();
+   auto space0 = MakeFiniteElementSpace(mesh0, fe1, ContiguousL2RestrictionSpecification{0});
+   const GlobalIndex shift = GetAlgebraicDofExtent( space0 );
    auto mixed =
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe1, fe2},
-         std::tuple{L2Restriction{0}, L2Restriction{shift}});
+         std::tuple{ContiguousL2RestrictionSpecification{0}, ContiguousL2RestrictionSpecification{shift}});
 
    using Mixed = std::remove_cvref_t<decltype(mixed)>;
    using Partition = std::remove_cvref_t<decltype(partition)>;
@@ -130,11 +130,13 @@ bool TestMixedSpaceOwnsOnlyCellsAndPartition()
    static_assert(!has_get_interior_face_fes_v<Mixed>);
    static_assert(!has_get_boundary_face_fes_v<Mixed>);
 
+   // Deliberately retain the compatibility member here to verify that the
+   // compact mixed logical sum equals its algebraic extent.
    return
       mixed.GetNumberOfCellFiniteElementSpaces() == 2 &&
       mixed.GetNumberOfInteriorFaces() ==
          std::get<0>(partition.InteriorFaceParts()).face_mesh.GetNumberOfFaces() &&
-      mixed.GetNumberOfFiniteElementDofs() ==
+      GetAlgebraicDofExtent( mixed ) ==
          mixed.GetCellFiniteElementSpace<0>().GetNumberOfFiniteElementDofs() +
             mixed.GetCellFiniteElementSpace<1>().GetNumberOfFiniteElementDofs();
 }
@@ -332,8 +334,8 @@ bool TestPartitionMixedGenericOperatorSmoke()
          ctx,
          ir);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
-   Vector y(test_mixed.GetNumberOfFiniteElementDofs());
+   Vector x(GetAlgebraicDofExtent( mixed ));
+   Vector y(GetAlgebraicDofExtent( test_mixed ));
    x = 1.0;
    y = 0.0;
    op(x, y);
@@ -464,8 +466,8 @@ bool TestZeroFaceExecutionSets()
          ctx,
          ir);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
-   Vector y(mixed.GetNumberOfFiniteElementDofs());
+   Vector x(GetAlgebraicDofExtent( mixed ));
+   Vector y(GetAlgebraicDofExtent( mixed ));
    x = 1.0;
    y = 7.0;
    op(x, y);

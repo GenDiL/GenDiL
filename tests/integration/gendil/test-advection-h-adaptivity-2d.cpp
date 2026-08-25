@@ -99,13 +99,13 @@ int main(int, char**)
   auto fe = MakeLobattoFiniteElement(FiniteElementOrders<p,p>{});
 
   // Layout: split vector = [L | R]
-  L2Restriction resL{0};
+  ContiguousL2RestrictionSpecification resL{0};
   auto fe_space_L = MakeFiniteElementSpace(meshL, fe, resL);
-  const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
+  const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
 
-  L2Restriction resR{ndofsL};
+  ContiguousL2RestrictionSpecification resR{ndofsL};
   auto fe_space_R = MakeFiniteElementSpace(meshR, fe, resR);
-  const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+  const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
   const Integer ndofs_split = ndofsL + ndofsR;
 
@@ -241,8 +241,8 @@ int main(int, char**)
   {
     const Integer ny_equal = nyL;
     Cartesian2DMesh meshR1(hx, 1.0/ny_equal, nxR, ny_equal, Point<2>{1.0,0.0});
-    auto fe_space_R1 = MakeFiniteElementSpace(meshR1, fe, L2Restriction{ndofsL});
-    const Integer ndofsR1 = fe_space_R1.GetNumberOfFiniteElementDofs();
+    auto fe_space_R1 = MakeFiniteElementSpace(meshR1, fe, ContiguousL2RestrictionSpecification{ndofsL});
+    const Integer ndofsR1 = GetNumberOfGlobalDofs( fe_space_R1 );
 
     // Nonconforming iface with ry=1 (degenerates to conforming)
     NonconformingCartesianIntermeshFaceConnectivity<Dim, MeshFaceIndex> iface1(

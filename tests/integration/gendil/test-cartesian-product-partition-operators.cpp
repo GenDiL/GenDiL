@@ -49,19 +49,19 @@ struct StaticIdentityLineInteriorConnectivity
    }
 };
 
-struct RuntimeIdentityProductInteriorConnectivity
+struct ManualFirstFactorProductInteriorConnectivity
 {
    using geometry = HyperCube<2>;
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 2>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 0, 1>,
       ConformingFaceMap<2>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 0>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 0, -1>,
       ConformingFaceMap<2>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -88,32 +88,32 @@ struct RuntimeIdentityProductInteriorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}}};
    }
 };
 
-struct RuntimeIdentitySecondFactorProductInteriorConnectivity
+struct ManualSecondFactorProductInteriorConnectivity
 {
    using geometry = HyperCube<2>;
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 3>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, 1>,
       ConformingFaceMap<2>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 1>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, -1>,
       ConformingFaceMap<2>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -140,13 +140,13 @@ struct RuntimeIdentitySecondFactorProductInteriorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}}};
@@ -221,11 +221,11 @@ bool TestCellDomainWeightedMass()
    const auto fe =
       MakeLobattoFiniteElement(FiniteElementOrders<2, 2>{});
    const auto direct_space =
-      MakeFiniteElementSpace(direct_mesh, fe, L2Restriction{0});
+      MakeFiniteElementSpace(direct_mesh, fe, ContiguousL2RestrictionSpecification{0});
    const auto partition_space = MakeMixedFiniteElementSpace(
       product_partition,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -293,11 +293,11 @@ bool TestBoundaryDomainWeightedMass()
    const auto generated_space = MakeMixedFiniteElementSpace(
       generated,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto manual_space = MakeMixedFiniteElementSpace(
       manual,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
@@ -356,7 +356,7 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
    const auto manual = MakePartition(
       MakeCellPart(direct_product_mesh),
       MakeInteriorFacePart<0, 0>(
-         RuntimeIdentityProductInteriorConnectivity{}));
+         ManualFirstFactorProductInteriorConnectivity{}));
 
    const auto& generated_faces =
       std::get<0>(generated.InteriorFaceParts()).face_mesh;
@@ -375,10 +375,10 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
       IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::minus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::plus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
 
    auto generated_plus_cell =
       std::get<0>(generated.CellParts()).mesh.GetCell(
@@ -395,18 +395,18 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
    bool success = CheckProductCellGeometry(
       generated_plus_cell,
       manual_plus_cell,
-      "static/runtime plus-cell identity equivalence");
+      "generated/manual plus-cell identity equivalence");
 
    const auto finite_element =
       MakeLobattoFiniteElement(FiniteElementOrders<2, 2>{});
    const auto generated_space = MakeMixedFiniteElementSpace(
       generated,
       std::tuple{finite_element},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto manual_space = MakeMixedFiniteElementSpace(
       manual,
       std::tuple{finite_element},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -454,7 +454,7 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
    const Real relative_error = absolute_error /
       std::max(reference_norm, Real{1.0e-30});
    std::cout
-      << "first-factor static/runtime plus-geometry operator: absolute="
+      << "first-factor generated/manual plus-geometry operator: absolute="
       << absolute_error
       << " relative=" << relative_error
       << " reference=" << reference_norm << '\n';
@@ -462,7 +462,7 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
        product_partition_tolerance * std::max(Real{1}, reference_norm))
    {
       std::cerr
-         << "static/runtime plus-geometry operator error: absolute="
+         << "generated/manual plus-geometry operator error: absolute="
          << absolute_error
          << " relative=" << relative_error << '\n';
    }
@@ -470,7 +470,7 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
       reference_norm > Real{1.0e-8},
       "forced plus-geometry runtime oracle is nonzero") && success;
    success = CheckVectorClose(
-      "static identity plus geometry matches runtime identity oracle",
+      "generated plus geometry matches manual identity oracle",
       got,
       expected) && success;
    return success;
@@ -492,7 +492,7 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
    const auto manual = MakePartition(
       MakeCellPart(direct_product_mesh),
       MakeInteriorFacePart<0, 0>(
-         RuntimeIdentitySecondFactorProductInteriorConnectivity{}));
+         ManualSecondFactorProductInteriorConnectivity{}));
 
    const auto& generated_faces =
       std::get<0>(generated.InteriorFaceParts()).face_mesh;
@@ -518,10 +518,10 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
       IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::minus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::plus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
 
    bool success = Check(
       generated_face.MinusSide().GetCellIndex() == 1 &&
@@ -545,7 +545,7 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
    success = CheckProductCellGeometry(
       generated_plus_cell,
       manual_plus_cell,
-      "second-factor static/runtime plus-cell identity equivalence") &&
+      "second-factor generated/manual plus-cell identity equivalence") &&
       success;
 
    const auto finite_element =
@@ -553,11 +553,11 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
    const auto generated_space = MakeMixedFiniteElementSpace(
       generated,
       std::tuple{finite_element},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto manual_space = MakeMixedFiniteElementSpace(
       manual,
       std::tuple{finite_element},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;

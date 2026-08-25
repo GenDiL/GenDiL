@@ -9,6 +9,7 @@
 #include <cmath>
 #include <concepts>
 #include <iostream>
+#include <string>
 #include <tuple>
 #include <type_traits>
 
@@ -22,11 +23,20 @@ constexpr Real device_sensitivity_tolerance = Real{1.0e-8};
 constexpr Real device_nonzero_tolerance = Real{1.0e-12};
 
 #if defined(GENDIL_USE_DEVICE)
-template<Integer Q>
-using Face2DKernelPolicy = DeviceKernelConfiguration<
+template<Integer Q, Integer BatchSize>
+using Face2DBatchKernelPolicy = DeviceKernelConfiguration<
    ThreadBlockLayout<Q>,
    1,
-   2>;
+   BatchSize>;
+
+template<Integer Q>
+using Face2DKernelPolicy = Face2DBatchKernelPolicy<Q, 2>;
+
+template<Integer BatchSize>
+using RegisterOnlyBatchKernelPolicy = DeviceKernelConfiguration<
+   ThreadBlockLayout<>,
+   0,
+   BatchSize>;
 
 template<Integer Q>
 using Face3DKernelPolicy = DeviceKernelConfiguration<
@@ -38,13 +48,103 @@ static_assert(Face2DKernelPolicy<4>::thread_block_dim == 1);
 static_assert(Face2DKernelPolicy<4>::shared_block_max_dim >= 1);
 static_assert(Face3DKernelPolicy<4>::thread_block_dim == 2);
 static_assert(Face3DKernelPolicy<4>::shared_block_max_dim >= 2);
+static_assert(details::SparseAssemblyKernelContract<
+   MatrixAssemblyType::RawCOO,
+   Face2DBatchKernelPolicy<4, 4>>::batching_supported);
+static_assert(!details::SparseAssemblyKernelContract<
+   MatrixAssemblyType::BSR,
+   Face2DBatchKernelPolicy<4, 4>>::batching_supported);
 #else
+template<Integer, Integer>
+using Face2DBatchKernelPolicy = SerialKernelConfiguration;
+
 template<Integer>
 using Face2DKernelPolicy = SerialKernelConfiguration;
 
 template<Integer>
 using Face3DKernelPolicy = SerialKernelConfiguration;
+
+template<Integer>
+using RegisterOnlyBatchKernelPolicy = SerialKernelConfiguration;
 #endif
+
+struct RuntimeOrientedSegmentCell
+{
+   static constexpr Integer Dim = 1;
+   using geometry = HyperCube<1>;
+   using physical_coordinates = std::array<Real, 1>;
+   using jacobian = std::array<Real, 1>;
+
+   Point<1> origin{};
+   Real extent = 0.0;
+
+   template<class IntegrationRule>
+   using QuadData = TensorProductData<std::tuple_element_t<
+      0,
+      typename IntegrationRule::points::points_1d_tuple>>;
+
+   template<class QData>
+   GENDIL_HOST_DEVICE
+   void GetValuesAndJacobian(
+      const TensorIndex<1>& q,
+      const QData& qdata,
+      physical_coordinates& x,
+      jacobian& jacobian_) const
+   {
+      x[0] = origin[0] + extent * GetCoord<0>(qdata, q[0]);
+      jacobian_[0] = extent;
+   }
+
+   GENDIL_HOST_DEVICE
+   jacobian ComputeJacobian(const Point<1>&) const
+   {
+      return {extent};
+   }
+};
+
+GENDIL_HOST_DEVICE GENDIL_INLINE
+void ApplyOrientationToCell(
+   const Permutation<1>& orientation,
+   RuntimeOrientedSegmentCell& cell)
+{
+   GENDIL_ASSERT(
+      IsValidSignedPermutation(orientation),
+      "Runtime segment orientation must be a signed permutation.");
+   if (orientation(0) < 0)
+   {
+      cell.origin[0] += cell.extent;
+      cell.extent = -cell.extent;
+   }
+}
+
+struct RuntimeOrientedLineMesh
+{
+   static constexpr Integer Dim = 1;
+   using cell_type = RuntimeOrientedSegmentCell;
+
+   struct ConnectivityIdentity
+   {
+      GlobalIndex size = 2;
+   };
+
+   Real h = 1.0;
+   Point<1> mesh_origin{};
+   ConnectivityIdentity connectivity{};
+
+   GENDIL_HOST_DEVICE
+   GlobalIndex GetNumberOfCells() const
+   {
+      return connectivity.size;
+   }
+
+   GENDIL_HOST_DEVICE
+   cell_type GetCell(const GlobalIndex element) const
+   {
+      return {
+         Point<1>{mesh_origin[0] + h * static_cast<Real>(element)},
+         h};
+   }
+};
 
 struct StaticIdentityLineInteriorConnectivity
 {
@@ -110,19 +210,29 @@ struct RuntimeSignedLineInteriorConnectivity
    }
 };
 
-struct RuntimeIdentitySecondFactorConnectivity
+using RuntimeSecondFactorOrientation = TensorProductOrientation<
+   IdentityOrientation<1>,
+   Permutation<1>>;
+using RuntimeLeftNestedMiddleFactorOrientation = TensorProductOrientation<
+   TensorProductOrientation<IdentityOrientation<1>, Permutation<1>>,
+   IdentityOrientation<1>>;
+using RuntimeRightNestedMiddleFactorOrientation = TensorProductOrientation<
+   IdentityOrientation<1>,
+   TensorProductOrientation<Permutation<1>, IdentityOrientation<1>>>;
+
+struct ManualStaticIdentitySecondFactorConnectivity
 {
    using geometry = HyperCube<2>;
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 3>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, 1>,
       ConformingFaceMap<2>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 1>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, -1>,
       ConformingFaceMap<2>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -148,13 +258,13 @@ struct RuntimeIdentitySecondFactorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}}};
@@ -167,13 +277,13 @@ struct RuntimeSignedSecondFactorConnectivity
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 3>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, 1>,
       ConformingFaceMap<2>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 1>,
       geometry,
-      Permutation<2>,
+      RuntimeSecondFactorOrientation,
       CanonicalVector<2, 1, -1>,
       ConformingFaceMap<2>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -199,13 +309,15 @@ struct RuntimeSignedSecondFactorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<2>{{1, -2}},
+          MakeTensorProductOrientation(
+             IdentityOrientation<1>{},
+             Permutation<1>{{-1}}),
           {},
           {},
           {}}};
@@ -218,13 +330,13 @@ struct RuntimeUnsignedSecondFactorConnectivity
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 3>,
       geometry,
-      Permutation<2>,
+      IdentityOrientation<2>,
       CanonicalVector<2, 1, 1>,
       ConformingFaceMap<2>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 1>,
       geometry,
-      Permutation<2>,
+      RuntimeSecondFactorOrientation,
       CanonicalVector<2, 1, -1>,
       ConformingFaceMap<2>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -250,13 +362,15 @@ struct RuntimeUnsignedSecondFactorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<2>{{1, 2}},
+          MakeTensorProductOrientation(
+             IdentityOrientation<1>{},
+             Permutation<1>{{1}}),
           {},
           {},
           {}}};
@@ -269,13 +383,13 @@ struct RuntimeSignedMiddleFactorConnectivity
    using minus_side_type = FaceView<
       std::integral_constant<Integer, 4>,
       geometry,
-      Permutation<3>,
+      IdentityOrientation<3>,
       CanonicalVector<3, 1, 1>,
       ConformingFaceMap<3>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, 1>,
       geometry,
-      Permutation<3>,
+      RuntimeLeftNestedMiddleFactorOrientation,
       CanonicalVector<3, 1, -1>,
       ConformingFaceMap<3>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -302,13 +416,17 @@ struct RuntimeSignedMiddleFactorConnectivity
       return face_info_type{
          {record.minus_cell,
           {},
-          Permutation<3>{{1, 2, 3}},
+          {},
           {},
           {},
           {}},
          {record.plus_cell,
           {},
-          Permutation<3>{{1, -2, 3}},
+          MakeTensorProductOrientation(
+             MakeTensorProductOrientation(
+                IdentityOrientation<1>{},
+                Permutation<1>{{-1}}),
+             IdentityOrientation<1>{}),
           {},
           {},
           {}}};
@@ -434,10 +552,11 @@ bool TestOriginalInteriorBoundarySmoke()
    const auto space = MakeMixedFiniteElementSpace(
       product,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto form =
+      integrate(Cells<"mesh">{}, u * v) +
       integrate(InteriorFacets<"mesh">{}, jump(u) * jump(v)) +
       integrate(BoundaryFacets<"mesh">{}, u * v);
    const auto context = MakeWeakFormContext(
@@ -452,7 +571,73 @@ bool TestOriginalInteriorBoundarySmoke()
    Fill2DInput(input);
    const Vector output = ApplySynchronized(op, input);
    const Real norm = CompareVectors(output, output).reference_norm;
-   return std::isfinite(norm) && norm > device_nonzero_tolerance;
+
+   const auto raw_batch1 = GenericAssembly<
+      MatrixAssemblyType::RawCOO,
+      Face2DBatchKernelPolicy<q, 1>>(
+         form,
+         context,
+         rule);
+   const auto coo_batch1 = FinalizeRawCOOToCOOHost(raw_batch1);
+   const auto coo_batch1_output = ApplySynchronized(coo_batch1, input);
+
+   const auto check_sparse_batch = [&]<class KernelPolicy>(
+      const char* label)
+   {
+      const auto raw = GenericAssembly<
+         MatrixAssemblyType::RawCOO,
+         KernelPolicy>(
+            form,
+            context,
+            rule);
+      const auto coo = FinalizeRawCOOToCOOHost(raw);
+      bool batch_success =
+         raw.num_rows == raw_batch1.num_rows &&
+         raw.num_cols == raw_batch1.num_cols &&
+         raw.nnz_raw == raw_batch1.nnz_raw &&
+         coo.nnz == coo_batch1.nnz;
+      const auto got = GetHostReadView(coo);
+      const auto reference = GetHostReadView(coo_batch1);
+      for (GlobalIndex i = 0; i < coo.nnz && batch_success; ++i)
+      {
+         batch_success =
+            got.rows[i] == reference.rows[i] &&
+            got.cols[i] == reference.cols[i] &&
+            std::abs(got.values[i] - reference.values[i]) <=
+               device_oracle_tolerance *
+                  std::max(Real{1}, std::abs(reference.values[i]));
+      }
+      const auto batch_output = ApplySynchronized(coo, input);
+      if (!batch_success)
+      {
+         std::cerr << label
+                   << ": canonical RawCOO triplets differ from BatchSize=1\n";
+      }
+      return batch_success &&
+         CheckClose(label, batch_output, coo_batch1_output);
+   };
+
+   bool success =
+      std::isfinite(norm) && norm > device_nonzero_tolerance;
+   success = CheckClose(
+      "partition sparse BatchSize=1 versus matrix-free",
+      coo_batch1_output,
+      output) && success;
+   success = check_sparse_batch.template operator()<
+      Face2DBatchKernelPolicy<q, 2>>(
+         "partition sparse threaded BatchSize=2") && success;
+   success = check_sparse_batch.template operator()<
+      Face2DBatchKernelPolicy<q, 4>>(
+         "partition sparse threaded BatchSize=4") && success;
+   success = check_sparse_batch.template operator()<
+      RegisterOnlyBatchKernelPolicy<2>>(
+         "partition sparse register-only BatchSize=2") && success;
+#if defined(GENDIL_USE_DEVICE)
+   success = check_sparse_batch.template operator()<
+      Face2DBatchKernelPolicy<q, device_warp_size>>(
+         "partition sparse threaded warp BatchSize") && success;
+#endif
+   return success;
 }
 
 bool TestStaticIdentitySecondFactorOracle()
@@ -468,7 +653,7 @@ bool TestStaticIdentitySecondFactorOracle()
    const auto manual = MakePartition(
       MakeCellPart(MakeCartesianProductMesh(first_mesh, second_mesh)),
       MakeInteriorFacePart<0, 0>(
-         RuntimeIdentitySecondFactorConnectivity{}));
+         ManualStaticIdentitySecondFactorConnectivity{}));
 
    const auto generated_face =
       std::get<0>(generated.InteriorFaceParts()).face_mesh.
@@ -492,10 +677,10 @@ bool TestStaticIdentitySecondFactorOracle()
       IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::minus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename ManualFace::plus_side_type::orientation_type,
-      Permutation<2>>);
+      IdentityOrientation<2>>);
 
    if (generated_face.MinusSide().GetCellIndex() != 1 ||
        generated_face.PlusSide().GetCellIndex() != 3 ||
@@ -509,11 +694,11 @@ bool TestStaticIdentitySecondFactorOracle()
    const auto generated_space = MakeMixedFiniteElementSpace(
       generated,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto manual_space = MakeMixedFiniteElementSpace(
       manual,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
@@ -544,7 +729,7 @@ bool TestStaticIdentitySecondFactorOracle()
    const Vector actual = ApplySynchronized(generated_op, input);
    const Vector reference = ApplySynchronized(manual_op, input);
    return CheckClose(
-      "device static identity versus runtime identity oracle",
+      "device generated versus manual static identity oracle",
       actual,
       reference);
 }
@@ -552,7 +737,8 @@ bool TestStaticIdentitySecondFactorOracle()
 bool TestRuntimeSignedSecondFactorOracleAndSensitivity()
 {
    const Cartesian1DMesh first_mesh(0.2, 2, -0.45);
-   const Cartesian1DMesh second_mesh(0.7, 2, 0.35);
+   const RuntimeOrientedLineMesh second_mesh{
+      0.7, Point<1>{0.35}, {2}};
    const auto first = MakePartition(MakeCellPart(first_mesh));
    const auto second = MakePartition(
       MakeCellPart(second_mesh),
@@ -579,8 +765,8 @@ bool TestRuntimeSignedSecondFactorOracleAndSensitivity()
       IdentityOrientation<2>>);
    static_assert(std::same_as<
       typename GeneratedFace::plus_side_type::orientation_type,
-      Permutation<2>>);
-   if (generated_face.PlusSide().GetOrientation() !=
+      RuntimeSecondFactorOrientation>);
+   if (FlattenOrientation(generated_face.PlusSide().GetOrientation()) !=
        Permutation<2>{{1, -2}})
    {
       return false;
@@ -588,11 +774,11 @@ bool TestRuntimeSignedSecondFactorOracleAndSensitivity()
 
    const auto fe = MakeLobattoFiniteElement(FiniteElementOrders<2, 2>{});
    const auto generated_space = MakeMixedFiniteElementSpace(
-      generated, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      generated, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto signed_space = MakeMixedFiniteElementSpace(
-      signed_manual, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      signed_manual, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto unsigned_space = MakeMixedFiniteElementSpace(
-      unsigned_manual, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      unsigned_manual, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
@@ -601,9 +787,12 @@ bool TestRuntimeSignedSecondFactorOracleAndSensitivity()
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 Real{5} * X[0] * X[1];
       });
+   const auto expression =
+      coefficient * dot(plus(grad(u)), Normal{}) * jump(v);
+   static_assert(requires_plus_side_jacobian_v<decltype(expression)>);
    const auto form = integrate(
       InteriorFacets<"mesh">{},
-      coefficient * jump(u) * jump(v));
+      expression);
    constexpr Integer q = 4;
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<q, q>{});
    const auto generated_context = MakeWeakFormContext(
@@ -651,6 +840,15 @@ bool CheckL2Ordering(
    const auto& first_cell = first.template GetCellFiniteElementSpace<0>();
    const auto& second_cell = second.template GetCellFiniteElementSpace<0>();
    const auto& third_cell = third.template GetCellFiniteElementSpace<0>();
+   const auto& first_restriction = GetRestriction(first_cell);
+   const auto& second_restriction = GetRestriction(second_cell);
+   const auto& third_restriction = GetRestriction(third_cell);
+   static_assert(ElementwiseIndependentRestriction<
+      std::remove_cvref_t<decltype(first_restriction)>>);
+   static_assert(ElementwiseIndependentRestriction<
+      std::remove_cvref_t<decltype(second_restriction)>>);
+   static_assert(ElementwiseIndependentRestriction<
+      std::remove_cvref_t<decltype(third_restriction)>>);
    constexpr GlobalIndex local_dofs = 27;
    if (first_cell.GetNumberOfFiniteElements() !=
           second_cell.GetNumberOfFiniteElements() ||
@@ -665,13 +863,13 @@ bool CheckL2Ordering(
    {
       for (GlobalIndex local = 0; local < local_dofs; ++local)
       {
-         const GlobalIndex first_index =
-            ZeroBasedElementToGlobalDofIndex(first_cell, element, local);
-         const GlobalIndex second_index =
-            ZeroBasedElementToGlobalDofIndex(second_cell, element, local);
-         const GlobalIndex third_index =
-            ZeroBasedElementToGlobalDofIndex(third_cell, element, local);
-         if (first_index != second_index || first_index != third_index)
+         const GlobalIndex occurrence = element * local_dofs + local;
+         if (GetGlobalDofIndex(first_cell, element, local) !=
+                first_restriction.shift + occurrence ||
+             GetGlobalDofIndex(second_cell, element, local) !=
+                second_restriction.shift + occurrence ||
+             GetGlobalDofIndex(third_cell, element, local) !=
+                third_restriction.shift + occurrence)
          {
             return false;
          }
@@ -683,7 +881,8 @@ bool CheckL2Ordering(
 bool TestNestedMiddleFactorOracle()
 {
    const Cartesian1DMesh a_mesh(0.3, 2, -0.4);
-   const Cartesian1DMesh b_mesh(0.7, 2, 0.2);
+   const RuntimeOrientedLineMesh b_mesh{
+      0.7, Point<1>{0.2}, {2}};
    const Cartesian1DMesh c_mesh(0.15, 2, 1.1);
    const auto a = MakePartition(MakeCellPart(a_mesh));
    const auto b = MakePartition(
@@ -726,16 +925,16 @@ bool TestNestedMiddleFactorOracle()
       IdentityOrientation<3>>);
    static_assert(std::same_as<
       typename LeftFace::plus_side_type::orientation_type,
-      Permutation<3>>);
+      RuntimeLeftNestedMiddleFactorOrientation>);
    static_assert(std::same_as<
       typename RightFace::minus_side_type::orientation_type,
       IdentityOrientation<3>>);
    static_assert(std::same_as<
       typename RightFace::plus_side_type::orientation_type,
-      Permutation<3>>);
-   if (left_face.PlusSide().GetOrientation() !=
+      RuntimeRightNestedMiddleFactorOrientation>);
+   if (FlattenOrientation(left_face.PlusSide().GetOrientation()) !=
           Permutation<3>{{1, -2, 3}} ||
-       right_face.PlusSide().GetOrientation() !=
+       FlattenOrientation(right_face.PlusSide().GetOrientation()) !=
           Permutation<3>{{1, -2, 3}} ||
        left_face.MinusSide().GetCellIndex() != 5 ||
        left_face.PlusSide().GetCellIndex() != 7 ||
@@ -748,11 +947,11 @@ bool TestNestedMiddleFactorOracle()
    const auto fe =
       MakeLobattoFiniteElement(FiniteElementOrders<2, 2, 2>{});
    const auto left_space = MakeMixedFiniteElementSpace(
-      left, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      left, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto right_space = MakeMixedFiniteElementSpace(
-      right, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      right, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    const auto manual_space = MakeMixedFiniteElementSpace(
-      manual, std::tuple{fe}, std::tuple{L2Restriction{0}});
+      manual, std::tuple{fe}, std::tuple{ContiguousL2RestrictionSpecification{0}});
    if (!CheckL2Ordering(left_space, right_space, manual_space))
    {
       return false;

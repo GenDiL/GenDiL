@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iostream>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace test_types
@@ -140,6 +141,21 @@ GlobalIndex NumValues(
 }
 
 template < Integer Rank >
+GlobalIndex FIFOOffset(
+   const std::array< Integer, Rank > & indices,
+   const std::array< size_t, Rank > & sizes )
+{
+   GlobalIndex offset = 0;
+   GlobalIndex stride = 1;
+   for ( Integer axis = 0; axis < Rank; ++axis )
+   {
+      offset += static_cast< GlobalIndex >( indices[ axis ] ) * stride;
+      stride *= static_cast< GlobalIndex >( sizes[ axis ] );
+   }
+   return offset;
+}
+
+template < Integer Rank >
 bool TestOpaqueOrientedView(
    const std::array< size_t, Rank > & sizes,
    const Permutation< Rank > & orientation )
@@ -185,7 +201,7 @@ bool TestOpaqueOrientedView(
          "opaque native access mismatch" ) && success;
 
       const Real replacement = -1000.0 - static_cast< Real >(
-         FaceReadDofsFIFOOffset( reference, sizes ) );
+         FIFOOffset( reference, sizes ) );
       [&]< size_t... Is >( std::index_sequence< Is... > )
       {
          success = Check(
@@ -355,12 +371,12 @@ auto MakeFactorSpace(
       HostDevicePointer< const int > pointer{};
       pointer.host_pointer = indices.data();
       return MakeFiniteElementSpace(
-         mesh, FactorFE{}, H1Restriction{ pointer, 3 } );
+         mesh, FactorFE{}, IndirectH1RestrictionSpecification{ pointer, 3 } );
    }
    else
    {
       return MakeFiniteElementSpace(
-         mesh, FactorFE{}, L2Restriction{} );
+         mesh, FactorFE{}, ContiguousL2RestrictionSpecification{} );
    }
 }
 

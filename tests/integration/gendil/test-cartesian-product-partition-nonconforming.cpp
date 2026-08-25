@@ -23,20 +23,21 @@ template<
       HyperCube<Dim>::GetOppositeFaceIndex(LocalFaceIndex),
    Integer NormalAxis =
       HyperCube<Dim>::GetNormalDimensionIndex(LocalFaceIndex),
-   int NormalSign = HyperCube<Dim>::GetNormalSign(LocalFaceIndex)>
+   int NormalSign = HyperCube<Dim>::GetNormalSign(LocalFaceIndex),
+   class PlusOrientation = Permutation<Dim>>
 struct MaterializedNonconformingInteriorConnectivity
 {
    using geometry = HyperCube<Dim>;
    using minus_side_type = FaceView<
       std::integral_constant<Integer, LocalFaceIndex>,
       geometry,
-      Permutation<Dim>,
+      IdentityOrientation<Dim>,
       CanonicalVector<Dim, NormalAxis, NormalSign>,
       NonconformingHyperCubeFaceMap<Dim>>;
    using plus_side_type = FaceView<
       std::integral_constant<Integer, PlusFaceIndex>,
       geometry,
-      Permutation<Dim>,
+      PlusOrientation,
       CanonicalVector<Dim, NormalAxis, -NormalSign>,
       ConformingFaceMap<Dim>>;
    using face_info_type = GlobalFaceInfo<minus_side_type, plus_side_type>;
@@ -46,7 +47,7 @@ struct MaterializedNonconformingInteriorConnectivity
       GlobalIndex minus_cell;
       GlobalIndex plus_cell;
       NonconformingHyperCubeFaceMap<Dim> minus_map;
-      Permutation<Dim> plus_orientation;
+      PlusOrientation plus_orientation;
    };
 
    std::array<Record, NumRecords> records{};
@@ -65,7 +66,7 @@ struct MaterializedNonconformingInteriorConnectivity
          minus_side_type{
             record.minus_cell,
             {},
-            MakeReferencePermutation<Dim>(),
+            {},
             {},
             record.minus_map,
             {}},
@@ -107,17 +108,22 @@ auto MakeManualProductFaces()
    constexpr Integer NormalAxis = FacedFirst ? 0 : 1;
    // Every full-dimensional face constant is supplied literally here; this
    // oracle intentionally does not reuse product indexing or lifting code.
+   using ProductOrientation = std::conditional_t<
+      FacedFirst,
+      TensorProductOrientation<Permutation<2>, IdentityOrientation<1>>,
+      TensorProductOrientation<IdentityOrientation<1>, Permutation<2>>>;
    using Faces = MaterializedNonconformingInteriorConnectivity<
       3,
       LocalFaceIndex,
       3,
       PlusFaceIndex,
       NormalAxis,
-      1>;
+      1,
+      ProductOrientation>;
 
    Point<3> origin{};
    std::array<Real, 3> size{};
-   Permutation<3> orientation{};
+   ProductOrientation orientation{};
    if constexpr (FacedFirst)
    {
       origin = WrongMapBlock
@@ -126,9 +132,11 @@ auto MakeManualProductFaces()
       size = WrongMapBlock
          ? std::array<Real, 3>{1.0, 1.0, 0.3}
          : std::array<Real, 3>{1.0, 0.3, 1.0};
-      orientation = UnsignedOrientation
-         ? Permutation<3>{{1, 2, 3}}
-         : Permutation<3>{{1, -2, 3}};
+      orientation = MakeTensorProductOrientation(
+         UnsignedOrientation
+            ? Permutation<2>{{1, 2}}
+            : Permutation<2>{{1, -2}},
+         IdentityOrientation<1>{});
       return Faces{{
          typename Faces::Record{1, 2, {origin, size}, orientation},
          typename Faces::Record{5, 6, {origin, size}, orientation},
@@ -142,9 +150,11 @@ auto MakeManualProductFaces()
       size = WrongMapBlock
          ? std::array<Real, 3>{1.0, 0.3, 1.0}
          : std::array<Real, 3>{1.0, 1.0, 0.3};
-      orientation = UnsignedOrientation
-         ? Permutation<3>{{1, 2, 3}}
-         : Permutation<3>{{1, 2, -3}};
+      orientation = MakeTensorProductOrientation(
+         IdentityOrientation<1>{},
+         UnsignedOrientation
+            ? Permutation<2>{{1, 2}}
+            : Permutation<2>{{1, -2}});
       return Faces{{
          typename Faces::Record{3, 6, {origin, size}, orientation},
          typename Faces::Record{4, 7, {origin, size}, orientation},
@@ -192,7 +202,7 @@ Vector ApplyNonconformingForm(
    const auto space = MakeMixedFiniteElementSpace(
       partition,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
@@ -212,6 +222,39 @@ Vector ApplyNonconformingForm(
    const auto op = MakeGenericOperator<SerialKernelConfiguration>(
       form, context, rule);
    return Apply(op, input);
+}
+
+template<class Partition>
+Vector ApplyNonconformingSparseForm(
+   const Partition& partition,
+   const Vector& input)
+{
+   const auto fe =
+      MakeLobattoFiniteElement(FiniteElementOrders<2, 2, 2>{});
+   const auto space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{fe},
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
+   TrialSpace<"u"> u;
+   TestSpace<"u"> v;
+   const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
+      [] GENDIL_HOST_DEVICE (const auto& X)
+      {
+         return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
+                Real{5} * X[2] + Real{7} * X[0] * X[2];
+      });
+   const auto form = integrate(
+      InteriorFacets<"mesh">{},
+      coefficient * jump(u) * jump(v));
+   const auto context = MakeWeakFormContext(
+      MakeTrialField<"u">(space),
+      MakeIntegrationDomain<"mesh">(partition));
+   const auto rule =
+      MakeIntegrationRule(IntegrationRuleNumPoints<5, 5, 5>{});
+   const auto coo = GenericAssembly<
+      MatrixAssemblyType::COO,
+      SerialKernelConfiguration>(form, context, rule);
+   return Apply(coo, input);
 }
 
 template<bool FacedFirst>
@@ -267,7 +310,7 @@ bool TestNumericalNonconformingProduct()
    const auto generated_space = MakeMixedFiniteElementSpace(
       generated,
       std::tuple{fe},
-      std::tuple{L2Restriction{0}});
+      std::tuple{ContiguousL2RestrictionSpecification{0}});
    Vector input(generated_space.GetNumberOfFiniteElementDofs());
    input = 0.0;
    FillNonsymmetricL2Field(
@@ -276,6 +319,8 @@ bool TestNumericalNonconformingProduct()
 
    const Vector got = ApplyNonconformingForm(generated, input);
    const Vector expected = ApplyNonconformingForm(manual, input);
+   const Vector sparse =
+      ApplyNonconformingSparseForm(generated, input);
    bool success = Check(
       VectorNorm(expected) > Real{1.0e-8},
       "nonconforming oracle is nonzero");
@@ -285,6 +330,12 @@ bool TestNumericalNonconformingProduct()
          : "faced-second nonconforming product matches materialized oracle",
       got,
       expected) && success;
+   success = CheckVectorClose(
+      FacedFirst
+         ? "faced-first nonconforming RawCOO-derived COO matches matrix-free"
+         : "faced-second nonconforming RawCOO-derived COO matches matrix-free",
+      sparse,
+      got) && success;
 
    const auto wrong_map_faces = [&]
    {
@@ -356,13 +407,17 @@ bool TestH1NonconformingSmoke()
    }
    HostDevicePointer<const int> pointer{};
    pointer.host_pointer = indices.data();
-   const H1Restriction restriction{
+   const IndirectH1RestrictionSpecification restriction{
       pointer,
       static_cast<Integer>(indices.size())};
+   const auto completed_restriction = MakeElementDoFRestriction(
+      std::get<0>(product.CellParts()).mesh,
+      fe,
+      restriction);
    const auto space = MakeMixedFiniteElementSpace(
       product,
       std::tuple{fe},
-      std::tuple{restriction});
+      std::tuple{completed_restriction});
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto form = integrate(
@@ -388,6 +443,107 @@ bool TestH1NonconformingSmoke()
       "scalar H1 nonconforming product smoke is finite and nonzero");
 }
 
+bool TestVectorRawCOONonconformingValuesAndGradients()
+{
+   const auto partition = MakeNonconformingFactor();
+   const auto linear =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   const auto quadratic =
+      MakeLobattoFiniteElement( FiniteElementOrders< 2, 2 >{} );
+   const auto vector_fe = MakeVectorFiniteElement( linear, quadratic );
+   const auto space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{ vector_fe },
+      DGDirectSumNumbering{} );
+   const auto rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
+   VectorTrialSpace< "vector_u" > u;
+   VectorTestSpace< "vector_u" > v;
+
+   const auto check_form = [&] (
+      const auto& form,
+      const char* label )
+   {
+      const auto context = MakeWeakFormContext(
+         MakeTrialField< "vector_u" >( space ),
+         MakeIntegrationDomain< "mesh" >( partition ) );
+      const auto raw = GenericAssembly<
+         MatrixAssemblyType::RawCOO,
+         SerialKernelConfiguration >(
+            form,
+            context,
+            rule );
+      const auto coo = FinalizeRawCOOToCOOHost( raw );
+      const auto csr = GenericAssembly<
+         MatrixAssemblyType::CSR,
+         SerialKernelConfiguration >(
+            form,
+            context,
+            rule );
+      const auto matrix_free =
+         MakeGenericOperator< SerialKernelConfiguration >(
+            form,
+            context,
+            rule );
+
+      bool case_success = true;
+      constexpr GlobalIndex local_vector_dofs = 4 + 9;
+      constexpr GlobalIndex expected_raw_nnz =
+         4 * local_vector_dofs * local_vector_dofs;
+      case_success = Check(
+         raw.num_rows == GetAlgebraicDofExtent( space ) &&
+            raw.num_cols == GetAlgebraicDofExtent( space ) &&
+            raw.nnz_raw == expected_raw_nnz,
+         std::string( label ) + " RawCOO dimensions or quadrant capacity" ) &&
+         case_success;
+
+      Vector input( GetAlgebraicDofExtent( space ) );
+      auto* input_data = input.WriteHostData();
+      for ( GlobalIndex i = 0; i < input.Size(); ++i )
+      {
+         input_data[i] =
+            Real{0.2} + Real{0.013} * i + Real{0.0007} * i * i;
+      }
+      const Vector expected = Apply( matrix_free, input );
+      const Vector coo_result = Apply( coo, input );
+      const Vector csr_result = Apply( csr, input );
+      case_success = Check(
+         VectorNorm( expected ) > Real{1.0e-8},
+         std::string( label ) + " matrix-free action is nonzero" ) &&
+         case_success;
+      case_success = CheckVectorClose(
+         std::string( label ) + " COO matches matrix-free",
+         coo_result,
+         expected ) && case_success;
+      case_success = CheckVectorClose(
+         std::string( label ) + " CSR matches matrix-free",
+         csr_result,
+         expected ) && case_success;
+      return case_success;
+   };
+
+   const auto value_form = integrate(
+      InteriorFacets< "mesh" >{},
+      dot( jump( u ), jump( v ) ) );
+   const auto gradient_form = integrate(
+      InteriorFacets< "mesh" >{},
+      inner( jump( grad( u ) ), jump( grad( v ) ) ) );
+   const auto combined_form = integrate(
+      InteriorFacets< "mesh" >{},
+      dot( jump( u ), jump( v ) ) +
+         inner( jump( grad( u ) ), jump( grad( v ) ) ) );
+
+   bool success = true;
+   success = check_form( value_form, "nonconforming vector value" ) && success;
+   success = check_form(
+      gradient_form,
+      "nonconforming vector gradient" ) && success;
+   success = check_form(
+      combined_form,
+      "nonconforming vector value/gradient" ) && success;
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -396,5 +552,6 @@ int main()
    success = TestNumericalNonconformingProduct<true>() && success;
    success = TestNumericalNonconformingProduct<false>() && success;
    success = TestH1NonconformingSmoke() && success;
+   success = TestVectorRawCOONonconformingValuesAndGradients() && success;
    return success ? 0 : 1;
 }

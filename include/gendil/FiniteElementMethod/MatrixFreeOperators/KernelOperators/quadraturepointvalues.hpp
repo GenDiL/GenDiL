@@ -261,7 +261,7 @@ auto MakeQuadraturePointContainerForSpace(
    constexpr size_t Dim = static_cast<size_t>(IR::space_dim);
    (void)test_space;
 
-   if constexpr (NumComp == 1)
+   if constexpr (!is_vector_finite_element_space_v<TestSpace>)
    {
       using ValuesC = std::conditional_t<
          NeedValues,

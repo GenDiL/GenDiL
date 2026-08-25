@@ -28,19 +28,38 @@ using ScalarFE1 = GLFiniteElement< 2, 1 >;
 using ScalarShape0 = typename ScalarFE0::shape_functions;
 using VectorFE = decltype( MakeVectorFiniteElement( ScalarFE0{}, ScalarFE1{} ) );
 using VectorShape = typename VectorFE::shape_functions;
-using VectorSpace = FiniteElementSpace< Cartesian2DMesh, VectorFE, L2Restriction >;
+using VectorSpaceRestriction = VectorL2Restriction<
+   ContiguousL2Restriction< component_dof_shape_t< VectorShape, 0 > >,
+   ContiguousL2Restriction< component_dof_shape_t< VectorShape, 1 > > >;
+using VectorSpace =
+   FiniteElementSpace< Cartesian2DMesh, VectorFE, VectorSpaceRestriction >;
 using Scalar1DFE = GLFiniteElement< 1 >;
+using Scalar1DShape = typename Scalar1DFE::shape_functions;
+using Scalar1DDofShape = finite_element_dof_shape_t< Scalar1DShape >;
 using ScalarL2Space =
-   FiniteElementSpace< Cartesian1DMesh, Scalar1DFE, L2Restriction >;
+   FiniteElementSpace<
+      Cartesian1DMesh,
+      Scalar1DFE,
+      ContiguousL2Restriction< Scalar1DDofShape > >;
 using ScalarH1Space =
-   FiniteElementSpace< Cartesian1DMesh, Scalar1DFE, H1Restriction >;
+   FiniteElementSpace<
+      Cartesian1DMesh,
+      Scalar1DFE,
+      IndirectH1Restriction< Scalar1DDofShape > >;
 using HomogeneousVectorFE =
    decltype( MakeVectorFiniteElement( Scalar1DFE{}, Scalar1DFE{} ) );
+using HomogeneousVectorShape =
+   typename HomogeneousVectorFE::shape_functions;
+using HomogeneousVectorH1Restriction = VectorRestriction<
+   IndirectH1Restriction<
+      component_dof_shape_t< HomogeneousVectorShape, 0 > >,
+   IndirectH1Restriction<
+      component_dof_shape_t< HomogeneousVectorShape, 1 > > >;
 using VectorH1Space =
    FiniteElementSpace<
       Cartesian1DMesh,
       HomogeneousVectorFE,
-      VectorH1Restriction< 2 > >;
+      HomogeneousVectorH1Restriction >;
 using Component0Tag = std::integral_constant< size_t, 0 >;
 using Component1Tag = std::integral_constant< size_t, 1 >;
 
@@ -523,9 +542,9 @@ bool TestBuiltInSGBSRExternalDimensions()
    auto finite_element =
       MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
    auto trial_space =
-      MakeFiniteElementSpace( mesh, finite_element, L2Restriction{ 3 } );
+      MakeFiniteElementSpace( mesh, finite_element, ContiguousL2RestrictionSpecification{ 3 } );
    auto test_space =
-      MakeFiniteElementSpace( mesh, finite_element, L2Restriction{ 7 } );
+      MakeFiniteElementSpace( mesh, finite_element, ContiguousL2RestrictionSpecification{ 7 } );
 
    constexpr GlobalIndex block_size = 4;
    auto bsr = MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >(
@@ -594,7 +613,7 @@ bool TestRawBsrOperatorDelegatesToBackendApply()
 bool TestScalarH1GatherScatterMapping()
 {
    Cartesian2DMesh mesh( 1.0, 2, 1 );
-   H1Restriction restriction{ MakeManualH1RestrictionIndices(), 6 };
+   IndirectH1RestrictionSpecification restriction{ MakeManualH1RestrictionIndices(), 6 };
    auto h1_space = MakeFiniteElementSpace( mesh, ScalarFE0{}, restriction );
 
    constexpr GlobalIndex block_size = LocalDofCount< ScalarShape0 >();
@@ -691,7 +710,7 @@ bool TestSharedScalarH1HostScatter()
 
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction restriction{ restriction_indices, 2 };
+   IndirectH1RestrictionSpecification restriction{ restriction_indices, 2 };
    auto finite_element_space =
       MakeFiniteElementSpace( mesh, finite_element, restriction );
 
@@ -748,7 +767,7 @@ bool TestVectorGatherScatterMapping()
          const std::array< GlobalIndex, sizeof...( k ) > indices{
             static_cast< GlobalIndex >( k )... };
          const GlobalIndex global_index =
-            GlobalDofIndex( vector_space, c0, element, indices );
+            GetGlobalDofIndex( vector_space, c0, element, indices );
          x_fe_data[global_index] =
             100.0 * element +
             static_cast< Real >( FlattenLocalDof( vector_space, c0, indices ) );
@@ -759,7 +778,7 @@ bool TestVectorGatherScatterMapping()
          const std::array< GlobalIndex, sizeof...( k ) > indices{
             static_cast< GlobalIndex >( k )... };
          const GlobalIndex global_index =
-            GlobalDofIndex( vector_space, c1, element, indices );
+            GetGlobalDofIndex( vector_space, c1, element, indices );
          x_fe_data[global_index] =
             100.0 * element +
             static_cast< Real >( FlattenLocalDof( vector_space, c1, indices ) );
@@ -785,7 +804,7 @@ bool TestVectorGatherScatterMapping()
          const GlobalIndex bsr_index =
             element * block_size + FlattenLocalDof( vector_space, c0, indices );
          const GlobalIndex fe_index =
-            GlobalDofIndex( vector_space, c0, element, indices );
+            GetGlobalDofIndex( vector_space, c0, element, indices );
          success = Check(
             Near( x_bsr_data[bsr_index], x_fe_data[fe_index] ),
             "Vector gather component 0 mapping is wrong." ) && success;
@@ -798,7 +817,7 @@ bool TestVectorGatherScatterMapping()
          const GlobalIndex bsr_index =
             element * block_size + FlattenLocalDof( vector_space, c1, indices );
          const GlobalIndex fe_index =
-            GlobalDofIndex( vector_space, c1, element, indices );
+            GetGlobalDofIndex( vector_space, c1, element, indices );
          success = Check(
             Near( x_bsr_data[bsr_index], x_fe_data[fe_index] ),
             "Vector gather component 1 mapping is wrong." ) && success;
@@ -832,7 +851,7 @@ bool TestVectorGatherScatterMapping()
          const GlobalIndex bsr_index =
             element * block_size + FlattenLocalDof( vector_space, c0, indices );
          const GlobalIndex fe_index =
-            GlobalDofIndex( vector_space, c0, element, indices );
+            GetGlobalDofIndex( vector_space, c0, element, indices );
          success = Check(
             Near( y_fe_data[fe_index], y_bsr_data[bsr_index] ),
             "Vector scatter component 0 mapping is wrong." ) && success;
@@ -845,7 +864,7 @@ bool TestVectorGatherScatterMapping()
          const GlobalIndex bsr_index =
             element * block_size + FlattenLocalDof( vector_space, c1, indices );
          const GlobalIndex fe_index =
-            GlobalDofIndex( vector_space, c1, element, indices );
+            GetGlobalDofIndex( vector_space, c1, element, indices );
          success = Check(
             Near( y_fe_data[fe_index], y_bsr_data[bsr_index] ),
             "Vector scatter component 1 mapping is wrong." ) && success;
@@ -875,8 +894,8 @@ bool TestVectorH1GatherScatterMapping()
    };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction scalar_restriction{ restriction_indices, 3 };
-   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   IndirectH1RestrictionSpecification scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto vector_h1_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
 
    using VectorH1Space = std::remove_cvref_t< decltype( vector_h1_space ) >;
@@ -1023,8 +1042,8 @@ bool TestVectorH1SGBSRCellMass()
    };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction scalar_restriction{ restriction_indices, 3 };
-   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   IndirectH1RestrictionSpecification scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto vector_h1_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
 
    Cells< "mesh" > cells;

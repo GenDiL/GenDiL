@@ -67,11 +67,11 @@ struct TensorFixture
    auto MakeSpace() const
    {
       const auto factor0 = MakeFiniteElementSpace(
-         mesh0, GLFiniteElement< 1 >{}, L2Restriction{} );
+         mesh0, GLFiniteElement< 1 >{}, ContiguousL2RestrictionSpecification{} );
       const auto factor1 = MakeFiniteElementSpace(
          mesh1,
          GLFiniteElement< 1 >{},
-         H1Restriction{ h1_pointer, 3 } );
+         IndirectH1RestrictionSpecification{ h1_pointer, 3 } );
       const auto mesh = MakeCartesianProductMesh( mesh0, mesh1 );
       const auto restriction =
          MakeTensorProductRestriction( factor0, factor1 );

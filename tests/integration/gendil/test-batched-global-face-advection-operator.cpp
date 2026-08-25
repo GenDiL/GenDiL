@@ -692,7 +692,9 @@ void CheckSharedMemoryRequirements()
       FiniteElementSpace<
          Cartesian1DMesh,
          GLLFiniteElement< 2 >,
-         L2Restriction >;
+         ContiguousL2Restriction<
+            finite_element_dof_shape_t<
+               typename GLLFiniteElement< 2 >::shape_functions > > >;
    using Rule =
       decltype( MakeIntegrationRule( IntegrationRuleNumPoints< 4 >{} ) );
    using DirectGlobalEmpty =

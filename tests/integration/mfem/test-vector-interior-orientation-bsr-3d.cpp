@@ -192,7 +192,7 @@ void FillComponentInput(
          const std::array< GlobalIndex, sizeof...( k ) > indices{
             static_cast< GlobalIndex >( k )... };
          const GlobalIndex fe_index =
-            GlobalDofIndex( fe_space, component, element, indices );
+            GetGlobalDofIndex( fe_space, component, element, indices );
          const GlobalIndex local_index =
             FlattenLocalDof( fe_space, component, indices );
 

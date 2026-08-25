@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 using namespace gendil;
@@ -211,7 +212,7 @@ bool RunShapeCompatibilityClassificationCase( const char * case_name )
       const bool expected =
          ExpectedShapeCompatible( sizes, orientation );
       const bool actual =
-         FaceReadDofsOrientationIsShapeCompatible(
+         OrientedTensorDofShapeIsCompatible(
             sizes,
             orientation );
 
@@ -303,7 +304,7 @@ bool RunOrientedGlobalViewCase(
 
    for ( const auto & orientation : orientations )
    {
-      if ( !FaceReadDofsOrientationIsShapeCompatible(
+      if ( !OrientedTensorDofShapeIsCompatible(
               dof_sizes,
               orientation ) )
       {
@@ -453,7 +454,7 @@ bool RunScalarReadDofsPolicyCase(
    bool success = true;
    for ( const auto & orientation : orientations )
    {
-      if ( !FaceReadDofsOrientationIsShapeCompatible(
+      if ( !OrientedTensorDofShapeIsCompatible(
               dof_sizes,
               orientation ) )
       {
@@ -571,11 +572,11 @@ bool RunScalarWriteDofsSupportedCase(
                orientation );
          const Real expected =
             IndexEncodedValue( reference_indices, 0 );
-         const Real actual =
-            FaceReadDofsGlobalValueAt(
-               global_dofs,
-               native_indices,
-               element_index );
+         const Real actual = [&]< size_t... I >(
+            std::index_sequence< I... > )
+         {
+            return global_dofs( native_indices[ I ]..., element_index );
+         }( std::make_index_sequence< dim >{} );
 
          if ( std::abs( expected - actual ) > 1e-12 )
          {
@@ -817,7 +818,7 @@ bool RunUnsupportedOrientationCase(
    for ( const auto & orientation : orientations )
    {
       const bool supported =
-         FaceReadDofsOrientationIsShapeCompatible(
+         OrientedTensorDofShapeIsCompatible(
             dof_sizes,
             orientation );
       if ( supported )

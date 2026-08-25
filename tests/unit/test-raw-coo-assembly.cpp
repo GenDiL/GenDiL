@@ -12,7 +12,68 @@
 #include <utility>
 #include <vector>
 
+namespace raw_coo_weight_test {
+
+struct WeightedRestriction
+{
+   using dof_shape_type = std::index_sequence< 1 >;
+   static constexpr gendil::Integer tensor_dim = 1;
+};
+
+inline gendil::GlobalIndex GetNumberOfLocalDofs(
+   const WeightedRestriction & )
+{
+   return 1;
+}
+
+inline gendil::GlobalIndex GetNumberOfGlobalDofs(
+   const WeightedRestriction & )
+{
+   return 1;
+}
+
+inline gendil::GlobalIndex GetAlgebraicDofExtent(
+   const WeightedRestriction & )
+{
+   return 1;
+}
+
+template < typename Visitor >
+void ForEachRestrictionEntry(
+   const WeightedRestriction &,
+   const gendil::GlobalIndex,
+   const std::array< gendil::GlobalIndex, 1 > &,
+   Visitor && visitor )
+{
+   std::forward< Visitor >( visitor )(
+      0,
+      gendil::Real{ 2 } );
+}
+
+struct WeightedSpace
+{
+   using restriction_type = WeightedRestriction;
+};
+
+} // namespace raw_coo_weight_test
+
+namespace gendil {
+
+template <>
+inline constexpr size_t static_restriction_entry_count_v<
+   raw_coo_weight_test::WeightedRestriction > = 1;
+
+} // namespace gendil
+
 using namespace gendil;
+
+static_assert(
+   TensorElementDoFRestriction<
+      raw_coo_weight_test::WeightedRestriction > );
+static_assert(
+   !IsRawCOOCellAssemblySpace<
+      raw_coo_weight_test::WeightedSpace >::value,
+   "RawCOO coordinate insertion must reject a one-entry weighted row until weight handling is implemented." );
 
 namespace
 {
@@ -69,13 +130,13 @@ bool CheckScalar1DRawCellSlotCoordinates(
       {
          const std::array< GlobalIndex, 1 > col_indices{ local_col };
          const GlobalIndex expected_col =
-            GlobalDofIndex( fe_space, element, col_indices );
+            GetGlobalDofIndex( fe_space, element, col_indices );
 
          for ( GlobalIndex local_row = 0; local_row < local_dofs; ++local_row )
          {
             const std::array< GlobalIndex, 1 > row_indices{ local_row };
             const GlobalIndex expected_row =
-               GlobalDofIndex( fe_space, element, row_indices );
+               GetGlobalDofIndex( fe_space, element, row_indices );
             const GlobalIndex raw_index =
                element * local_dofs * local_dofs +
                local_col * local_dofs +
@@ -138,7 +199,7 @@ bool CheckVectorRawCellSlotCoordinates(
             if ( local_id < local_dofs )
             {
                expected_globals[static_cast< size_t >( local_id )] =
-                  GlobalDofIndex(
+                  GetGlobalDofIndex(
                      fe_space,
                      component,
                      element,
@@ -516,11 +577,11 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
    bool success = true;
    success = Check(
       raw_coo.num_rows ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Raw COO row dimension is wrong." ) && success;
    success = Check(
       raw_coo.num_cols ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Raw COO column dimension is wrong." ) && success;
    success = Check(
       raw_coo.nnz_raw == expected_nnz,
@@ -536,15 +597,15 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
       direct_coo.nnz == coo.nnz,
       "Direct scalar L2 COO assembly disagrees with explicit RawCOO finalization." ) && success;
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    Real * x_data = x.WriteHostData();
    for ( GlobalIndex i = 0; i < x.Size(); ++i )
    {
       x_data[i] = 0.25 + 0.5 * static_cast< Real >( i );
    }
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_bsr( GetAlgebraicDofExtent( fe_space ) );
    direct_coo( x, y_coo );
    y_bsr = 0.0;
    bsr( x, y_bsr );
@@ -616,11 +677,11 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
    bool success = true;
    success = Check(
       raw_coo.num_rows ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Vector L2 Raw COO row dimension is wrong." ) && success;
    success = Check(
       raw_coo.num_cols ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Vector L2 Raw COO column dimension is wrong." ) && success;
    success = Check(
       raw_coo.nnz_raw == expected_nnz,
@@ -660,11 +721,11 @@ bool TestVectorL2CellMassRawCOOAgainstSGBSR()
       coo,
       "Direct vector L2 COO assembly disagrees with explicit RawCOO finalization." ) && success;
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_sgbsr( GetAlgebraicDofExtent( fe_space ) );
    direct_coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
@@ -764,11 +825,11 @@ bool TestVectorBoundaryFaceMassCOOAgainstSGBSR()
       }
    }
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_sgbsr( GetAlgebraicDofExtent( fe_space ) );
    direct_coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
@@ -794,7 +855,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
    const std::vector< int > restriction_map{ 0, 1, 1, 2 };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction restriction{ restriction_indices, 3 };
+   IndirectH1RestrictionSpecification restriction{ restriction_indices, 3 };
    auto fe_space = MakeFiniteElementSpace( mesh, fe, restriction );
 
    Cells< "mesh" > domain;
@@ -847,11 +908,11 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
    bool success = true;
    success = Check(
       raw_coo.num_rows ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "H1 Raw COO row dimension is wrong." ) && success;
    success = Check(
       raw_coo.num_cols ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "H1 Raw COO column dimension is wrong." ) && success;
    success = Check(
       raw_coo.nnz_raw == expected_nnz,
@@ -872,7 +933,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
 
    for ( Integer vector_case = 0; vector_case < 2; ++vector_case )
    {
-      Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+      Vector x( GetAlgebraicDofExtent( fe_space ) );
       Real * x_data = x.WriteHostData();
       for ( GlobalIndex i = 0; i < x.Size(); ++i )
       {
@@ -882,8 +943,8 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
                : 1.0 - 0.2 * static_cast< Real >( i );
       }
 
-      Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-      Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
+      Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+      Vector y_sgbsr( GetAlgebraicDofExtent( fe_space ) );
       direct_coo( x, y_coo );
       y_sgbsr = 0.0;
       sgbsr( x, y_sgbsr );
@@ -918,8 +979,8 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
    const std::vector< int > restriction_map{ 0, 1, 1, 2 };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction scalar_restriction{ restriction_indices, 3 };
-   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   IndirectH1RestrictionSpecification scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto fe_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
 
    Cells< "mesh" > domain;
@@ -960,14 +1021,14 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
    bool success = true;
    success = Check(
       raw_coo.num_rows ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Vector H1 Raw COO row dimension is wrong." ) && success;
    success = Check(
       raw_coo.num_cols ==
-         static_cast< GlobalIndex >( fe_space.GetNumberOfFiniteElementDofs() ),
+         static_cast< GlobalIndex >( GetAlgebraicDofExtent( fe_space ) ),
       "Vector H1 Raw COO column dimension is wrong." ) && success;
    success = Check(
-      fe_space.GetNumberOfFiniteElementDofs() == 6,
+      GetAlgebraicDofExtent( fe_space ) == 6,
       "Vector H1 test expected two component-major copies of three scalar true DoFs." ) && success;
    success = Check(
       raw_coo.nnz_raw == expected_nnz,
@@ -987,11 +1048,11 @@ bool TestVectorH1CellMassRawCOOAgainstDenseReference()
       coo,
       "Direct vector H1 COO assembly disagrees with explicit RawCOO finalization." ) && success;
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_expected( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_expected( GetAlgebraicDofExtent( fe_space ) );
    direct_coo( x, y_coo );
    ApplyTwoCellVectorH1P1MassReference( x, y_expected );
 
@@ -1243,20 +1304,20 @@ bool TestVectorP0InteriorJumpAnalyticRawCOO()
          "Vector analytic p0 canonical COO value is wrong." ) && success;
    }
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    Real * x_data = x.WriteHostData();
    x_data[0] = 2.0;
    x_data[1] = 5.0;
    x_data[2] = 7.0;
    x_data[3] = 11.0;
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_sgbsr( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_sgbsr( GetAlgebraicDofExtent( fe_space ) );
    coo( x, y_coo );
    y_sgbsr = 0.0;
    sgbsr( x, y_sgbsr );
 
-   Vector y_expected( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_expected( GetAlgebraicDofExtent( fe_space ) );
    Real * expected_data = y_expected.WriteHostData();
    expected_data[0] = -3.0;
    expected_data[1] = 3.0;
@@ -1327,12 +1388,12 @@ bool TestScalarBoundaryFaceMassCOOAgainstGenericAndBSR()
    success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
    success = CheckCanonicalCOOSortedUnique( coo ) && success;
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_bsr( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_generic( GetAlgebraicDofExtent( fe_space ) );
    coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
@@ -1403,12 +1464,12 @@ bool TestScalarInteriorJumpCOOAgainstGenericAndBSR()
    success = CheckRawTripletRangesAndFinite( raw_coo ) && success;
    success = CheckCanonicalCOOSortedUnique( coo ) && success;
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_bsr( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_generic( GetAlgebraicDofExtent( fe_space ) );
    coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
@@ -1530,12 +1591,12 @@ bool TestScalarCombinedFaceCOOOffsetsAndAccumulation()
          "Combined p0 canonical COO value is wrong." ) && success;
    }
 
-   Vector x( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector x( GetAlgebraicDofExtent( fe_space ) );
    FillDeterministicInput( x );
 
-   Vector y_coo( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_bsr( fe_space.GetNumberOfFiniteElementDofs() );
-   Vector y_generic( fe_space.GetNumberOfFiniteElementDofs() );
+   Vector y_coo( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_bsr( GetAlgebraicDofExtent( fe_space ) );
+   Vector y_generic( GetAlgebraicDofExtent( fe_space ) );
    coo( x, y_coo );
    y_bsr = 0.0;
    y_generic = 0.0;
@@ -1591,6 +1652,12 @@ bool CheckTensorProductFacetAssembly(
          weak_form,
          context,
          integration_rule );
+   auto sgbsr =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule,
+         HostBSRBackend<>{} );
    auto generic =
       MakeGenericOperator< KernelPolicy >(
          weak_form,
@@ -1599,7 +1666,7 @@ bool CheckTensorProductFacetAssembly(
 
    const GlobalIndex num_dofs =
       static_cast< GlobalIndex >(
-         fe_space.GetNumberOfFiniteElementDofs() );
+         GetAlgebraicDofExtent( fe_space ) );
    bool success = true;
    success = Check(
       raw.num_rows == num_dofs && raw.num_cols == num_dofs,
@@ -1628,12 +1695,15 @@ bool CheckTensorProductFacetAssembly(
    Vector expected( num_dofs );
    Vector raw_result( num_dofs );
    Vector csr_result( num_dofs );
+   Vector sgbsr_result( num_dofs );
    expected = 0.0;
    raw_result = 0.0;
    csr_result = 0.0;
+   sgbsr_result = 0.0;
    generic( input, expected );
    finalized( input, raw_result );
    csr( input, csr_result );
+   sgbsr( input, sgbsr_result );
 
    success = CheckVectorNear(
       raw_result,
@@ -1643,8 +1713,59 @@ bool CheckTensorProductFacetAssembly(
       csr_result,
       expected,
       "Tensor-product facet CSR action disagrees with MakeGenericOperator." ) && success;
+   success = CheckVectorNear(
+      sgbsr_result,
+      expected,
+      "Tensor-product facet SGBSR action disagrees with MakeGenericOperator." ) && success;
 
    return success;
+}
+
+template < typename FESpace >
+bool CheckTensorProductCellSGBSR( const FESpace & fe_space )
+{
+   using KernelPolicy = SerialKernelConfiguration;
+   using Space = std::remove_cvref_t< FESpace >;
+   static_assert( DefaultBsrMappingSpace< Space > );
+   const auto & mesh =
+      static_cast< const typename Space::mesh_type & >( fe_space );
+
+   TrialSpace< "tensor_product_cell" > u;
+   TestSpace< "tensor_product_cell" > v;
+   const auto form =
+      integrate( Cells< "mesh" >{}, u * v );
+   const auto context =
+      MakeWeakFormContext(
+         MakeTrialField< "tensor_product_cell" >( fe_space ),
+         MakeIntegrationDomain< "mesh" >( mesh ) );
+   const auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} );
+   const auto generic =
+      MakeGenericOperator< KernelPolicy >(
+         form,
+         context,
+         integration_rule );
+   auto sgbsr =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         form,
+         context,
+         integration_rule,
+         HostBSRBackend<>{} );
+
+   const GlobalIndex num_dofs =
+      GetAlgebraicDofExtent( fe_space );
+   Vector input( num_dofs );
+   Vector expected( num_dofs );
+   Vector actual( num_dofs );
+   FillDeterministicInput( input );
+   expected = 0.0;
+   actual = 0.0;
+   generic( input, expected );
+   sgbsr( input, actual );
+   return CheckVectorNear(
+      actual,
+      expected,
+      "Tensor-product cell SGBSR action disagrees with MakeGenericOperator." );
 }
 
 bool TestTensorProductFacetRawCOOAndCSRAgainstGeneric()
@@ -1658,12 +1779,12 @@ bool TestTensorProductFacetRawCOOAndCSRAgainstGeneric()
       MakeFiniteElementSpace(
          spatial_mesh,
          GLFiniteElement< 1 >{},
-         L2Restriction{} );
+         ContiguousL2RestrictionSpecification{} );
    const auto velocity_dg_space =
       MakeFiniteElementSpace(
          velocity_mesh,
          GLFiniteElement< 1 >{},
-         L2Restriction{} );
+         ContiguousL2RestrictionSpecification{} );
    const auto l2_dg_restriction =
       MakeTensorProductRestriction(
          spatial_l2_space,
@@ -1681,7 +1802,7 @@ bool TestTensorProductFacetRawCOOAndCSRAgainstGeneric()
       MakeFiniteElementSpace(
          spatial_mesh,
          GLLFiniteElement< 1 >{},
-         H1Restriction{ spatial_h1_pointer, 3 } );
+         IndirectH1RestrictionSpecification{ spatial_h1_pointer, 3 } );
    const auto h1_dg_restriction =
       MakeTensorProductRestriction(
          spatial_h1_space,
@@ -1698,6 +1819,8 @@ bool TestTensorProductFacetRawCOOAndCSRAgainstGeneric()
          h1_dg_restriction );
 
    bool success = true;
+   success =
+      CheckTensorProductCellSGBSR( l2_dg_space ) && success;
    success =
       CheckTensorProductFacetAssembly(
          l2_dg_space,
@@ -1737,7 +1860,7 @@ template <
    typename WeakForm,
    typename WeakFormContext,
    typename IntegrationRule >
-bool CheckScalarH1FacetCase(
+bool CheckFacetAssemblyCase(
    const WeakForm & weak_form,
    const WeakFormContext & context,
    const IntegrationRule & integration_rule,
@@ -1761,6 +1884,12 @@ bool CheckScalarH1FacetCase(
          weak_form,
          context,
          integration_rule );
+   auto sgbsr =
+      GenericAssembly< MatrixAssemblyType::SGBSR, KernelPolicy >(
+         weak_form,
+         context,
+         integration_rule,
+         HostBSRBackend<>{} );
    auto generic =
       MakeGenericOperator< KernelPolicy >(
          weak_form,
@@ -1770,13 +1899,13 @@ bool CheckScalarH1FacetCase(
    bool success = true;
    success = Check(
       raw.num_rows == num_rows && raw.num_cols == num_cols,
-      "Scalar H1 facet RawCOO has the wrong matrix dimensions." ) && success;
+      "Facet RawCOO has the wrong matrix dimensions." ) && success;
    success = Check(
       csr.num_rows == num_rows && csr.num_cols == num_cols,
-      "Scalar H1 facet CSR has the wrong matrix dimensions." ) && success;
+      "Facet CSR has the wrong matrix dimensions." ) && success;
    success = Check(
       raw.nnz_raw == expected_raw_nnz,
-      "Scalar H1 facet RawCOO compact block count is wrong." ) && success;
+      "Facet RawCOO compact block count is wrong." ) && success;
    success = CheckRawTripletRangesAndFinite( raw ) && success;
    success = CheckCanonicalCOOSortedUnique( finalized ) && success;
 
@@ -1784,10 +1913,10 @@ bool CheckScalarH1FacetCase(
    {
       success = Check(
          HasDuplicateCoordinate( raw ),
-         "Scalar H1 facet RawCOO should contain duplicate shared-DoF coordinates." ) && success;
+         "Facet RawCOO should contain duplicate shared-DoF coordinates." ) && success;
       success = Check(
          raw.nnz_raw > finalized.nnz,
-         "Scalar H1 facet RawCOO coordinates were not reduced." ) && success;
+         "Facet RawCOO coordinates were not reduced." ) && success;
    }
 
    Vector input( num_cols );
@@ -1798,15 +1927,21 @@ bool CheckScalarH1FacetCase(
       ApplyRectangularOperator( finalized, input, num_rows );
    const auto csr_result =
       ApplyRectangularOperator( csr, input, num_rows );
+   const auto sgbsr_result =
+      ApplyRectangularOperator( sgbsr, input, num_rows );
 
    success = CheckVectorNear(
       raw_result,
       expected,
-      "Finalized scalar H1 facet RawCOO action disagrees with MakeGenericOperator." ) && success;
+      "Finalized facet RawCOO action disagrees with MakeGenericOperator." ) && success;
    success = CheckVectorNear(
       csr_result,
       expected,
-      "Scalar H1 facet CSR action disagrees with MakeGenericOperator." ) && success;
+      "Facet CSR action disagrees with MakeGenericOperator." ) && success;
+   success = CheckVectorNear(
+      sgbsr_result,
+      expected,
+      "Facet SGBSR action disagrees with MakeGenericOperator." ) && success;
 
    const Real * expected_data = expected.ReadHostData();
    bool has_nonzero = false;
@@ -1818,7 +1953,7 @@ bool CheckScalarH1FacetCase(
       {
          success = Check(
             Near( expected_data[row], 0.0 ),
-            "Continuous scalar H1 jump action should be zero." ) && success;
+            "Continuous H1 jump action should be zero." ) && success;
       }
    }
 
@@ -1828,19 +1963,19 @@ bool CheckScalarH1FacetCase(
       {
          success = Check(
             Near( ReadHost( finalized.values )[entry], 0.0 ),
-            "Canonical scalar H1 jump matrix should contain only zero values." ) && success;
+            "Canonical H1 jump matrix should contain only zero values." ) && success;
       }
    }
    else
    {
       if ( !has_nonzero )
       {
-         std::cout << "Scalar H1 facet case was unexpectedly zero: "
+         std::cout << "Facet case was unexpectedly zero: "
                    << case_name << '\n';
       }
       success = Check(
          has_nonzero,
-         "Scalar H1 facet validation expected a nonzero operator action." ) && success;
+         "Facet validation expected a nonzero operator action." ) && success;
    }
 
    return success;
@@ -1865,17 +2000,17 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
       MakeFiniteElementSpace(
          mesh,
          h1_fe,
-         H1Restriction{ h1_indices, 9 } );
+         IndirectH1RestrictionSpecification{ h1_indices, 9 } );
    const auto l2_space = MakeFiniteElementSpace( mesh, l2_fe );
    const auto integration_rule =
       MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} );
 
    const GlobalIndex h1_dofs =
       static_cast< GlobalIndex >(
-         h1_space.GetNumberOfFiniteElementDofs() );
+         GetAlgebraicDofExtent( h1_space ) );
    const GlobalIndex l2_dofs =
       static_cast< GlobalIndex >(
-         l2_space.GetNumberOfFiniteElementDofs() );
+         GetAlgebraicDofExtent( l2_space ) );
    bool success = true;
 
    {
@@ -1893,7 +2028,7 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             MakeTrialField< "h1" >( h1_space ),
             MakeIntegrationDomain< "mesh" >( mesh ) );
       success =
-         CheckScalarH1FacetCase(
+         CheckFacetAssemblyCase(
             form,
             context,
             integration_rule,
@@ -1917,7 +2052,7 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             MakeTrialField< "h1_jump" >( h1_space ),
             MakeIntegrationDomain< "mesh" >( mesh ) );
       success =
-         CheckScalarH1FacetCase(
+         CheckFacetAssemblyCase(
             form,
             context,
             integration_rule,
@@ -1942,7 +2077,7 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             MakeTestField< "l2_test" >( l2_space ),
             MakeIntegrationDomain< "mesh" >( mesh ) );
       success =
-         CheckScalarH1FacetCase(
+         CheckFacetAssemblyCase(
             form,
             context,
             integration_rule,
@@ -1967,7 +2102,7 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             MakeTestField< "h1_test" >( h1_space ),
             MakeIntegrationDomain< "mesh" >( mesh ) );
       success =
-         CheckScalarH1FacetCase(
+         CheckFacetAssemblyCase(
             form,
             context,
             integration_rule,
@@ -1992,7 +2127,7 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             MakeTestField< "h1_average_test" >( h1_space ),
             MakeIntegrationDomain< "mesh" >( mesh ) );
       success =
-         CheckScalarH1FacetCase(
+         CheckFacetAssemblyCase(
             form,
             context,
             integration_rule,
@@ -2002,6 +2137,86 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             false,
             false,
             "L2 trial to H1 test side-symmetric mass" ) && success;
+   }
+
+   return success;
+}
+
+bool TestVectorH1FacetRawCOOAndCSRAgainstGeneric()
+{
+   Cartesian2DMesh mesh( 0.5, 2, 2 );
+   const auto scalar_fe =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   const auto vector_fe =
+      MakeVectorFiniteElement( scalar_fe, scalar_fe );
+
+   const std::array< int, 16 > h1_map{
+      0, 1, 3, 4,
+      1, 2, 4, 5,
+      3, 4, 6, 7,
+      4, 5, 7, 8 };
+   HostDevicePointer< const int > h1_indices{};
+   h1_indices.host_pointer = h1_map.data();
+   const auto scalar_specification =
+      IndirectH1RestrictionSpecification{ h1_indices, 9 };
+   const auto vector_space =
+      MakeFiniteElementSpace(
+         mesh,
+         vector_fe,
+         MakeVectorIndirectH1RestrictionSpecification< 2 >(
+            scalar_specification ) );
+   const auto integration_rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3, 3 >{} );
+   const GlobalIndex vector_dofs =
+      GetAlgebraicDofExtent( vector_space );
+   bool success = true;
+
+   {
+      VectorTrialSpace< "vector_h1_boundary" > u;
+      VectorTestSpace< "vector_h1_boundary" > v;
+      const auto form =
+         integrate(
+            BoundaryFacets< "mesh" >{},
+            dot( u, v ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "vector_h1_boundary" >( vector_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckFacetAssemblyCase(
+            form,
+            context,
+            integration_rule,
+            vector_dofs,
+            vector_dofs,
+            ExpectedRawCOONNZ< false, true, false >( vector_space ),
+            true,
+            false,
+            "conforming vector H1 boundary mass" ) && success;
+   }
+
+   {
+      VectorTrialSpace< "vector_h1_interior" > u;
+      VectorTestSpace< "vector_h1_interior" > v;
+      const auto form =
+         integrate(
+            InteriorFacets< "mesh" >{},
+            dot( average( u ), average( v ) ) );
+      const auto context =
+         MakeWeakFormContext(
+            MakeTrialField< "vector_h1_interior" >( vector_space ),
+            MakeIntegrationDomain< "mesh" >( mesh ) );
+      success =
+         CheckFacetAssemblyCase(
+            form,
+            context,
+            integration_rule,
+            vector_dofs,
+            vector_dofs,
+            ExpectedRawCOONNZ< false, false, true >( vector_space ),
+            true,
+            false,
+            "conforming vector H1 interior average mass" ) && success;
    }
 
    return success;
@@ -2184,14 +2399,14 @@ bool TestRectangularP1TrialP2TestCellAssembly()
             trial % 2,
             trial / 2 };
          const GlobalIndex expected_col =
-            GlobalDofIndex( trial_space, element, trial_indices );
+            GetGlobalDofIndex( trial_space, element, trial_indices );
          for ( GlobalIndex test = 0; test < 9; ++test )
          {
             const std::array< GlobalIndex, 2 > test_indices{
                test % 3,
                test / 3 };
             const GlobalIndex expected_row =
-               GlobalDofIndex( test_space, element, test_indices );
+               GetGlobalDofIndex( test_space, element, test_indices );
             const GlobalIndex entry =
                element * 36 + trial * 9 + test;
             success = Check(
@@ -2591,7 +2806,7 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
          trial_x,
          trial_y };
       const GlobalIndex expected_col =
-         GlobalDofIndex( trial_space, 1, native_trial_indices );
+         GetGlobalDofIndex( trial_space, 1, native_trial_indices );
 
       for ( GlobalIndex test = 0; test < 4; ++test )
       {
@@ -2601,7 +2816,7 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
             test_x,
             test_y };
          const GlobalIndex expected_row =
-            GlobalDofIndex( test_space, 0, test_indices );
+            GetGlobalDofIndex( test_space, 0, test_indices );
          const GlobalIndex entry =
             first_neighbor_offset + trial * 4 + test;
          success = Check(
@@ -2678,11 +2893,729 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
    return success;
 }
 
+bool TestPartitionScalarCellRawCOOUsesAlgebraicExtents()
+{
+   Cartesian1DMesh mesh0(0.5, 2);
+   Cartesian1DMesh mesh1(1.0, 1);
+   auto partition = MakePartition(
+      MakeCellPart(mesh0),
+      MakeCellPart(mesh1));
+
+   auto p0 = MakeLegendreFiniteElement(FiniteElementOrders<0>{});
+   auto p1 = MakeLegendreFiniteElement(FiniteElementOrders<1>{});
+   auto trial_space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{p0, p1},
+      DGDirectSumNumbering{});
+   auto test_space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{p1, p0},
+      DGDirectSumNumbering{});
+
+   TrialSpace<"u"> u;
+   TestSpace<"v"> v;
+   auto weak_form = integrate(Cells<"mesh">{}, u * v);
+   auto context = MakeWeakFormContext(
+      MakeTrialField<"u">(trial_space),
+      MakeTestField<"v">(test_space),
+      MakeIntegrationDomain<"mesh">(partition));
+   auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3>{});
+
+   auto raw = GenericAssembly<
+      MatrixAssemblyType::RawCOO,
+      SerialKernelConfiguration>(
+         weak_form,
+         context,
+         rule);
+   auto coo = FinalizeRawCOOToCOOHost(raw);
+
+   bool success = true;
+   success = Check(
+      GetNumberOfGlobalDofs(trial_space) == 4 &&
+         GetAlgebraicDofExtent(trial_space) == 4 &&
+         GetNumberOfGlobalDofs(test_space) == 5 &&
+         GetAlgebraicDofExtent(test_space) == 5,
+      "Compact mixed L2 logical counts and algebraic extents are wrong.") && success;
+   const auto& trial0 =
+      trial_space.template GetCellFiniteElementSpace<0>();
+   const auto& trial1 =
+      trial_space.template GetCellFiniteElementSpace<1>();
+   success = Check(
+      GetNumberOfGlobalDofs(trial0) == 2 &&
+         GetNumberOfGlobalDofs(trial1) == 2 &&
+         GetAlgebraicDofExtent(trial0) == 4 &&
+         GetAlgebraicDofExtent(trial1) == 4 &&
+         trial1.GetNumberOfFiniteElementDofs() == 2,
+      "Partition L2 leaves do not separate logical counts from the common algebraic extent.") && success;
+   success = Check(
+      raw.num_rows == 5 && raw.num_cols == 4 && raw.nnz_raw == 6,
+      "Partition RawCOO dimensions or segmented capacity are wrong.") && success;
+
+   const auto raw_data = GetHostReadView(raw);
+   for (GlobalIndex i = 0; i < 4; ++i)
+   {
+      success = Check(
+         raw_data.rows[i] < 4 && raw_data.cols[i] < 2,
+         "Partition RawCOO part-0 coordinate escaped its direct-sum range.") && success;
+   }
+   for (GlobalIndex i = 4; i < 6; ++i)
+   {
+      success = Check(
+         raw_data.rows[i] >= 4 && raw_data.rows[i] < 5 &&
+            raw_data.cols[i] >= 2 && raw_data.cols[i] < 4,
+         "Partition RawCOO part-1 coordinate missed its shifted algebraic range.") && success;
+   }
+
+   auto matrix_free = MakeGenericOperator<SerialKernelConfiguration>(
+      weak_form,
+      context,
+      rule);
+   Vector x(4);
+   auto* x_data = x.WriteHostData();
+   for (GlobalIndex i = 0; i < 4; ++i)
+   {
+      x_data[i] = Real(0.25) + Real(0.5) * i;
+   }
+   const auto expected = ApplyRectangularOperator(matrix_free, x, 5);
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Partition RawCOO action disagrees with the matrix-free operator.") && success;
+   return success;
+}
+
+bool TestPartitionSharedCoordinateCellRawCOOReduction()
+{
+   Cartesian1DMesh mesh0( 0.5, 2 );
+   Cartesian1DMesh mesh1( 1.0, 1 );
+   auto partition = MakePartition(
+      MakeCellPart( mesh0 ),
+      MakeCellPart( mesh1 ) );
+
+   const auto finite_element =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
+   const std::array< int, 4 > part0_map{ 0, 1, 1, 2 };
+   const std::array< int, 2 > part1_map{ 0, 1 };
+   HostDevicePointer< const int > part0_indices{};
+   HostDevicePointer< const int > part1_indices{};
+   part0_indices.host_pointer = part0_map.data();
+   part1_indices.host_pointer = part1_map.data();
+   using Restriction =
+      IndirectH1Restriction< std::index_sequence< 2 > >;
+   const Restriction part0_restriction{
+      part0_indices,
+      0,
+      4,
+      3,
+      3 };
+   const Restriction part1_restriction{
+      part1_indices,
+      1,
+      2,
+      2,
+      3 };
+   auto space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{ finite_element, finite_element },
+      std::tuple{ part0_restriction, part1_restriction } );
+
+   TrialSpace< "shared" > u;
+   TestSpace< "shared" > v;
+   const auto weak_form = integrate( Cells< "mesh" >{}, u * v );
+   const auto context = MakeWeakFormContext(
+      MakeTrialField< "shared" >( space ),
+      MakeIntegrationDomain< "mesh" >( partition ) );
+   const auto rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3 >{} );
+
+   auto raw = GenericAssembly<
+      MatrixAssemblyType::RawCOO,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+   auto coo = FinalizeRawCOOToCOOHost( raw );
+   auto csr = FinalizeRawCOOToCSRHost( raw );
+   auto csc = FinalizeRawCOOToCSCHost( raw );
+   auto matrix_free = MakeGenericOperator< SerialKernelConfiguration >(
+      weak_form,
+      context,
+      rule );
+
+   bool success = true;
+   success = Check(
+      GetNumberOfGlobalDofs( space ) == 5 &&
+         GetAlgebraicDofExtent( space ) == 3,
+      "Shared mixed space did not preserve logical counts and common algebraic extent." ) && success;
+   success = Check(
+      raw.num_rows == 3 && raw.num_cols == 3 && raw.nnz_raw == 12,
+      "Shared mixed RawCOO dimensions or exact capacity are wrong." ) && success;
+   success = Check(
+      HasDuplicateCoordinate( raw ) && raw.nnz_raw > coo.nnz,
+      "Shared mixed RawCOO coordinates were not canonically reducible." ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   Vector x( 3 );
+   FillDeterministicInput( x );
+   const auto expected = ApplyRectangularOperator( matrix_free, x, 3 );
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Shared mixed COO action disagrees with the matrix-free operator." ) && success;
+   success = CheckRectangularAction(
+      csr,
+      x,
+      expected,
+      "Shared mixed CSR action disagrees with the matrix-free operator." ) && success;
+   success = CheckRectangularAction(
+      csc,
+      x,
+      expected,
+      "Shared mixed CSC action disagrees with the matrix-free operator." ) && success;
+   return success;
+}
+
+bool TestPartitionHeterogeneousGlobalFacetRawCOO()
+{
+   Cartesian1DMesh left_mesh( 0.5, 2 );
+   Cartesian1DMesh right_mesh( 1.0, 1 );
+   const auto left_boundary_faces =
+      MakeCartesianBoundaryFaceConnectivity< 1 >( { 2 } );
+   const auto right_boundary_faces =
+      MakeCartesianBoundaryFaceConnectivity< 1 >( { 1 } );
+   const auto left_interior_faces =
+      MakeCartesianInteriorFaceConnectivity< 1 >( { 2 } );
+   const auto right_interior_faces =
+      MakeCartesianInteriorFaceConnectivity< 1 >( { 1 } );
+   const CartesianIntermeshFaceConnectivity< 1, 1 > interface_faces(
+      { 2 },
+      { 1 } );
+   const auto partition = MakePartition(
+      MakeCellPart( left_mesh ),
+      MakeCellPart( right_mesh ),
+      MakeBoundaryFacePart< 1 >( right_boundary_faces ),
+      MakeInteriorFacePart< 0, 0 >( left_interior_faces ),
+      MakeInteriorFacePart< 1, 1 >( right_interior_faces ),
+      MakeInteriorFacePart< 0, 1 >( interface_faces ),
+      MakeBoundaryFacePart< 0 >( left_boundary_faces ) );
+
+   const auto p0 =
+      MakeLegendreFiniteElement( FiniteElementOrders< 0 >{} );
+   const auto p1 =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1 >{} );
+   const auto p2 =
+      MakeLegendreFiniteElement( FiniteElementOrders< 2 >{} );
+   const auto trial_space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{ p1, p2 },
+      DGDirectSumNumbering{} );
+   const auto test_space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{ p2, p0 },
+      DGDirectSumNumbering{} );
+
+   TrialSpace< "partition_facet_u" > u;
+   TestSpace< "partition_facet_v" > v;
+   const auto weak_form =
+      integrate(
+         BoundaryFacets< "mesh" >{},
+         u * v ) +
+      integrate(
+         InteriorFacets< "mesh" >{},
+         jump( u ) * jump( v ) );
+   const auto context = MakeWeakFormContext(
+      MakeTrialField< "partition_facet_u" >( trial_space ),
+      MakeTestField< "partition_facet_v" >( test_space ),
+      MakeIntegrationDomain< "mesh" >( partition ) );
+   const auto rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4 >{} );
+
+   const auto raw = GenericAssembly<
+      MatrixAssemblyType::RawCOO,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+   const auto coo = FinalizeRawCOOToCOOHost( raw );
+   const auto csr = GenericAssembly<
+      MatrixAssemblyType::CSR,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+   const auto csc = GenericAssembly<
+      MatrixAssemblyType::CSC,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+#ifdef GENDIL_USE_HYPRE
+   const auto hypre = GenericAssembly<
+      MatrixAssemblyType::HypreCSR,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule,
+         HypreCSRHostBackend{} );
+#endif
+   const auto matrix_free =
+      MakeGenericOperator< SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+
+   constexpr GlobalIndex expected_boundary_entries = 18;
+   constexpr GlobalIndex expected_left_interior_entries = 24;
+   constexpr GlobalIndex expected_cross_entries = 20;
+   constexpr GlobalIndex expected_raw_entries =
+      expected_boundary_entries +
+      expected_left_interior_entries +
+      expected_cross_entries;
+   bool success = true;
+   success = Check(
+      raw.num_rows == 7 && raw.num_cols == 7,
+      "Heterogeneous partition facet RawCOO dimensions are wrong." ) && success;
+   success = Check(
+      raw.nnz_raw == expected_raw_entries,
+      "Heterogeneous partition facet RawCOO segment capacity is wrong." ) && success;
+   success = CheckRawTripletRangesAndFinite( raw ) && success;
+
+   const auto raw_data = GetHostReadView( raw );
+   const auto check_segment = [&] (
+      const GlobalIndex begin,
+      const GlobalIndex end,
+      const GlobalIndex row_begin,
+      const GlobalIndex row_end,
+      const GlobalIndex col_begin,
+      const GlobalIndex col_end,
+      const char* message )
+   {
+      bool segment_success = true;
+      for ( GlobalIndex i = begin; i < end; ++i )
+      {
+         segment_success = Check(
+            raw_data.rows[i] >= row_begin &&
+               raw_data.rows[i] < row_end &&
+               raw_data.cols[i] >= col_begin &&
+               raw_data.cols[i] < col_end,
+            message ) && segment_success;
+      }
+      return segment_success;
+   };
+
+   // Boundary parts are ordered right/right/left/left by MakePartition.
+   success = check_segment(
+      0, 6, 6, 7, 4, 7,
+      "Right boundary segment escaped the right direct-sum ranges." ) && success;
+   success = check_segment(
+      6, 18, 0, 6, 0, 4,
+      "Left boundary segment escaped the left direct-sum ranges." ) && success;
+   success = check_segment(
+      18, 42, 0, 6, 0, 4,
+      "Same-part interior segment escaped the left direct-sum ranges." ) && success;
+
+   // Cross-part storage is --, -+, +-, ++, with exact heterogeneous sizes.
+   success = check_segment(
+      42, 48, 0, 6, 0, 4,
+      "Cross-part -- segment has the wrong algebraic ranges." ) && success;
+   success = check_segment(
+      48, 57, 0, 6, 4, 7,
+      "Cross-part -+ segment has the wrong algebraic ranges." ) && success;
+   success = check_segment(
+      57, 59, 6, 7, 0, 4,
+      "Cross-part +- segment has the wrong algebraic ranges." ) && success;
+   success = check_segment(
+      59, 62, 6, 7, 4, 7,
+      "Cross-part ++ segment has the wrong algebraic ranges." ) && success;
+   success = Check(
+      HasDuplicateCoordinate( raw ) && raw.nnz_raw > coo.nnz,
+      "Partition facet RawCOO duplicates were not reduced." ) && success;
+   success = CheckCanonicalCOOSortedUnique( coo ) && success;
+
+   Vector x( raw.num_cols );
+   FillDeterministicInput( x );
+   const auto expected =
+      ApplyRectangularOperator( matrix_free, x, raw.num_rows );
+   success = CheckRectangularAction(
+      coo,
+      x,
+      expected,
+      "Partition facet COO action disagrees with matrix-free." ) && success;
+   success = CheckRectangularAction(
+      csr,
+      x,
+      expected,
+      "Partition facet CSR action disagrees with matrix-free." ) && success;
+   success = CheckRectangularAction(
+      csc,
+      x,
+      expected,
+      "Partition facet CSC action disagrees with matrix-free." ) && success;
+#ifdef GENDIL_USE_HYPRE
+   success = CheckRectangularAction(
+      hypre,
+      x,
+      expected,
+      "Partition facet process-local HypreCSR action disagrees with matrix-free." ) && success;
+#endif
+   return success;
+}
+
+bool TestPartitionH1GlobalFacetAliasesAndExplicitPlacement()
+{
+   Cartesian1DMesh mesh( 0.5, 2 );
+   const auto partition = MakePartition(
+      MakeCellPart( mesh ),
+      MakeInteriorFacePart< 0, 0 >(
+         MakeCartesianInteriorFaceConnectivity< 1 >( { 2 } ) ),
+      MakeBoundaryFacePart< 0 >(
+         MakeCartesianBoundaryFaceConnectivity< 1 >( { 2 } ) ) );
+   const auto finite_element =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
+   const std::array< int, 4 > h1_map{ 0, 1, 1, 2 };
+   HostDevicePointer< const int > indices{};
+   indices.host_pointer = h1_map.data();
+   using Restriction =
+      IndirectH1Restriction< std::index_sequence< 2 > >;
+   const Restriction restriction{
+      indices,
+      2,
+      4,
+      3,
+      5 };
+   const auto space = MakeMixedFiniteElementSpace(
+      partition,
+      std::tuple{ finite_element },
+      std::tuple{ restriction } );
+
+   TrialSpace< "partition_h1" > u;
+   TestSpace< "partition_h1" > v;
+   const auto weak_form =
+      integrate(
+         BoundaryFacets< "mesh" >{},
+         u * v ) +
+      integrate(
+         InteriorFacets< "mesh" >{},
+         average( u ) * average( v ) );
+   const auto context = MakeWeakFormContext(
+      MakeTrialField< "partition_h1" >( space ),
+      MakeIntegrationDomain< "mesh" >( partition ) );
+   const auto rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 3 >{} );
+   const auto raw = GenericAssembly<
+      MatrixAssemblyType::RawCOO,
+      SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+   const auto coo = FinalizeRawCOOToCOOHost( raw );
+   const auto matrix_free =
+      MakeGenericOperator< SerialKernelConfiguration >(
+         weak_form,
+         context,
+         rule );
+
+   bool success = true;
+   success = Check(
+      raw.num_rows == 5 && raw.num_cols == 5 && raw.nnz_raw == 24,
+      "Partition H1 facet dimensions or segment capacity are wrong." ) && success;
+   const auto raw_data = GetHostReadView( raw );
+   for ( GlobalIndex i = 0; i < raw.nnz_raw; ++i )
+   {
+      success = Check(
+         raw_data.rows[i] >= 2 && raw_data.rows[i] < 5 &&
+            raw_data.cols[i] >= 2 && raw_data.cols[i] < 5,
+         "Partition H1 facet coordinate ignored explicit placement." ) && success;
+   }
+   success = Check(
+      HasDuplicateCoordinate( raw ) && raw.nnz_raw > coo.nnz,
+      "Partition H1 facet aliases were not retained as RawCOO duplicates." ) && success;
+
+   Vector input( 5 );
+   FillDeterministicInput( input );
+   const auto expected = ApplyRectangularOperator( matrix_free, input, 5 );
+   success = CheckRectangularAction(
+      coo,
+      input,
+      expected,
+      "Explicitly placed partition H1 facet COO disagrees with matrix-free." ) && success;
+   return success;
+}
+
+bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
+{
+   constexpr GlobalIndex nx = 2;
+   constexpr GlobalIndex nv_part = 2;
+   const Cartesian1DMesh spatial_mesh( Real{1} / nx, nx );
+   const Cartesian1DMesh velocity_minus(
+      Real{0.25}, nv_part, Real{0} );
+   const Cartesian1DMesh velocity_plus(
+      Real{0.25}, nv_part, Real{0.5} );
+
+   const auto spatial_partition = MakePartition(
+      MakeCellPart( spatial_mesh ),
+      MakeInteriorFacePart< 0, 0 >(
+         MakeCartesianInteriorFaceConnectivity< 1 >( { nx } ) ),
+      MakeBoundaryFacePart< 0 >(
+         MakeCartesianBoundaryFaceConnectivity< 1 >( { nx } ) ) );
+   const auto velocity_partition = MakePartition(
+      MakeCellPart( velocity_minus ),
+      MakeCellPart( velocity_plus ),
+      MakeInteriorFacePart< 0, 0 >(
+         MakeCartesianInteriorFaceConnectivity< 1 >( { nv_part } ) ),
+      MakeInteriorFacePart< 1, 1 >(
+         MakeCartesianInteriorFaceConnectivity< 1 >( { nv_part } ) ),
+      MakeInteriorFacePart< 0, 1 >(
+         CartesianIntermeshFaceConnectivity< 1, 1 >(
+            { nv_part },
+            { nv_part } ) ),
+      MakeBoundaryFacePart< 0 >(
+         CartesianBoundaryFaceConnectivity< 1, 0 >( { nv_part } ) ),
+      MakeBoundaryFacePart< 1 >(
+         CartesianBoundaryFaceConnectivity< 1, 1 >( { nv_part } ) ) );
+   const auto phase_partition =
+      MakeCartesianProductPartition(
+         spatial_partition,
+         velocity_partition );
+   static_assert( decltype( phase_partition )::num_cell_parts == 2 );
+
+   const auto spatial_scalar_h1 =
+      MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
+   const auto spatial_vector_h1 =
+      MakeVectorFiniteElement(
+         spatial_scalar_h1,
+         spatial_scalar_h1 );
+   const std::array< int, 4 > spatial_h1_map{ 0, 1, 1, 2 };
+   HostDevicePointer< const int > spatial_h1_indices{};
+   spatial_h1_indices.host_pointer = spatial_h1_map.data();
+   const auto spatial_vector_space = MakeFiniteElementSpace(
+      spatial_mesh,
+      spatial_vector_h1,
+      MakeVectorIndirectH1RestrictionSpecification< 2 >(
+         IndirectH1RestrictionSpecification{
+            spatial_h1_indices,
+            3 } ) );
+
+   const auto velocity_dg =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1 >{} );
+   constexpr GlobalIndex velocity_dofs_per_part = 2 * nv_part;
+   constexpr GlobalIndex velocity_extent = 2 * velocity_dofs_per_part;
+   const auto velocity_minus_space = MakeFiniteElementSpace(
+      velocity_minus,
+      velocity_dg,
+      ContiguousL2RestrictionSpecification{
+         0,
+         velocity_extent } );
+   const auto velocity_plus_space = MakeFiniteElementSpace(
+      velocity_plus,
+      velocity_dg,
+      ContiguousL2RestrictionSpecification{
+         velocity_dofs_per_part,
+         velocity_extent } );
+   const auto f1_minus_restriction = MakeTensorProductRestriction(
+      spatial_vector_space,
+      velocity_minus_space );
+   const auto f1_plus_restriction = MakeTensorProductRestriction(
+      spatial_vector_space,
+      velocity_plus_space );
+
+   using ScalarF1Shape = TensorShapeFunctions<
+      GaussLobattoLegendreShapeFunctions< 1 >,
+      GaussLegendreShapeFunctions< 1 > >;
+   const auto scalar_f1_finite_element =
+      FiniteElement< HyperCube< 2 >, ScalarF1Shape >{};
+   const auto vector_f1_finite_element = MakeVectorFiniteElement(
+      scalar_f1_finite_element,
+      scalar_f1_finite_element );
+   const auto f1_space = MakeMixedFiniteElementSpace(
+      phase_partition,
+      std::tuple{
+         vector_f1_finite_element,
+         vector_f1_finite_element },
+      std::tuple{
+         f1_minus_restriction,
+         f1_plus_restriction } );
+
+   const auto f0_finite_element =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1, 1 >{} );
+   const auto f0_space = MakeMixedFiniteElementSpace(
+      phase_partition,
+      std::tuple{ f0_finite_element, f0_finite_element },
+      DGDirectSumNumbering{} );
+
+   Cells< "phase" > cells;
+   InteriorFacets< "phase" > interior_facets;
+   BoundaryFacets< "phase" > boundary_facets;
+   VectorTrialSpace< "f1" > f1;
+   VectorTestSpace< "f1" > g1;
+   TrialSpace< "f0" > f0;
+   TestSpace< "f0" > g0;
+   const auto beta = MakeVectorCoefficient< "partition_vector_beta" >(
+      [] GENDIL_HOST_DEVICE ()
+      {
+         return std::array< Real, 2 >{ Real{0}, Real{1} };
+      } );
+   const auto one = MakeCoefficient< "partition_vector_one" >(
+      [] GENDIL_HOST_DEVICE () { return Real{1}; } );
+   const auto spatial_projector =
+      MakeMatrixCoefficient< "partition_spatial_projector" >(
+         [] GENDIL_HOST_DEVICE ()
+         {
+            SerialRecursiveArray< Real, 2, 2 > value{};
+            value( 0, 0 ) = Real{1};
+            value( 1, 1 ) = Real{1};
+            return value;
+         } );
+
+   const auto diagonal_form =
+      integrate(
+         cells,
+         -inner( outer( f1, beta ), grad( g1 ) ) +
+            one * dot( f1, g1 ) ) +
+      integrate(
+         interior_facets,
+         dot( upwind( beta, f1 ), jump( g1 ) ) ) +
+      integrate(
+         boundary_facets,
+         dot( f1, g1 ) * dot( beta, Normal{} ) );
+   const auto divergence_form = integrate(
+      cells,
+      inner( spatial_projector, grad( f1 ) ) * g0 );
+   const auto gradient_form = integrate(
+      cells,
+      -f0 * inner( spatial_projector, grad( g1 ) ) );
+
+   const auto diagonal_context = MakeWeakFormContext(
+      MakeTrialField< "f1" >( f1_space ),
+      MakeIntegrationDomain< "phase" >( phase_partition ) );
+   const auto divergence_context = MakeWeakFormContext(
+      MakeTrialField< "f1" >( f1_space ),
+      MakeTestField< "f0" >( f0_space ),
+      MakeIntegrationDomain< "phase" >( phase_partition ) );
+   const auto gradient_context = MakeWeakFormContext(
+      MakeTrialField< "f0" >( f0_space ),
+      MakeTestField< "f1" >( f1_space ),
+      MakeIntegrationDomain< "phase" >( phase_partition ) );
+   const auto rule =
+      MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
+
+   bool success = true;
+   const auto check_form = [&] (
+      const auto & form,
+      const auto & context,
+      const GlobalIndex num_rows,
+      const GlobalIndex num_cols,
+      const bool expect_duplicates,
+      const char * dimension_message,
+      const char * coo_message,
+      const char * csr_message )
+   {
+      const auto raw = GenericAssembly<
+         MatrixAssemblyType::RawCOO,
+         SerialKernelConfiguration >( form, context, rule );
+      const auto coo = FinalizeRawCOOToCOOHost( raw );
+      const auto csr = GenericAssembly<
+         MatrixAssemblyType::CSR,
+         SerialKernelConfiguration >( form, context, rule );
+      const auto matrix_free =
+         MakeGenericOperator< SerialKernelConfiguration >(
+            form,
+            context,
+            rule );
+
+      bool form_success = true;
+      form_success = Check(
+         raw.num_rows == num_rows && raw.num_cols == num_cols,
+         dimension_message ) && form_success;
+      form_success =
+         CheckRawTripletRangesAndFinite( raw ) && form_success;
+      form_success =
+         CheckCanonicalCOOSortedUnique( coo ) && form_success;
+      if ( expect_duplicates )
+      {
+         form_success = Check(
+            HasDuplicateCoordinate( raw ) && raw.nnz_raw > coo.nnz,
+            "Partition vector tensor-product duplicates were not reduced." ) &&
+            form_success;
+      }
+
+      Vector input( num_cols );
+      FillDeterministicInput( input );
+      const auto expected =
+         ApplyRectangularOperator( matrix_free, input, num_rows );
+      form_success = Check(
+         Dot( expected, expected ) > Real{1.0e-16},
+         "Partition vector tensor-product action is unexpectedly zero." ) &&
+         form_success;
+      form_success = CheckRectangularAction(
+         coo,
+         input,
+         expected,
+         coo_message ) && form_success;
+      form_success = CheckRectangularAction(
+         csr,
+         input,
+         expected,
+         csr_message ) && form_success;
+      return form_success;
+   };
+
+   const GlobalIndex f0_extent = GetAlgebraicDofExtent( f0_space );
+   const GlobalIndex f1_extent = GetAlgebraicDofExtent( f1_space );
+   success = Check(
+      f0_extent == 32 && f1_extent == 48,
+      "Partition vector tensor-product algebraic extents are wrong." ) &&
+      success;
+   success = check_form(
+      diagonal_form,
+      diagonal_context,
+      f1_extent,
+      f1_extent,
+      true,
+      "Partition vector diagonal RawCOO dimensions are wrong.",
+      "Partition vector diagonal COO action disagrees with matrix-free.",
+      "Partition vector diagonal CSR action disagrees with matrix-free." ) &&
+      success;
+   success = check_form(
+      divergence_form,
+      divergence_context,
+      f0_extent,
+      f1_extent,
+      false,
+      "Partition vector divergence RawCOO dimensions are wrong.",
+      "Partition vector divergence COO action disagrees with matrix-free.",
+      "Partition vector divergence CSR action disagrees with matrix-free." ) &&
+      success;
+   success = check_form(
+      gradient_form,
+      gradient_context,
+      f1_extent,
+      f0_extent,
+      false,
+      "Partition vector gradient RawCOO dimensions are wrong.",
+      "Partition vector gradient COO action disagrees with matrix-free.",
+      "Partition vector gradient CSR action disagrees with matrix-free." ) &&
+      success;
+   return success;
+}
+
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+#ifdef GENDIL_USE_HYPRE
+   hypre_MPI_Init(&argc, &argv);
+#else
+   (void)argc;
+   (void)argv;
+#endif
    bool success = true;
+#ifdef GENDIL_USE_HYPRE
+   {
+      HypreSession hypre;
+#endif
    success = TestRawCOOBufferAllocation() && success;
    success = TestRawCOOToCOOFinalization() && success;
    success = TestScalarL2CellMassRawCOOAgainstBSR() && success;
@@ -2697,9 +3630,19 @@ int main()
    success = TestScalarCombinedFaceCOOOffsetsAndAccumulation() && success;
    success = TestTensorProductFacetRawCOOAndCSRAgainstGeneric() && success;
    success = TestScalarH1FacetRawCOOAndCSRAgainstGeneric() && success;
+   success = TestVectorH1FacetRawCOOAndCSRAgainstGeneric() && success;
    success = TestRectangularP1TrialP2TestCellAssembly() && success;
    success = TestRectangularP1TrialP2TestAffineBoundaryAssembly() && success;
    success = TestRectangularP2TrialP1TestOrientedInteriorAssembly() && success;
+   success = TestPartitionScalarCellRawCOOUsesAlgebraicExtents() && success;
+   success = TestPartitionSharedCoordinateCellRawCOOReduction() && success;
+   success = TestPartitionHeterogeneousGlobalFacetRawCOO() && success;
+   success = TestPartitionH1GlobalFacetAliasesAndExplicitPlacement() && success;
+   success = TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric() && success;
+#ifdef GENDIL_USE_HYPRE
+   }
+   hypre_MPI_Finalize();
+#endif
 
    return success ? 0 : 1;
 }

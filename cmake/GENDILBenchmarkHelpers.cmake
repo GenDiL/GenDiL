@@ -14,6 +14,13 @@ function(gendil_add_benchmark target source)
   add_dependencies(benchmarks ${target})
 endfunction()
 
+function(gendil_add_gpu_benchmark target source)
+  if(NOT (USE_CUDA OR USE_HIP))
+    return()
+  endif()
+  gendil_add_benchmark(${target} "${source}")
+endfunction()
+
 function(gendil_add_non_cuda_benchmark target source)
   if(USE_CUDA)
     return()

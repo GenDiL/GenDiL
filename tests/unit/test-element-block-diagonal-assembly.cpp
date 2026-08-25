@@ -328,7 +328,7 @@ bool TestH1SGBSRElementBlockDiagonal()
    };
    HostDevicePointer<const int> restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction restriction{restriction_indices, 3};
+   IndirectH1RestrictionSpecification restriction{restriction_indices, 3};
    auto fe_space =
       MakeFiniteElementSpace(mesh, fe, restriction);
 

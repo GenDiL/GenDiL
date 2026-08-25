@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
    mfem::FiniteElementSpace fes(&mfem_mesh, &fec);
 
    // GenDiL Finite element space
-   auto restriction = GetH1Restriction( fes );
+   auto restriction = GetIndirectH1RestrictionSpecification( fes );
    auto fe_space = MakeFiniteElementSpace( mesh, finite_element, restriction );
    // auto fe_space = MakeFiniteElementSpace( mesh, finite_element );
 
