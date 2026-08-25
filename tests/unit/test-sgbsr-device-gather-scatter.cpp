@@ -377,16 +377,16 @@ bool TestVectorH1AtomicScatter()
    const Real expected[2]{
       x_data[0] * multiplicity,
       x_data[1] * multiplicity };
-   bool success = CheckVector(
+   bool success = Check(
+      device_y.IsDeviceValid() && !device_y.IsHostValid(),
+      "Device vector H1 scatter staged its output through host memory." );
+   success = CheckDeviceWorkspaces( matrix ) && success;
+   success = CheckVector(
       device_y,
       expected,
       2,
-      "Atomic vector H1 device scatter lost shared-DoF contributions." );
-   success = Check(
-      device_y.IsDeviceValid() && !device_y.IsHostValid(),
-      "Device vector H1 scatter staged its output through host memory." ) &&
+      "Atomic vector H1 device scatter lost shared-DoF contributions." ) &&
       success;
-   success = CheckDeviceWorkspaces( matrix ) && success;
    success = CheckVector(
       host_y,
       expected,
