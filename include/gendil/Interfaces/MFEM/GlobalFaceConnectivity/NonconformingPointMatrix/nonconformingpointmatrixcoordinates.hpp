@@ -19,7 +19,7 @@
 
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/permutation.hpp"
 
 namespace gendil {
 namespace mfem_interface {

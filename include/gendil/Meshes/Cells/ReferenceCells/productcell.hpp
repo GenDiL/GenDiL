@@ -10,7 +10,7 @@
 #include "gendil/Utilities/productdim.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/tensorproductorientation.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Utilities/tensorproductdata.hpp"
 
@@ -184,19 +184,31 @@ auto MakeProductCell( std::tuple< Meshes ... > const & meshes, std::array< Globa
    return MakeProductCell( meshes, indices, std::make_index_sequence< Dim >() );
 }
 
-template < Integer Dim, typename ... CellTypes >
-GENDIL_HOST_DEVICE
-void ApplyOrientationToCell( const Permutation< Dim > & orientation, ProductCell< CellTypes ... > & cell )
+template < typename... Orientations, typename... CellTypes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+void ApplyOrientationToCell(
+   const TensorProductOrientation< Orientations... > & orientation,
+   ProductCell< CellTypes... > & cell )
 {
-   constexpr Integer NumSubCells = sizeof...( CellTypes );
-   Integer offset = 0;
-   ConstexprLoop< NumSubCells >( [&] ( auto cell_index )
+   static_assert(
+      sizeof...( Orientations ) == sizeof...( CellTypes ),
+      "Tensor-product cell orientation must have one component per cell factor." );
+
+   using OrientationTuple = std::tuple< Orientations... >;
+   using CellTuple = std::tuple< CellTypes... >;
+   ConstexprLoop< sizeof...( CellTypes ) >( [&] ( auto cell_index )
    {
-      constexpr Integer sub_dim = ProductCell< CellTypes ... >::template SubDim< cell_index >;
-      Permutation< sub_dim > sub_orientation = GetSubPermutation< sub_dim >( orientation, offset );
-      ApplyOrientationToCell( sub_orientation, std::get< cell_index >( cell.Cells ) );
-      offset += sub_dim;
-   });      
+      using Orientation =
+         std::tuple_element_t< cell_index, OrientationTuple >;
+      using Cell = std::tuple_element_t< cell_index, CellTuple >;
+      static_assert(
+         orientation_dimension_v< Orientation > ==
+            static_cast< size_t >( Cell::Dim ),
+         "Tensor-product orientation component dimension must match its cell factor." );
+      ApplyOrientationToCell(
+         orientation.template Get< cell_index >(),
+         std::get< cell_index >( cell.Cells ) );
+   } );
 }
 
 /**
@@ -208,7 +220,7 @@ void ApplyOrientationToCell( const Permutation< Dim > & orientation, ProductCell
  * every statically encoded nonidentity permutation.
  */
 template < typename... CellTypes >
-GENDIL_HOST_DEVICE
+GENDIL_HOST_DEVICE GENDIL_INLINE
 void ApplyOrientationToCell(
    const std::integral_constant<
       Permutation< ProductCell< CellTypes... >::Dim >,

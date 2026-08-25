@@ -8,14 +8,13 @@
 #include "gendil/Utilities/toarray.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facedofspolicies.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/orientedglobaldofview.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 #include "gendil/Utilities/debug.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
-#include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
@@ -150,13 +149,12 @@ void ReadDofs(
       "Mismatching dimensions in ReadDofs."
    );
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
    using DofShape =
       orders_to_num_dofs<
          typename FiniteElementSpace::finite_element_type::
             shape_functions::orders >;
 
-   Permutation< space_dim > orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -448,13 +446,12 @@ auto SerialReadDofs(
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
    using DofShape =
       orders_to_num_dofs<
          typename FiniteElementSpace::finite_element_type::
             shape_functions::orders >;
 
-   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -519,9 +516,8 @@ auto ThreadedReadDofs(
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    // TODO: Use fixed FIFO view and dynamic shared allocation through kernel_conf
@@ -583,8 +579,7 @@ auto DirectGlobalSerialReadDofs(
    auto local_dofs = MakeSerialRecursiveArray< Real >( DofShape{} );
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
    const auto oriented_global_dofs =
@@ -634,8 +629,7 @@ auto DirectGlobalThreadedReadDofs(
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation< space_dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    const auto dof_sizes = to_array( DofShape{} );
 
    const auto oriented_global_dofs =
@@ -694,13 +688,12 @@ auto ReadVectorDofsSerial(
    auto local_dofs = MakeSerialRecursiveArray< Real >( rshape{} );
 
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
    using DofShape =
       orders_to_num_dofs<
          typename FiniteElementSpace::finite_element_type::
             shape_functions::orders >;
 
-   Permutation< space_dim > orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -760,8 +753,7 @@ auto ReadVectorDofsSerial(
    auto local_dofs = MakeVectorDofs( dof_shape{}, std::make_index_sequence< v_dim >{} );
 
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation< space_dim > orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
 
    // Process each component separately
    ConstexprLoop< v_dim >( [&]( auto i )
@@ -833,9 +825,8 @@ auto ReadVectorDofsThreaded(
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
 
-   Permutation< space_dim > orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -895,8 +886,7 @@ auto ReadVectorDofsThreaded(
 
    const GlobalIndex element_index = face_info.cell_index;
 
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation<space_dim> orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
 
    ConstexprLoop<v_dim>([&](auto i)
    {
@@ -977,8 +967,7 @@ auto DirectGlobalReadVectorDofsSerial(
       MakeVectorDofs( dof_shape{}, std::make_index_sequence<v_dim>{});
 
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation<space_dim> orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
 
    ConstexprLoop<v_dim>([&](auto i)
    {
@@ -1025,8 +1014,7 @@ auto DirectGlobalReadVectorDofsThreaded(
       MakeVectorDofs( thread, dof_shape{}, std::make_index_sequence<v_dim>{});
 
    const GlobalIndex element_index = face_info.cell_index;
-   constexpr Integer space_dim = FiniteElementSpace::Dim;
-   Permutation<space_dim> orientation = face_info.orientation;
+   const auto & orientation = face_info.orientation;
 
    ConstexprLoop<v_dim>([&](auto i)
    {

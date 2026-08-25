@@ -14,9 +14,9 @@
 #include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
-#include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facedofspolicies.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/orientedglobaldofview.hpp"
 
 namespace gendil {
 
@@ -378,7 +378,7 @@ void SerialWriteDofs(
 
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
    using DofShape = rshape;
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -438,7 +438,7 @@ void ThreadedWriteDofs(
       "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -500,8 +500,7 @@ void SerialWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -566,8 +565,7 @@ void ThreadedWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -664,8 +662,7 @@ void DirectGlobalSerialWriteDofs(
          typename FiniteElementSpace::finite_element_type::
             shape_functions::orders >;
 
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -737,8 +734,7 @@ void DirectGlobalThreadedWriteDofs(
          typename KernelContext::template register_dimensions<
             DofShape::size() > >;
 
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -793,8 +789,7 @@ void DirectGlobalSerialWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -853,8 +848,7 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {

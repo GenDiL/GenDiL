@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/identityorientation.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
@@ -79,18 +80,9 @@ struct HyperCubeCell
 
 template < Integer Dim >
 GENDIL_HOST_DEVICE
-void ApplyOrientationToCell( const Permutation<Dim>& orientation, HyperCubeCell<Dim>& cell )
-{
-   GENDIL_VERIFY( orientation == MakeReferencePermutation<Dim>(),
-      "Orientation of HyperCubeCell must be the reference orientation." );
-}
-
-template < typename Orientation, Integer Dim >
-GENDIL_HOST_DEVICE
-void ApplyOrientationToCell( const Orientation& orientation, HyperCubeCell<Dim>& cell )
-{
-   // GENDIL_VERIFY( orientation == MakeReferencePermutation<Dim>(),
-   //    "Orientation of HyperCubeCell must be the reference orientation." );
-}
+void ApplyOrientationToCell(
+   const IdentityOrientation<Dim>&,
+   HyperCubeCell<Dim>& )
+{}
 
 }

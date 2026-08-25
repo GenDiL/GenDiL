@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/identityorientation.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
@@ -139,6 +140,9 @@ template <int D1D>
 GENDIL_HOST_DEVICE
 void ApplyOrientationToCell(const Permutation<2>& orientation, QuadCell<D1D>& cell)
 {
+   GENDIL_ASSERT(
+      IsValidSignedPermutation( orientation ),
+      "QuadCell orientation must be a signed permutation." );
    constexpr Integer v_dim = 2;
    constexpr size_t data_size = D1D * D1D;
 
@@ -179,5 +183,12 @@ void ApplyOrientationToCell(const Permutation<2>& orientation, QuadCell<D1D>& ce
       }
    });
 }
+
+template <int D1D>
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(
+   const IdentityOrientation<2>&,
+   QuadCell<D1D>&)
+{}
 
 }

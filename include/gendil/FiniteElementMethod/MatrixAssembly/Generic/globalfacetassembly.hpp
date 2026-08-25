@@ -48,6 +48,7 @@ void AssembleGlobalBoundaryFaceSparseMatrix(
 {
    const GlobalIndex element_index =
       face_info.MinusSide().GetCellIndex();
+   const auto& orientation = face_info.MinusSide().GetOrientation();
    ElementContext element_context{
       element_index,
       face_domain.GetCellMesh().GetCell(element_index)};
@@ -97,8 +98,8 @@ void AssembleGlobalBoundaryFaceSparseMatrix(
             test_space,
             element_index,
             element_index,
-            face_info.MinusSide().GetOrientation(),
-            face_info.MinusSide().GetOrientation(),
+            orientation,
+            orientation,
             reference_trial_dof,
             y,
             face_index,
@@ -137,11 +138,10 @@ void AssembleGlobalInteriorFaceSparseMatrix(
       face_info.MinusSide().GetCellIndex();
    const GlobalIndex plus_element =
       face_info.PlusSide().GetCellIndex();
-   const auto minus_orientation =
+   const auto& minus_orientation =
       face_info.MinusSide().GetOrientation();
-   const auto plus_orientation =
+   const auto& plus_orientation =
       face_info.PlusSide().GetOrientation();
-
    ForEachLocalTrialDof(
       kernel,
       trial_minus_space,

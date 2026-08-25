@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/identityorientation.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
@@ -83,10 +84,7 @@ struct SquareCell
 };
 
 GENDIL_HOST_DEVICE
-void ApplyOrientationToCell(const Permutation<2>& orientation, SquareCell& cell)
-{
-   GENDIL_VERIFY( orientation == MakeReferencePermutation<2>(),
-      "Orientation of SquareCell must be the reference orientation." );
-}
+void ApplyOrientationToCell(const IdentityOrientation<2>&, SquareCell&)
+{}
 
 }

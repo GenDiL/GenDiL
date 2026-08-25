@@ -7,7 +7,7 @@
 #ifdef GENDIL_USE_MFEM
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/permutation.hpp"
 
 namespace gendil {
 

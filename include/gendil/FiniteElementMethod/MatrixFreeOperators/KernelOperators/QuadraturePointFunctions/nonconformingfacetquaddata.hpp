@@ -11,7 +11,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/nonconformingfacetquaddatatraits.hpp"
 
-#include <tuple>
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 
@@ -20,208 +20,94 @@ namespace gendil
 
 namespace nonconforming_facet_qdata_detail
 {
-struct NonconformingDofToQuadLeafTransform
+/**
+ * @brief Recursively maps scalar facet qdata into a nonconforming face.
+ *
+ * TensorProductData nodes retain their nesting. Their cached DoF-to-quadrature
+ * and static point-set leaves are assigned consecutive cell-coordinate indices
+ * beginning at @p Offset.
+ */
+template<Integer Offset, class Face, class QData>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingScalarFacetQuadDataAtOffset(
+   const Face& face,
+   const QData& qdata);
+
+template<
+   Integer Offset,
+   class Face,
+   class... Entries,
+   size_t... I>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingScalarTensorProductFacetQuadDataAtOffset(
+   const Face& face,
+   const TensorProductData<Entries...>& qdata,
+   std::index_sequence<I...>)
 {
-   template<Integer Offset, class Face, class QData>
-   GENDIL_HOST_DEVICE
-   auto operator()(const Face& face, const QData& qdata) const
+   return MakeTensorProductData(
+      MakeNonconformingScalarFacetQuadDataAtOffset<
+         Offset + TensorProductQDataEntryOffset<I, Entries...>::value>(
+            face,
+            GetTensorProductEntry<I>(qdata))...);
+}
+
+template<Integer Offset, class Face, class QData>
+GENDIL_HOST_DEVICE
+auto MakeNonconformingScalarFacetQuadDataAtOffset(
+   const Face& face,
+   const QData& qdata)
+{
+   using Data = std::remove_cvref_t<QData>;
+   if constexpr (is_tensor_product_data_v<Data>)
+   {
+      return MakeNonconformingScalarTensorProductFacetQuadDataAtOffset<Offset>(
+         face,
+         qdata,
+         std::make_index_sequence<tensor_product_entry_count_v<Data>>{});
+   }
+   else if constexpr (IsSupportedNonconformingFacetDofToQuad1D_v<Data>)
    {
       return MakeNonconformingDofToQuadData(
          face,
          qdata,
          std::integral_constant<Integer, Offset>{});
    }
-};
-
-struct NonconformingMappedPointSetLeafTransform
-{
-   template<Integer Offset, class Face, class QData>
-   GENDIL_HOST_DEVICE
-   auto operator()(const Face& face, const QData&) const
+   else if constexpr (IsStaticPointSetFacetQData1D_v<Data>)
    {
-      return NonconformingMappedPointSet1D<
-         std::remove_cvref_t<QData>,
-         Face,
-         Offset>{face};
-   }
-};
-
-template<
-   Integer Offset,
-   class LeafTransform,
-   class Face,
-   class QData>
-GENDIL_HOST_DEVICE
-auto TransformTensorProductQDataAtOffset(
-   const Face& face,
-   const QData& qdata,
-   const LeafTransform& transform);
-
-template<
-   Integer Offset,
-   class LeafTransform,
-   class Face,
-   class... Entries,
-   size_t... I>
-GENDIL_HOST_DEVICE
-auto TransformTensorProductQDataAtOffsetImpl(
-   const Face& face,
-   const TensorProductData<Entries...>& qdata,
-   const LeafTransform& transform,
-   std::index_sequence<I...>)
-{
-   return MakeTensorProductData(
-      TransformTensorProductQDataAtOffset<
-         Offset + TensorProductQDataEntryOffset<I, Entries...>::value>(
-            face,
-            GetTensorProductEntry<I>(qdata),
-            transform)...);
-}
-
-template<
-   Integer Offset,
-   class LeafTransform,
-   class Face,
-   class QData>
-GENDIL_HOST_DEVICE
-auto TransformTensorProductQDataAtOffset(
-   const Face& face,
-   const QData& qdata,
-   const LeafTransform& transform)
-{
-   using Data = std::remove_cvref_t<QData>;
-   if constexpr (is_tensor_product_data_v<Data>)
-   {
-      return TransformTensorProductQDataAtOffsetImpl<Offset>(
-         face,
-         qdata,
-         transform,
-         std::make_index_sequence<tensor_product_entry_count_v<Data>>{});
+      return NonconformingMappedPointSet1D<Data, Face, Offset>{face};
    }
    else
    {
-      return transform.template operator()<Offset>(face, qdata);
+      static_assert(
+         dependent_false_v<Face, QData>,
+         "Nonconforming facet scalar qdata leaf must be "
+         "CachedDofToQuad or static point-set data.");
    }
-}
-
-} // namespace nonconforming_facet_qdata_detail
-
-template<class Face, class QData>
-GENDIL_HOST_DEVICE
-auto MakeNestedNonconformingDofToQuadData(
-   const Face& face,
-   const QData& qdata)
-{
-   constexpr bool Supported =
-      nonconforming_facet_qdata_detail::EveryTensorProductQDataLeaf<
-         IsSupportedNonconformingFacetDofToQuad1D,
-         std::remove_cvref_t<QData>>::value;
-   static_assert(
-      Supported,
-      "Nested nonconforming finite-element facet qdata must terminate in "
-      "CachedDofToQuad entries.");
-   if constexpr (Supported)
-   {
-      return nonconforming_facet_qdata_detail::
-         TransformTensorProductQDataAtOffset<0>(
-            face,
-            qdata,
-            nonconforming_facet_qdata_detail::
-               NonconformingDofToQuadLeafTransform{});
-   }
-   else
-   {
-      return Empty{};
-   }
-}
-
-template<class Face, class QData>
-GENDIL_HOST_DEVICE
-auto MakeNestedNonconformingMappedPointSetData(
-   const Face& face,
-   const QData& qdata)
-{
-   constexpr bool Supported =
-      nonconforming_facet_qdata_detail::EveryTensorProductQDataLeaf<
-         IsStaticPointSetFacetQData1D,
-         std::remove_cvref_t<QData>>::value;
-   static_assert(
-      Supported,
-      "Nested nonconforming mesh facet qdata must terminate in static "
-      "point-set entries.");
-   if constexpr (Supported)
-   {
-      return nonconforming_facet_qdata_detail::
-         TransformTensorProductQDataAtOffset<0>(
-            face,
-            qdata,
-            nonconforming_facet_qdata_detail::
-               NonconformingMappedPointSetLeafTransform{});
-   }
-   else
-   {
-      return Empty{};
-   }
-}
-
-template<class Face, class... PointSets, size_t... Is>
-GENDIL_HOST_DEVICE
-auto MakeNonconformingMappedPointSetTupleImpl(
-   const Face& face,
-   const TensorProductData<PointSets...>&,
-   std::index_sequence<Is...>)
-{
-   using Conformity = typename std::remove_cvref_t<Face>::conformity_type;
-   static_assert(
-      is_embedded_cell_reference_face_map_v<Conformity>,
-      "Nonconforming affine mesh facet qdata requires an embedded "
-      "cell-reference face map. Currently only "
-      "NonconformingHyperCubeFaceMap<Dim> is supported.");
-
-   return MakeTensorProductData(
-      NonconformingMappedPointSet1D<
-         PointSets,
-         Face,
-         static_cast<Integer>(Is)>{face}...);
-}
-
-template<class Face, class... PointSets>
-GENDIL_HOST_DEVICE
-auto MakeNonconformingMappedPointSetTuple(
-   const Face& face,
-   const TensorProductData<PointSets...>& point_sets)
-{
-   return MakeNonconformingMappedPointSetTupleImpl(
-      face,
-      point_sets,
-      std::make_index_sequence<sizeof...(PointSets)>{});
 }
 
 template<class Face, class... ScalarMaps, size_t... Component>
 GENDIL_HOST_DEVICE
-auto MakeNonconformingVectorDofToQuadDataImpl(
+auto MakeNonconformingVectorFacetQuadData(
    const Face& face,
    const VectorDofToQuad<ScalarMaps...>& local_face_qd,
    std::index_sequence<Component...>)
 {
    return MakeVectorDofToQuad(
-      MakeNestedNonconformingDofToQuadData(
+      MakeNonconformingScalarFacetQuadDataAtOffset<0>(
          face,
          GetVectorComponent<Component>(local_face_qd))...);
 }
 
-template<class Face, class... ScalarMaps>
-GENDIL_HOST_DEVICE
-auto MakeNonconformingVectorDofToQuadData(
-   const Face& face,
-   const VectorDofToQuad<ScalarMaps...>& local_face_qd)
-{
-   return MakeNonconformingVectorDofToQuadDataImpl(
-      face,
-      local_face_qd,
-      std::index_sequence_for<ScalarMaps...>{});
-}
+} // namespace nonconforming_facet_qdata_detail
 
+/**
+ * @brief Maps scalar or componentwise-vector facet qdata into a nonconforming
+ * face.
+ *
+ * Scalar trees are transformed recursively. Each VectorDofToQuad component is
+ * a separate scalar tree and therefore restarts its spatial coordinate offset
+ * at zero.
+ */
 template<class Face, class LocalFaceQData>
 GENDIL_HOST_DEVICE
 auto MakeNonconformingFacetQuadData(
@@ -230,34 +116,19 @@ auto MakeNonconformingFacetQuadData(
 {
    if constexpr (is_vector_dof_to_quad_v<LocalFaceQData>)
    {
-      return MakeNonconformingVectorDofToQuadData(
-         face,
-         local_face_qd);
-   }
-   else if constexpr (
-      IsSupportedNonconformingFacetDofToQuadTuple_v<LocalFaceQData>)
-   {
-      return MakeNestedNonconformingDofToQuadData(face, local_face_qd);
-   }
-   else if constexpr (
-      IsStaticPointSetFacetQDataTuple_v<LocalFaceQData>)
-   {
-      using Conformity = typename std::remove_cvref_t<Face>::conformity_type;
-      static_assert(
-         is_embedded_cell_reference_face_map_v<Conformity>,
-         "Nonconforming affine mesh facet qdata requires an embedded "
-         "cell-reference face map. Currently only "
-         "NonconformingHyperCubeFaceMap<Dim> is supported.");
-      return MakeNestedNonconformingMappedPointSetData(
-         face,
-         local_face_qd);
+      using QData = std::remove_cvref_t<LocalFaceQData>;
+      return nonconforming_facet_qdata_detail::
+         MakeNonconformingVectorFacetQuadData(
+            face,
+            local_face_qd,
+            std::make_index_sequence<vector_component_count_v<QData>>{});
    }
    else
    {
-      static_assert(
-         dependent_false_v<Face, LocalFaceQData>,
-         "Nonconforming facet qdata is not implemented for this "
-         "finite-element or mesh cell/qdata type.");
+      return nonconforming_facet_qdata_detail::
+         MakeNonconformingScalarFacetQuadDataAtOffset<0>(
+            face,
+            local_face_qd);
    }
 }
 

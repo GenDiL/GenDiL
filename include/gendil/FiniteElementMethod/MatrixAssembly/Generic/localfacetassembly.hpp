@@ -136,7 +136,6 @@ void AssembleInteriorFacetSelfSparseMatrix(
       weak_form_context.template fe_field<TrialName>().space;
    const auto& test_fe_space =
       weak_form_context.template fe_field<TestName>().space;
-
    // Block A(e,e): minus-side trial basis -> minus-side test residual
    ForEachLocalTrialDof(
       kernel_context,
@@ -204,6 +203,8 @@ void AssembleInteriorFacetNeighborSparseMatrix(
       weak_form_context.template fe_field<TrialName>().space;
    const auto& test_fe_space =
       weak_form_context.template fe_field<TestName>().space;
+   const auto& plus_orientation =
+      face_info.PlusSide().GetOrientation();
 
    // Block A(e,nb): plus-side trial basis -> minus-side test residual
    ForEachLocalTrialDof(
@@ -239,7 +240,7 @@ void AssembleInteriorFacetNeighborSparseMatrix(
             OrientReferenceDofToNative(
                trial_fe_space,
                trial_dof,
-               face_info.PlusSide().orientation);
+               plus_orientation);
 
          AddSparseMatrixEntry(
             kernel_context,

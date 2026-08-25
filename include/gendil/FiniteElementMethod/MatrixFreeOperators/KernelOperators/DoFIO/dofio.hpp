@@ -2,6 +2,12 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+#pragma once
+
+/**
+ * @file dofio.hpp
+ * @brief Public umbrella for local/global degree-of-freedom I/O.
+ */
 
 // Make an element level view (ElementTensor) on the degrees-of-freedom.
 #include "elementtensorview.hpp"
@@ -17,3 +23,12 @@
 
 // Write and add degrees-of-freedom assocaited to an element index.
 #include "writeadddofs.hpp"
+
+// Global-facet read/write policy configuration.
+#include "facedofspolicies.hpp"
+
+// Tensor-shape compatibility checks for oriented DoFs.
+#include "orienteddofvalidation.hpp"
+
+// Reference-oriented adapters over element-indexed global DoF views.
+#include "orientedglobaldofview.hpp"

@@ -9,7 +9,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/finiteelementdoflayout.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facedofspolicies.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/MathHelperFunctions/max.hpp"
 

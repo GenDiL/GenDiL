@@ -20,6 +20,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/tensorproductorientation.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -206,8 +207,8 @@ auto LiftProductConformityMap(const Map& map)
 /**
  * @brief Validates the coordinate block used to lift a source orientation.
  *
- * Both the runtime-permutation and static-identity policies inherit this
- * contract so neither representation can bypass the dimension checks.
+ * Runtime source components and static-identity factors inherit this contract
+ * so neither representation can bypass the dimension checks.
  *
  * @tparam ProductDim Full Cartesian-product cell dimension.
  * @tparam Offset First product coordinate belonging to the source factor.
@@ -265,11 +266,9 @@ struct ProductOrientationLiftContract
 /**
  * @brief Lifts a source orientation into the product coordinate system.
  *
- * The primary policy materializes the full product permutation. Its single
- * specialization below preserves the exact statically encoded identity.
- * Keeping the result type and value construction in one policy prevents the
- * generated FaceView type from diverging from the stored orientation value.
- * Coordinates outside the source block retain the reference permutation.
+ * The policy preserves the binary ProductCell factor boundary instead of
+ * materializing a flat product permutation. Static identity components are
+ * collapsed by MakeTensorProductOrientation.
  *
  * @tparam ProductDim Full Cartesian-product cell dimension.
  * @tparam Offset First product coordinate belonging to the source factor.
@@ -284,34 +283,30 @@ template<
 struct ProductOrientationLift
    : ProductOrientationLiftContract<ProductDim, Offset, SourceDim>
 {
-   using type = Permutation<ProductDim>;
-
-   GENDIL_HOST_DEVICE
-   static type Apply(const SourceOrientation& source)
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   static auto Apply(const SourceOrientation& source)
    {
-      auto result = MakeReferencePermutation<ProductDim>();
-      Set<Offset>(
-         result,
-         static_cast<Permutation<SourceDim>>(source));
-      return result;
+      static_assert(
+         SourceDim < ProductDim,
+         "A product face orientation requires a nonempty extruded factor." );
+      static_assert(
+         Offset == 0 || Offset + SourceDim == ProductDim,
+         "Product orientation source must coincide with one binary product factor." );
+      if constexpr (Offset == 0)
+      {
+         return MakeTensorProductOrientation(
+            source,
+            IdentityOrientation<ProductDim - SourceDim>{});
+      }
+      else
+      {
+         return MakeTensorProductOrientation(
+            IdentityOrientation<Offset>{},
+            source);
+      }
    }
-};
 
-template<Integer ProductDim, Integer Offset, Integer SourceDim>
-struct ProductOrientationLift<
-   ProductDim,
-   Offset,
-   SourceDim,
-   IdentityOrientation<SourceDim>>
-   : ProductOrientationLiftContract<ProductDim, Offset, SourceDim>
-{
-   using type = IdentityOrientation<ProductDim>;
-
-   GENDIL_HOST_DEVICE
-   static type Apply(const IdentityOrientation<SourceDim>&)
-   {
-      return {};
-   }
+   using type = decltype(Apply(std::declval<const SourceOrientation&>()));
 };
 
 /**
@@ -418,7 +413,7 @@ using product_face_side_t =
  * @return A product-dimensional FaceView owning all lifted side values.
  */
 template<Integer ProductDim, Integer Offset, class Side>
-GENDIL_HOST_DEVICE
+GENDIL_HOST_DEVICE GENDIL_INLINE
 auto MakeProductFaceSide(
    const Side& source,
    const GlobalIndex product_cell_index)
