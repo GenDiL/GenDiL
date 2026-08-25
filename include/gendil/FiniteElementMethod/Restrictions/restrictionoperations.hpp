@@ -53,7 +53,7 @@ constexpr auto GatherRestrictionRow(
       restriction,
       element_index,
       local_dof,
-      [&] GENDIL_HOST_DEVICE (
+      [&] (
          const GlobalIndex global_dof,
          const auto & weight )
       {
@@ -94,7 +94,7 @@ constexpr void ScatterRestrictionRowAdjoint(
       restriction,
       element_index,
       local_dof,
-      [&] GENDIL_HOST_DEVICE (
+      [&] (
          const GlobalIndex global_dof,
          const auto & weight )
       {

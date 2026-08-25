@@ -702,7 +702,7 @@ bool TestStaticIdentitySecondFactorOracle()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
-      [] GENDIL_HOST_DEVICE (const auto& X)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
       {
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 Real{5} * X[0] * X[1];
@@ -782,7 +782,7 @@ bool TestRuntimeSignedSecondFactorOracleAndSensitivity()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
-      [] GENDIL_HOST_DEVICE (const auto& X)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
       {
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 Real{5} * X[0] * X[1];
@@ -960,7 +960,7 @@ bool TestNestedMiddleFactorOracle()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    const auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
-      [] GENDIL_HOST_DEVICE (const auto& X)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 3>& X)
       {
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 Real{5} * X[2] + Real{7} * X[0] * X[2];

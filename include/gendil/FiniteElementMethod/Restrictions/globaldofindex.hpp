@@ -47,7 +47,7 @@ GlobalIndex GetGlobalDofIndex(
       restriction,
       element_index,
       local_dof,
-      [&] GENDIL_HOST_DEVICE ( const GlobalIndex index, const auto & )
+      [&] ( const GlobalIndex index, const auto & )
       {
          algebraic_dof = index;
       } );

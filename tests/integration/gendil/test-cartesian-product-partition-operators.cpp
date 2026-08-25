@@ -230,7 +230,7 @@ bool TestCellDomainWeightedMass()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    auto rho = MakeCoefficient<"rho", PhysicalCoordinates>(
-      [] GENDIL_HOST_DEVICE (const auto& X)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
       {
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 X[0] * X[1];
@@ -301,7 +301,7 @@ bool TestBoundaryDomainWeightedMass()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    auto coefficient = MakeCoefficient<"a", PhysicalCoordinates>(
-      [] GENDIL_HOST_DEVICE (const auto& X)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
       {
          return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                 Real{5} * X[0] * X[1];
@@ -412,7 +412,7 @@ bool TestStaticIdentityPlusGeometryFirstFactor()
    TestSpace<"u"> v;
    const auto coefficient =
       MakeCoefficient<"a", PhysicalCoordinates>(
-         [] GENDIL_HOST_DEVICE (const auto& X)
+         [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
          {
             return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                    Real{5} * X[0] * X[1];
@@ -563,7 +563,7 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
    TestSpace<"u"> v;
    const auto coefficient =
       MakeCoefficient<"a", PhysicalCoordinates>(
-         [] GENDIL_HOST_DEVICE (const auto& X)
+         [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& X)
          {
             return Real{1} + Real{2} * X[0] + Real{3} * X[1] +
                    Real{5} * X[0] * X[1];

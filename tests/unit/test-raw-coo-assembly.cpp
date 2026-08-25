@@ -533,7 +533,7 @@ bool TestScalarL2CellMassRawCOOAgainstBSR()
    TestSpace< "u" > v;
    auto rho =
       MakeCoefficient< "density", PhysicalCoordinates >(
-         [] GENDIL_HOST_DEVICE ( const auto & x_phys )
+         [] GENDIL_HOST_DEVICE ( const std::array< Real, 1 > & x_phys )
          {
             return 1.0 + x_phys[0] * x_phys[0];
          } );
@@ -863,7 +863,7 @@ bool TestScalarH1CellMassRawCOOPreservesDuplicatesAgainstSGBSR()
    TestSpace< "u" > v;
    auto rho =
       MakeCoefficient< "density", PhysicalCoordinates >(
-         [] GENDIL_HOST_DEVICE ( const auto & x_phys )
+         [] GENDIL_HOST_DEVICE ( const std::array< Real, 1 > & x_phys )
          {
             return 1.0 + 0.25 * x_phys[0];
          } );
@@ -3344,6 +3344,7 @@ bool TestPartitionH1GlobalFacetAliasesAndExplicitPlacement()
    return success;
 }
 
+template < Integer VectorDim >
 bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
 {
    constexpr GlobalIndex nx = 2;
@@ -3383,17 +3384,25 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
 
    const auto spatial_scalar_h1 =
       MakeLobattoFiniteElement( FiniteElementOrders< 1 >{} );
-   const auto spatial_vector_h1 =
-      MakeVectorFiniteElement(
-         spatial_scalar_h1,
-         spatial_scalar_h1 );
+   const auto make_vector_finite_element =
+      []< size_t... Component >(
+         const auto & scalar_finite_element,
+         std::index_sequence< Component... > )
+      {
+         return MakeVectorFiniteElement(
+            ( static_cast< void >( Component ),
+              scalar_finite_element )... );
+      };
+   const auto spatial_vector_h1 = make_vector_finite_element(
+      spatial_scalar_h1,
+      std::make_index_sequence< VectorDim >{} );
    const std::array< int, 4 > spatial_h1_map{ 0, 1, 1, 2 };
    HostDevicePointer< const int > spatial_h1_indices{};
    spatial_h1_indices.host_pointer = spatial_h1_map.data();
    const auto spatial_vector_space = MakeFiniteElementSpace(
       spatial_mesh,
       spatial_vector_h1,
-      MakeVectorIndirectH1RestrictionSpecification< 2 >(
+      MakeVectorIndirectH1RestrictionSpecification< VectorDim >(
          IndirectH1RestrictionSpecification{
             spatial_h1_indices,
             3 } ) );
@@ -3426,9 +3435,9 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
       GaussLegendreShapeFunctions< 1 > >;
    const auto scalar_f1_finite_element =
       FiniteElement< HyperCube< 2 >, ScalarF1Shape >{};
-   const auto vector_f1_finite_element = MakeVectorFiniteElement(
+   const auto vector_f1_finite_element = make_vector_finite_element(
       scalar_f1_finite_element,
-      scalar_f1_finite_element );
+      std::make_index_sequence< VectorDim >{} );
    const auto f1_space = MakeMixedFiniteElementSpace(
       phase_partition,
       std::tuple{
@@ -3463,9 +3472,13 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
       MakeMatrixCoefficient< "partition_spatial_projector" >(
          [] GENDIL_HOST_DEVICE ()
          {
-            SerialRecursiveArray< Real, 2, 2 > value{};
-            value( 0, 0 ) = Real{1};
-            value( 1, 1 ) = Real{1};
+            SerialRecursiveArray< Real, VectorDim, 2 > value{};
+            for ( Integer component = 0;
+                  component < VectorDim;
+                  ++component )
+            {
+               value( component, component ) = Real{1};
+            }
             return value;
          } );
 
@@ -3502,6 +3515,22 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
       MakeIntegrationRule( IntegrationRuleNumPoints< 4, 4 >{} );
 
    bool success = true;
+   const auto first_part_linear_form = MakeLinearForm(
+      f0_space.template GetCellFiniteElementSpace< 0 >(),
+      rule,
+      [] GENDIL_HOST_DEVICE ( const std::array< Real, 2 > & )
+      {
+         return Real{1};
+      } );
+   const Real * first_part_linear_data =
+      first_part_linear_form.ReadHostData();
+   for ( GlobalIndex i = 16; i < 32; ++i )
+   {
+      success = Check(
+         first_part_linear_data[i] == Real{0},
+         "Placed partition linear form left non-owned entries uninitialized." ) &&
+         success;
+   }
    const auto check_form = [&] (
       const auto & form,
       const auto & context,
@@ -3565,7 +3594,7 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
    const GlobalIndex f0_extent = GetAlgebraicDofExtent( f0_space );
    const GlobalIndex f1_extent = GetAlgebraicDofExtent( f1_space );
    success = Check(
-      f0_extent == 32 && f1_extent == 48,
+      f0_extent == 32 && f1_extent == 24 * VectorDim,
       "Partition vector tensor-product algebraic extents are wrong." ) &&
       success;
    success = check_form(
@@ -3638,7 +3667,12 @@ int main(int argc, char** argv)
    success = TestPartitionSharedCoordinateCellRawCOOReduction() && success;
    success = TestPartitionHeterogeneousGlobalFacetRawCOO() && success;
    success = TestPartitionH1GlobalFacetAliasesAndExplicitPlacement() && success;
-   success = TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric() && success;
+   success =
+      TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric< 1 >() &&
+      success;
+   success =
+      TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric< 2 >() &&
+      success;
 #ifdef GENDIL_USE_HYPRE
    }
    hypre_MPI_Finalize();

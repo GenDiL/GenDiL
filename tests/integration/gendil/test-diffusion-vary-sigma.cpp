@@ -174,7 +174,7 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
    auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(velocity);
 
    auto tau = MakeCoefficient<"tau", PhysicalCoordinates>(
-      [=] GENDIL_HOST_DEVICE (const auto&) -> Real
+      [=] GENDIL_HOST_DEVICE (const std::array<Real, 3>&) -> Real
       {
          return tau_value;
       });
