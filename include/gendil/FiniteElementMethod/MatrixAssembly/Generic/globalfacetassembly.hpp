@@ -257,6 +257,209 @@ void AssembleGlobalInteriorFaceSparseMatrix(
       });
 }
 
+namespace details {
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class SelectedDomain,
+   class CellTargets>
+void AssemblePartitionCellRawCOODomain(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const SelectedDomain& selected_domain,
+   CellTargets& cell_targets)
+{
+   constexpr auto DomainName =
+      local_facet_assembly_domain_name_v<WeakForm>;
+   using Domain = std::remove_cvref_t<SelectedDomain>;
+   constexpr size_t Part = Domain::cell_batch_index;
+   constexpr size_t required_shared_mem =
+      generic_operator_integrand_required_shared_memory_v<
+         KernelPolicy,
+         IntegrationRule>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
+
+   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+      wf_ctx,
+      Cells<DomainName>{},
+      selected_domain);
+   auto op_ctx = MakeOperatorContext(
+      restricted_ctx,
+      integration_rule);
+   const auto& domain_mesh = selected_domain.GetCellMesh();
+   auto part_target = std::get<Part>(cell_targets);
+
+   mesh::CellIterator<KernelPolicy>(
+      domain_mesh,
+      [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
+      {
+         GENDIL_SHARED Real _shared_mem[
+            Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
+         AssembleElementSparseMatrix(
+            kernel,
+            restricted_ctx,
+            op_ctx,
+            domain_mesh,
+            element_index,
+            weak_form,
+            part_target);
+      });
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class SelectedDomain,
+   class BoundaryTargets>
+void AssemblePartitionBoundaryRawCOODomain(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const SelectedDomain& selected_domain,
+   BoundaryTargets& boundary_targets)
+{
+   constexpr auto DomainName =
+      local_facet_assembly_domain_name_v<WeakForm>;
+   using Domain = std::remove_cvref_t<SelectedDomain>;
+   constexpr size_t Part = Domain::face_batch_index;
+   constexpr size_t required_shared_mem =
+      generic_operator_integrand_required_shared_memory_v<
+         KernelPolicy,
+         IntegrationRule>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
+
+   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+      wf_ctx,
+      BoundaryFacets<DomainName>{},
+      selected_domain);
+   auto op_ctx = MakeFacetOperatorContext(
+      restricted_ctx,
+      integration_rule,
+      selected_domain);
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+   const auto& trial_space = restricted_ctx
+      .template fe_field<TrialName>().space
+      .GetMinusFiniteElementSpace();
+   const auto& test_space = restricted_ctx
+      .template fe_field<TestName>().space
+      .GetMinusFiniteElementSpace();
+   const auto& face_mesh = selected_domain.GetFaceMesh();
+   auto part_target = std::get<Part>(boundary_targets);
+
+   mesh::GlobalFaceIterator<KernelPolicy>(
+      face_mesh,
+      [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
+      {
+         GENDIL_SHARED Real _shared_mem[
+            Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
+         const auto face_info =
+            face_mesh.GetGlobalFaceInfo(face_index);
+         AssembleGlobalBoundaryFaceSparseMatrix(
+            kernel,
+            restricted_ctx,
+            op_ctx,
+            selected_domain,
+            trial_space,
+            test_space,
+            face_info,
+            weak_form,
+            face_index,
+            part_target);
+      });
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   class SelectedDomain,
+   class InteriorTargets>
+void AssemblePartitionInteriorRawCOODomain(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   const SelectedDomain& selected_domain,
+   InteriorTargets& interior_targets)
+{
+   constexpr auto DomainName =
+      local_facet_assembly_domain_name_v<WeakForm>;
+   using Domain = std::remove_cvref_t<SelectedDomain>;
+   constexpr size_t Part = Domain::face_batch_index;
+   constexpr size_t required_shared_mem =
+      generic_operator_integrand_required_shared_memory_v<
+         KernelPolicy,
+         IntegrationRule>;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
+
+   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+      wf_ctx,
+      InteriorFacets<DomainName>{},
+      selected_domain);
+   auto op_ctx = MakeFacetOperatorContext(
+      restricted_ctx,
+      integration_rule,
+      selected_domain);
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+   const auto& trial_binding =
+      restricted_ctx.template fe_field<TrialName>().space;
+   const auto& test_binding =
+      restricted_ctx.template fe_field<TestName>().space;
+   const auto& trial_minus_space =
+      trial_binding.GetMinusFiniteElementSpace();
+   const auto& trial_plus_space =
+      trial_binding.GetPlusFiniteElementSpace();
+   const auto& test_minus_space =
+      test_binding.GetMinusFiniteElementSpace();
+   const auto& test_plus_space =
+      test_binding.GetPlusFiniteElementSpace();
+
+   ValidateNonconformingGlobalInteriorFacetTransformSupport<
+      Domain,
+      std::remove_cvref_t<decltype(trial_minus_space)>,
+      std::remove_cvref_t<decltype(trial_plus_space)>,
+      std::remove_cvref_t<decltype(test_minus_space)>,
+      std::remove_cvref_t<decltype(test_plus_space)>>();
+
+   const auto& face_mesh = selected_domain.GetFaceMesh();
+   auto part_targets = std::get<Part>(interior_targets);
+   mesh::GlobalFaceIterator<KernelPolicy>(
+      face_mesh,
+      [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
+      {
+         GENDIL_SHARED Real _shared_mem[
+            Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
+         const auto face_info =
+            face_mesh.GetGlobalFaceInfo(face_index);
+         AssembleGlobalInteriorFaceSparseMatrix(
+            kernel,
+            restricted_ctx,
+            op_ctx,
+            selected_domain,
+            trial_minus_space,
+            trial_plus_space,
+            test_minus_space,
+            test_plus_space,
+            face_info,
+            weak_form,
+            face_index,
+            part_targets);
+      });
+}
+
+} // namespace details
+
 template<
    class KernelPolicy,
    class WeakForm,
@@ -276,11 +479,6 @@ void GenericPartitionRawCOOIntegrandAssembly(
 {
    constexpr auto DomainName =
       local_facet_assembly_domain_name_v<WeakForm>;
-   constexpr size_t required_shared_mem =
-      generic_operator_integrand_required_shared_memory_v<
-         KernelPolicy,
-         IntegrationRule>;
-   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    if constexpr (has_cell_contributions_v<WeakForm>)
    {
@@ -289,35 +487,12 @@ void GenericPartitionRawCOOIntegrandAssembly(
          Cells<DomainName>{},
          [&] (const auto& selected_domain)
          {
-            using SelectedDomain =
-               std::remove_cvref_t<decltype(selected_domain)>;
-            constexpr size_t Part = SelectedDomain::cell_batch_index;
-            auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+            details::AssemblePartitionCellRawCOODomain<KernelPolicy>(
+               weak_form,
                wf_ctx,
-               Cells<DomainName>{},
-               selected_domain);
-            auto op_ctx = MakeOperatorContext(
-               restricted_ctx,
-               integration_rule);
-            const auto& domain_mesh = selected_domain.GetCellMesh();
-            auto part_target = std::get<Part>(targets.cells);
-
-            mesh::CellIterator<KernelPolicy>(
-               domain_mesh,
-               [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
-               {
-                  GENDIL_SHARED Real _shared_mem[
-                     Context::shared_memory_block_size];
-                  Context kernel(_shared_mem);
-                  AssembleElementSparseMatrix(
-                     kernel,
-                     restricted_ctx,
-                     op_ctx,
-                     domain_mesh,
-                     element_index,
-                     weak_form,
-                     part_target);
-               });
+               integration_rule,
+               selected_domain,
+               targets.cells);
          });
    }
 
@@ -328,49 +503,12 @@ void GenericPartitionRawCOOIntegrandAssembly(
          BoundaryFacets<DomainName>{},
          [&] (const auto& selected_domain)
          {
-            using SelectedDomain =
-               std::remove_cvref_t<decltype(selected_domain)>;
-            constexpr size_t Part = SelectedDomain::face_batch_index;
-            auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+            details::AssemblePartitionBoundaryRawCOODomain<KernelPolicy>(
+               weak_form,
                wf_ctx,
-               BoundaryFacets<DomainName>{},
-               selected_domain);
-            auto op_ctx = MakeFacetOperatorContext(
-               restricted_ctx,
                integration_rule,
-               selected_domain);
-            constexpr auto TrialName = requirements<WeakForm>::trial_name;
-            constexpr auto TestName = requirements<WeakForm>::test_name;
-            const auto& trial_space = restricted_ctx
-               .template fe_field<TrialName>().space
-               .GetMinusFiniteElementSpace();
-            const auto& test_space = restricted_ctx
-               .template fe_field<TestName>().space
-               .GetMinusFiniteElementSpace();
-            const auto& face_mesh = selected_domain.GetFaceMesh();
-            auto part_target = std::get<Part>(targets.boundaries);
-
-            mesh::GlobalFaceIterator<KernelPolicy>(
-               face_mesh,
-               [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
-               {
-                  GENDIL_SHARED Real _shared_mem[
-                     Context::shared_memory_block_size];
-                  Context kernel(_shared_mem);
-                  const auto face_info =
-                     face_mesh.GetGlobalFaceInfo(face_index);
-                  AssembleGlobalBoundaryFaceSparseMatrix(
-                     kernel,
-                     restricted_ctx,
-                     op_ctx,
-                     selected_domain,
-                     trial_space,
-                     test_space,
-                     face_info,
-                     weak_form,
-                     face_index,
-                     part_target);
-               });
+               selected_domain,
+               targets.boundaries);
          });
    }
 
@@ -381,64 +519,12 @@ void GenericPartitionRawCOOIntegrandAssembly(
          InteriorFacets<DomainName>{},
          [&] (const auto& selected_domain)
          {
-            using SelectedDomain =
-               std::remove_cvref_t<decltype(selected_domain)>;
-            constexpr size_t Part = SelectedDomain::face_batch_index;
-            auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
+            details::AssemblePartitionInteriorRawCOODomain<KernelPolicy>(
+               weak_form,
                wf_ctx,
-               InteriorFacets<DomainName>{},
-               selected_domain);
-            auto op_ctx = MakeFacetOperatorContext(
-               restricted_ctx,
                integration_rule,
-               selected_domain);
-            constexpr auto TrialName = requirements<WeakForm>::trial_name;
-            constexpr auto TestName = requirements<WeakForm>::test_name;
-            const auto& trial_binding =
-               restricted_ctx.template fe_field<TrialName>().space;
-            const auto& test_binding =
-               restricted_ctx.template fe_field<TestName>().space;
-            const auto& trial_minus_space =
-               trial_binding.GetMinusFiniteElementSpace();
-            const auto& trial_plus_space =
-               trial_binding.GetPlusFiniteElementSpace();
-            const auto& test_minus_space =
-               test_binding.GetMinusFiniteElementSpace();
-            const auto& test_plus_space =
-               test_binding.GetPlusFiniteElementSpace();
-
-            ValidateNonconformingGlobalInteriorFacetTransformSupport<
-               SelectedDomain,
-               std::remove_cvref_t<decltype(trial_minus_space)>,
-               std::remove_cvref_t<decltype(trial_plus_space)>,
-               std::remove_cvref_t<decltype(test_minus_space)>,
-               std::remove_cvref_t<decltype(test_plus_space)>>();
-
-            const auto& face_mesh = selected_domain.GetFaceMesh();
-            auto part_targets = std::get<Part>(targets.interiors);
-            mesh::GlobalFaceIterator<KernelPolicy>(
-               face_mesh,
-               [=] GENDIL_HOST_DEVICE (GlobalIndex face_index) mutable
-               {
-                  GENDIL_SHARED Real _shared_mem[
-                     Context::shared_memory_block_size];
-                  Context kernel(_shared_mem);
-                  const auto face_info =
-                     face_mesh.GetGlobalFaceInfo(face_index);
-                  AssembleGlobalInteriorFaceSparseMatrix(
-                     kernel,
-                     restricted_ctx,
-                     op_ctx,
-                     selected_domain,
-                     trial_minus_space,
-                     trial_plus_space,
-                     test_minus_space,
-                     test_plus_space,
-                     face_info,
-                     weak_form,
-                     face_index,
-                     part_targets);
-               });
+               selected_domain,
+               targets.interiors);
          });
    }
 }

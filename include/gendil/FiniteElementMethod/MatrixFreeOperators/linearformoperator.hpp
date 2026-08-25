@@ -202,6 +202,8 @@ public:
    {
       MeshQuadData mesh_quad_data;
       ElementQuadData element_quad_data;
+      
+      static_cast< Vector & >( *this ) = 0.0;
 
       if constexpr (
          !restriction_may_share_global_dofs_v<
@@ -220,7 +222,6 @@ public:
       }
       else
       {
-         static_cast< Vector & >( *this ) = 0.0;
          auto dofs_out =
             MakeReadWriteElementTensorView< KernelPolicy >(
                finite_element_space,

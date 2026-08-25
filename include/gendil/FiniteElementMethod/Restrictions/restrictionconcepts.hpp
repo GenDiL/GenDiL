@@ -29,6 +29,19 @@ concept StaticDofShape = requires
    Product( Shape{} );
 };
 
+namespace details {
+
+/** CUDA-safe visitor used only to probe restriction row visitation. */
+struct RestrictionEntryConceptProbe
+{
+   template < typename Weight >
+   GENDIL_HOST_DEVICE
+   constexpr void operator()( GlobalIndex, const Weight & ) const
+   { }
+};
+
+} // namespace details
+
 /**
  * @brief Require a completed restriction with one tensor-shaped local DoF
  * index space.
@@ -69,7 +82,7 @@ concept TensorElementDoFRestriction =
          restriction,
          element,
          local_dof,
-         []( GlobalIndex, const auto & ) { } );
+         details::RestrictionEntryConceptProbe{} );
    };
 
 /**
@@ -104,7 +117,7 @@ concept VectorRestrictionComponent =
          restriction,
          element,
          local_dof,
-         []( GlobalIndex, const auto & ) { } );
+         details::RestrictionEntryConceptProbe{} );
    };
 
 /**
@@ -209,7 +222,7 @@ concept ElementDoFRestrictionFor =
          restriction,
          element,
          local_dof,
-         []( GlobalIndex, const auto & ) { } );
+         details::RestrictionEntryConceptProbe{} );
    };
 
 /**
