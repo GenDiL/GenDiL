@@ -120,6 +120,17 @@ concept VectorRestrictionComponent =
          details::RestrictionEntryConceptProbe{} );
    };
 
+namespace details {
+
+template < typename Restriction, size_t... Component >
+consteval bool EveryVectorRestrictionComponentIsValid(
+   std::index_sequence< Component... > )
+{
+   return ( VectorRestrictionComponent< Restriction, Component > && ... );
+}
+
+} // namespace details
+
 /**
  * @brief Require a completed compile-time aggregation of tensor restrictions.
  *
@@ -143,13 +154,9 @@ concept VectorElementDoFRestriction =
    std::integral< std::remove_cv_t< decltype(
       std::remove_cvref_t< Restriction >::num_components ) > > &&
    ( std::remove_cvref_t< Restriction >::num_components > 0 ) &&
-   []< size_t... Component >(
-      std::index_sequence< Component... > ) consteval
-   {
-      return
-         ( VectorRestrictionComponent< Restriction, Component > && ... );
-   }( std::make_index_sequence<
-      std::remove_cvref_t< Restriction >::num_components >{} );
+   details::EveryVectorRestrictionComponentIsValid< Restriction >(
+      std::make_index_sequence<
+         std::remove_cvref_t< Restriction >::num_components >{} );
 
 /**
  * @brief Require any completed element-to-global DoF restriction.
@@ -237,6 +244,27 @@ concept TensorElementDoFRestrictionForShapeFunctions =
       typename std::remove_cvref_t< Restriction >::dof_shape_type,
       finite_element_dof_shape_t< ShapeFunctions > >;
 
+namespace details {
+
+template <
+   typename Restriction,
+   typename ShapeFunctions,
+   size_t... Component >
+consteval bool EveryVectorRestrictionComponentShapeMatches(
+   std::index_sequence< Component... > )
+{
+   return
+      ( std::same_as<
+           typename std::remove_cvref_t< decltype(
+              GetComponentRestriction< Component >(
+                 std::declval<
+                    const std::remove_cvref_t< Restriction > & >() ) )
+              >::dof_shape_type,
+           component_dof_shape_t< ShapeFunctions, Component > > && ... );
+}
+
+} // namespace details
+
 /**
  * @brief Require a vector restriction whose component shapes match vector
  * shape functions.
@@ -247,18 +275,10 @@ concept VectorElementDoFRestrictionForShapeFunctions =
    VectorElementDoFRestriction< Restriction > &&
    ( std::remove_cvref_t< Restriction >::num_components ==
      ShapeFunctions::vector_dim ) &&
-   []< size_t... Component >(
-      std::index_sequence< Component... > ) consteval
-   {
-      return
-         ( std::same_as<
-              typename std::remove_cvref_t< decltype(
-                 GetComponentRestriction< Component >(
-                    std::declval<
-                       const std::remove_cvref_t< Restriction > & >() ) )
-                 >::dof_shape_type,
-              component_dof_shape_t< ShapeFunctions, Component > > && ... );
-   }( std::make_index_sequence< ShapeFunctions::vector_dim >{} );
+   details::EveryVectorRestrictionComponentShapeMatches<
+      Restriction,
+      ShapeFunctions >(
+         std::make_index_sequence< ShapeFunctions::vector_dim >{} );
 
 /**
  * @brief Require a completed restriction whose native local DoF structure
