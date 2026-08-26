@@ -45,6 +45,7 @@ gendil::GlobalIndex GetAlgebraicDofExtent(
 }
 
 template < size_t EntryCount, bool ReferenceView, typename Visitor >
+GENDIL_HOST_DEVICE
 void ForEachRestrictionEntry(
    const SyntheticRestriction< EntryCount, ReferenceView > & restriction,
    const gendil::GlobalIndex element,
