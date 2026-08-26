@@ -499,7 +499,7 @@ int TestUpwindVectorCoefficientFieldInputs()
       MakeWeakFormContext(
          MakeTrialField<"u">(scalar_fe_space),
          MakeFiniteElementField<"beta_field">(vector_fe_space, beta_view),
-         MakeIntegrationDomain<"mesh">(scalar_fe_space));
+         MakeIntegrationDomain<"mesh">(mesh));
 
    auto op =
       MakeGenericOperator<KernelPolicy>(

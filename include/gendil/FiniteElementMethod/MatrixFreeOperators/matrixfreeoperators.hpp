@@ -45,8 +45,8 @@
 // An operator to project a high dimension field onto the first subspace using L2 norm.
 #include "L2projectionoperator.hpp"
 
-// An operator to project a high dimension field onto the first subspace using Linf norm.
-#include "Linfprojectionoperator.hpp"
+// Integrate trailing tensor dimensions into a collocated nodal subspace.
+#include "nodalsubspaceprojectionoperator.hpp"
 
 // A grad-grad operator.
 #include "gradgradoperator.hpp"

@@ -10,6 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace gendil {
@@ -26,37 +27,45 @@ auto MakeBlockDiagonalDGBSRPattern(
    Backend backend = Backend{} )
 {
    BSRMatrix<ValueType, IndexType, Layout, Backend> bsr_matrix{};
-   bsr_matrix.backend = backend;
    bsr_matrix.block_rows = block_rows;
    bsr_matrix.block_cols = block_cols;
    bsr_matrix.num_row_blocks = num_elements;
    bsr_matrix.num_col_blocks = num_elements;
    bsr_matrix.num_blocks = num_elements;
-   AllocateHostPointer( bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets );
-   AllocateDevicePointer( bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets );
-   AllocateHostPointer( bsr_matrix.num_blocks, bsr_matrix.col_indices );
-   AllocateDevicePointer( bsr_matrix.num_blocks, bsr_matrix.col_indices );
-   AllocateHostPointer( bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values );
-   AllocateDevicePointer( bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values );
+   bsr_matrix.row_offsets =
+      MakeSyncHostDeviceArray< IndexType >(
+         bsr_matrix.num_row_blocks + IndexType( 1 ) );
+   bsr_matrix.col_indices =
+      MakeSyncHostDeviceArray< IndexType >( bsr_matrix.num_blocks );
+   bsr_matrix.values =
+      MakeSyncHostDeviceArray< ValueType >(
+         bsr_matrix.num_blocks * block_rows * block_cols );
+   bsr_matrix.backend = std::move( backend );
 
+   auto data = GetHostWriteView( bsr_matrix );
    for (GlobalIndex e = 0; e <= num_elements; ++e)
    {
-      bsr_matrix.row_offsets[e] = e;
+      data.row_offsets[e] = e;
    }
 
    for (GlobalIndex e = 0; e < num_elements; ++e)
    {
-      bsr_matrix.col_indices[e] = e;
+      data.col_indices[e] = e;
    }
 
    for (GlobalIndex i = 0; i < num_elements * block_rows * block_cols; ++i)
    {
-      bsr_matrix.values[i] = 0.0;
+      data.values[i] = 0.0;
    }
 
-   ToDevice( bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets );
-   ToDevice( bsr_matrix.num_blocks, bsr_matrix.col_indices );
-   ToDevice( bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values );
+   Sync( bsr_matrix );
+   ConfigureBSRBackend(
+      bsr_matrix.backend,
+      bsr_matrix.block_rows,
+      bsr_matrix.block_cols,
+      bsr_matrix.num_row_blocks,
+      bsr_matrix.num_col_blocks,
+      bsr_matrix.num_blocks );
 
    return bsr_matrix;
 }
@@ -81,7 +90,7 @@ auto MakeBlockDiagonalDGBSRPattern(
       num_elements,
       block_rows,
       block_cols,
-      backend );
+      std::move( backend ) );
 }
 
 template <
@@ -89,25 +98,47 @@ template <
    typename IndexType = GlobalIndex,
    BlockLayout Layout = BlockLayout::ColumnMajor,
    typename Backend = DefaultBSRBackend,
-   typename FESpace>
+   typename DomainMesh,
+   typename TrialFESpace,
+   typename TestFESpace >
 auto MakeDGBSRPattern(
-   const FESpace& fe_space,
-   Backend backend = Backend{} )
+   const DomainMesh & domain_mesh,
+   const TrialFESpace & trial_space,
+   const TestFESpace & test_space,
+   Backend backend )
 {
-   const GlobalIndex num_elements = fe_space.GetNumberOfFiniteElements();
-   const IndexType block_rows = fe_space.finite_element.GetNumDofs();
-   const IndexType block_cols = fe_space.finite_element.GetNumDofs();
+   const IndexType num_row_blocks =
+      static_cast< IndexType >(
+         test_space.GetNumberOfFiniteElements() );
+   const IndexType num_col_blocks =
+      static_cast< IndexType >(
+         trial_space.GetNumberOfFiniteElements() );
+   const IndexType num_domain_elements =
+      static_cast< IndexType >(
+         domain_mesh.GetNumberOfCells() );
+   GENDIL_VERIFY(
+      num_row_blocks == num_domain_elements &&
+         num_col_blocks == num_domain_elements,
+      "MakeDGBSRPattern requires trial and test spaces over the integration "
+      "domain cell mesh." );
 
-   std::vector<IndexType> host_row_offsets(num_elements + 1, 0);
+   const IndexType block_rows =
+      static_cast< IndexType >(
+         test_space.finite_element.GetNumDofs() );
+   const IndexType block_cols =
+      static_cast< IndexType >(
+         trial_space.finite_element.GetNumDofs() );
+
+   std::vector<IndexType> host_row_offsets(num_row_blocks + 1, 0);
    std::vector<IndexType> host_col_indices;
 
-   for (GlobalIndex e = 0; e < num_elements; ++e)
+   for (IndexType e = 0; e < num_row_blocks; ++e)
    {
       std::vector<IndexType> cols;
       cols.push_back(e); // diagonal block always present
 
       FaceLoop(
-         fe_space,
+         domain_mesh,
          e,
          [&] (auto const& face_info)
          {
@@ -126,42 +157,93 @@ auto MakeDGBSRPattern(
    }
 
    BSRMatrix<ValueType, IndexType, Layout, Backend> bsr_matrix{};
-   bsr_matrix.backend = backend;
    bsr_matrix.block_rows = block_rows;
    bsr_matrix.block_cols = block_cols;
-   bsr_matrix.num_row_blocks = num_elements;
-   bsr_matrix.num_col_blocks = num_elements;
-   bsr_matrix.num_blocks = static_cast<IndexType>(host_col_indices.size());
+   bsr_matrix.num_row_blocks = num_row_blocks;
+   bsr_matrix.num_col_blocks = num_col_blocks;
+   bsr_matrix.num_blocks =
+      static_cast< IndexType >( host_col_indices.size() );
+   bsr_matrix.row_offsets =
+      MakeSyncHostDeviceArray< IndexType >(
+         bsr_matrix.num_row_blocks + IndexType( 1 ) );
+   bsr_matrix.col_indices =
+      MakeSyncHostDeviceArray< IndexType >( bsr_matrix.num_blocks );
+   bsr_matrix.values =
+      MakeSyncHostDeviceArray< ValueType >(
+         bsr_matrix.num_blocks * block_rows * block_cols );
+   bsr_matrix.backend = std::move( backend );
 
-   AllocateHostPointer(bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets);
-   AllocateDevicePointer(bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets);
-
-   AllocateHostPointer(bsr_matrix.num_blocks, bsr_matrix.col_indices);
-   AllocateDevicePointer(bsr_matrix.num_blocks, bsr_matrix.col_indices);
-
-   AllocateHostPointer(bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values);
-   AllocateDevicePointer(bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values);
-
-   for (IndexType i = 0; i < bsr_matrix.num_row_blocks + 1; ++i)
+   auto data = GetHostWriteView( bsr_matrix );
+   for ( IndexType i = 0; i < bsr_matrix.num_row_blocks + 1; ++i )
    {
-      bsr_matrix.row_offsets[i] = host_row_offsets[i];
+      data.row_offsets[i] = host_row_offsets[i];
    }
 
-   for (IndexType i = 0; i < bsr_matrix.num_blocks; ++i)
+   for ( IndexType i = 0; i < bsr_matrix.num_blocks; ++i )
    {
-      bsr_matrix.col_indices[i] = host_col_indices[i];
+      data.col_indices[i] = host_col_indices[i];
    }
 
-   for (IndexType i = 0; i < bsr_matrix.num_blocks * block_rows * block_cols; ++i)
+   for ( IndexType i = 0;
+         i < bsr_matrix.num_blocks * block_rows * block_cols;
+         ++i )
    {
-      bsr_matrix.values[i] = ValueType(0);
+      data.values[i] = ValueType(0);
    }
 
-   ToDevice(bsr_matrix.num_row_blocks + 1, bsr_matrix.row_offsets);
-   ToDevice(bsr_matrix.num_blocks, bsr_matrix.col_indices);
-   ToDevice(bsr_matrix.num_blocks * block_rows * block_cols, bsr_matrix.values);
+   Sync( bsr_matrix );
+   ConfigureBSRBackend(
+      bsr_matrix.backend,
+      bsr_matrix.block_rows,
+      bsr_matrix.block_cols,
+      bsr_matrix.num_row_blocks,
+      bsr_matrix.num_col_blocks,
+      bsr_matrix.num_blocks );
 
    return bsr_matrix;
+}
+
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend,
+   typename TrialFESpace,
+   typename TestFESpace >
+auto MakeDGBSRPattern(
+   const TrialFESpace & trial_space,
+   const TestFESpace & test_space,
+   Backend backend )
+{
+   return MakeDGBSRPattern<
+      ValueType,
+      IndexType,
+      Layout,
+      Backend >(
+         test_space,
+         trial_space,
+         test_space,
+         std::move( backend ) );
+}
+
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex,
+   BlockLayout Layout = BlockLayout::ColumnMajor,
+   typename Backend = DefaultBSRBackend,
+   typename FESpace >
+auto MakeDGBSRPattern(
+   const FESpace & fe_space,
+   Backend backend = Backend{} )
+{
+   return MakeDGBSRPattern<
+      ValueType,
+      IndexType,
+      Layout,
+      Backend >(
+         fe_space,
+         fe_space,
+         std::move( backend ) );
 }
 
 }

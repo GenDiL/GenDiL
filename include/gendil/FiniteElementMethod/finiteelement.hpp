@@ -14,13 +14,14 @@
 #include "gendil/FiniteElementMethod/ShapeFunctions/vectorshapefunctions.hpp"
 #include "gendil/Meshes/Geometries/geometries.hpp"
 
+#include <type_traits>
+
 namespace gendil {
 
-// TODO: Replace Geometry by ReferenceCell?
 /**
  * @brief A simple struct representing a finite element.
  * 
- * @tparam Geometry The geometry of the finite element.
+ * @tparam Geometry The reference geometry/topology of the finite element.
  * @tparam ShapeFunctions The shape functions associated to the finite element.
  */
 template < typename Geometry, typename ShapeFunctions >
@@ -115,11 +116,11 @@ template < typename FirstFiniteElementType, typename... RestFiniteElementTypes >
 auto MakeVectorFiniteElement( FirstFiniteElementType, RestFiniteElementTypes... )
 {
    static_assert(
-      ( ( RestFiniteElementTypes::space_dim == FirstFiniteElementType::space_dim  ) && ...),
-      "All finite‐element types must have the same space_dim" );
-   static_assert(
-      ( ( RestFiniteElementTypes::geometry_dim == FirstFiniteElementType::geometry_dim  ) && ...),
-      "All finite‐element types must have the same geometry_dim" );
+      (std::is_same_v<
+         typename RestFiniteElementTypes::geometry,
+         typename FirstFiniteElementType::geometry> && ...),
+      "MakeVectorFiniteElement: component finite elements must use the same "
+      "reference geometry type." );
    using geometry = typename FirstFiniteElementType::geometry;
    using shape_functions =
       VectorShapeFunctions<

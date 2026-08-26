@@ -104,7 +104,8 @@ void InterpolateGradientAtQPointsThreaded(
    const InputTensor & uq,
    OutputTensor & Gu )
 {
-   constexpr Integer Dim = std::tuple_size_v< ProductOperator >;
+   constexpr Integer Dim =
+      tensor_product_entry_count_v<ProductOperator>;
    constexpr Integer ThreadBlockDim = Min( KernelContext::thread_block_dim, Dim );
 
    constexpr Integer SharedBlockDim = Min( KernelContext::shared_block_max_dim, Dim );
@@ -149,14 +150,17 @@ void InterpolateGradientAtQPointsThreaded(
          constexpr Integer c = _c;
          constexpr Integer ActiveDim = seq_get_v< c, ThreadedDimensions >;
 
-         using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-         auto& B = std::get< ActiveDim >( element_quad_data );
+         using Op1D =
+            tensor_product_entry_t<ActiveDim, ProductOperator>;
+         auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
          GradHelperFunctions::GradContractionShared< c, ActiveDim, quad_shape >( thread, sx, Gu, B, std::tie( slice_index... ) );
 
-         if constexpr ( c+1 < ThreadBlockDim )
-            thread.Synchronize();
+         // No inter-direction barrier: each direction reads same sx, writes disjoint Gu component
       });
+
+      // Post-slice barrier: ensure all threads finish reading sx before next slice overwrites it
+      thread.Synchronize();
    });
 
 // contraction along non-threaded dimensions
@@ -168,8 +172,9 @@ void InterpolateGradientAtQPointsThreaded(
       constexpr Integer c = _c;
       constexpr Integer ActiveDim = seq_get_v< c, RegisterDimensions >;
 
-      using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-      auto& B = std::get< ActiveDim >( element_quad_data );
+      using Op1D =
+         tensor_product_entry_t<ActiveDim, ProductOperator>;
+      auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
       ThreadLoop< tshape >( thread, [&] ( auto... )
       {
@@ -199,7 +204,8 @@ void InterpolateGradientThreaded(
 
    if constexpr ( face_interp )
    {
-      constexpr Integer Rank = std::tuple_size_v< ProductOperator >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ProductOperator>;
       ConstexprLoop< Rank >( [&] ( auto ActiveDim )
       {
          auto gu = InterpolateValuesThreaded< ActiveDim >( thread, element_quad_data, u );

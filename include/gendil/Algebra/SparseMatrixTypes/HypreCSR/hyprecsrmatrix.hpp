@@ -6,8 +6,10 @@
 
 #ifdef GENDIL_USE_HYPRE
 
-// Public Hypre-compatible CSR matrix interface: storage plus native Apply support.
+// Move-only Hypre-compatible CSR storage and zero-copy shell integration.
 #include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrixstorage.hpp"
+
+// Hypre-native and explicitly forwarded CSR Apply support.
 #include "gendil/Algebra/SparseMatrixTypes/HypreCSR/hyprecsrmatrixapply.hpp"
 
 #endif // GENDIL_USE_HYPRE

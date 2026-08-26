@@ -307,7 +307,7 @@ int TestInteriorCoefficientFieldInputsH1()
       false);
    mfem::H1_FECollection fec(order, 2);
    mfem::FiniteElementSpace mfem_fes(&mfem_mesh, &fec);
-   auto h1_restriction = GetH1Restriction(mfem_fes);
+   auto h1_restriction = GetIndirectH1RestrictionSpecification(mfem_fes);
    auto h1_space = MakeFiniteElementSpace(mesh, finite_element, h1_restriction);
 
    constexpr Integer num_quad_1d = order + 3;
@@ -352,7 +352,7 @@ int TestInteriorCoefficientFieldInputsH1()
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(dg_space),
       MakeFiniteElementField<"w_cg">(h1_space, w_view),
-      MakeIntegrationDomain<"mesh">(dg_space));
+      MakeIntegrationDomain<"mesh">(mesh));
 
    auto average_op = MakeGenericOperator<KernelPolicy>(
       average_form,

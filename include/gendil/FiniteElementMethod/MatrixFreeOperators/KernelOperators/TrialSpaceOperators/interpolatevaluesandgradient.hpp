@@ -18,8 +18,8 @@ namespace gendil {
  * 
  * @tparam FiniteElementSpace The finite element space.
  * @tparam IntegrationRule The integration rule.
- * @tparam ElementDofToQuad A tuple of DofToQuad types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @tparam ElementDofToQuad TensorProductDofToQuad data.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param u The input degrees-of-freedom.
  * @param Bu The output field values at quadrature points.
  * @param Gu The ouput field gradient values at quadrature points.
@@ -37,7 +37,7 @@ void InterpolateValuesAndGradients(
    Bu.data = details::InterpolateValuesImpl<0>( element_quad_data, u );
    ConstexprLoop< Rank >( [&] ( auto ActiveDim )
    {
-      auto & B1d = std::get< ActiveDim >( element_quad_data );
+      auto & B1d = GetTensorProductEntry<ActiveDim>(element_quad_data);
       using Op1D = std::decay_t< decltype( B1d ) >;
       if constexpr ( Op1D::num_quads >= Op1D::num_dofs)
       {
@@ -57,7 +57,8 @@ void InterpolateValuesAndGradients(
    const ProductOperator & element_quad_data,
    const InputTensor & u )
 {
-   constexpr Integer dim = std::tuple_size_v< ProductOperator >;
+   constexpr Integer dim =
+      tensor_product_entry_count_v<ProductOperator>;
    using quad_shape = make_contraction_output_shape< ProductOperator >;
    using rdims = typename KernelContext::template register_dimensions< dim >;
    using rshape = subsequence_t< quad_shape, rdims >;

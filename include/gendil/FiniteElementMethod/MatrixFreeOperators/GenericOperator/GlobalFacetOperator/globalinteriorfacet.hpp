@@ -26,12 +26,12 @@ template<
    typename TestPlusSpace,
    typename FaceInfo,
    typename Integrand,
-   typename DofsInMinusView,
-   typename DofsInPlusView,
-   typename DofsOutMinusView,
-   typename DofsOutPlusView>
+   typename ElementDofsInMinus,
+   typename ElementDofsInPlus,
+   typename ElementDofsOutMinus,
+   typename ElementDofsOutPlus>
 GENDIL_HOST_DEVICE
-void GenericCanonicalGlobalInteriorChannelOperator(
+void GenericCanonicalGlobalInteriorChannelAction(
    KernelContext& kernel_context,
    const WeakFormContext& wf_ctx,
    const OperatorContext& op_ctx,
@@ -42,23 +42,12 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    const TestPlusSpace& test_plus_space,
    const FaceInfo& face_info,
    const Integrand& integrand,
-   const DofsInMinusView& dofs_in_minus,
-   const DofsInPlusView& dofs_in_plus,
-   DofsOutMinusView& dofs_out_minus,
-   DofsOutPlusView& dofs_out_plus)
+   const ElementDofsInMinus& u_minus,
+   const ElementDofsInPlus& u_plus,
+   ElementDofsOutMinus& v_minus,
+   ElementDofsOutPlus& v_plus)
 {
    constexpr auto TestName  = requirements<Integrand>::test_name;
-
-   auto u_minus = ReadDofs(
-      kernel_context,
-      trial_minus_space,
-      face_info.MinusSide(),
-      dofs_in_minus);
-   auto u_plus = ReadDofs(
-      kernel_context,
-      trial_plus_space,
-      face_info.PlusSide(),
-      dofs_in_plus);
 
    const auto& test_qd =
       op_ctx.template finite_element_facet_quad_data<TestName>();
@@ -98,7 +87,7 @@ void GenericCanonicalGlobalInteriorChannelOperator(
 
    ElementContext minus_element_context{
       face_info.MinusSide().GetCellIndex(),
-      face_domain.GetMinusCellFiniteElementSpace().GetCell(
+      face_domain.GetMinusCellMesh().GetCell(
          face_info.MinusSide().GetCellIndex())
    };
    auto face_context =
@@ -137,6 +126,62 @@ void GenericCanonicalGlobalInteriorChannelOperator(
             Du_plus);
       });
 
+   ApplyAddGlobalInteriorFacetTestFunctionsForSide(
+      kernel_context,
+      face_info.MinusSide(),
+      test_qd.MinusSide(),
+      Du_minus,
+      v_minus);
+   ApplyAddGlobalInteriorFacetTestFunctionsForSide(
+      kernel_context,
+      face_info.PlusSide(),
+      test_qd.PlusSide(),
+      Du_plus,
+      v_plus);
+}
+
+template<
+   typename KernelContext,
+   typename WeakFormContext,
+   typename OperatorContext,
+   typename FaceDomain,
+   typename TrialMinusSpace,
+   typename TrialPlusSpace,
+   typename TestMinusSpace,
+   typename TestPlusSpace,
+   typename FaceInfo,
+   typename Integrand,
+   typename DofsInMinusView,
+   typename DofsInPlusView,
+   typename DofsOutMinusView,
+   typename DofsOutPlusView>
+GENDIL_HOST_DEVICE
+void GenericCanonicalGlobalInteriorChannelOperator(
+   KernelContext& kernel_context,
+   const WeakFormContext& wf_ctx,
+   const OperatorContext& op_ctx,
+   const FaceDomain& face_domain,
+   const TrialMinusSpace& trial_minus_space,
+   const TrialPlusSpace& trial_plus_space,
+   const TestMinusSpace& test_minus_space,
+   const TestPlusSpace& test_plus_space,
+   const FaceInfo& face_info,
+   const Integrand& integrand,
+   const DofsInMinusView& dofs_in_minus,
+   const DofsInPlusView& dofs_in_plus,
+   DofsOutMinusView& dofs_out_minus,
+   DofsOutPlusView& dofs_out_plus)
+{
+   auto u_minus = ReadDofs(
+      kernel_context,
+      trial_minus_space,
+      face_info.MinusSide(),
+      dofs_in_minus);
+   auto u_plus = ReadDofs(
+      kernel_context,
+      trial_plus_space,
+      face_info.PlusSide(),
+      dofs_in_plus);
    using MinusOut = decltype(ReadDofs(
       kernel_context,
       test_minus_space,
@@ -150,17 +195,20 @@ void GenericCanonicalGlobalInteriorChannelOperator(
    MinusOut v_minus{};
    PlusOut v_plus{};
 
-   ApplyAddGlobalInteriorFacetTestFunctionsForSide(
+   GenericCanonicalGlobalInteriorChannelAction(
       kernel_context,
-      face_info.MinusSide(),
-      test_qd.MinusSide(),
-      Du_minus,
-      v_minus);
-   ApplyAddGlobalInteriorFacetTestFunctionsForSide(
-      kernel_context,
-      face_info.PlusSide(),
-      test_qd.PlusSide(),
-      Du_plus,
+      wf_ctx,
+      op_ctx,
+      face_domain,
+      trial_minus_space,
+      trial_plus_space,
+      test_minus_space,
+      test_plus_space,
+      face_info,
+      integrand,
+      u_minus,
+      u_plus,
+      v_minus,
       v_plus);
 
    WriteAddDofs(
@@ -226,10 +274,7 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
          DofsInPlusView,
          DofsOutMinusView,
          DofsOutPlusView>;
-   constexpr size_t shared_memory_block_size =
-      KernelContext<
-         KernelPolicy,
-         required_shared_mem>::shared_memory_block_size;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    const auto& face_mesh = face_domain.GetFaceMesh();
    auto facet_op_ctx =
@@ -246,11 +291,8 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
          (void)facet_op_ctx;
          (void)integrand;
 
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
-         KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
 
          const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
 
@@ -273,16 +315,14 @@ void GenericCanonicalGlobalInteriorFacetDomainOperator(
 }
 
 template<
-   StaticString TrialName,
-   StaticString TestName,
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
    class FacePart,
-   class MinusCellSpace,
-   class PlusCellSpace,
+   class MinusCellMesh,
+   class PlusCellMesh,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -290,18 +330,21 @@ void GenericGlobalInteriorFaceDomainOperator(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    InteriorFacets<DomainName> domain_tag,
-   const InteriorFaceExecutionBatch<
+   const SelectedInteriorFaceExecutionDomain<
       DomainName,
       FaceI,
       FacePart,
-      MinusCellSpace,
-      PlusCellSpace>& batch,
+      MinusCellMesh,
+      PlusCellMesh>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+
    auto batch_ctx =
-      MakeRestrictedWeakFormContext<TrialName, TestName>(
+      MakeRestrictedWeakFormContext<WeakForm>(
          wf_ctx,
          domain_tag,
          batch);

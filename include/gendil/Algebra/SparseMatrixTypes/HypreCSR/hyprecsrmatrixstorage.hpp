@@ -6,7 +6,7 @@
 
 #ifdef GENDIL_USE_HYPRE
 
-#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixstorage.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixview.hpp"
 #include "gendil/Interfaces/Hypre/hypreparcsrview.hpp"
 #include "gendil/Interfaces/Hypre/hypretypes.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -92,12 +92,12 @@ struct HypreCSRMatrix
    HypreCSRMatrix() = default;
 
    HypreCSRMatrix(
-      csr_type csr_,
+      csr_type && csr_,
       HypreCSRMetadata metadata_,
       Backend backend_ = Backend{} )
    : csr( std::move( csr_ ) ),
      metadata( metadata_ ),
-     backend( backend_ )
+     backend( std::move( backend_ ) )
    { }
 
    HypreCSRMatrix( const HypreCSRMatrix & ) = delete;
@@ -106,7 +106,7 @@ struct HypreCSRMatrix
    HypreCSRMatrix( HypreCSRMatrix && other ) noexcept
    : csr( std::move( other.csr ) ),
      metadata( other.metadata ),
-     backend( other.backend ),
+     backend( std::move( other.backend ) ),
      host_parcsr( other.host_parcsr ),
      device_parcsr( other.device_parcsr )
    {
@@ -120,11 +120,11 @@ struct HypreCSRMatrix
       {
          details::DestroyHypreParCSRView( host_parcsr );
          details::DestroyHypreParCSRView( device_parcsr );
-         FreeCSRMatrix( csr );
+         ResetState( backend );
 
          csr = std::move( other.csr );
          metadata = other.metadata;
-         backend = other.backend;
+         backend = std::move( other.backend );
          host_parcsr = other.host_parcsr;
          device_parcsr = other.device_parcsr;
          other.host_parcsr = nullptr;
@@ -137,7 +137,7 @@ struct HypreCSRMatrix
    {
       details::DestroyHypreParCSRView( host_parcsr );
       details::DestroyHypreParCSRView( device_parcsr );
-      FreeCSRMatrix( csr );
+      ResetState( backend );
    }
 
    template < typename InputVector, typename OutputVector >
@@ -145,10 +145,11 @@ struct HypreCSRMatrix
 
    HYPRE_ParCSRMatrix GetHostHypreParCSR() const
    {
+      const auto csr_view = GetHostReadView( csr );
       if ( host_parcsr == nullptr )
       {
          host_parcsr =
-            details::CreateHostHypreParCSRView( *this );
+            details::CreateHostHypreParCSRView( *this, csr_view );
       }
       return host_parcsr;
    }
@@ -156,15 +157,16 @@ struct HypreCSRMatrix
    HYPRE_ParCSRMatrix GetDeviceHypreParCSR() const
    {
 #ifdef GENDIL_USE_HYPRE_DEVICE
+      const auto csr_view = GetDeviceReadView( csr );
       if ( device_parcsr == nullptr )
       {
          device_parcsr =
-            details::CreateDeviceHypreParCSRView( *this );
+            details::CreateDeviceHypreParCSRView( *this, csr_view );
       }
       return device_parcsr;
 #else
-      GENDIL_VERIFY(
-         false,
+      static_assert(
+         dependent_false_v< Backend >,
          "HypreCSRDeviceBackend requires GENDIL_USE_HYPRE_DEVICE. Configure GenDiL with CUDA/HIP and a matching device-enabled Hypre." );
       return nullptr;
 #endif

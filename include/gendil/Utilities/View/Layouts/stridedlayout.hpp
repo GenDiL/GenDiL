@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/View/view.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/permutation.hpp"
 
 namespace gendil
 {

@@ -483,7 +483,7 @@ bool RunH1CaseForCellCount(
    HostDevicePointer< int > indices;
    FillH1LineRestriction( num_cells, indices );
    auto const_indices = MakeConstRestrictionView( indices );
-   H1Restriction restriction{
+   IndirectH1RestrictionSpecification restriction{
       const_indices,
       static_cast< Integer >( num_cells + 1 )
    };

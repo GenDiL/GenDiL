@@ -99,12 +99,32 @@ int main( int, char ** )
    GENDIL_REQUIRE_UNBATCHED_OPERATOR( HostKernelConfiguration );
 
    using HostContext = KernelContext< HostKernelConfiguration, 0 >;
+   using HostNonzeroContext = KernelContext< HostKernelConfiguration, 7 >;
    static_assert( is_host_configuration_v< HostContext > );
    static_assert( is_host_configuration_v< const HostContext & > );
    static_assert( !is_device_configuration_v< HostContext > );
    static_assert( !is_device_configuration_v< const HostContext & > );
    static_assert( !is_threaded_v< HostContext > );
    static_assert( !is_threaded_v< const HostContext & > );
+   static_assert( HostContext::per_work_item_shared_memory_size == 0 );
+   static_assert( HostContext::shared_memory_stride_per_work_item == 0 );
+   static_assert( HostContext::shared_memory_block_size == 1 );
+   static_assert(
+      MemoryArenaCapacity< decltype( HostContext::SharedAllocator ) >::value ==
+      0 );
+   static_assert( HostNonzeroContext::per_work_item_shared_memory_size == 7 );
+   static_assert(
+      HostNonzeroContext::shared_memory_stride_per_work_item == 7 );
+   static_assert( HostNonzeroContext::shared_memory_block_size == 7 );
+
+   Real zero_capacity_backing[HostContext::shared_memory_block_size]{};
+   HostContext zero_capacity_context( zero_capacity_backing );
+   if ( !Check(
+           zero_capacity_context.SharedAllocator.allocate( 1 ) == nullptr,
+           "A declaration-safe backing slot became usable allocator capacity." ) )
+   {
+      return 1;
+   }
 
    std::array< int, 8 > host_visits{};
    HostKernelConfiguration::BlockLoop(
@@ -137,6 +157,11 @@ int main( int, char ** )
    static_assert( LegacyConfig::GetNumberOfThreads() == 6 );
    static_assert( LegacyConfig::SharedMemoryStride( 7 ) == 7 );
    static_assert( LegacyConfig::SharedMemoryBlockSize( 7 ) == 7 );
+   using LegacyContext = KernelContext< LegacyConfig, 7 >;
+   static_assert( LegacyContext::per_work_item_shared_memory_size == 7 );
+   static_assert(
+      LegacyContext::shared_memory_stride_per_work_item == 7 );
+   static_assert( LegacyContext::shared_memory_block_size == 7 );
 
    constexpr auto legacy_geometry = LegacyConfig::GetLaunchGeometry( 11 );
    static_assert( legacy_geometry.grid_x == 11 );
@@ -176,6 +201,11 @@ int main( int, char ** )
    static_assert( BatchedConfig::GetNumberOfThreads() == 6 );
    static_assert( BatchedConfig::SharedMemoryStride( 7 ) == 7 );
    static_assert( BatchedConfig::SharedMemoryBlockSize( 7 ) == 28 );
+   using BatchedContext = KernelContext< BatchedConfig, 7 >;
+   static_assert( BatchedContext::per_work_item_shared_memory_size == 7 );
+   static_assert(
+      BatchedContext::shared_memory_stride_per_work_item == 7 );
+   static_assert( BatchedContext::shared_memory_block_size == 28 );
    static_assert(
       BatchedConfig::template WorkItemThreadsAlignWithWarpOrWavefront< 3 >() );
    static_assert(
@@ -225,6 +255,12 @@ int main( int, char ** )
    static_assert( !is_threaded_v< RegisterOnlyBatchedConfig > );
    static_assert( !is_threaded_v< RegisterOnlyBatchedContext > );
    static_assert( !is_threaded_v< const RegisterOnlyBatchedContext & > );
+   static_assert(
+      RegisterOnlyBatchedContext::per_work_item_shared_memory_size == 0 );
+   static_assert(
+      RegisterOnlyBatchedContext::shared_memory_stride_per_work_item == 0 );
+   static_assert(
+      RegisterOnlyBatchedContext::shared_memory_block_size == 1 );
 
    using OneDimThreadedBatchedConfig =
       DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 4 >;
@@ -250,7 +286,9 @@ int main( int, char ** )
       FiniteElementSpace<
          Cartesian1DMesh,
          GLLFiniteElement< 3 >,
-         L2Restriction >;
+         ContiguousL2Restriction<
+            finite_element_dof_shape_t<
+               typename GLLFiniteElement< 3 >::shape_functions > > >;
    using DirectGlobalEmptyLayout =
       DeviceKernelConfiguration< ThreadBlockLayout<>, 0, 2 >;
    using FullSharedEmptyLayout =

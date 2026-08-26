@@ -5,10 +5,15 @@
 #pragma once
 
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/VendorSparse/vendorsparsebackend.hpp"
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
+#include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
-namespace gendil {
+#include <type_traits>
+#include <utility>
+
+namespace gendil
+{
 
 template < typename ComputeType = void >
 struct HostCOOBackend : HostMatVecBackend
@@ -22,28 +27,19 @@ struct NativeDeviceCOOBackend : DeviceMatVecBackend
    using compute_type = ComputeType;
 };
 
-// Standalone COO storage default. GenericAssembly dispatch uses
-// DefaultBackendFor_t<MatrixAssemblyType::COO> instead.
+#if defined(GENDIL_USE_DEVICE)
+using DefaultCOOBackend = VendorDeviceCOOBackend<>;
+#else
 using DefaultCOOBackend = HostCOOBackend<>;
+#endif
 
+/**
+ * Canonical, move-only coordinate-list sparse matrix owner.
+ */
 template <
    typename ValueType = Real,
    typename IndexType = GlobalIndex,
    typename Backend = DefaultCOOBackend >
-struct COOMatrix;
-
-/**
- * Canonical coordinate-list sparse matrix.
- *
- * Entries are sorted lexicographically by `(row, col)`, and each coordinate
- * appears at most once. Duplicate raw assembly triplets are finalized by
- * additive reduction before they are stored here. Exact zero values produced by
- * reduction are retained.
- */
-template <
-   typename ValueType,
-   typename IndexType,
-   typename Backend >
 struct COOMatrix
 {
    using value_type = ValueType;
@@ -54,13 +50,47 @@ struct COOMatrix
    IndexType num_cols = 0;
    IndexType nnz = 0;
 
-   HostDevicePointer< IndexType > rows;
-   HostDevicePointer< IndexType > cols;
-   HostDevicePointer< ValueType > values;
+   SyncHostDeviceArray< IndexType, IndexType > rows{};
+   SyncHostDeviceArray< IndexType, IndexType > cols{};
+   SyncHostDeviceArray< ValueType, IndexType > values{};
 
-   // Backend controls operator() dispatch. HostCOOBackend reads/writes host
-   // data; NativeDeviceCOOBackend reads/writes device data.
+   // Keep the backend last so cached descriptors are destroyed before arrays.
    Backend backend{};
+
+   COOMatrix() = default;
+   COOMatrix( const COOMatrix & ) = delete;
+   COOMatrix & operator=( const COOMatrix & ) = delete;
+
+   COOMatrix( COOMatrix && other )
+      noexcept( std::is_nothrow_move_constructible_v< Backend > )
+   : num_rows( std::exchange( other.num_rows, IndexType( 0 ) ) ),
+     num_cols( std::exchange( other.num_cols, IndexType( 0 ) ) ),
+     nnz( std::exchange( other.nnz, IndexType( 0 ) ) ),
+     rows( std::move( other.rows ) ),
+     cols( std::move( other.cols ) ),
+     values( std::move( other.values ) ),
+     backend( std::move( other.backend ) )
+   { }
+
+   COOMatrix & operator=( COOMatrix && other )
+      noexcept( std::is_nothrow_move_assignable_v< Backend > )
+   {
+      if ( this != &other )
+      {
+         ResetState( backend );
+
+         num_rows = std::exchange( other.num_rows, IndexType( 0 ) );
+         num_cols = std::exchange( other.num_cols, IndexType( 0 ) );
+         nnz = std::exchange( other.nnz, IndexType( 0 ) );
+         rows = std::move( other.rows );
+         cols = std::move( other.cols );
+         values = std::move( other.values );
+         backend = std::move( other.backend );
+      }
+      return *this;
+   }
+
+   ~COOMatrix() = default;
 
    template < typename InputVector, typename OutputVector >
    void operator()( const InputVector & x, OutputVector & y ) const;
@@ -80,27 +110,11 @@ auto MakeCOOMatrix(
    matrix.num_rows = num_rows;
    matrix.num_cols = num_cols;
    matrix.nnz = nnz;
-   matrix.backend = backend;
-
-   AllocateHostPointer( nnz, matrix.rows );
-   AllocateDevicePointer( nnz, matrix.rows );
-   AllocateHostPointer( nnz, matrix.cols );
-   AllocateDevicePointer( nnz, matrix.cols );
-   AllocateHostPointer( nnz, matrix.values );
-   AllocateDevicePointer( nnz, matrix.values );
-
+   matrix.rows = MakeSyncHostDeviceArray< IndexType >( nnz );
+   matrix.cols = MakeSyncHostDeviceArray< IndexType >( nnz );
+   matrix.values = MakeSyncHostDeviceArray< ValueType >( nnz );
+   matrix.backend = std::move( backend );
    return matrix;
-}
-
-template < typename Matrix >
-void FreeCOOMatrix( Matrix & matrix )
-{
-   FreeHostPointer( matrix.rows );
-   FreeDevicePointer( matrix.rows );
-   FreeHostPointer( matrix.cols );
-   FreeDevicePointer( matrix.cols );
-   FreeHostPointer( matrix.values );
-   FreeDevicePointer( matrix.values );
 }
 
 } // namespace gendil

@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
@@ -14,148 +15,160 @@
 
 namespace gendil {
 
-// Static analysis for the matrix-free generic operator traversal strategy.
-//
-// Dispatch is intentionally topology-driven:
-// - no global face domains in the weak-form context selects the local,
-//   cell-owned facet traversal;
-// - at least one global face domain selects the global face traversal.
-//
-// Once global traversal is selected, hybrid local/global facet execution is not
-// allowed. Every facet term that appears in the form must have the matching
-// named global face domain in the context. Cell terms do not participate in this
-// validation.
+namespace generic_operator_detail {
 
-// True when the context provides any global face topology. This does not inspect
-// the form and does not consider KernelPolicy batching; batching only restricts
-// whether the selected traversal strategy is valid.
-template<class WFContext>
-inline constexpr bool has_global_face_domains_v =
-   std::remove_cvref_t<WFContext>::has_any_interior_face_domain() ||
-   std::remove_cvref_t<WFContext>::has_any_boundary_face_domain();
-
-// Name-aware validation for InteriorFacets<Name> terms under global traversal.
-// The default is true so non-interior terms, including cell and boundary terms,
-// do not affect the interior-face requirement.
-template<class Form, class WFContext>
-struct interior_facet_terms_have_domains : std::true_type {};
-
-// An interior facet integrand requires the matching internal face-domain entry
-// produced by MakeIntegrationDomain<Name>(domain_decomposed_fes) in the
-// weak-form context. Homogeneous MakeIntegrationDomain<Name>(fe_space) is
-// cell/local-facet topology only and does not create global face domains.
-template<StaticString DomainName, FieldExpr Expr, class WFContext>
-struct interior_facet_terms_have_domains<
-   Integrand<InteriorFacets<DomainName>, Expr>,
-   WFContext>
-   : std::bool_constant<
-        std::remove_cvref_t<WFContext>::template
-           has_interior_face_domain<DomainName>()> {};
-
-template<class Map, class WFContext>
-struct interior_facet_terms_have_domains<SumFormExpr<Map>, WFContext>
-   : interior_facet_terms_have_domains<Map, WFContext> {};
-
-template<class FirstEntry, class... RestEntries, class WFContext>
-struct interior_facet_terms_have_domains<
-   StaticMap<FirstEntry, RestEntries...>,
-   WFContext>
+enum class GenericOperatorDomainKind
 {
-   static constexpr bool value =
-      interior_facet_terms_have_domains<FirstEntry, WFContext>::value &&
-      interior_facet_terms_have_domains<
-         StaticMap<RestEntries...>,
-         WFContext>::value;
+   Mesh,
+   Partition,
+   Mixed,
+   Invalid
 };
 
-template<class Entry, class WFContext>
-struct interior_facet_terms_have_domains<StaticMap<Entry>, WFContext>
-   : interior_facet_terms_have_domains<Entry, WFContext> {};
-
-template<class Key, class T, class WFContext>
-struct interior_facet_terms_have_domains<Entry<Key, T>, WFContext>
-   : interior_facet_terms_have_domains<T, WFContext> {};
-
-template<class Form, class WFContext>
-inline constexpr bool interior_facet_terms_have_domains_v =
-   interior_facet_terms_have_domains<
-      std::remove_cvref_t<Form>,
-      std::remove_cvref_t<WFContext>>::value;
-
-// Name-aware validation for BoundaryFacets<Name> terms under global traversal.
-// The default is true so non-boundary terms, including cell and interior terms,
-// do not affect the boundary-face requirement.
-template<class Form, class WFContext>
-struct boundary_facet_terms_have_domains : std::true_type {};
-
-// A boundary facet integrand requires the matching internal face-domain entry
-// produced by MakeIntegrationDomain<Name>(domain_decomposed_fes) in the
-// weak-form context. Homogeneous MakeIntegrationDomain<Name>(fe_space) is
-// cell/local-facet topology only and does not create global face domains.
-template<StaticString DomainName, FieldExpr Expr, class WFContext>
-struct boundary_facet_terms_have_domains<
-   Integrand<BoundaryFacets<DomainName>, Expr>,
-   WFContext>
-   : std::bool_constant<
-        std::remove_cvref_t<WFContext>::template
-           has_boundary_face_domain<DomainName>()> {};
-
-template<class Map, class WFContext>
-struct boundary_facet_terms_have_domains<SumFormExpr<Map>, WFContext>
-   : boundary_facet_terms_have_domains<Map, WFContext> {};
-
-template<class FirstEntry, class... RestEntries, class WFContext>
-struct boundary_facet_terms_have_domains<
-   StaticMap<FirstEntry, RestEntries...>,
-   WFContext>
+constexpr GenericOperatorDomainKind MergeDomainKinds(
+   const GenericOperatorDomainKind lhs,
+   const GenericOperatorDomainKind rhs)
 {
-   static constexpr bool value =
-      boundary_facet_terms_have_domains<FirstEntry, WFContext>::value &&
-      boundary_facet_terms_have_domains<
-         StaticMap<RestEntries...>,
-         WFContext>::value;
+   if (
+      lhs == GenericOperatorDomainKind::Invalid ||
+      rhs == GenericOperatorDomainKind::Invalid)
+   {
+      return GenericOperatorDomainKind::Invalid;
+   }
+   if (lhs == rhs)
+   {
+      return lhs;
+   }
+   return GenericOperatorDomainKind::Mixed;
+}
+
+template<GenericOperatorDomainKind First, GenericOperatorDomainKind... Rest>
+consteval GenericOperatorDomainKind MergeDomainKinds()
+{
+   auto result = First;
+   ((result = MergeDomainKinds(result, Rest)), ...);
+   return result;
+}
+
+template<class Form, class WeakFormContext>
+struct generic_operator_domain_kind
+{
+   static constexpr auto value = GenericOperatorDomainKind::Invalid;
 };
 
-template<class Entry, class WFContext>
-struct boundary_facet_terms_have_domains<StaticMap<Entry>, WFContext>
-   : boundary_facet_terms_have_domains<Entry, WFContext> {};
+template<
+   DomainExpr Domain,
+   FieldExpr Expr,
+   class WeakFormContext>
+struct generic_operator_domain_kind<
+   Integrand<Domain, Expr>,
+   WeakFormContext>
+{
+private:
+   using Context = std::remove_cvref_t<WeakFormContext>;
+   static constexpr auto DomainName = Domain::name;
 
-template<class Key, class T, class WFContext>
-struct boundary_facet_terms_have_domains<Entry<Key, T>, WFContext>
-   : boundary_facet_terms_have_domains<T, WFContext> {};
+   static consteval GenericOperatorDomainKind Get()
+   {
+      if constexpr (!Context::template has_domain<DomainName>())
+      {
+         return GenericOperatorDomainKind::Invalid;
+      }
+      else
+      {
+         using IntegrationDomain =
+            std::remove_cvref_t<
+               decltype(
+                  std::declval<const Context&>()
+                     .template domain<DomainName>().domain)>;
 
-template<class Form, class WFContext>
-inline constexpr bool boundary_facet_terms_have_domains_v =
-   boundary_facet_terms_have_domains<
-      std::remove_cvref_t<Form>,
-      std::remove_cvref_t<WFContext>>::value;
+         if constexpr (
+            is_mesh_integration_domain_v<IntegrationDomain>)
+         {
+            return GenericOperatorDomainKind::Mesh;
+         }
+         else if constexpr (
+            is_partition_integration_domain_v<IntegrationDomain>)
+         {
+            return GenericOperatorDomainKind::Partition;
+         }
+         else
+         {
+            return GenericOperatorDomainKind::Invalid;
+         }
+      }
+   }
 
-// Global traversal is valid only when every facet term in the form has its
-// matching named global face domain. A form with only cell terms satisfies this
-// requirement even if the context provides global face domains.
-template<class Form, class WFContext>
-inline constexpr bool global_facet_domain_requirements_satisfied_v =
-   interior_facet_terms_have_domains_v<Form, WFContext> &&
-   boundary_facet_terms_have_domains_v<Form, WFContext>;
+public:
+   static constexpr auto value = Get();
+};
 
-// High-level strategy selector used by GenericExplicitOperator. Keep this based
-// only on context-provided topology so batch_size never implicitly selects the
-// global path.
-template<class WFContext>
-inline constexpr bool use_global_facets_operator_v =
-   has_global_face_domains_v<WFContext>;
+template<class Key, class T, class WeakFormContext>
+struct generic_operator_domain_kind<
+   Entry<Key, T>,
+   WeakFormContext>
+   : generic_operator_domain_kind<T, WeakFormContext> {};
+
+template<class WeakFormContext>
+struct generic_operator_domain_kind<
+   StaticMap<>,
+   WeakFormContext>
+{
+   static constexpr auto value = GenericOperatorDomainKind::Invalid;
+};
+
+template<
+   class WeakFormContext,
+   class FirstEntry,
+   class... RestEntries>
+struct generic_operator_domain_kind<
+   StaticMap<FirstEntry, RestEntries...>,
+   WeakFormContext>
+{
+   static constexpr auto value =
+      MergeDomainKinds<
+         generic_operator_domain_kind<
+            FirstEntry,
+            WeakFormContext>::value,
+         generic_operator_domain_kind<
+            RestEntries,
+            WeakFormContext>::value...>();
+};
+
+template<class Map, class WeakFormContext>
+struct generic_operator_domain_kind<
+   SumFormExpr<Map>,
+   WeakFormContext>
+   : generic_operator_domain_kind<Map, WeakFormContext> {};
+
+template<class WeakForm, class WeakFormContext>
+inline constexpr auto generic_operator_domain_kind_v =
+   generic_operator_domain_kind<
+      std::remove_cvref_t<WeakForm>,
+      std::remove_cvref_t<WeakFormContext>>::value;
+
+} // namespace generic_operator_detail
 
 template<class Space>
-consteval bool IsScalarL2OrH1ValueGradientSpace()
+consteval bool SupportsComponentwiseNonconformingFacetTransform()
 {
    using SpaceType = std::remove_cvref_t<Space>;
    using FE = typename SpaceType::finite_element_type;
    using ShapeFunctions = typename FE::shape_functions;
    using Restriction = typename SpaceType::restriction_type;
 
-   return !is_vector_shape_functions_v<ShapeFunctions> &&
-          (std::is_same_v<Restriction, L2Restriction> ||
-           std::is_same_v<Restriction, H1Restriction>);
+   if constexpr (is_vector_shape_functions_v<ShapeFunctions>)
+   {
+      return VectorElementDoFRestrictionForShapeFunctions<
+         Restriction,
+         ShapeFunctions>;
+   }
+   else
+   {
+      return TensorElementDoFRestrictionForShapeFunctions<
+         Restriction,
+         ShapeFunctions>;
+   }
 }
 
 template<
@@ -174,15 +187,15 @@ consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
       !FaceInfo::plus_side_type::is_conforming)
    {
       static_assert(
-         IsScalarL2OrH1ValueGradientSpace<TrialMinusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TrialPlusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TestMinusSpace>() &&
-         IsScalarL2OrH1ValueGradientSpace<TestPlusSpace>(),
+         SupportsComponentwiseNonconformingFacetTransform<TrialMinusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TrialPlusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TestMinusSpace>() &&
+         SupportsComponentwiseNonconformingFacetTransform<TestPlusSpace>(),
          "Nonconforming global interior GenericOperator currently supports "
-         "only scalar value/gradient facet semantics on scalar L2 or scalar "
-         "H1 finite element spaces. Vector-valued, Piola, H(div), H(curl), "
-         "and de Rham-style nonconforming facet transforms require separate "
-         "support and tests.");
+         "scalar and componentwise-vector value/gradient facet semantics on "
+         "compatible tensor finite-element restrictions. Piola, H(div), "
+         "H(curl), and de Rham-style nonconforming facet transforms require "
+         "separate support and tests.");
    }
 }
 

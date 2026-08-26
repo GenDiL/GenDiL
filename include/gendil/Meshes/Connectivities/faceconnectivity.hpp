@@ -8,7 +8,7 @@
 #include <concepts>
 #include <type_traits>
 
-#include "orientation.hpp"
+#include "Orientations/identityorientation.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 
 namespace gendil{
@@ -153,9 +153,6 @@ struct FaceView
    GENDIL_HOST_DEVICE
    Real Measure() const { return conformity.Measure(); }
 };
-
-template < Integer Dim >
-using IdentityOrientation = std::integral_constant< Permutation<Dim>, MakeReferencePermutation< Dim >() >;
 
 template <
    typename geometry,

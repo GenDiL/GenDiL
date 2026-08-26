@@ -7,13 +7,13 @@ paths; they do not parse C++ or resolve semantic API changes.
 Every script is a dry run by default:
 
 ```sh
-scripts/migration/v0.0.4tov0.0.5.sh /path/to/project
+scripts/migration/v0.0.5tov0.0.6.sh /path/to/project
 ```
 
 Pass `--apply` to edit files in place:
 
 ```sh
-scripts/migration/v0.0.4tov0.0.5.sh --apply /path/to/project
+scripts/migration/v0.0.5tov0.0.6.sh --apply /path/to/project
 ```
 
 Useful options:
@@ -24,10 +24,12 @@ Useful options:
   with `--apply`.
 - `--include-docs` also scans `.md`, `.rst`, and `.txt` files.
 
-To migrate code from `v0.0.3` to the planned `v0.0.5` API, run the scripts in
+To migrate code from `v0.0.3` to the `v0.0.6` API, run the scripts in
 order:
 
 ```sh
 scripts/migration/v0.0.3tov0.0.4.sh --apply /path/to/project
 scripts/migration/v0.0.4tov0.0.5.sh --apply /path/to/project
+scripts/migration/v0.0.5tov0.0.6.sh --apply /path/to/project
 ```
+

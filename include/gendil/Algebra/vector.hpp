@@ -110,12 +110,12 @@ public:
 
    /**
     * @brief Construct sized to a finite-element space.
-    * @tparam FiniteElementSpace  Type exposing `GetNumberOfFiniteElementDofs()`.
-    * @param finite_element_space Space providing the number of DoFs.
+    * @tparam FiniteElementSpace  Type exposing `GetAlgebraicDofExtent()`.
+    * @param finite_element_space Space providing the concrete vector extent.
     */
    template < typename FiniteElementSpace >
    explicit Vector( const FiniteElementSpace & finite_element_space )
-   : Vector( finite_element_space.GetNumberOfFiniteElementDofs() )
+   : Vector( GetAlgebraicDofExtent( finite_element_space ) )
    { }
 
    /**
@@ -282,6 +282,8 @@ public:
    {
       if (this != &other)
       {
+         FreeHostPointer(ptr);
+         FreeDevicePointer(ptr);
          ptr = std::move(other.ptr);
          n = other.n;
          host_valid = other.host_valid;

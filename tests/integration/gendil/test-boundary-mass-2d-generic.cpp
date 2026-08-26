@@ -143,7 +143,7 @@ int TestBoundaryMass()
 
    auto boundary_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_boundary_operator =

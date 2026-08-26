@@ -4,9 +4,15 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "gendil/Utilities/arraycat.hpp"
 #include "gendil/Utilities/productdim.hpp"
+#include "gendil/Utilities/tensorindex.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/tensorproductorientation.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
+#include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {
 
@@ -44,7 +50,11 @@ namespace details
    template < typename IntegrationRule, typename CellTuple, size_t ... Is >
    struct GetProductCellQuadData< IntegrationRule, CellTuple, std::index_sequence< Is ... > >
    {
-      using type = std::tuple< SubQuadType< StartDim< Is, CellTuple >(), std::tuple_element_t< Is, CellTuple >, IntegrationRule > ... >;
+      using type = TensorProductData<
+         SubQuadType<
+            StartDim<Is, CellTuple>(),
+            std::tuple_element_t<Is, CellTuple>,
+            IntegrationRule>...>;
    };
 
    template < typename IntegrationRule, typename ... CellTypes >
@@ -68,6 +78,10 @@ struct ProductCell
    static constexpr Integer SubDim = std::tuple_element_t< Index, CellTuple >::Dim;
    
    static constexpr Integer Dim = product_dim_v< CellTypes ... >;
+   static_assert(
+      (is_hypercube_geometry<typename CellTypes::geometry>::value && ...),
+      "ProductCell currently supports HyperCube component geometries only.");
+   using geometry = HyperCube< Dim >;
 
    using physical_coordinates = std::array< Real, Dim >;
    using jacobian = std::tuple< typename CellTypes::jacobian ... >;
@@ -102,7 +116,11 @@ struct ProductCell
             }
 
             typename std::tuple_element_t< cell_index, CellTuple >::physical_coordinates SubX;
-            std::get< cell_index >( Cells ).GetValuesAndJacobian( index, std::get< cell_index >( quad_data ), SubX, std::get< cell_index >( J_mesh ) );
+            std::get< cell_index >( Cells ).GetValuesAndJacobian(
+               index,
+               GetTensorProductEntry<cell_index>(quad_data),
+               SubX,
+               std::get< cell_index >( J_mesh ) );
 
             for ( GlobalIndex i = 0; i < sub_dim; ++i )
             {
@@ -166,19 +184,49 @@ auto MakeProductCell( std::tuple< Meshes ... > const & meshes, std::array< Globa
    return MakeProductCell( meshes, indices, std::make_index_sequence< Dim >() );
 }
 
-template < Integer Dim, typename ... CellTypes >
-GENDIL_HOST_DEVICE
-void ApplyOrientationToCell( const Permutation< Dim > & orientation, ProductCell< CellTypes ... > & cell )
+template < typename... Orientations, typename... CellTypes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+void ApplyOrientationToCell(
+   const TensorProductOrientation< Orientations... > & orientation,
+   ProductCell< CellTypes... > & cell )
 {
-   constexpr Integer NumSubCells = sizeof...( CellTypes );
-   Integer offset = 0;
-   ConstexprLoop< NumSubCells >( [&] ( auto cell_index )
+   static_assert(
+      sizeof...( Orientations ) == sizeof...( CellTypes ),
+      "Tensor-product cell orientation must have one component per cell factor." );
+
+   using OrientationTuple = std::tuple< Orientations... >;
+   using CellTuple = std::tuple< CellTypes... >;
+   ConstexprLoop< sizeof...( CellTypes ) >( [&] ( auto cell_index )
    {
-      constexpr Integer sub_dim = ProductCell< CellTypes ... >::template SubDim< cell_index >;
-      Permutation< sub_dim > sub_orientation = GetSubPermutation< sub_dim >( orientation, offset );
-      ApplyOrientationToCell( sub_orientation, std::get< cell_index >( cell.Cells ) );
-      offset += sub_dim;
-   });      
+      using Orientation =
+         std::tuple_element_t< cell_index, OrientationTuple >;
+      using Cell = std::tuple_element_t< cell_index, CellTuple >;
+      static_assert(
+         orientation_dimension_v< Orientation > ==
+            static_cast< size_t >( Cell::Dim ),
+         "Tensor-product orientation component dimension must match its cell factor." );
+      ApplyOrientationToCell(
+         orientation.template Get< cell_index >(),
+         std::get< cell_index >( cell.Cells ) );
+   } );
+}
+
+/**
+ * @brief Applies the statically encoded identity orientation to a product cell.
+ *
+ * Identity orientation is observationally a no-op for every component cell.
+ * Deriving the permutation dimension from the target ProductCell makes this
+ * overload unavailable for a static identity of the wrong dimension and for
+ * every statically encoded nonidentity permutation.
+ */
+template < typename... CellTypes >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+void ApplyOrientationToCell(
+   const std::integral_constant<
+      Permutation< ProductCell< CellTypes... >::Dim >,
+      MakeReferencePermutation< ProductCell< CellTypes... >::Dim >() > &,
+   ProductCell< CellTypes... > & )
+{
 }
 
 }

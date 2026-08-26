@@ -12,22 +12,35 @@
 #ifdef GENDIL_USE_HYPRE
 #include "gendil/FiniteElementMethod/MatrixAssembly/HypreCSR/hyprecsrassembly.hpp"
 #endif
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/defaultbackend.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrassembly.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
-#include <type_traits>
-
 namespace gendil {
 
-template < typename TrialSpace, typename TestSpace >
-inline constexpr MatrixAssemblyType default_matrix_assembly_type_v =
-   ( IsScalarDGL2Space< TrialSpace >::value &&
-     IsScalarDGL2Space< TestSpace >::value )
-      ? MatrixAssemblyType::BSR
-      : MatrixAssemblyType::SGBSR;
+template<
+   MatrixAssemblyType Type,
+   class WeakForm,
+   class WeakFormContext >
+auto MakeDefaultBackendFor(
+   const WeakForm & weak_form,
+   const WeakFormContext & wf_ctx )
+{
+   if constexpr (
+      Type == MatrixAssemblyType::BSR ||
+      Type == MatrixAssemblyType::SGBSR )
+   {
+      return MakeDefaultBSRBackend( weak_form, wf_ctx );
+   }
+   else
+   {
+      (void) weak_form;
+      (void) wf_ctx;
+      return DefaultBackendFor_t< Type >{};
+   }
+}
 
 template<
    MatrixAssemblyType Type,
@@ -42,19 +55,13 @@ auto GenericAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericAssembly: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
-
    if constexpr ( Type == MatrixAssemblyType::BSR )
    {
       return GenericBSRAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
    else if constexpr ( Type == MatrixAssemblyType::SGBSR )
    {
@@ -62,7 +69,7 @@ auto GenericAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
    else if constexpr ( Type == MatrixAssemblyType::RawCOO )
    {
@@ -78,7 +85,7 @@ auto GenericAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
    else if constexpr ( Type == MatrixAssemblyType::CSR )
    {
@@ -86,7 +93,7 @@ auto GenericAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
 #ifdef GENDIL_USE_HYPRE
    else if constexpr ( Type == MatrixAssemblyType::HypreCSR )
@@ -95,7 +102,7 @@ auto GenericAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
 #endif
    else if constexpr ( Type == MatrixAssemblyType::CSC )
@@ -104,7 +111,7 @@ auto GenericAssembly(
          weak_form,
          wf_ctx,
          integration_rule,
-         backend );
+         std::move( backend ) );
    }
    else
    {
@@ -125,30 +132,115 @@ auto GenericAssembly(
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule)
 {
-   if constexpr (
-      Type == MatrixAssemblyType::RawCOO ||
-      Type == MatrixAssemblyType::BSR ||
-      Type == MatrixAssemblyType::SGBSR ||
-      Type == MatrixAssemblyType::COO ||
-      Type == MatrixAssemblyType::CSR ||
-      Type == MatrixAssemblyType::CSC
-#ifdef GENDIL_USE_HYPRE
-      || Type == MatrixAssemblyType::HypreCSR
-#endif
-      )
+   return GenericAssembly<Type, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      MakeDefaultBackendFor< Type >( weak_form, wf_ctx ) );
+}
+
+template<
+   MatrixAssemblyType Type,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule,
+   typename Backend >
+auto GenericElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule,
+   Backend backend)
+{
+   if constexpr (Type == MatrixAssemblyType::BSR)
    {
-      return GenericAssembly<Type, KernelPolicy>(
+      return GenericBSRElementBlockDiagonalAssembly<KernelPolicy>(
          weak_form,
          wf_ctx,
          integration_rule,
-         DefaultBackendFor_t< Type >{} );
+         std::move( backend ));
+   }
+   else if constexpr (Type == MatrixAssemblyType::SGBSR)
+   {
+      return GenericSGBSRElementBlockDiagonalAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         std::move( backend ));
    }
    else
    {
-      static_assert(
-         dependent_false_value_v< Type >,
-         "GenericAssembly: requested matrix assembly type is not implemented yet." );
+      auto raw_coo =
+         GenericRawCOOElementBlockDiagonalAssembly<KernelPolicy>(
+            weak_form,
+            wf_ctx,
+            integration_rule);
+
+      if constexpr (Type == MatrixAssemblyType::RawCOO)
+      {
+         (void)backend;
+         return raw_coo;
+      }
+      else if constexpr (Type == MatrixAssemblyType::COO)
+      {
+         auto matrix =
+            FinalizeRawCOOToCOO< KernelPolicy >(
+               raw_coo,
+               std::move( backend ));
+         return matrix;
+      }
+      else if constexpr (Type == MatrixAssemblyType::CSR)
+      {
+         auto matrix =
+            FinalizeRawCOOToCSR< KernelPolicy >(
+               raw_coo,
+               std::move( backend ));
+         return matrix;
+      }
+#ifdef GENDIL_USE_HYPRE
+      else if constexpr (Type == MatrixAssemblyType::HypreCSR)
+      {
+         auto matrix =
+            FinalizeRawCOOToHypreCSR< KernelPolicy >(
+               raw_coo,
+               std::move( backend ));
+         return matrix;
+      }
+#endif
+      else if constexpr (Type == MatrixAssemblyType::CSC)
+      {
+         auto matrix =
+            FinalizeRawCOOToCSC< KernelPolicy >(
+               raw_coo,
+               std::move( backend ));
+         return matrix;
+      }
+      else
+      {
+         static_assert(
+            dependent_false_value_v<Type>,
+            "GenericElementBlockDiagonalAssembly: requested matrix "
+            "assembly type is not implemented yet.");
+      }
    }
+}
+
+template<
+   MatrixAssemblyType Type,
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericElementBlockDiagonalAssembly<Type, KernelPolicy>(
+      weak_form,
+      wf_ctx,
+      integration_rule,
+      MakeDefaultBackendFor< Type >( weak_form, wf_ctx ) );
 }
 
 } // namespace gendil

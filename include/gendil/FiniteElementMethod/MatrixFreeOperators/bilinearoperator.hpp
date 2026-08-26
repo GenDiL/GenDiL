@@ -96,7 +96,7 @@ public:
    MatrixFreeBilinearFiniteElementOperator( const FiniteElementSpace & finite_element_space,
                                             const IntegrationRule & int_rules ) :
 #ifdef GENDIL_USE_MFEM
-      Operator( finite_element_space.GetNumberOfFiniteElementDofs() ),
+      Operator( GetAlgebraicDofExtent( finite_element_space ) ),
 #endif // GENDIL_USE_MFEM
       finite_element_space( finite_element_space ),
       int_rules( int_rules ),

@@ -7,16 +7,16 @@
 #include <type_traits>
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictiontraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/threadedshapecoverage.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
-#include "gendil/Utilities/TupleHelperFunctions/tuplehelperfunctions.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facereaddofspolicy.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/facedofspolicies.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/orientedglobaldofview.hpp"
 
 namespace gendil {
 
@@ -42,8 +42,9 @@ void WriteDofs( const GlobalIndex element_index,
    );
    
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
@@ -52,12 +53,12 @@ void WriteDofs( const GlobalIndex element_index,
          }
       );
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
          {
-            AtomicAdd( global_dofs( indices..., element_index ), local_dofs( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), local_dofs( indices... ) );
          }
       );
    }
@@ -86,26 +87,27 @@ void SerialWriteDofs(
       "Mismatching dimensions in ReadDofs."
    );
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
       {      
          if constexpr ( Add )
-            AtomicAdd( global_dofs( indices..., element_index ), x( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), x( indices... ) );
             // TODO: Should we assume no aliasing in the general case?
             // global_dofs( indices..., element_index ) += x( indices... );
          else
             global_dofs( indices..., element_index ) = x( indices... );
       });
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       DofLoop< FiniteElementSpace >(
          [&]( auto... indices )
          {
-            AtomicAdd( global_dofs( indices..., element_index ), x( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), x( indices... ) );
          }
       );
    }
@@ -136,15 +138,16 @@ void ThreadedWriteDofs(
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       ThreadLoop< tshape >( thread, [&] ( auto... t )
       {
          UnitLoop< rshape >( [&] ( auto... k )
          {
             if constexpr ( Add )
-               AtomicAdd( global_dofs( t..., k..., element_index ), x( k... ) );
+               AtomicAddInPlace( global_dofs( t..., k..., element_index ), x( k... ) );
                // TODO: Should we assume no aliasing in the general case?
                // global_dofs( t..., k..., element_index ) += x( k... );
             else
@@ -158,7 +161,7 @@ void ThreadedWriteDofs(
       {
          UnitLoop< rshape >( [&] ( auto... k )
          {
-            AtomicAdd( global_dofs( t..., k..., element_index ), x( k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), x( k... ) );
          });
       });
    }
@@ -205,15 +208,16 @@ void WriteVectorDofsSerial(
    constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
-   if constexpr ( restriction_traits<
-      typename FiniteElementSpace::restriction_type >::is_injective )
+   if constexpr (
+      !restriction_may_share_global_dofs_v<
+         typename FiniteElementSpace::restriction_type > )
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
          UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
          {
             if constexpr ( Add )
-               AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+               AtomicAddInPlace( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
                // TODO: Should we assume no aliasing in the general case?
                // global_dofs( indices..., element_index ) += x( indices... );
             else
@@ -221,13 +225,13 @@ void WriteVectorDofsSerial(
          });
       });
    }
-   else // Gathering of H1 dofs.
+   else // Potentially shared restriction rows.
    {
       ConstexprLoop< v_dim >( [&]( auto i )
       {
          UnitLoop< std::tuple_element_t< i, dof_shape > >( [&]( auto... indices )
          {
-            AtomicAdd( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
+            AtomicAddInPlace( std::get< i >( global_dofs )( indices..., element_index ), std::get< i >( x )( indices... ) );
          });
       });
    }
@@ -259,11 +263,13 @@ void WriteVectorDofsThreaded(
       {
          UnitLoop< std::tuple_element_t< i, r_shapes > >( [&] ( auto... k )
          {
-            if constexpr ( !Add && restriction_traits<
-               typename FiniteElementSpace::restriction_type >::is_injective )
+            if constexpr (
+               !Add &&
+               !restriction_may_share_global_dofs_v<
+                  typename FiniteElementSpace::restriction_type > )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else
-               AtomicAdd( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
+               AtomicAddInPlace( std::get<i>( global_dofs )( t..., k..., element_index ), std::get<i>( local_dofs )( k... ) );
          });
       });
    });
@@ -372,7 +378,7 @@ void SerialWriteDofs(
 
    using rshape = orders_to_num_dofs< typename FiniteElementSpace::finite_element_type::shape_functions::orders >;
    using DofShape = rshape;
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -397,9 +403,9 @@ void SerialWriteDofs(
       [&]( auto... indices )
       {
          if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( indices..., element_index ), oriented_view( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), oriented_view( indices... ) );
          else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
+            AtomicAddInPlace( global_dofs( indices..., element_index ), -oriented_view( indices... ) );
          else
             global_dofs( indices..., element_index ) = oriented_view( indices... );
       }
@@ -432,7 +438,7 @@ void ThreadedWriteDofs(
       "Under-threaded strided coverage is not supported by this threaded helper yet." );
    using tshape = subsequence_t< DofShape, typename KernelContext::template threaded_dimensions< DofShape::size() > >;
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
-   Permutation< FiniteElementSpace::Dim > orientation = face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
    VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
 
    constexpr size_t data_size = FiniteElementSpace::finite_element_type::GetNumDofs();
@@ -461,9 +467,9 @@ void ThreadedWriteDofs(
       UnitLoop< rshape >( [&] ( auto... k )
       {
          if constexpr ( Op == WriteAdd )
-            AtomicAdd( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), oriented_view( t..., k... ) );
          else if constexpr ( Op == WriteSub )
-            AtomicAdd( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
+            AtomicAddInPlace( global_dofs( t..., k..., element_index ), -oriented_view( t..., k... ) );
          else
             global_dofs( t..., k..., element_index ) = oriented_view( t..., k... );;
       });
@@ -494,8 +500,7 @@ void SerialWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -520,13 +525,13 @@ void SerialWriteVectorFaceDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                global_component( indices..., element_index ),
                oriented_view( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                global_component( indices..., element_index ),
                -oriented_view( indices... ) );
          }
@@ -560,8 +565,7 @@ void ThreadedWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -610,13 +614,13 @@ void ThreadedWriteVectorFaceDofs(
          {
             if constexpr ( Op == WriteAdd )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   global_component( t..., k..., element_index ),
                   oriented_view( t..., k... ) );
             }
             else if constexpr ( Op == WriteSub )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   global_component( t..., k..., element_index ),
                   -oriented_view( t..., k... ) );
             }
@@ -658,10 +662,7 @@ void DirectGlobalSerialWriteDofs(
          typename FiniteElementSpace::finite_element_type::
             shape_functions::orders >;
 
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
-
+   const auto & orientation = face_info.GetOrientation();
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -676,13 +677,13 @@ void DirectGlobalSerialWriteDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                local_dofs( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                -local_dofs( indices... ) );
          }
@@ -733,10 +734,7 @@ void DirectGlobalThreadedWriteDofs(
          typename KernelContext::template register_dimensions<
             DofShape::size() > >;
 
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
-   VerifyOrientedTensorDofShapeCompatibility< DofShape >( orientation );
-
+   const auto & orientation = face_info.GetOrientation();
    const GlobalIndex element_index = face_info.GetCellIndex();
    const auto dofs_sizes = to_array( DofShape{} );
    auto oriented_global_dofs =
@@ -752,13 +750,13 @@ void DirectGlobalThreadedWriteDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( t..., k... ),
                local_dofs( k... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( t..., k... ),
                -local_dofs( k... ) );
          }
@@ -791,16 +789,12 @@ void DirectGlobalSerialWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
       using ComponentDofShape = std::tuple_element_t< i, dof_shape >;
       const auto dofs_sizes = to_array( ComponentDofShape{} );
-      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
-         orientation );
-
       const auto & local_component = std::get< i >( local_dofs );
       auto & global_component = std::get< i >( global_dofs );
       auto oriented_global_dofs =
@@ -814,13 +808,13 @@ void DirectGlobalSerialWriteVectorFaceDofs(
       {
          if constexpr ( Op == WriteAdd )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                local_component( indices... ) );
          }
          else if constexpr ( Op == WriteSub )
          {
-            AtomicAdd(
+            AtomicAddInPlace(
                oriented_global_dofs( indices... ),
                -local_component( indices... ) );
          }
@@ -854,8 +848,7 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
       typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    const GlobalIndex element_index = face_info.GetCellIndex();
-   Permutation< FiniteElementSpace::Dim > orientation =
-      face_info.GetOrientation();
+   const auto & orientation = face_info.GetOrientation();
 
    ConstexprLoop< v_dim >( [&]( auto i )
    {
@@ -876,9 +869,6 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
          "Under-threaded strided coverage is not supported by this threaded "
          "helper yet." );
       const auto dofs_sizes = to_array( ComponentDofShape{} );
-      VerifyOrientedTensorDofShapeCompatibility< ComponentDofShape >(
-         orientation );
-
       const auto & local_component = std::get< i >( local_dofs );
       auto & global_component = std::get< i >( global_dofs );
       auto oriented_global_dofs =
@@ -894,13 +884,13 @@ void DirectGlobalThreadedWriteVectorFaceDofs(
          {
             if constexpr ( Op == WriteAdd )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   oriented_global_dofs( t..., k... ),
                   local_component( k... ) );
             }
             else if constexpr ( Op == WriteSub )
             {
-               AtomicAdd(
+               AtomicAddInPlace(
                   oriented_global_dofs( t..., k... ),
                   -local_component( k... ) );
             }

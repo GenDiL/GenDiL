@@ -69,7 +69,8 @@ enum class NamedFieldProvenance : unsigned
    None                    = 0u,
    CoefficientInput        = 1u,
    FiniteElementExpression = 2u,
-   ActiveTrial             = 4u
+   ActiveTrial             = 4u,
+   ActiveTest              = 8u
 };
 
 constexpr NamedFieldProvenance operator+(NamedFieldProvenance a, NamedFieldProvenance b)
@@ -506,6 +507,49 @@ struct active_trial_named_field_requirements
 template<class Expr>
 using active_trial_named_field_requirements_t =
    typename active_trial_named_field_requirements<Expr>::type;
+
+template<class Expr, bool HasActiveTest>
+struct active_test_named_field_requirements_impl
+{
+   using type = type_list<>;
+};
+
+template<class Expr>
+struct active_test_named_field_requirements_impl<Expr, true>
+{
+   using E = std::remove_cvref_t<Expr>;
+   using type = type_list<
+      NamedFieldRequirement<
+         requirements<E>::test_name,
+         requirements<E>::test_mask,
+         NamedFieldProvenance::ActiveTest>>;
+};
+
+template<class Expr>
+struct active_test_named_field_requirements
+{
+   using E = std::remove_cvref_t<Expr>;
+   static constexpr bool has_active_test =
+      requirements<E>::test_name != StaticString{"Error"} &&
+      requirements<E>::test_mask != OperatorMask::None;
+
+   using type =
+      typename active_test_named_field_requirements_impl<
+         E,
+         has_active_test>::type;
+};
+
+template<class Expr>
+using active_test_named_field_requirements_t =
+   typename active_test_named_field_requirements<Expr>::type;
+
+template<class Expr>
+using active_finite_element_field_requirements_t =
+   merge_named_field_requirement_list_t<
+      concat_many_t<
+         raw_named_field_requirements_t<Expr>,
+         active_trial_named_field_requirements_t<Expr>,
+         active_test_named_field_requirements_t<Expr>>>;
 
 template<class Expr>
 using input_named_field_requirements_t =

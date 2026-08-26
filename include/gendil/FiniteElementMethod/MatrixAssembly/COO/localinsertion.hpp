@@ -5,8 +5,9 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoolayout.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/localdoforientation.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 
 namespace gendil {
@@ -17,8 +18,7 @@ template <
    typename TestFESpace,
    typename TrialDofDescriptor,
    typename ElementVector,
-   typename ValueType,
-   typename IndexType >
+   typename COOBuffer >
 requires is_local_dof_descriptor_v< TrialDofDescriptor >
 GENDIL_HOST_DEVICE
 void AddRawCOOBlockEntries(
@@ -30,17 +30,17 @@ void AddRawCOOBlockEntries(
    const TrialDofDescriptor & trial_dof,
    const ElementVector & y,
    const GlobalIndex raw_entry_base,
-   RawCOOTripletBuffer< ValueType, IndexType > & coo_buffer )
+   COOBuffer & coo_buffer )
 {
-   using TrialShapeFunctions =
-      typename std::remove_cvref_t< TrialFESpace >::finite_element_type::shape_functions;
+   using Buffer = std::remove_cvref_t< COOBuffer >;
+   using ValueType = typename Buffer::value_type;
+   using IndexType = typename Buffer::index_type;
    using TestShapeFunctions =
-      typename std::remove_cvref_t< TestFESpace >::finite_element_type::shape_functions;
+      finite_element_space_shape_functions_t< TestFESpace >;
    using TrialDescriptor = std::remove_cvref_t< TrialDofDescriptor >;
 
-   constexpr GlobalIndex ntrial = LocalDofCount< TrialShapeFunctions >();
    constexpr GlobalIndex ntest = LocalDofCount< TestShapeFunctions >();
-   constexpr GlobalIndex block_entry_count = ntest * ntrial;
+   const auto block_entry_count = coo_buffer.block_entry_count;
 
    GENDIL_VERIFY(
       IsActiveRawCOOOffset(
@@ -54,12 +54,11 @@ void AddRawCOOBlockEntries(
          trial_fe_space,
          typename TrialDescriptor::component{},
          trial_dof.indices );
-   const GlobalIndex global_col =
-      GlobalDofIndex(
+   const GlobalIndex algebraic_col =
+      GetGlobalDofIndex(
          trial_fe_space,
-         typename TrialDescriptor::component{},
          col_element_index,
-         trial_dof.indices );
+         trial_dof );
 
    // Compact RawCOO blocks can receive multiple terms. Coordinates are
    // rewritten deterministically on every contribution while values accumulate.
@@ -75,12 +74,11 @@ void AddRawCOOBlockEntries(
                test_fe_space,
                typename TestDescriptor::component{},
                test_dof.indices );
-         const GlobalIndex global_row =
-            GlobalDofIndex(
+         const GlobalIndex algebraic_row =
+            GetGlobalDofIndex(
                test_fe_space,
-               typename TestDescriptor::component{},
                row_element_index,
-               test_dof.indices );
+               test_dof );
          const GlobalIndex raw_index =
             raw_entry_base +
             local_col * ntest +
@@ -89,10 +87,116 @@ void AddRawCOOBlockEntries(
          GENDIL_VERIFY(
             raw_index < static_cast< GlobalIndex >( coo_buffer.nnz_raw ),
             "Raw COO emission wrote past the allocated triplet buffer." );
+         GENDIL_ASSERT(
+            algebraic_row < static_cast< GlobalIndex >( coo_buffer.num_rows ),
+            "Raw COO row coordinate exceeds the test algebraic DoF extent." );
+         GENDIL_ASSERT(
+            algebraic_col < static_cast< GlobalIndex >( coo_buffer.num_cols ),
+            "Raw COO column coordinate exceeds the trial algebraic DoF extent." );
 
-         coo_buffer.rows[raw_index] = static_cast< IndexType >( global_row );
-         coo_buffer.cols[raw_index] = static_cast< IndexType >( global_col );
+         coo_buffer.rows[raw_index] = static_cast< IndexType >( algebraic_row );
+         coo_buffer.cols[raw_index] = static_cast< IndexType >( algebraic_col );
          coo_buffer.values[raw_index] += static_cast< ValueType >( value );
+      });
+}
+
+/**
+ * @brief Emit one reference-local face block through native oriented DoFs.
+ *
+ * The block storage order remains reference-local and deterministic.  Only
+ * the restriction coordinates are mapped back to each side's native element
+ * ordering before global lookup.
+ */
+template <
+   typename KernelContext,
+   typename TrialFESpace,
+   typename TestFESpace,
+   typename TrialOrientation,
+   typename TestOrientation,
+   typename TrialDofDescriptor,
+   typename ElementVector,
+   typename ValueType,
+   typename IndexType >
+requires is_local_dof_descriptor_v<TrialDofDescriptor>
+GENDIL_HOST_DEVICE
+void AddOrientedRawCOOEntityBlockEntries(
+   const KernelContext& kernel_context,
+   const TrialFESpace& trial_fe_space,
+   const TestFESpace& test_fe_space,
+   const GlobalIndex row_element_index,
+   const GlobalIndex col_element_index,
+   const TrialOrientation& trial_orientation,
+   const TestOrientation& test_orientation,
+   const TrialDofDescriptor& reference_trial_dof,
+   const ElementVector& reference_residual,
+   const GlobalIndex entity_index,
+   RawCOOEntityBlockTarget<ValueType, IndexType>& target )
+{
+   using TestShapeFunctions =
+      finite_element_space_shape_functions_t<TestFESpace>;
+   using TrialDescriptor =
+      std::remove_cvref_t<TrialDofDescriptor>;
+   constexpr GlobalIndex ntest =
+      LocalDofCount<TestShapeFunctions>();
+
+   const GlobalIndex raw_entry_base =
+      RawCOOEntityBlockOffset(target, entity_index);
+   GENDIL_VERIFY(
+      IsActiveRawCOOOffset(
+         raw_entry_base,
+         target.block_entry_count,
+         static_cast<GlobalIndex>(target.nnz_raw)),
+      "RawCOO face emission received an out-of-range block offset." );
+
+   const GlobalIndex local_col = FlattenLocalDof(
+      trial_fe_space,
+      typename TrialDescriptor::component{},
+      reference_trial_dof.indices);
+   const auto native_trial_dof = OrientReferenceDofToNative(
+      trial_fe_space,
+      reference_trial_dof,
+      trial_orientation);
+   const GlobalIndex algebraic_col = GetGlobalDofIndex(
+      trial_fe_space,
+      col_element_index,
+      native_trial_dof);
+
+   ForEachLocalResidualDof(
+      kernel_context,
+      test_fe_space,
+      reference_residual,
+      [&] (const auto& reference_test_dof, const auto& value)
+      {
+         using TestDescriptor =
+            std::remove_cvref_t<decltype(reference_test_dof)>;
+         const GlobalIndex local_row = FlattenLocalDof(
+            test_fe_space,
+            typename TestDescriptor::component{},
+            reference_test_dof.indices);
+         const auto native_test_dof = OrientReferenceDofToNative(
+            test_fe_space,
+            reference_test_dof,
+            test_orientation);
+         const GlobalIndex algebraic_row = GetGlobalDofIndex(
+            test_fe_space,
+            row_element_index,
+            native_test_dof);
+         const GlobalIndex raw_index =
+            raw_entry_base + local_col * ntest + local_row;
+
+         GENDIL_VERIFY(
+            raw_index < static_cast<GlobalIndex>(target.nnz_raw),
+            "RawCOO face emission wrote past its target segment." );
+         GENDIL_ASSERT(
+            algebraic_row < static_cast<GlobalIndex>(target.num_rows),
+            "RawCOO face row exceeds the test algebraic extent." );
+         GENDIL_ASSERT(
+            algebraic_col < static_cast<GlobalIndex>(target.num_cols),
+            "RawCOO face column exceeds the trial algebraic extent." );
+
+         target.rows[raw_index] = static_cast<IndexType>(algebraic_row);
+         target.cols[raw_index] = static_cast<IndexType>(algebraic_col);
+         target.values[raw_index] += static_cast<ValueType>(value);
       });
 }
 
@@ -127,7 +231,7 @@ void AddSparseMatrixEntry(
       trial_dof,
       y,
       raw_entry_base,
-      coo_target.buffer );
+      coo_target );
 }
 
 template <
@@ -168,7 +272,7 @@ void AddSparseMatrixEntry(
       trial_dof,
       y,
       raw_entry_base,
-      coo_target.buffer );
+      coo_target );
 }
 
 } // namespace gendil

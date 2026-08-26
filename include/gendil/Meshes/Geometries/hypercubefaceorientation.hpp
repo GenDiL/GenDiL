@@ -13,7 +13,7 @@
  */
 
 #include "gendil/Meshes/Geometries/hypercube.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/permutation.hpp"
 #include "gendil/Utilities/debug.hpp"
 
 namespace gendil {

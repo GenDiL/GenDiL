@@ -153,13 +153,13 @@ int TestMass()
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
 
-   auto rho = MakeCoefficient<"density", PhysicalCoordinate>(sigma);
+   auto rho = MakeCoefficient<"density", PhysicalCoordinates>(sigma);
 
    auto weak_form = integrate(domain, rho * u * v);
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space));
+      MakeIntegrationDomain<"mesh1">(mesh));
 
    auto generic_mass_operator =
       MakeGenericOperator<KernelPolicy>(

@@ -10,19 +10,22 @@
 namespace gendil
 {
 
-template < typename MatrixBackend >
+template <
+   typename MatrixBackend,
+   HostAccessibleVector InputVector,
+   HostAccessibleVector OutputVector >
 inline void HypreHostMatvec(
    const HypreCSRMatrix< MatrixBackend > & matrix,
-   const Vector & x,
-   Vector & y,
+   const InputVector & x,
+   OutputVector & y,
    HYPRE_Complex alpha = HYPRE_Complex( 1 ),
    HYPRE_Complex beta = HYPRE_Complex( 0 ) )
 {
    GENDIL_VERIFY(
-      x.Size() == static_cast< size_t >( matrix.csr.num_cols ),
+      GetVectorSize( x ) == static_cast< size_t >( matrix.csr.num_cols ),
       "HypreMatvec input vector has the wrong size." );
    GENDIL_VERIFY(
-      y.Size() == static_cast< size_t >( matrix.csr.num_rows ),
+      GetVectorSize( y ) == static_cast< size_t >( matrix.csr.num_rows ),
       "HypreMatvec output vector has the wrong size." );
 
    auto x_view =
@@ -31,10 +34,15 @@ inline void HypreHostMatvec(
          matrix.csr.num_cols,
          matrix.metadata.comm );
    auto y_view =
-      MakeHostHypreParVectorView(
-         y,
-         matrix.csr.num_rows,
-         matrix.metadata.comm );
+      beta == HYPRE_Complex( 0 )
+         ? MakeHostHypreParVectorWriteView(
+              y,
+              matrix.csr.num_rows,
+              matrix.metadata.comm )
+         : MakeHostHypreParVectorView(
+              y,
+              matrix.csr.num_rows,
+              matrix.metadata.comm );
 
    CheckHypreError(
       HYPRE_ParCSRMatrixMatvec(
@@ -46,19 +54,22 @@ inline void HypreHostMatvec(
       "HYPRE_ParCSRMatrixMatvec failed" );
 }
 
-template < typename MatrixBackend >
+template <
+   typename MatrixBackend,
+   DeviceAccessibleVector InputVector,
+   DeviceAccessibleVector OutputVector >
 inline void HypreDeviceMatvec(
    const HypreCSRMatrix< MatrixBackend > & matrix,
-   const Vector & x,
-   Vector & y,
+   const InputVector & x,
+   OutputVector & y,
    HYPRE_Complex alpha = HYPRE_Complex( 1 ),
    HYPRE_Complex beta = HYPRE_Complex( 0 ) )
 {
    GENDIL_VERIFY(
-      x.Size() == static_cast< size_t >( matrix.csr.num_cols ),
+      GetVectorSize( x ) == static_cast< size_t >( matrix.csr.num_cols ),
       "HypreMatvec input vector has the wrong size." );
    GENDIL_VERIFY(
-      y.Size() == static_cast< size_t >( matrix.csr.num_rows ),
+      GetVectorSize( y ) == static_cast< size_t >( matrix.csr.num_rows ),
       "HypreMatvec output vector has the wrong size." );
 
    auto x_view =
@@ -67,10 +78,15 @@ inline void HypreDeviceMatvec(
          matrix.csr.num_cols,
          matrix.metadata.comm );
    auto y_view =
-      MakeDeviceHypreParVectorView(
-         y,
-         matrix.csr.num_rows,
-         matrix.metadata.comm );
+      beta == HYPRE_Complex( 0 )
+         ? MakeDeviceHypreParVectorWriteView(
+              y,
+              matrix.csr.num_rows,
+              matrix.metadata.comm )
+         : MakeDeviceHypreParVectorView(
+              y,
+              matrix.csr.num_rows,
+              matrix.metadata.comm );
 
    CheckHypreError(
       HYPRE_ParCSRMatrixMatvec(
@@ -82,11 +98,14 @@ inline void HypreDeviceMatvec(
       "HYPRE_ParCSRMatrixMatvec failed" );
 }
 
-template < typename MatrixBackend >
+template <
+   typename MatrixBackend,
+   typename InputVector,
+   typename OutputVector >
 inline void HypreMatvec(
    const HypreCSRMatrix< MatrixBackend > & matrix,
-   const Vector & x,
-   Vector & y,
+   const InputVector & x,
+   OutputVector & y,
    HYPRE_Complex alpha = HYPRE_Complex( 1 ),
    HYPRE_Complex beta = HYPRE_Complex( 0 ) )
 {

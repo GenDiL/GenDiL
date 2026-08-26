@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.12)
-
 macro(add_my_example target_name source_file)
   add_executable(${target_name})
 

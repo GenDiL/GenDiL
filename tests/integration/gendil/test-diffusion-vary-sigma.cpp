@@ -171,10 +171,10 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
    Cells<"mesh1"> cells;
    InteriorFacets<"mesh1"> interior_facets;
 
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(velocity);
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(velocity);
 
-   auto tau = MakeCoefficient<"tau", PhysicalCoordinate>(
-      [=] GENDIL_HOST_DEVICE (const auto&) -> Real
+   auto tau = MakeCoefficient<"tau", PhysicalCoordinates>(
+      [=] GENDIL_HOST_DEVICE (const std::array<Real, 3>&) -> Real
       {
          return tau_value;
       });
@@ -194,7 +194,7 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
 
    auto diffusion_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_diffusion_operator =

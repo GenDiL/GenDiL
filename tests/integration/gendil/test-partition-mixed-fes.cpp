@@ -59,7 +59,7 @@ bool TestOneCellPartPartition()
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe},
-         std::tuple{L2Restriction{0}});
+         std::tuple{ContiguousL2RestrictionSpecification{0}});
 
    using MixedType = decltype(mixed);
    static_assert(MixedType::num_cell_spaces == 1);
@@ -133,15 +133,28 @@ bool TestTwoCellPartPartition()
    auto fe_p2 = MakeLobattoFiniteElement(FiniteElementOrders<2>{});
 
    auto u_cell0_unshifted =
-      MakeFiniteElementSpace(mesh_left, fe_p1, L2Restriction{0});
+      MakeFiniteElementSpace(mesh_left, fe_p1, ContiguousL2RestrictionSpecification{0});
    const GlobalIndex u_cell1_shift =
-      u_cell0_unshifted.GetNumberOfFiniteElementDofs();
+      GetAlgebraicDofExtent( u_cell0_unshifted );
+   auto u_cell1_unshifted =
+      MakeFiniteElementSpace(
+         mesh_right,
+         fe_p2,
+         ContiguousL2RestrictionSpecification{});
+   const GlobalIndex u_algebraic_dof_extent =
+      u_cell1_shift + GetAlgebraicDofExtent( u_cell1_unshifted );
 
    auto u_mixed =
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe_p1, fe_p2},
-         std::tuple{L2Restriction{0}, L2Restriction{u_cell1_shift}});
+         std::tuple{
+            ContiguousL2RestrictionSpecification{
+               0,
+               u_algebraic_dof_extent},
+            ContiguousL2RestrictionSpecification{
+               u_cell1_shift,
+               u_algebraic_dof_extent}});
    auto u_dg_mixed =
       MakeMixedFiniteElementSpace(
          partition,
@@ -186,6 +199,8 @@ bool TestTwoCellPartPartition()
             1,
             typename MuMixed::cell_spaces_type>::finite_element_type>);
 
+   // Exercise the legacy member deliberately: part placement uses the part's
+   // logical contribution, not the field-wide algebraic extent.
    const GlobalIndex u_cell0_dofs =
       u_mixed.GetCellFiniteElementSpace<0>().
          GetNumberOfFiniteElementDofs();
@@ -227,8 +242,10 @@ bool TestTwoCellPartPartition()
       std::tuple_element_t<2, typename UMixed::boundary_face_parts_type>;
    static_assert(BoundaryPart0::cell_index == 1);
    static_assert(BoundaryPart2::cell_index == 0);
+   // The compact direct-sum policy makes the mixed logical sum equal the
+   // algebraic extent; this is not a general mixed-space invariant.
    success =
-      (u_mixed.GetNumberOfFiniteElementDofs() ==
+      (GetAlgebraicDofExtent( u_mixed ) ==
        u_mixed.GetCellFiniteElementSpace<0>().GetNumberOfFiniteElementDofs() +
           u_mixed.GetCellFiniteElementSpace<1>().
              GetNumberOfFiniteElementDofs()) &&
@@ -252,7 +269,7 @@ bool TestCellOnlyMixedSpaceOwnsCellOnlyPartition()
    Cartesian1DMesh mesh1(0.5, num_cells);
 
    auto fe0 = MakeLobattoFiniteElement(FiniteElementOrders<1>{});
-   auto fe1 = MakeLobattoFiniteElement(FiniteElementOrders<2>{});
+   auto fe1 = MakeLobattoFiniteElement(FiniteElementOrders<1>{});
    auto fes0 = MakeFiniteElementSpace(mesh0, fe0);
    auto fes1 = MakeFiniteElementSpace(mesh1, fe1);
 
@@ -318,7 +335,7 @@ bool TestPartitionBuiltGenericOperator()
    auto form = integrate(interior_facets, jump(u) * jump(v));
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(mixed),
-      MakeIntegrationDomain<"solid">(mixed));
+      MakeIntegrationDomain<"solid">(partition));
    constexpr Integer num_quad_1d = 5;
    auto integration_rule =
       MakeIntegrationRule(IntegrationRuleNumPoints<num_quad_1d>{});
@@ -329,8 +346,8 @@ bool TestPartitionBuiltGenericOperator()
          ctx,
          integration_rule);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
-   Vector y(mixed.GetNumberOfFiniteElementDofs());
+   Vector x(GetAlgebraicDofExtent( mixed ));
+   Vector y(GetAlgebraicDofExtent( mixed ));
    x = 1.0;
    y = 0.0;
    op(x, y);

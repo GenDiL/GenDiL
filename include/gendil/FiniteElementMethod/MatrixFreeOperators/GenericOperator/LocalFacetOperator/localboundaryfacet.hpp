@@ -147,6 +147,7 @@ template<
    typename WeakFormContext,
    typename OperatorContext,
    typename ElementContext,
+   typename DomainMesh,
    typename TrialSpace,
    typename Integrand,
    typename ElementDofsIn,
@@ -157,6 +158,7 @@ void LocalBoundaryFacetOperator(
    const WeakFormContext& weak_form_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
+   const DomainMesh& domain_mesh,
    const TrialSpace& trial_space,
    const Integrand& integrand,
    const ElementDofsIn& dofs_in,
@@ -165,7 +167,7 @@ void LocalBoundaryFacetOperator(
    if constexpr (has_boundary_facet_contributions_v<Integrand>)
    {
       BoundaryFaceLoop(
-         trial_space,
+         domain_mesh,
          element_context.element_index,
          [&] (auto const & face_info)
          {

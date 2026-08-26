@@ -49,18 +49,18 @@ int main(int, char**)
    // --------------------------
    auto fe = MakeLobattoFiniteElement(FiniteElementOrders<p,p,p>{});
 
-   // Global layouts via L2Restriction
-   L2Restriction res_full{0};
+   // Global layouts via ContiguousL2RestrictionSpecification
+   ContiguousL2RestrictionSpecification res_full{0};
    auto fe_space_full = MakeFiniteElementSpace(mesh_full, fe, res_full);
    const Integer ndofs_full = fe_space_full.GetNumberOfFiniteElementDofs();
 
-   L2Restriction resL{0};
+   ContiguousL2RestrictionSpecification resL{0};
    auto fe_space_L = MakeFiniteElementSpace(meshL, fe, resL);
-   const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
+   const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
 
-   L2Restriction resR{ndofsL}; // split layout is [u_L | u_R]
+   ContiguousL2RestrictionSpecification resR{ndofsL}; // split layout is [u_L | u_R]
    auto fe_space_R = MakeFiniteElementSpace(meshR, fe, resR);
-   const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+   const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
    if (ndofs_full != ndofsL + ndofsR) {
       std::cerr << "Layout mismatch: ndofs_full=" << ndofs_full

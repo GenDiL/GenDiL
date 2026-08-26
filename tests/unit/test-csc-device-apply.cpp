@@ -48,35 +48,34 @@ auto MakeDeviceCSCMatrix()
          6,
          NativeDeviceCSCBackend{} );
 
-   matrix.col_ptr[0] = 0;
-   matrix.col_ptr[1] = 2;
-   matrix.col_ptr[2] = 3;
-   matrix.col_ptr[3] = 4;
-   matrix.col_ptr[4] = 5;
-   matrix.col_ptr[5] = 6;
-   matrix.col_ptr[6] = 6;
+   auto matrix_data = GetHostWriteView( matrix );
+   matrix_data.col_ptr[0] = 0;
+   matrix_data.col_ptr[1] = 2;
+   matrix_data.col_ptr[2] = 3;
+   matrix_data.col_ptr[3] = 4;
+   matrix_data.col_ptr[4] = 5;
+   matrix_data.col_ptr[5] = 6;
+   matrix_data.col_ptr[6] = 6;
 
-   matrix.row_ind[0] = 0;
-   matrix.values[0] = 2.0;
+   matrix_data.row_ind[0] = 0;
+   matrix_data.values[0] = 2.0;
 
-   matrix.row_ind[1] = 3;
-   matrix.values[1] = -3.0;
+   matrix_data.row_ind[1] = 3;
+   matrix_data.values[1] = -3.0;
 
-   matrix.row_ind[2] = 1;
-   matrix.values[2] = 4.0;
+   matrix_data.row_ind[2] = 1;
+   matrix_data.values[2] = 4.0;
 
-   matrix.row_ind[3] = 1;
-   matrix.values[3] = 0.0;
+   matrix_data.row_ind[3] = 1;
+   matrix_data.values[3] = 0.0;
 
-   matrix.row_ind[4] = 0;
-   matrix.values[4] = -1.0;
+   matrix_data.row_ind[4] = 0;
+   matrix_data.values[4] = -1.0;
 
-   matrix.row_ind[5] = 1;
-   matrix.values[5] = 1.5;
+   matrix_data.row_ind[5] = 1;
+   matrix_data.values[5] = 1.5;
 
-   ToDevice( matrix.num_cols + 1, matrix.col_ptr );
-   ToDevice( matrix.nnz, matrix.row_ind );
-   ToDevice( matrix.nnz, matrix.values );
+   Sync( matrix );
 
    return matrix;
 }
@@ -139,7 +138,31 @@ bool TestNativeDeviceCSCAction()
       y_host,
       "CSCMatrix::operator()(x, y) with NativeDeviceCSCBackend disagrees with host Apply." ) && success;
 
-   FreeCSCMatrix( matrix );
+   y_host = 3.0;
+   y_device_apply = 3.0;
+   ApplyAdd( HostCSCBackend{}, matrix, x, y_host );
+   ApplyAdd( NativeDeviceCSCBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "NativeDeviceCSCBackend ApplyAdd disagrees with HostCSCBackend ApplyAdd." ) &&
+      success;
+
+   Real * device_values = ReadWriteDevice( matrix.values );
+   DeviceLoop(
+      matrix.nnz,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex i )
+      {
+         device_values[i] *= Real( 2 );
+      } );
+   Apply( HostCSCBackend{}, matrix, x, y_host );
+   Apply( NativeDeviceCSCBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "CSC device-value modification did not synchronize back to host." ) &&
+      success;
+
    return success;
 }
 

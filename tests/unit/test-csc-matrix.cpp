@@ -81,31 +81,32 @@ bool CheckCSCStructure(
    const std::vector< Real > & values,
    const char * message )
 {
+   const auto matrix_data = GetHostReadView( matrix );
    bool success = true;
    success = Check(
-      col_ptr.size() == static_cast< size_t >( matrix.num_cols + 1 ),
+      col_ptr.size() == static_cast< size_t >( matrix_data.num_cols + 1 ),
       message ) && success;
    success = Check(
-      row_ind.size() == static_cast< size_t >( matrix.nnz ),
+      row_ind.size() == static_cast< size_t >( matrix_data.nnz ),
       message ) && success;
    success = Check(
-      values.size() == static_cast< size_t >( matrix.nnz ),
+      values.size() == static_cast< size_t >( matrix_data.nnz ),
       message ) && success;
 
-   for ( GlobalIndex i = 0; i < matrix.num_cols + 1; ++i )
+   for ( GlobalIndex i = 0; i < matrix_data.num_cols + 1; ++i )
    {
       success = Check(
-         matrix.col_ptr[i] == col_ptr[static_cast< size_t >( i )],
+         matrix_data.col_ptr[i] == col_ptr[static_cast< size_t >( i )],
          message ) && success;
    }
 
-   for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
+   for ( GlobalIndex i = 0; i < matrix_data.nnz; ++i )
    {
       success = Check(
-         matrix.row_ind[i] == row_ind[static_cast< size_t >( i )],
+         matrix_data.row_ind[i] == row_ind[static_cast< size_t >( i )],
          message ) && success;
       success = Check(
-         Near( matrix.values[i], values[static_cast< size_t >( i )] ),
+         Near( matrix_data.values[i], values[static_cast< size_t >( i )] ),
          message ) && success;
    }
    return success;
@@ -114,24 +115,26 @@ bool CheckCSCStructure(
 template < typename Matrix >
 bool CheckCSCSortedColumns( const Matrix & matrix )
 {
+   const auto matrix_data = GetHostReadView( matrix );
    bool success = true;
-   for ( GlobalIndex col = 0; col < matrix.num_cols; ++col )
+   for ( GlobalIndex col = 0; col < matrix_data.num_cols; ++col )
    {
       success = Check(
-         matrix.col_ptr[col] <= matrix.col_ptr[col + 1],
+         matrix_data.col_ptr[col] <= matrix_data.col_ptr[col + 1],
          "CSC col_ptr is not monotone." ) && success;
 
-      for ( GlobalIndex entry = matrix.col_ptr[col];
-            entry < matrix.col_ptr[col + 1];
+      for ( GlobalIndex entry = matrix_data.col_ptr[col];
+            entry < matrix_data.col_ptr[col + 1];
             ++entry )
       {
          success = Check(
-            matrix.row_ind[entry] < matrix.num_rows,
+            matrix_data.row_ind[entry] < matrix_data.num_rows,
             "CSC row index is outside the matrix dimensions." ) && success;
-         if ( entry + 1 < matrix.col_ptr[col + 1] )
+         if ( entry + 1 < matrix_data.col_ptr[col + 1] )
          {
             success = Check(
-               matrix.row_ind[entry] < matrix.row_ind[entry + 1],
+               matrix_data.row_ind[entry] <
+                  matrix_data.row_ind[entry + 1],
                "CSC row indices are not strictly sorted within a column." ) && success;
          }
       }
@@ -145,32 +148,34 @@ void FillRawFixture( RawCOOTripletBuffer< Real, GlobalIndex > & raw )
    const std::array< GlobalIndex, 8 > cols{ 4, 3, 1, 3, 2, 2, 0, 0 };
    const std::array< Real, 8 > values{ 1.0, -1.0, 4.0, 2.0, 5.0, -5.0, -3.0, 2.0 };
 
+   auto raw_data = GetHostReadWriteView( raw );
    for ( GlobalIndex i = 0; i < raw.nnz_raw; ++i )
    {
-      raw.rows[i] = rows[static_cast< size_t >( i )];
-      raw.cols[i] = cols[static_cast< size_t >( i )];
-      raw.values[i] = values[static_cast< size_t >( i )];
+      raw_data.rows[i] = rows[static_cast< size_t >( i )];
+      raw_data.cols[i] = cols[static_cast< size_t >( i )];
+      raw_data.values[i] = values[static_cast< size_t >( i )];
    }
 }
 
 bool TestHandWrittenCSCAction()
 {
    auto matrix = MakeCSCMatrix< Real, GlobalIndex >( 4, 6, 6 );
+   auto matrix_data = GetHostWriteView( matrix );
 
-   matrix.col_ptr[0] = 0;
-   matrix.col_ptr[1] = 2;
-   matrix.col_ptr[2] = 3;
-   matrix.col_ptr[3] = 4;
-   matrix.col_ptr[4] = 5;
-   matrix.col_ptr[5] = 6;
-   matrix.col_ptr[6] = 6;
+   matrix_data.col_ptr[0] = 0;
+   matrix_data.col_ptr[1] = 2;
+   matrix_data.col_ptr[2] = 3;
+   matrix_data.col_ptr[3] = 4;
+   matrix_data.col_ptr[4] = 5;
+   matrix_data.col_ptr[5] = 6;
+   matrix_data.col_ptr[6] = 6;
 
    const std::array< GlobalIndex, 6 > rows{ 0, 3, 1, 1, 0, 1 };
    const std::array< Real, 6 > values{ 2.0, -3.0, 4.0, 0.0, -1.0, 1.5 };
    for ( GlobalIndex i = 0; i < matrix.nnz; ++i )
    {
-      matrix.row_ind[i] = rows[static_cast< size_t >( i )];
-      matrix.values[i] = values[static_cast< size_t >( i )];
+      matrix_data.row_ind[i] = rows[static_cast< size_t >( i )];
+      matrix_data.values[i] = values[static_cast< size_t >( i )];
    }
 
    Vector x( 6 );
@@ -209,7 +214,6 @@ bool TestHandWrittenCSCAction()
       "CSCMatrix::operator()(x, y) produced the wrong result." ) && success;
    success = CheckCSCSortedColumns( matrix ) && success;
 
-   FreeCSCMatrix( matrix );
    return success;
 }
 
@@ -219,9 +223,7 @@ bool TestRawCOOToCSCFinalization()
    FillRawFixture( raw );
 
    auto csc =
-      FinalizeRawCOOToCSC(
-         raw,
-         HostSortReduceRawCOOToCSCPolicy{} );
+      FinalizeRawCOOToCSCHost( raw );
 
    bool success = true;
    success = Check(
@@ -235,8 +237,6 @@ bool TestRawCOOToCSCFinalization()
       "RawCOO-to-CSC finalization produced the wrong storage." ) && success;
    success = CheckCSCSortedColumns( csc ) && success;
 
-   FreeCSCMatrix( csc );
-   FreeRawCOOTripletBuffer( raw );
    return success;
 }
 
@@ -251,7 +251,7 @@ bool TestScalarH1CSCAssemblyAgainstCSR()
    const std::vector< int > restriction_map{ 0, 1, 1, 2 };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction restriction{ restriction_indices, 3 };
+   IndirectH1RestrictionSpecification restriction{ restriction_indices, 3 };
    auto fe_space = MakeFiniteElementSpace( mesh, fe, restriction );
 
    Cells< "mesh" > domain;
@@ -261,7 +261,7 @@ bool TestScalarH1CSCAssemblyAgainstCSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( mesh ) );
 
    IntegrationRuleNumPoints< order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -299,8 +299,6 @@ bool TestScalarH1CSCAssemblyAgainstCSR()
       y_csr,
       "Scalar H1 CSC action disagrees with CSR action." ) && success;
 
-   FreeCSRMatrix( csr );
-   FreeCSCMatrix( csc );
    return success;
 }
 
@@ -319,8 +317,8 @@ bool TestVectorH1CSCAssemblyAgainstCSR()
    const std::vector< int > restriction_map{ 0, 1, 1, 2 };
    HostDevicePointer< const int > restriction_indices{};
    restriction_indices.host_pointer = restriction_map.data();
-   H1Restriction scalar_restriction{ restriction_indices, 3 };
-   auto restriction = MakeVectorH1Restriction< 2 >( scalar_restriction );
+   IndirectH1RestrictionSpecification scalar_restriction{ restriction_indices, 3 };
+   auto restriction = MakeVectorIndirectH1RestrictionSpecification< 2 >( scalar_restriction );
    auto fe_space = MakeFiniteElementSpace( mesh, vector_fe, restriction );
 
    Cells< "mesh" > domain;
@@ -330,7 +328,7 @@ bool TestVectorH1CSCAssemblyAgainstCSR()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( mesh ) );
 
    IntegrationRuleNumPoints< order + 2 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -371,8 +369,6 @@ bool TestVectorH1CSCAssemblyAgainstCSR()
       y_csr,
       "Vector H1 CSC action disagrees with CSR action." ) && success;
 
-   FreeCSRMatrix( csr );
-   FreeCSCMatrix( csc );
    return success;
 }
 
@@ -397,7 +393,7 @@ bool TestScalarP0InteriorJumpCSCAssembly()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( mesh ) );
 
    IntegrationRuleNumPoints< 1, 1 > nq;
    auto integration_rule = MakeIntegrationRule( nq );
@@ -430,7 +426,6 @@ bool TestScalarP0InteriorJumpCSCAssembly()
    success = Check( Near( y_data[0], -3.0 ), "Analytic p0 CSC action row 0 is wrong." ) && success;
    success = Check( Near( y_data[1], 3.0 ), "Analytic p0 CSC action row 1 is wrong." ) && success;
 
-   FreeCSCMatrix( csc );
    return success;
 }
 

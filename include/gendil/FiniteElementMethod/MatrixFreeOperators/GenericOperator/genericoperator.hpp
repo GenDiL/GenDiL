@@ -26,35 +26,57 @@ void GenericExplicitOperator(
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
-   using I = std::remove_cvref_t<WeakForm>;
+   using namespace generic_operator_detail;
 
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TestName  = requirements<I>::test_name;
+   constexpr auto DomainKind =
+      generic_operator_domain_kind_v<WeakForm, WeakFormContext>;
 
-   static_assert(
-      TrialName != StaticString{"Error"},
-      "GenericExplicitOperator: missing TrialSpace in weak_form.");
-   static_assert(
-      TestName != StaticString{"Error"},
-      "GenericExplicitOperator: missing TestSpace in weak_form.");
-
-   if constexpr (use_global_facets_operator_v<WeakFormContext>)
+   if constexpr (DomainKind == GenericOperatorDomainKind::Invalid)
    {
-      GenericGlobalDomainOperator<TrialName, TestName, KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         integration_rule,
-         dofs_vector_in,
-         dofs_vector_out);
+      static_assert(
+         DomainKind != GenericOperatorDomainKind::Invalid,
+         "Weak form integrand requires an integration domain registered "
+         "under its domain name.");
+   }
+   else if constexpr (DomainKind == GenericOperatorDomainKind::Mixed)
+   {
+      static_assert(
+         DomainKind != GenericOperatorDomainKind::Mixed,
+         "GenericOperator does not support mixing MeshIntegrationDomain and "
+         "PartitionIntegrationDomain entries in one weak form.");
    }
    else
    {
-      GenericLocalDomainOperator<TrialName, TestName, KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         integration_rule,
-         dofs_vector_in,
-         dofs_vector_out);
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName  = requirements<WeakForm>::test_name;
+
+      static_assert(
+         TrialName != StaticString{"Error"},
+         "GenericExplicitOperator: missing TrialSpace in weak_form.");
+      static_assert(
+         TestName != StaticString{"Error"},
+         "GenericExplicitOperator: missing TestSpace in weak_form.");
+
+      if constexpr (DomainKind == GenericOperatorDomainKind::Mesh)
+      {
+         GenericLocalDomainOperator<KernelPolicy>(
+            weak_form,
+            wf_ctx,
+            integration_rule,
+            dofs_vector_in,
+            dofs_vector_out);
+      }
+      else
+      {
+         static_assert(
+            DomainKind == GenericOperatorDomainKind::Partition);
+         GenericGlobalDomainOperator<KernelPolicy>(
+            weak_form,
+            wf_ctx,
+            integration_rule,
+            dofs_vector_in,
+            dofs_vector_out);
+      }
    }
 }
 
@@ -84,7 +106,7 @@ public:
                            IntegrationRule ir_)
       : weak_form(std::move(wf))
       , wf_ctx(std::move(ctx))
-      , ir(ir_)
+      , ir(std::move(ir_))
    {}
 
    template<class input, class output>
@@ -123,10 +145,15 @@ auto MakePullbackGenericOperator(
    WeakFormContext wf_ctx,
    IntegrationRule ir)
 {
-   return PullbackGenericOperator<KernelPolicy, IntegrationRule, WeakFormTuple, WeakFormContext>(
+   ValidateWeakFormContext(weak_form, wf_ctx);
+   return PullbackGenericOperator<
+      KernelPolicy,
+      IntegrationRule,
+      WeakFormTuple,
+      WeakFormContext>(
       std::move(weak_form),
       std::move(wf_ctx),
-      ir
+      std::move(ir)
    );
 }
 
@@ -140,10 +167,15 @@ auto MakeGenericOperator(
    WeakFormContext wf_ctx,
    IntegrationRule ir)
 {
-   return PullbackGenericOperator<KernelPolicy, IntegrationRule, WeakFormTuple, WeakFormContext>(
+   ValidateWeakFormContext(weak_form, wf_ctx);
+   return PullbackGenericOperator<
+      KernelPolicy,
+      IntegrationRule,
+      WeakFormTuple,
+      WeakFormContext>(
       std::move(weak_form),
       std::move(wf_ctx),
-      ir
+      std::move(ir)
    );
 }
 
@@ -157,10 +189,15 @@ auto MakeWeakFormResidualOperator(
    WeakFormContext wf_ctx,
    IntegrationRule ir)
 {
-   return PullbackGenericOperator<KernelPolicy, IntegrationRule, WeakFormTuple, WeakFormContext>(
+   ValidateWeakFormContext(weak_form, wf_ctx);
+   return PullbackGenericOperator<
+      KernelPolicy,
+      IntegrationRule,
+      WeakFormTuple,
+      WeakFormContext>(
       std::move(weak_form),
       std::move(wf_ctx),
-      ir
+      std::move(ir)
    );
 }
 

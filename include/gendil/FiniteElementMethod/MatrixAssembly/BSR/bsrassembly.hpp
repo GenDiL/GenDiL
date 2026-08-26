@@ -6,10 +6,13 @@
 
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrpattern.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/localinsertion.hpp"
-#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/weakformtraversal.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/assemblydispatch.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/sparseassemblyvalidation.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 
 #include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -18,108 +21,66 @@ template<
    class WeakForm,
    class WeakFormContext,
    class IntegrationRule,
-   class SparseMatrixType >
-void GenericBlockDiagonalAssembly(
+   typename Backend >
+auto GenericBSRElementBlockDiagonalAssembly(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    const IntegrationRule& integration_rule,
-   SparseMatrixType & sparse_matrix)
+   Backend backend)
 {
-   GENDIL_REQUIRE_UNBATCHED_OPERATOR( KernelPolicy );
+   const auto can_instantiate =
+      details::ValidateSparseAssemblyInputs<
+         MatrixAssemblyType::BSR,
+         details::SparseAssemblyMode::ElementBlockDiagonal,
+         KernelPolicy,
+         Backend>(weak_form, wf_ctx);
 
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericBlockDiagonalAssembly: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
-
-   using I = std::remove_cvref_t<WeakForm>;
-   ValidateSparseLinearAssemblyCoefficientInputs<I>();
-
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TestName  = requirements<I>::test_name;
-
-   static_assert(TrialName != StaticString{"Error"}, "GenericExplicitOperator: missing TrialSpace in integrand.");
-   static_assert(TestName  != StaticString{"Error"}, "GenericExplicitOperator: missing TestSpace in integrand.");
-
-   // FE spaces come from wf_ctx via MakeTrialField/MakeTestField
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto op_ctx = MakeOperatorContext(wf_ctx, integration_rule);
-
-   // Shared memory requirement: for now, bind to the integration rule used by this operator
-   constexpr size_t required_shared_mem = required_shared_memory_v<KernelPolicy, IntegrationRule>;
-
-   mesh::CellIterator<KernelPolicy>(
-      trial_space,
-      [=] GENDIL_HOST_DEVICE (GlobalIndex element_index) mutable
-      {
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
-         KernelContext<KernelPolicy, required_shared_mem> kernel_ctx(_shared_mem);
-
-         AssembleElementSparseMatrix(
-            kernel_ctx,
-            wf_ctx,
-            op_ctx,
-            element_index,
-            weak_form,
-            sparse_matrix
-         );
-      }
-   );
-}
-
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule >
-auto GenericBlockDiagonalAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule)
-{
-   static_assert(
-      !weak_form_context_has_mixed_sparse_domain_v<WeakFormContext>,
-      "GenericBSRAssembly: mixed sparse assembly for "
-      "MakeIntegrationDomain<Name>(mixed_fes) is deferred. Homogeneous "
-      "sparse assembly currently supports MakeIntegrationDomain<Name>(fe_space).");
-
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto bsr_matrix = MakeBlockDiagonalDGBSRPattern( trial_space );
-
-   GenericBlockDiagonalAssembly<KernelPolicy>(
-      weak_form,
-      wf_ctx,
-      integration_rule,
-      bsr_matrix
-   );
-
-   return bsr_matrix;
-}
-
-template < typename KernelPolicy, typename BSRMatrixType >
-void SyncAssembledBSRValues(
-   BSRMatrixType & bsr_matrix )
-{
-#if defined(GENDIL_USE_DEVICE)
-   const GlobalIndex value_count =
-      static_cast< GlobalIndex >( bsr_matrix.num_blocks ) *
-      static_cast< GlobalIndex >( bsr_matrix.block_rows ) *
-      static_cast< GlobalIndex >( bsr_matrix.block_cols );
-
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
+   if constexpr (can_instantiate)
    {
-      ToDevice( value_count, bsr_matrix.values );
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName = requirements<WeakForm>::test_name;
+
+      const auto& trial_space =
+         wf_ctx.template fe_field<TrialName>().space;
+      const auto& test_space =
+         wf_ctx.template fe_field<TestName>().space;
+      using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+      using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+      using TrialShapeFunctions =
+         finite_element_space_shape_functions_t< TrialSpace >;
+      using TestShapeFunctions =
+         finite_element_space_shape_functions_t< TestSpace >;
+
+      constexpr GlobalIndex ntrial =
+         LocalDofCount<TrialShapeFunctions>();
+      constexpr GlobalIndex ntest =
+         LocalDofCount<TestShapeFunctions>();
+      const auto& domain_mesh =
+         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+      const GlobalIndex num_elements =
+         static_cast<GlobalIndex>(
+            domain_mesh.GetNumberOfCells());
+
+      auto bsr_matrix =
+         MakeBlockDiagonalDGBSRPattern(
+            num_elements,
+            ntest,
+            ntrial,
+            std::move( backend ));
+
+      constexpr bool on_device =
+         is_device_configuration_v< KernelPolicy >;
+      auto matrix_view =
+         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+
+      AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         matrix_view);
+
+      return bsr_matrix;
    }
-   else
-   {
-      GENDIL_DEVICE_SYNC;
-      ToHost( value_count, bsr_matrix.values );
-   }
-#else
-   (void) bsr_matrix;
-#endif
 }
 
 template<
@@ -134,20 +95,127 @@ auto GenericBSRAssembly(
    const IntegrationRule& integration_rule,
    Backend backend)
 {
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-   auto bsr_matrix = MakeDGBSRPattern( trial_space, backend );
+   const auto can_instantiate =
+      details::ValidateSparseAssemblyInputs<
+         MatrixAssemblyType::BSR,
+         details::SparseAssemblyMode::Full,
+         KernelPolicy,
+         Backend>(weak_form, wf_ctx);
 
-   GenericAssembly<KernelPolicy>(
+   if constexpr (can_instantiate)
+   {
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      constexpr auto TestName = requirements<WeakForm>::test_name;
+      const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
+      const auto& test_space = wf_ctx.template fe_field<TestName>().space;
+      const auto& domain_mesh =
+         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+      auto bsr_matrix =
+         MakeDGBSRPattern(
+            domain_mesh,
+            trial_space,
+            test_space,
+            std::move( backend ) );
+
+      constexpr bool on_device =
+         is_device_configuration_v< KernelPolicy >;
+      auto matrix_view =
+         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+
+      GenericAssembly<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         integration_rule,
+         matrix_view
+      );
+
+      return bsr_matrix;
+   }
+}
+
+template < class WeakForm, class WeakFormContext >
+auto MakeDefaultBSRBackend(
+   const WeakForm & weak_form,
+   const WeakFormContext & wf_ctx )
+{
+   const auto can_instantiate =
+      details::ValidateDefaultBSRBackendSelectionInputs<
+         WeakForm,
+         WeakFormContext>();
+
+   if constexpr (can_instantiate)
+   {
+      constexpr auto TrialName = requirements< WeakForm >::trial_name;
+      constexpr auto TestName = requirements< WeakForm >::test_name;
+
+      const auto & trial_space =
+         wf_ctx.template fe_field< TrialName >().space;
+      const auto & test_space =
+         wf_ctx.template fe_field< TestName >().space;
+      using TrialSpace =
+         std::remove_cvref_t< decltype( trial_space ) >;
+      using TestSpace =
+         std::remove_cvref_t< decltype( test_space ) >;
+      using TrialShapeFunctions =
+         finite_element_space_shape_functions_t< TrialSpace >;
+      using TestShapeFunctions =
+         finite_element_space_shape_functions_t< TestSpace >;
+
+#if defined(GENDIL_USE_DEVICE)
+   constexpr GlobalIndex ntrial =
+      LocalDofCount< TrialShapeFunctions >();
+   constexpr GlobalIndex ntest =
+      LocalDofCount< TestShapeFunctions >();
+   constexpr bool vendor_bsr_available =
+#if defined(GENDIL_USE_CUDA)
+#if defined(GENDIL_CUSPARSE_HAS_GENERIC_BSR)
+      true;
+#else
+      false;
+#endif
+#elif defined(GENDIL_USE_HIP)
+#if defined(GENDIL_ROCSPARSE_HAS_GENERIC_BSR)
+      true;
+#else
+      false;
+#endif
+#else
+      false;
+#endif
+
+      if constexpr ( ntrial == ntest && vendor_bsr_available )
+      {
+         return VendorDeviceBSRBackend<>{};
+      }
+      else
+      {
+         return NativeDeviceBSRBackend<>{};
+      }
+   #else
+      return HostBSRBackend<>{};
+#endif
+   }
+   else
+   {
+      return Empty{};
+   }
+}
+
+template<
+   class KernelPolicy,
+   class WeakForm,
+   class WeakFormContext,
+   class IntegrationRule >
+auto GenericBSRElementBlockDiagonalAssembly(
+   const WeakForm& weak_form,
+   const WeakFormContext& wf_ctx,
+   const IntegrationRule& integration_rule)
+{
+   return GenericBSRElementBlockDiagonalAssembly<KernelPolicy>(
       weak_form,
       wf_ctx,
       integration_rule,
-      bsr_matrix
-   );
-
-   SyncAssembledBSRValues< KernelPolicy >( bsr_matrix );
-
-   return bsr_matrix;
+      MakeDefaultBSRBackend( weak_form, wf_ctx ));
 }
 
 template<
@@ -164,7 +232,7 @@ auto GenericBSRAssembly(
       weak_form,
       wf_ctx,
       integration_rule,
-      DefaultBSRBackend{} );
+      MakeDefaultBSRBackend( weak_form, wf_ctx ) );
 }
 
 } // namespace gendil

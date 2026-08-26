@@ -70,13 +70,13 @@ int main(int, char**)
   auto feR = MakeLobattoFiniteElement(FiniteElementOrders<pR,pR,pR>{});
 
   // Layout: split vector = [L | R]
-  L2Restriction resL{0};
+  ContiguousL2RestrictionSpecification resL{0};
   auto fe_space_L = MakeFiniteElementSpace(meshL, feL, resL);
-  const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
+  const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
 
-  L2Restriction resR{ndofsL};
+  ContiguousL2RestrictionSpecification resR{ndofsL};
   auto fe_space_R = MakeFiniteElementSpace(meshR, feR, resR);
-  const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+  const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
   const Integer ndofs_split = ndofsL + ndofsR;
 
@@ -168,7 +168,7 @@ int main(int, char**)
   {
     // Make a "same partition" right mesh
     Cartesian3DMesh meshR1(hx, 1.0/nyL, hz, nxR, nyL, nzL, Point<3>{1.0,0.0,0.0});
-    auto fe_space_R1 = MakeFiniteElementSpace(meshR1, feR, L2Restriction{ndofsL});
+    auto fe_space_R1 = MakeFiniteElementSpace(meshR1, feR, ContiguousL2RestrictionSpecification{ndofsL});
 
     // Nonconforming connectivity with refine=1 (degenerates to identity)
     NonconformingCartesianIntermeshFaceConnectivity<Dim, LFI> iface_r1(
@@ -191,7 +191,7 @@ int main(int, char**)
     auto face_IF_conf  = MakeAdvectionFaceOperator<KernelPolicy>(
                             fe_space_L, fe_space_R1, iface_conf, int_rules, adv_pos);
 
-    const Integer ndofsR1 = fe_space_R1.GetNumberOfFiniteElementDofs();
+    const Integer ndofsR1 = GetNumberOfGlobalDofs( fe_space_R1 );
     Vector u(ndofsL + ndofsR1), r_nc(u.Size()), r_cf(u.Size());
     {
       Real* pu = u.WriteHostData();

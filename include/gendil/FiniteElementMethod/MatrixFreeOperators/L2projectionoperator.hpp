@@ -48,8 +48,8 @@ void L2ProjectionElementOperator(
    const MeshQuadData & mesh_quad_data,
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > & dofs_out )
 {
    using Mesh = typename TrialFiniteElementSpace::mesh_type;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
@@ -191,8 +191,8 @@ void L2ProjectionOperator(
    const TestMeshQuadData & test_mesh_quad_data,
    const TrialElementQuadData & trial_element_quad_data,
    const TestElementQuadData & test_element_quad_data,
-   const StridedView< TrialFiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< TestFiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< TrialFiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< TestFiniteElementSpace, Real > & dofs_out )
 {
    mesh::CellIterator< TrialKernelConfiguration >(
       trial_fe_space,
@@ -210,13 +210,11 @@ void L2ProjectionOperator(
                   typename TestIntegrationRule::points::
                      num_points_tensor{} ) // Accumulation at quadrature point
             );
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               TrialKernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< TrialKernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< TrialKernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          L2ProjectionElementOperator<
             TrialIntegrationRule,
@@ -243,13 +241,11 @@ void L2ProjectionOperator(
                TestIntegrationRule > +
             required_threaded_dot_shared_memory_v<
                TestKernelConfiguration >;
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               TestKernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< TestKernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< TestKernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          auto op = [&]( const auto & in, auto & out )
          {
@@ -373,8 +369,8 @@ protected:
                            );
    TestElementQuadData test_element_quad_data;
 
-   using input = StridedView< TrialFiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< TestFiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< TrialFiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< TestFiniteElementSpace, Real >;
 
 public:
    /**
@@ -391,7 +387,7 @@ public:
       const TrialIntegrationRule & trial_int_rule,
       const TestIntegrationRule & test_int_rule ) :
 #ifdef GENDIL_USE_MFEM
-         mfem::Operator( test_finite_element_space.GetNumberOfFiniteElementDofs(), trial_finite_element_space.GetNumberOfFiniteElementDofs() ),
+         mfem::Operator( GetAlgebraicDofExtent( test_finite_element_space ), GetAlgebraicDofExtent( trial_finite_element_space ) ),
 #endif
          trial_finite_element_space( trial_finite_element_space ),
          test_finite_element_space( test_finite_element_space ),
@@ -403,8 +399,10 @@ public:
          test_element_quad_data{}
    {
       static_assert(
-         std::is_same_v< typename TrialFiniteElementSpace::restriction_type, L2Restriction > &&
-         std::is_same_v< typename TestFiniteElementSpace::restriction_type, L2Restriction >,
+         ElementwiseIndependentRestriction<
+            typename TrialFiniteElementSpace::restriction_type > &&
+         ElementwiseIndependentRestriction<
+            typename TestFiniteElementSpace::restriction_type >,
          "L2 projection is only supported for broken Sobolev spaces (DG spaces)."
       );
    }

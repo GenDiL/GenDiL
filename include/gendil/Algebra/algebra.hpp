@@ -14,5 +14,8 @@
 // A simple vector type.
 #include "gendil/Algebra/vector.hpp"
 
+// Unified host/device access for GenDiL and external vector types.
+#include "gendil/Algebra/vectoraccess.hpp"
+
 // The supported sparse matrix types.
 #include "gendil/Algebra/SparseMatrixTypes/sparsematrixtypes.hpp"

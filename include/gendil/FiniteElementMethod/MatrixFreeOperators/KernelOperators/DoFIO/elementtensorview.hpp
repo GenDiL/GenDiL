@@ -4,352 +4,208 @@
 
 #pragma once
 
-#include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/dofloop.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
-#include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
-#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
-#include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/FiniteElementMethod/ShapeFunctions/finiteelementorders.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
-#include "gendil/Algebra/vector.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
-#include "gendil/Utilities/MathHelperFunctions/sum.hpp"
+/**
+ * @file
+ * @brief Restriction-backed element tensor views and vector storage binding.
+ */
 
-#include <array>
+#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictionlayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/vectorrestriction.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/tensorview.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
+#include "gendil/Utilities/View/view.hpp"
+
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 namespace gendil {
 
-/**
- * @brief Utility function to transform a vector into a structured tensor.
- * 
- * @tparam FiniteElementSpace The finite element space type
- * @tparam Orders The list of polynomial orders for each dimension.
- * @tparam T The type of data.
- * @param finite_element_space The finite element space.
- * @param data The data to represent as a tensor.
- * @return auto The tensor sized according to the finite element space.
- */
-template <
-   typename FiniteElementSpace,
-   Integer ... Orders,
-   typename T >
-auto MakeTensor(
-   FiniteElementSpace const & finite_element_space,
-   T * data,
-   FiniteElementOrders< Orders... > )
-{
-   const GlobalIndex num_elem = finite_element_space.GetNumberOfFiniteElements();
-   return MakeFIFOView( data, ((GlobalIndex)Orders + 1)..., num_elem );
-}
-
-/**
- * @brief Utility function to transform a vector of deegrees of freedom into a structured tensor of degrees of freedom.
- * 
- * @note automatically size the tensor with numbers of degrees of freedom for each dimension.
- * 
- * @tparam FiniteElementSpace The finite element space type
- * @tparam T The type of data.
- * @param finite_element_space The finite element space.
- * @param data The data to represent as a tensor.
- * @return auto The tensor sized according to the finite element space.
- */
-template < typename FiniteElementSpace,
-         typename T >
-auto MakeTensor(
-   FiniteElementSpace const & finite_element_space,
+/** @brief Bind algebraic storage to one tensor-leaf restriction. */
+template < typename Restriction, typename T >
+   requires (
+      TensorElementDoFRestriction< Restriction > &&
+      restriction_supports_element_reference_view_v< Restriction > )
+GENDIL_HOST_DEVICE
+auto MakeRestrictionElementView(
+   const Restriction & restriction,
    T * data )
 {
-   // Assumes tensor elements
-   using orders = typename FiniteElementSpace::finite_element_type::shape_functions::orders;
-   return MakeTensor( finite_element_space, data, orders{} );
+   return MakeView( data, MakeRestrictionLayout( restriction ) );
 }
 
-template <
-   typename T,
-   size_t ... dof_shapes >
-auto MakeTensor(
+namespace details {
+
+template < typename Restriction, typename T, size_t... Component >
+   requires (
+      VectorElementDoFRestriction< Restriction > &&
+      restriction_supports_element_reference_view_v< Restriction > )
+GENDIL_HOST_DEVICE
+auto MakeVectorRestrictionElementView(
+   const Restriction & restriction,
    T * data,
-   GlobalIndex num_elements,
-   std::index_sequence< dof_shapes... > )
+   std::index_sequence< Component... > )
 {
-   return MakeFIFOView( data, (GlobalIndex)dof_shapes..., num_elements );
+   return std::make_tuple(
+      MakeRestrictionElementView(
+         GetComponentRestriction< Component >( restriction ),
+         data )... );
 }
 
-template <
-   typename T,
-   size_t ... dof_shapes >
-auto MakeIndirectedTensor(
-   T * data,
-   const HostDevicePointer< const int > & indices,
-   GlobalIndex num_elements,
-   std::index_sequence< dof_shapes... > )
+} // namespace details
+
+/** @brief Bind one algebraic vector to a compile-time tuple of component views. */
+template < typename Restriction, typename T >
+   requires (
+      VectorElementDoFRestriction< Restriction > &&
+      restriction_supports_element_reference_view_v< Restriction > )
+GENDIL_HOST_DEVICE
+auto MakeRestrictionElementView(
+   const Restriction & restriction,
+   T * data )
 {
-   return MakeIndirectedFIFOView(
+   using RestrictionType = std::remove_cvref_t< Restriction >;
+   return details::MakeVectorRestrictionElementView(
+      restriction,
       data,
-      indices,
-      static_cast< GlobalIndex >( dof_shapes )...,
-      num_elements );
+      std::make_index_sequence<
+         static_cast< size_t >( RestrictionType::num_components ) >{} );
 }
 
-/**
- * @brief Utility function to transform a vector into a structured tensor.
- * 
- * @tparam FiniteElementSpace The finite element space type
- * @tparam Orders The list of polynomial orders for each dimension.
- * @tparam T The type of data.
- * @param finite_element_space The finite element space.
- * @param data The data to represent as a tensor.
- * @return auto The tensor sized according to the finite element space.
- */
-template < typename FiniteElementSpace,
-         Integer ... Orders,
-         typename T >
-auto MakeIndirectedTensor(
-   FiniteElementSpace const & finite_element_space,
-   T data,
-   FiniteElementOrders< Orders... > )
-{
-   const Integer num_elem = finite_element_space.GetNumberOfFiniteElements();
-   return MakeIndirectedFIFOView( data, finite_element_space.restriction.indices, (Orders + 1)..., num_elem );
-}
-
-/**
- * @brief Utility function to transform a vector of deegrees of freedom into a structured tensor of degrees of freedom.
- * 
- * @note automatically size the tensor with numbers of degrees of freedom for each dimension.
- * 
- * @tparam FiniteElementSpace The finite element space type
- * @tparam T The type of data.
- * @param finite_element_space The finite element space.
- * @param data The data to represent as a tensor.
- * @return auto The tensor sized according to the finite element space.
- */
-template < typename FiniteElementSpace,
-         typename T >
-auto MakeIndirectedTensor(
-   FiniteElementSpace const & finite_element_space,
-   T data )
-{
-   // Assumes tensor elements
-   using orders = typename FiniteElementSpace::finite_element_type::shape_functions::orders;
-   return MakeIndirectedTensor( finite_element_space, data, orders{} );
-}
-
+/** @brief Compatibility name for constructing a scalar element tensor view. */
 template < typename FiniteElementSpace, typename T >
+   requires TensorElementDoFRestriction<
+      typename std::remove_cvref_t<
+         FiniteElementSpace >::restriction_type >
 auto MakeScalarElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
-   using Restriction = typename FiniteElementSpace::restriction_type;
-   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
-   {
-      const GlobalIndex dof_shift = finite_element_space.restriction.shift;
-      return MakeTensor( finite_element_space, data + dof_shift );
-   }
-   else if constexpr ( std::is_same_v< Restriction, H1Restriction > )
-   {
-      return MakeIndirectedTensor( finite_element_space, data );
-   }
-   else if constexpr ( is_tensor_product_restriction_v< Restriction > )
-   {
-      using ShapeFunctions =
-         typename FiniteElementSpace::finite_element_type::shape_functions;
-      using ProductDofShape = finite_element_dof_shape_t< ShapeFunctions >;
-      static_assert(
-         !is_vector_shape_functions_v< ShapeFunctions >,
-         "TensorProductRestriction v1 supports scalar finite element spaces only." );
-      return MakeView(
-         data,
-         MakeTensorProductLayout< ProductDofShape >(
-            finite_element_space.restriction ) );
-   }
-   else
-   {
-      static_assert(
-         dependent_false_v< Restriction >,
-         "MakeScalarElementTensorView supports only scalar L2Restriction, H1Restriction, and TensorProductRestriction." );
-   }
+   return MakeRestrictionElementView(
+      GetRestriction( finite_element_space ),
+      data );
 }
 
-template < typename FiniteElementSpace, typename T, size_t ... v_dims >
+/** @brief Compatibility overload selecting explicit vector components. */
+template <
+   typename FiniteElementSpace,
+   typename T,
+   size_t... Component >
+   requires VectorElementDoFRestriction<
+      typename std::remove_cvref_t<
+         FiniteElementSpace >::restriction_type >
 auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data,
-   std::index_sequence< v_dims... > )
+   std::index_sequence< Component... > components )
 {
-   using ShapeFunctions =
-      typename FiniteElementSpace::finite_element_type::shape_functions;
-   using Restriction = typename FiniteElementSpace::restriction_type;
-   const GlobalIndex num_elements = finite_element_space.GetNumberOfFiniteElements();
-   using dof_shape = typename ShapeFunctions::dof_shape;
-
-   if constexpr ( std::is_same_v< Restriction, L2Restriction > )
-   {
-      const GlobalIndex dof_shift = finite_element_space.restriction.shift;
-      return std::make_tuple(
-         MakeTensor(
-            data + dof_shift + VectorOffset(
-               dof_shape{},
-               num_elements,
-               std::make_index_sequence< v_dims >{} ),
-            num_elements,
-            std::tuple_element_t< v_dims, dof_shape >{} )... );
-   }
-   else if constexpr ( is_vector_h1_restriction_v< Restriction > )
-   {
-      static_assert(
-         Restriction::num_comp == ShapeFunctions::vector_dim,
-         "VectorH1Restriction<NComp> must match the vector finite element component count." );
-      static_assert(
-         VectorComponentDofShapesMatchFirst< ShapeFunctions >(),
-         "VectorH1Restriction currently requires identical scalar component DoF shapes." );
-
-      return std::make_tuple(
-         MakeIndirectedTensor(
-            data + static_cast< GlobalIndex >( v_dims ) *
-               static_cast< GlobalIndex >( finite_element_space.restriction.scalar_num_dofs ),
-            finite_element_space.restriction.indices,
-            num_elements,
-            std::tuple_element_t< v_dims, dof_shape >{} )... );
-   }
-   else
-   {
-      static_assert(
-         dependent_false_v< Restriction >,
-         "MakeVectorElementTensorView supports only L2Restriction and VectorH1Restriction." );
-   }
+   return details::MakeVectorRestrictionElementView(
+      GetRestriction( finite_element_space ),
+      data,
+      components );
 }
 
+/** @brief Compatibility name for constructing all vector component views. */
 template < typename FiniteElementSpace, typename T >
+   requires VectorElementDoFRestriction<
+      typename std::remove_cvref_t<
+         FiniteElementSpace >::restriction_type >
 auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
-   constexpr Integer v_dim = FiniteElementSpace::finite_element_type::shape_functions::vector_dim;
-   return MakeVectorElementTensorView( finite_element_space, data, std::make_index_sequence< v_dim >{} );
+   return MakeRestrictionElementView(
+      GetRestriction( finite_element_space ),
+      data );
 }
-/**
- * @brief Utility function to transform a vector of deegrees of freedom into a tensor view of degrees of freedom.
- * 
- * @note automatically size the tensor with numbers of degrees of freedom for each dimension.
- * 
- * @tparam FiniteElementSpace The finite element space type
- * @tparam T The type of data.
- * @param finite_element_space The finite element space.
- * @param data The data to represent as a tensor.
- * @return auto The tensor sized according to the finite element space.
- */
+
+/** @brief Construct scalar or vector element views from the stored restriction. */
 template < typename FiniteElementSpace, typename T >
 auto MakeElementTensorView(
    const FiniteElementSpace & finite_element_space,
    T * data )
 {
-   if constexpr ( is_vector_shape_functions_v< typename FiniteElementSpace::finite_element_type::shape_functions > )
-   {
-      return MakeVectorElementTensorView( finite_element_space, data );
-   }
-   else
-   {
-      return MakeScalarElementTensorView( finite_element_space, data );
-   }
+   return MakeRestrictionElementView(
+      GetRestriction( finite_element_space ),
+      data );
 }
 
-template < typename KernelPolicy, typename FiniteElementSpace >
+/** @brief Element-view type produced for a space and scalar storage type. */
+template < typename FiniteElementSpace, typename T >
+using element_tensor_view_t = decltype(
+   MakeElementTensorView(
+      std::declval< const FiniteElementSpace & >(),
+      std::declval< T * >() ) );
+
+/** @brief Bind read-only storage in the kernel policy's memory space. */
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename VectorType >
+   requires KernelAccessibleVector<
+      is_device_configuration_v< KernelPolicy >,
+      VectorType >
 auto MakeReadOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   const Vector & data )
+   const VectorType & data )
 {
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.ReadHostData() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.ReadDeviceData() );
-   }
+   static_assert(
+      is_host_configuration_v< KernelPolicy > ||
+         is_device_configuration_v< KernelPolicy >,
+      "Element tensor views require a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   return MakeElementTensorView(
+      finite_element_space,
+      ReadKernelVector< on_device >( data ) );
 }
 
-template < typename KernelPolicy, typename FiniteElementSpace >
+/** @brief Bind write-only storage in the kernel policy's memory space. */
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename VectorType >
+   requires KernelAccessibleVector<
+      is_device_configuration_v< KernelPolicy >,
+      VectorType >
 auto MakeWriteOnlyElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   Vector & data )
+   VectorType & data )
 {
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.WriteHostData() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.WriteDeviceData() );
-   }
+   static_assert(
+      is_host_configuration_v< KernelPolicy > ||
+         is_device_configuration_v< KernelPolicy >,
+      "Element tensor views require a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   return MakeElementTensorView(
+      finite_element_space,
+      WriteKernelVector< on_device >( data ) );
 }
 
-template < typename KernelPolicy, typename FiniteElementSpace >
+/** @brief Bind read-write storage in the kernel policy's memory space. */
+template <
+   typename KernelPolicy,
+   typename FiniteElementSpace,
+   typename VectorType >
+   requires KernelAccessibleVector<
+      is_device_configuration_v< KernelPolicy >,
+      VectorType >
 auto MakeReadWriteElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   Vector & data )
+   VectorType & data )
 {
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.ReadWriteHostData() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.ReadWriteDeviceData() );
-   }
+   static_assert(
+      is_host_configuration_v< KernelPolicy > ||
+         is_device_configuration_v< KernelPolicy >,
+      "Element tensor views require a host or device kernel policy." );
+   constexpr bool on_device =
+      is_device_configuration_v< KernelPolicy >;
+   return MakeElementTensorView(
+      finite_element_space,
+      ReadWriteKernelVector< on_device >( data ) );
 }
 
-#ifdef GENDIL_USE_MFEM
-template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadOnlyElementTensorView(
-   const FiniteElementSpace & finite_element_space,
-   const mfem::Vector & data )
-{
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.HostRead() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.Read() );
-   }
-}
-
-template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeWriteOnlyElementTensorView(
-   const FiniteElementSpace & finite_element_space,
-   mfem::Vector & data )
-{
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.HostWrite() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.Write() );
-   }
-}
-
-template < typename KernelPolicy, typename FiniteElementSpace >
-auto MakeReadWriteElementTensorView(
-   const FiniteElementSpace & finite_element_space,
-   mfem::Vector & data )
-{
-   if constexpr ( is_host_configuration_v< KernelPolicy > )
-   {
-      return MakeElementTensorView( finite_element_space, data.HostReadWrite() );
-   }
-   else
-   {
-      return MakeElementTensorView( finite_element_space, data.ReadWrite() );
-   }
-}
-#endif // GENDIL_USE_MFEM
-
-}
+} // namespace gendil

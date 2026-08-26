@@ -5,7 +5,8 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/doflayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/finiteelementdoflayout.hpp"
+#include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofdescriptor.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/subsequence.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
@@ -59,9 +60,10 @@ GENDIL_HOST_DEVICE
 void ForEachLocalDof( const FESpace &, Lambda && lambda )
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
 
-   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   if constexpr ( is_vector_finite_element_space_v< Space > )
    {
       constexpr Integer v_dim = ShapeFunctions::vector_dim;
 
@@ -97,9 +99,10 @@ GENDIL_HOST_DEVICE
 void ForEachScalarLocalDof( const FESpace &, Lambda && lambda )
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
    static_assert(
-      !is_vector_shape_functions_v< ShapeFunctions >,
+      !is_vector_finite_element_space_v< Space >,
       "ForEachScalarLocalDof supports scalar finite element spaces only." );
 
    using DofShape = finite_element_dof_shape_t< ShapeFunctions >;
@@ -123,9 +126,10 @@ void ForEachLocalTrialDof(
    Lambda && lambda )
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
 
-   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   if constexpr ( is_vector_finite_element_space_v< Space > )
    {
       constexpr Integer v_dim = ShapeFunctions::vector_dim;
       using dof_shape = typename ShapeFunctions::dof_shape;
@@ -208,9 +212,10 @@ void ForEachLocalResidualDof(
    Lambda && lambda )
 {
    using Space = std::remove_cvref_t< FESpace >;
-   using ShapeFunctions = typename Space::finite_element_type::shape_functions;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
 
-   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   if constexpr ( is_vector_finite_element_space_v< Space > )
    {
       constexpr Integer v_dim = ShapeFunctions::vector_dim;
       using dof_shape = typename ShapeFunctions::dof_shape;

@@ -139,7 +139,7 @@ int TestBoundarySIPDG()
    BoundaryFacets<"mesh1"> boundary_facets;
 
    // Diffusivity coefficient
-   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinate>(
+   auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(
       [] GENDIL_HOST_DEVICE (const std::array<Real, 2>&) -> Real
       {
          return 1.0;
@@ -172,7 +172,7 @@ int TestBoundarySIPDG()
 
    auto boundary_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto generic_boundary_operator =

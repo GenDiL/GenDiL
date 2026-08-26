@@ -18,6 +18,8 @@ namespace gendil {
 template < typename Points >
 struct LagrangeShapeFunctions
 {
+   /// Interpolation nodes defining this nodal basis.
+   using points = Points;
    using index_type = Integer;
    using ref_point_type = Point< 1 >;
    using value_type = Real;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/IndexSequenceHelperFunctions/get.hpp"
 
 namespace gendil
 {

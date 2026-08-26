@@ -48,33 +48,32 @@ auto MakeDeviceCOOMatrix()
          6,
          NativeDeviceCOOBackend{} );
 
-   matrix.rows[0] = 0;
-   matrix.cols[0] = 0;
-   matrix.values[0] = 1.0;
+   auto matrix_data = GetHostWriteView( matrix );
+   matrix_data.rows[0] = 0;
+   matrix_data.cols[0] = 0;
+   matrix_data.values[0] = 1.0;
 
-   matrix.rows[1] = 0;
-   matrix.cols[1] = 2;
-   matrix.values[1] = 4.0;
+   matrix_data.rows[1] = 0;
+   matrix_data.cols[1] = 2;
+   matrix_data.values[1] = 4.0;
 
-   matrix.rows[2] = 1;
-   matrix.cols[2] = 0;
-   matrix.values[2] = 1.5;
+   matrix_data.rows[2] = 1;
+   matrix_data.cols[2] = 0;
+   matrix_data.values[2] = 1.5;
 
-   matrix.rows[3] = 1;
-   matrix.cols[3] = 1;
-   matrix.values[3] = -1.0;
+   matrix_data.rows[3] = 1;
+   matrix_data.cols[3] = 1;
+   matrix_data.values[3] = -1.0;
 
-   matrix.rows[4] = 1;
-   matrix.cols[4] = 2;
-   matrix.values[4] = 0.0;
+   matrix_data.rows[4] = 1;
+   matrix_data.cols[4] = 2;
+   matrix_data.values[4] = 0.0;
 
-   matrix.rows[5] = 3;
-   matrix.cols[5] = 1;
-   matrix.values[5] = -2.0;
+   matrix_data.rows[5] = 3;
+   matrix_data.cols[5] = 1;
+   matrix_data.values[5] = -2.0;
 
-   ToDevice( matrix.nnz, matrix.rows );
-   ToDevice( matrix.nnz, matrix.cols );
-   ToDevice( matrix.nnz, matrix.values );
+   Sync( matrix );
 
    return matrix;
 }
@@ -165,7 +164,31 @@ bool TestNativeDeviceCOOAction()
       y_host,
       "COOMatrix::operator()(x, y) with NativeDeviceCOOBackend disagrees with host Apply." ) && success;
 
-   FreeCOOMatrix( matrix );
+   y_host = 3.0;
+   y_device_apply = 3.0;
+   ApplyAdd( HostCOOBackend{}, matrix, x, y_host );
+   ApplyAdd( NativeDeviceCOOBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "NativeDeviceCOOBackend ApplyAdd disagrees with HostCOOBackend ApplyAdd." ) &&
+      success;
+
+   Real * device_values = ReadWriteDevice( matrix.values );
+   DeviceLoop(
+      matrix.nnz,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex i )
+      {
+         device_values[i] *= Real( 2 );
+      } );
+   Apply( HostCOOBackend{}, matrix, x, y_host );
+   Apply( NativeDeviceCOOBackend{}, matrix, x, y_device_apply );
+   success = CheckVectorsNear(
+      y_device_apply,
+      y_host,
+      "COO device-value modification did not synchronize back to host." ) &&
+      success;
+
    return success;
 }
 

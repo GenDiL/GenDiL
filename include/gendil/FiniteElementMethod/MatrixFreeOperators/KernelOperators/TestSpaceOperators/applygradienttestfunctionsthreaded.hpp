@@ -129,29 +129,37 @@ namespace AdjGradHelperFunctions
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors,
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
 {
-   return std::make_tuple( ApplyGradientTestFunctionsAtQPoints( ctx, std::get< I >( quad_data), std::get< I>( u ) )... );
+   return std::make_tuple(
+      ApplyGradientTestFunctionsAtQPoints(
+         ctx,
+         GetVectorComponent<I>(quad_data),
+         std::get<I>(u))...);
 }
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto ApplyGradientTestFunctionsAtQPoints(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
+   static_assert(
+      sizeof...(ScalarMaps) == sizeof...(ScalarDofTensors),
+      "ApplyGradientTestFunctionsAtQPoints requires one input tensor per "
+      "VectorDofToQuad component.");
    return ApplyGradientTestFunctionsAtQPoints( ctx, quad_data, u, std::make_index_sequence< sizeof...( ScalarDofTensors ) >{} );
 }
 
@@ -167,7 +175,8 @@ void ApplyGradientTestFunctionsAtQPoints(
    const InputTensor & u,
    OutputTensor & GTu )
 {
-   constexpr Integer Dim = std::tuple_size_v< ProductOperator >;
+   constexpr Integer Dim =
+      tensor_product_entry_count_v<ProductOperator>;
    constexpr Integer ThreadBlockDim = Min( KernelContext::thread_block_dim, Dim );
 
    constexpr Integer SharedBlockDim = Min( KernelContext::shared_block_max_dim, Dim );
@@ -219,14 +228,19 @@ void ApplyGradientTestFunctionsAtQPoints(
 
          AdjGradHelperFunctions::WriteToShared< quad_shape, ActiveDim >( thread, u, sx, std::tie( slice_index... ) );
 
-         using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-         auto& B = std::get< ActiveDim >( element_quad_data );
+         using Op1D =
+            tensor_product_entry_t<ActiveDim, ProductOperator>;
+         auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
          AdjGradHelperFunctions::AdjointGradContractionShared< quad_shape, c >( thread, sx, GTu, B, std::tie( slice_index... ) );
 
          if constexpr ( c+1 < ThreadBlockDim )
             thread.Synchronize();
       });
+
+      // Ensure all threads finish reading from shared memory before the next
+      // UnitLoop iteration writes a new slice to sx.
+      thread.Synchronize();
    });
 
 // contraction along non-threaded dimensions
@@ -236,8 +250,9 @@ void ApplyGradientTestFunctionsAtQPoints(
       constexpr Integer c = _c;
       constexpr Integer ActiveDim = seq_get_v< c, RegisterDimensions >;
 
-      using Op1D = std::tuple_element_t< ActiveDim, ProductOperator >;
-      auto& B = std::get< ActiveDim >( element_quad_data );
+      using Op1D =
+         tensor_product_entry_t<ActiveDim, ProductOperator>;
+      auto& B = GetTensorProductEntry<ActiveDim>(element_quad_data);
 
       ThreadLoop< tshape >( thread, [&] ( auto... )
       {
@@ -263,7 +278,8 @@ auto ApplyGradientTestFunctionsAtQPoints(
    const ProductOperator & element_quad_data,
    const InputTensor & u )
 {
-   constexpr Integer dim = std::tuple_size_v< ProductOperator >;
+   constexpr Integer dim =
+      tensor_product_entry_count_v<ProductOperator>;
    using quad_shape = make_contraction_output_shape< ProductOperator >;
    using rdims = typename KernelContext::template register_dimensions< dim >;
    using rshape = subsequence_t< quad_shape, rdims >;
@@ -291,7 +307,8 @@ void ApplyGradientTestFunctionsThreaded(
 
    if constexpr ( face_interp )
    {
-      constexpr Integer Rank = std::tuple_size_v< ElementDofToQuad >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ElementDofToQuad>;
       ConstexprLoop<Rank>([&]( auto dim )
       {
          if constexpr ( !Add && dim == 0 )

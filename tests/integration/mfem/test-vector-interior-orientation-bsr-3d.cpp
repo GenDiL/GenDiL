@@ -192,7 +192,7 @@ void FillComponentInput(
          const std::array< GlobalIndex, sizeof...( k ) > indices{
             static_cast< GlobalIndex >( k )... };
          const GlobalIndex fe_index =
-            GlobalDofIndex( fe_space, component, element, indices );
+            GetGlobalDofIndex( fe_space, component, element, indices );
          const GlobalIndex local_index =
             FlattenLocalDof( fe_space, component, indices );
 
@@ -271,7 +271,7 @@ int TestVectorInteriorOrientation( int fp1, int fp2 )
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField< "u" >( vector_fe_space ),
-      MakeIntegrationDomain< "mesh1" >( vector_fe_space ) );
+      MakeIntegrationDomain< "mesh1" >( mesh ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

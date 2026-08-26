@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/integrationdomain.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
@@ -211,7 +211,8 @@ using entry_key_t = typename entry_key<E>::type;
 // - MakeFiniteElementField<Name>(space, dofs) stores a named FE field.
 // - MakeTrialField/MakeTestField register empty FE-field entries used for the
 //   active trial/test space contract.
-// - MakeIntegrationDomain<Name>(space) stores a public topology request that is
+// - MakeIntegrationDomain<Name>(mesh_or_partition) stores a public integration
+//   topology/geometry request that is
 //   normalized later by MakeWeakFormContext.
 
 template<class T>
@@ -273,26 +274,45 @@ constexpr auto MakeTestField(FiniteElementSpace&& fe_space)
 template<StaticString Name, class T>
 constexpr auto MakeIntegrationDomain(T&& x)
 {
-   // Homogeneous finite element spaces are the singleton cell/local-facet case.
-   // Mixed/domain-decomposed finite element spaces provide global face topology
-   // through their Partition face parts.
    auto v = to_view(std::forward<T>(x));
    using V = uncvref_t<decltype(v)>;
 
-   if constexpr (is_mixed_finite_element_space_v<V> ||
-                 is_cell_finite_element_space_v<V>)
+   if constexpr (
+      is_mixed_finite_element_space_v<V> ||
+      is_cell_finite_element_space_v<V>)
    {
-      using Domain = IntegrationDomain<V>;
+      static_assert(
+         dependent_false_v<V>,
+         "MakeIntegrationDomain<Name>: finite-element spaces are field "
+         "bindings; pass the Mesh used by the homogeneous space or the "
+         "Partition used by the MixedFiniteElementSpace.");
+   }
+   else if constexpr (is_partition_v<V>)
+   {
+      using Domain = PartitionIntegrationDomain<V>;
       return Entry<IntegrationDomainKey<Name>, Domain>{
          Domain{ static_cast<V>(v) } };
+   }
+   else if constexpr (mesh::Mesh<V>)
+   {
+      static_assert(
+         mesh::MeshWithCellGeometry<V>,
+         "MakeIntegrationDomain<Name>: mesh integration domains require "
+         "Mesh::cell_type::geometry.");
+
+      if constexpr (mesh::MeshWithCellGeometry<V>)
+      {
+         using Domain = MeshIntegrationDomain<V>;
+         return Entry<IntegrationDomainKey<Name>, Domain>{
+            Domain{ static_cast<V>(v) } };
+      }
    }
    else
    {
       static_assert(
          dependent_false_v<V>,
-         "MakeIntegrationDomain<Name>: expected a homogeneous "
-         "FiniteElementSpace or a MixedFiniteElementSpace built with "
-         "MakeMixedFiniteElementSpace(...).");
+         "MakeIntegrationDomain<Name>: expected a mesh or Partition "
+         "integration topology/geometry object.");
    }
 }
 
@@ -548,41 +568,45 @@ constexpr auto ExpandIntegrationDomainEntry(E&& e)
    // partition-owned face parts.
    using Key = entry_key_t<E>;
    using Integration = uncvref_t<decltype(e.value)>;
-   using Space = uncvref_t<decltype(std::declval<Integration>().space)>;
+   static_assert(
+      is_integration_domain_v<Integration>,
+      "ExpandIntegrationDomainEntry requires a public mesh or partition "
+      "integration domain.");
 
-   using CellDomain = CellIntegrationDomain<Space>;
+   using CellDomain = CellIntegrationDomain<Integration>;
    auto cell_domain = Entry<DomainKey<Key::name>, CellDomain>{
-      CellDomain{ static_cast<Space>(e.value.space) } };
+      CellDomain{ static_cast<Integration>(e.value) } };
 
-   if constexpr (is_mixed_finite_element_space_v<Space>)
+   if constexpr (is_partition_integration_domain_v<Integration>)
    {
-      if constexpr (Space::num_interior_face_parts > 0 &&
-                    Space::num_boundary_face_parts > 0)
+      using Partition = typename Integration::partition_type;
+      if constexpr (Partition::num_interior_face_parts > 0 &&
+                    Partition::num_boundary_face_parts > 0)
       {
-         using InteriorDomain = InteriorFaceIntegrationDomain<Space>;
-         using BoundaryDomain = BoundaryFaceIntegrationDomain<Space>;
+         using InteriorDomain = InteriorFaceIntegrationDomain<Integration>;
+         using BoundaryDomain = BoundaryFaceIntegrationDomain<Integration>;
          return std::tuple{
             cell_domain,
             Entry<InteriorFaceDomainKey<Key::name>, InteriorDomain>{
-               InteriorDomain{ static_cast<Space>(e.value.space) } },
+               InteriorDomain{ static_cast<Integration>(e.value) } },
             Entry<BoundaryFaceDomainKey<Key::name>, BoundaryDomain>{
-               BoundaryDomain{ static_cast<Space>(e.value.space) } } };
+               BoundaryDomain{ static_cast<Integration>(e.value) } } };
       }
-      else if constexpr (Space::num_interior_face_parts > 0)
+      else if constexpr (Partition::num_interior_face_parts > 0)
       {
-         using InteriorDomain = InteriorFaceIntegrationDomain<Space>;
+         using InteriorDomain = InteriorFaceIntegrationDomain<Integration>;
          return std::tuple{
             cell_domain,
             Entry<InteriorFaceDomainKey<Key::name>, InteriorDomain>{
-               InteriorDomain{ static_cast<Space>(e.value.space) } } };
+               InteriorDomain{ static_cast<Integration>(e.value) } } };
       }
-      else if constexpr (Space::num_boundary_face_parts > 0)
+      else if constexpr (Partition::num_boundary_face_parts > 0)
       {
-         using BoundaryDomain = BoundaryFaceIntegrationDomain<Space>;
+         using BoundaryDomain = BoundaryFaceIntegrationDomain<Integration>;
          return std::tuple{
             cell_domain,
             Entry<BoundaryFaceDomainKey<Key::name>, BoundaryDomain>{
-               BoundaryDomain{ static_cast<Space>(e.value.space) } } };
+               BoundaryDomain{ static_cast<Integration>(e.value) } } };
       }
       else
       {

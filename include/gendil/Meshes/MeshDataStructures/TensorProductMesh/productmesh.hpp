@@ -11,6 +11,7 @@
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/NumericalIntegration/integrationrule.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/productcell.hpp"
@@ -60,6 +61,84 @@ namespace details
    GENDIL_HOST_DEVICE
    auto ComputeNeighborIndex( MeshTuple const & meshes, Integer cell_index );
 
+   /**
+    * @brief Builds the product orientation when the neighboring face belongs
+    * to the head mesh factor.
+    *
+    * The head factor contributes @p head_orientation. Every tail mesh factor
+    * contributes a compile-time identity orientation, preserving the product
+    * mesh factorization without constructing a flattened permutation.
+    */
+   template <
+      typename HeadOrientation,
+      typename HeadMesh,
+      typename... TailMeshes >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   auto MakeProductOrientationFromHead(
+      const std::tuple< HeadMesh, TailMeshes... > &,
+      const HeadOrientation & head_orientation )
+   {
+      return MakeTensorProductOrientation(
+         head_orientation,
+         IdentityOrientation<
+            std::remove_cvref_t< TailMeshes >::Dim >{}... );
+   }
+
+   /**
+    * @brief Builds the product orientation from an already expanded tail
+    * product orientation.
+    *
+    * The head factor contributes an identity orientation. The existing tail
+    * components are appended individually so the result retains the product
+    * mesh factorization rather than nesting the tail product.
+    */
+   template < class HeadMesh, class TailOrientation, size_t... I >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   auto MakeProductOrientationFromTailImpl(
+      const TailOrientation & tail_orientation,
+      std::index_sequence< I... > )
+   {
+      return MakeTensorProductOrientation(
+         IdentityOrientation< std::remove_cvref_t< HeadMesh >::Dim >{},
+         tail_orientation.template Get< I >()... );
+   }
+
+   /**
+    * @brief Builds the product orientation when the neighboring face belongs
+    * to a tail mesh factor.
+    *
+    * The head factor contributes an identity orientation and the tail
+    * contributes @p tail_orientation. The head dimension and number of tail
+    * factors are deduced from the complete mesh tuple. When the recursive tail
+    * contains multiple mesh factors, an existing TensorProductOrientation is
+    * expanded into its components to preserve the original mesh factorization.
+    */
+   template <
+      class TailOrientation,
+      class HeadMesh,
+      class... TailMeshes >
+   GENDIL_HOST_DEVICE GENDIL_INLINE
+   auto MakeProductOrientationFromTail(
+      const std::tuple< HeadMesh, TailMeshes... > &,
+      const TailOrientation & tail_orientation )
+   {
+      if constexpr (
+         sizeof...( TailMeshes ) > 1 &&
+         is_tensor_product_orientation_v< TailOrientation > )
+      {
+         return MakeProductOrientationFromTailImpl< HeadMesh >(
+            tail_orientation,
+            std::make_index_sequence<
+               std::remove_cvref_t< TailOrientation >::num_components >{} );
+      }
+      else
+      {
+         return MakeTensorProductOrientation(
+            IdentityOrientation< std::remove_cvref_t< HeadMesh >::Dim >{},
+            tail_orientation );
+      }
+   }
+
    template < Integer sub_face_index, typename MeshTuple >
    GENDIL_HOST_DEVICE
    inline auto GetTailNeighbor( MeshTuple const & tail_meshes, Integer tail_index )
@@ -93,7 +172,6 @@ namespace details
       const Integer tail_index = cell_index / HeadNumCells;
       const Integer head_index = cell_index - tail_index * HeadNumCells;
 
-      Permutation< Dim > orientation = MakeReferencePermutation< Dim >();
       bool boundary;
 
       constexpr Integer Index =
@@ -103,42 +181,58 @@ namespace details
 
       GlobalIndex neighbor_index;
 
-      if constexpr ( Index < HeadDim )
+      auto orientation = [&]
       {
-         // TODO: Use num_faces instead
-         // !FIXME: This is implicitely using CanonicalVector...
-         constexpr Integer sub_index = Index;
-         constexpr Integer sub_face_index = (Sign == -1) ? sub_index : (HeadDim + sub_index); // TODO: This feels magic
-         
-         using face_index = std::integral_constant< Integer, sub_face_index >;
-         auto neighbor = head_mesh.GetLocalFaceInfo( head_index, face_index{} );
+         if constexpr ( Index < HeadDim )
+         {
+            // TODO: Use num_faces instead
+            // !FIXME: This is implicitely using CanonicalVector...
+            constexpr Integer sub_index = Index;
+            constexpr Integer sub_face_index =
+               (Sign == -1) ? sub_index : (HeadDim + sub_index);
 
-         auto head_neighbor_index = neighbor.PlusSide().GetCellIndex();
+            using face_index =
+               std::integral_constant< Integer, sub_face_index >;
+            auto neighbor =
+               head_mesh.GetLocalFaceInfo( head_index, face_index{} );
 
-         neighbor_index = head_neighbor_index + HeadNumCells * tail_index;
-         Set< 0 >( orientation, static_cast< Permutation< HeadDim > >( neighbor.PlusSide().GetOrientation() ) );
-         boundary = neighbor.PlusSide().boundary;
-      }
-      else
-      {
-         // !FIXME: This is implicitely using CanonicalVector...
-         constexpr Integer sub_index = Index - HeadDim;
-         constexpr Integer sub_face_index = (Sign == -1) ? sub_index : (TailDim + sub_index); // TODO: This feels magic
-         
-         // recursion step
-         auto neighbor = GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
+            auto head_neighbor_index =
+               neighbor.PlusSide().GetCellIndex();
 
-         GlobalIndex tail_neighbor_index = neighbor.PlusSide().GetCellIndex();
+            neighbor_index =
+               head_neighbor_index + HeadNumCells * tail_index;
+            boundary = neighbor.PlusSide().boundary;
+            return MakeProductOrientationFromHead(
+               meshes,
+               neighbor.PlusSide().GetOrientation() );
+         }
+         else
+         {
+            // !FIXME: This is implicitely using CanonicalVector...
+            constexpr Integer sub_index = Index - HeadDim;
+            constexpr Integer sub_face_index =
+               (Sign == -1) ? sub_index : (TailDim + sub_index);
 
-         neighbor_index = head_index + HeadNumCells * tail_neighbor_index;
-         Set< HeadDim - 1 >( orientation, static_cast< Permutation< TailDim > >( neighbor.PlusSide().GetOrientation() ) );
-         boundary = neighbor.PlusSide().boundary;
-      }
+            // recursion step
+            auto neighbor =
+               GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
+
+            GlobalIndex tail_neighbor_index =
+               neighbor.PlusSide().GetCellIndex();
+
+            neighbor_index =
+               head_index + HeadNumCells * tail_neighbor_index;
+            boundary = neighbor.PlusSide().boundary;
+            return MakeProductOrientationFromTail(
+               meshes,
+               neighbor.PlusSide().GetOrientation() );
+         }
+      }();
 
       constexpr Integer face_id = FaceIndex;
       using geometry = HyperCube< Dim >;
       using conformity_type = ConformingFaceMap< Dim >;
-      using orientation_type = Permutation< Dim >;
+      using orientation_type = std::remove_cvref_t< decltype( orientation ) >;
       using boundary_type = bool;
       using normal_type = CanonicalVector< Dim, Index, Sign >;
       using face_info_type =
@@ -172,6 +266,19 @@ public:
    static constexpr Integer SubDim = std::tuple_element_t< index, MeshTuple >::Dim;
    static constexpr Integer Dim = product_dim_v< Meshes ... >;
    using cell_type = ProductCell< details::mesh_cell_t< Meshes > ... >;
+
+   /**
+    * @brief Read-only access to the component meshes.
+    *
+    * Mesh-domain compatibility uses this view to establish recursive indexed
+    * topology identity for product meshes. The product mesh continues to own
+    * the component values.
+    */
+   GENDIL_HOST_DEVICE
+   const MeshTuple & GetSubMeshes() const
+   {
+      return SubMeshes;
+   }
 
    CartesianProductMesh( Meshes const & ... meshes ) : 
       SubMeshes{ meshes ... }

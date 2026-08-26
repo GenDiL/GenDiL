@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 using namespace gendil;
@@ -155,7 +156,24 @@ bool ExpectedShapeCompatible(
    const std::array< size_t, Dim > & sizes,
    const Permutation< Dim > & orientation )
 {
-   return OrientedTensorDofShapeIsCompatible( sizes, orientation );
+   std::array< bool, Dim > seen{};
+   for ( Integer native_axis = 0; native_axis < Dim; ++native_axis )
+   {
+      const LocalIndex o = orientation( native_axis );
+      if ( o == 0 )
+      {
+         return false;
+      }
+      const Integer reference_axis = static_cast< Integer >(
+         o > 0 ? o - 1 : -( o + 1 ) );
+      if ( reference_axis >= Dim || seen[ reference_axis ] ||
+           sizes[ native_axis ] != sizes[ reference_axis ] )
+      {
+         return false;
+      }
+      seen[ reference_axis ] = true;
+   }
+   return true;
 }
 
 template < Integer Dim >
@@ -194,7 +212,7 @@ bool RunShapeCompatibilityClassificationCase( const char * case_name )
       const bool expected =
          ExpectedShapeCompatible( sizes, orientation );
       const bool actual =
-         FaceReadDofsOrientationIsShapeCompatible(
+         OrientedTensorDofShapeIsCompatible(
             sizes,
             orientation );
 
@@ -286,7 +304,7 @@ bool RunOrientedGlobalViewCase(
 
    for ( const auto & orientation : orientations )
    {
-      if ( !FaceReadDofsOrientationIsShapeCompatible(
+      if ( !OrientedTensorDofShapeIsCompatible(
               dof_sizes,
               orientation ) )
       {
@@ -436,7 +454,7 @@ bool RunScalarReadDofsPolicyCase(
    bool success = true;
    for ( const auto & orientation : orientations )
    {
-      if ( !FaceReadDofsOrientationIsShapeCompatible(
+      if ( !OrientedTensorDofShapeIsCompatible(
               dof_sizes,
               orientation ) )
       {
@@ -554,11 +572,11 @@ bool RunScalarWriteDofsSupportedCase(
                orientation );
          const Real expected =
             IndexEncodedValue( reference_indices, 0 );
-         const Real actual =
-            FaceReadDofsGlobalValueAt(
-               global_dofs,
-               native_indices,
-               element_index );
+         const Real actual = [&]< size_t... I >(
+            std::index_sequence< I... > )
+         {
+            return global_dofs( native_indices[ I ]..., element_index );
+         }( std::make_index_sequence< dim >{} );
 
          if ( std::abs( expected - actual ) > 1e-12 )
          {
@@ -800,7 +818,7 @@ bool RunUnsupportedOrientationCase(
    for ( const auto & orientation : orientations )
    {
       const bool supported =
-         FaceReadDofsOrientationIsShapeCompatible(
+         OrientedTensorDofShapeIsCompatible(
             dof_sizes,
             orientation );
       if ( supported )
@@ -883,15 +901,13 @@ int main()
    const std::vector< Permutation< 1 > > orientations_1d{
       Permutation< 1 >{ { 1 } },
       Permutation< 1 >{ { -1 } } };
-   const std::vector< Permutation< 2 > > anisotropic_2d_identity{
-      Permutation< 2 >{ { 1, 2 } } };
-   const std::vector< Permutation< 3 > > anisotropic_3d_identity{
-      Permutation< 3 >{ { 1, 2, 3 } } };
-   const std::vector< Permutation< 2 > > anisotropic_2d_flips{
+   const std::vector< Permutation< 2 > > anisotropic_2d_supported{
+      Permutation< 2 >{ { 1, 2 } },
       Permutation< 2 >{ { -1, 2 } },
       Permutation< 2 >{ { 1, -2 } },
       Permutation< 2 >{ { -1, -2 } } };
-   const std::vector< Permutation< 3 > > anisotropic_3d_flips{
+   const std::vector< Permutation< 3 > > anisotropic_3d_supported{
+      Permutation< 3 >{ { 1, 2, 3 } },
       Permutation< 3 >{ { -1, 2, 3 } },
       Permutation< 3 >{ { 1, -2, 3 } },
       Permutation< 3 >{ { 1, 2, -3 } },
@@ -915,6 +931,10 @@ int main()
       Permutation< 3 >{ { 2, 1, 3 } },
       Permutation< 3 >{ { 1, 3, 2 } },
       Permutation< 3 >{ { -3, 2, 1 } } };
+   const std::vector< Permutation< 2 > > invalid_2d_orientations{
+      Permutation< 2 >{ { 0, 2 } },
+      Permutation< 2 >{ { 1, 1 } },
+      Permutation< 2 >{ { 1, 3 } } };
 
    bool success = true;
 
@@ -946,13 +966,13 @@ int main()
       success;
    success =
       RunOrientedGlobalViewCase< Space2D >(
-         "2D anisotropic identity shape (3,4)",
-         anisotropic_2d_identity ) &&
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_supported ) &&
       success;
    success =
       RunOrientedGlobalViewCase< Space3D >(
-         "3D anisotropic identity shape (2,3,4)",
-         anisotropic_3d_identity ) &&
+         "3D anisotropic identity/flips shape (2,3,4)",
+         anisotropic_3d_supported ) &&
       success;
    success =
       RunOrientedGlobalViewCase< Space2DEqual >(
@@ -972,13 +992,13 @@ int main()
       success;
    success =
       RunScalarReadDofsPolicyCase< Space2D >(
-         "2D anisotropic identity shape (3,4)",
-         anisotropic_2d_identity ) &&
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_supported ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space3D >(
-         "3D anisotropic identity shape (2,3,4)",
-         anisotropic_3d_identity ) &&
+         "3D anisotropic identity/flips shape (2,3,4)",
+         anisotropic_3d_supported ) &&
       success;
    success =
       RunScalarReadDofsPolicyCase< Space2DEqual >(
@@ -998,8 +1018,8 @@ int main()
       success;
    success =
       RunScalarWriteDofsSupportedCase< Space2D >(
-         "2D anisotropic identity shape (3,4)",
-         anisotropic_2d_identity ) &&
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_supported ) &&
       success;
    success =
       RunScalarWriteDofsSupportedCase< Space2DEqual >(
@@ -1019,8 +1039,8 @@ int main()
       success;
    success =
       RunScalarWriteDofsPolicyEquivalenceCase< Space2D >(
-         "2D anisotropic identity shape (3,4)",
-         anisotropic_2d_identity ) &&
+         "2D anisotropic identity/flips shape (3,4)",
+         anisotropic_2d_supported ) &&
       success;
    success =
       RunScalarWriteDofsPolicyEquivalenceCase< Space2DEqual >(
@@ -1036,18 +1056,6 @@ int main()
    success =
       RunUnsupportedOrientationCase<
          orders_to_num_dofs< typename Shape2D::orders > >(
-            "2D anisotropic flipped axes shape (3,4)",
-            anisotropic_2d_flips ) &&
-      success;
-   success =
-      RunUnsupportedOrientationCase<
-         orders_to_num_dofs< typename Shape3D::orders > >(
-            "3D anisotropic flipped axes shape (2,3,4)",
-            anisotropic_3d_flips ) &&
-      success;
-   success =
-      RunUnsupportedOrientationCase<
-         orders_to_num_dofs< typename Shape2D::orders > >(
             "2D anisotropic swapped axes shape (3,4)",
             anisotropic_2d_swaps ) &&
       success;
@@ -1056,6 +1064,12 @@ int main()
          orders_to_num_dofs< typename Shape3D::orders > >(
             "3D anisotropic swapped axes shape (2,3,4)",
             anisotropic_3d_swaps ) &&
+      success;
+   success =
+      RunUnsupportedOrientationCase<
+         orders_to_num_dofs< typename Shape2D::orders > >(
+            "2D invalid signed permutations",
+            invalid_2d_orientations ) &&
       success;
 
    return success ? 0 : 1;

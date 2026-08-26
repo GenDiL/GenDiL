@@ -15,30 +15,42 @@ namespace gendil
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors,
    size_t ... I >
 GENDIL_HOST_DEVICE
 auto InterpolateValues(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u,
    std::index_sequence< I... > )
 {
-   return std::make_tuple( InterpolateValues( ctx, std::get< I >( quad_data), std::get< I>( u ) )... );
+   return std::make_tuple(
+      InterpolateValues(
+         ctx,
+         GetVectorComponent<I>(quad_data),
+         std::get<I>(u))...);
 }
 
 template <
    typename KernelContext,
-   typename DofToQuad,
+   typename ... ScalarMaps,
    typename ... ScalarDofTensors >
 GENDIL_HOST_DEVICE
 auto InterpolateValues(
    KernelContext & ctx,
-   const DofToQuad & quad_data,
+   const VectorDofToQuad<ScalarMaps...>& quad_data,
    const std::tuple< ScalarDofTensors ... > & u )
 {
-   return InterpolateValues( ctx, quad_data, u, std::make_index_sequence< sizeof...( ScalarDofTensors ) >{} );
+   static_assert(
+      sizeof...(ScalarMaps) == sizeof...(ScalarDofTensors),
+      "InterpolateValues requires one input DoF tensor per "
+      "VectorDofToQuad component.");
+   return InterpolateValues(
+      ctx,
+      quad_data,
+      u,
+      std::make_index_sequence<sizeof...(ScalarDofTensors)>{});
 }
 
 /**
@@ -46,22 +58,23 @@ auto InterpolateValues(
  * from the given degrees-of-freedom.
  * 
  * @tparam KernelContext The kernel context.
- * @tparam ElementDofToQuad A tuple of cached 1D basis at quadrature points.
+ * @tparam ElementDofToQuad Tensor-product basis data at quadrature points.
  * @tparam DofTensor The input degrees-of-freedom tensor.
  * @param ctx The kernel context.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param u The input degrees-of-freedom.
  * 
  * @note Assumes tensor finite element with tensor integration rule.
  */
 template <
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... Entries,
    typename DofTensor >
 GENDIL_HOST_DEVICE
-auto InterpolateValues( KernelContext & ctx,
-                        const ElementDofToQuad & element_quad_data,
-                        const DofTensor & u )
+auto InterpolateValues(
+   KernelContext & ctx,
+   const TensorProductData<Entries...>& element_quad_data,
+   const DofTensor & u )
 {
    if constexpr ( !is_threaded_v< KernelContext > )
    {

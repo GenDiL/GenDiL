@@ -113,7 +113,8 @@ template <
 GENDIL_HOST_DEVICE
 auto MakeQuadraturePointValuesContainer(
    const KernelContext & kernel_conf,
-   const std::tuple<DofToQuads...> & element_quad_data )
+   const TensorProductData<DofToQuads...>&
+      element_quad_data )
 {
    using quad_shape = std::index_sequence< DofToQuads::num_quads... >;
    static constexpr Integer Dim = sizeof...( DofToQuads );
@@ -260,7 +261,7 @@ auto MakeQuadraturePointContainerForSpace(
    constexpr size_t Dim = static_cast<size_t>(IR::space_dim);
    (void)test_space;
 
-   if constexpr (NumComp == 1)
+   if constexpr (!is_vector_finite_element_space_v<TestSpace>)
    {
       using ValuesC = std::conditional_t<
          NeedValues,

@@ -5,18 +5,15 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
+#include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
-#include <type_traits>
+#include <utility>
 
-namespace gendil {
+namespace gendil
+{
 
 /**
- * Intermediate raw duplicated unsorted COO triplet assembly stream.
- *
- * Entries are additive contributions in assembly order. Duplicate `(row, col)`
- * pairs are allowed and expected, and no sorting or duplicate reduction is
- * performed by this buffer.
+ * Move-only owner of a raw duplicated, unsorted COO triplet stream.
  */
 template <
    typename ValueType = Real,
@@ -30,15 +27,47 @@ struct RawCOOTripletBuffer
    IndexType num_cols = 0;
    IndexType nnz_raw = 0;
 
-   HostDevicePointer< IndexType > rows;
-   HostDevicePointer< IndexType > cols;
-   HostDevicePointer< ValueType > values;
+   SyncHostDeviceArray< IndexType, IndexType > rows{};
+   SyncHostDeviceArray< IndexType, IndexType > cols{};
+   SyncHostDeviceArray< ValueType, IndexType > values{};
+
+   RawCOOTripletBuffer() = default;
+   RawCOOTripletBuffer( const RawCOOTripletBuffer & ) = delete;
+   RawCOOTripletBuffer & operator=( const RawCOOTripletBuffer & ) = delete;
+
+   RawCOOTripletBuffer( RawCOOTripletBuffer && other ) noexcept
+   : num_rows( std::exchange( other.num_rows, IndexType( 0 ) ) ),
+     num_cols( std::exchange( other.num_cols, IndexType( 0 ) ) ),
+     nnz_raw( std::exchange( other.nnz_raw, IndexType( 0 ) ) ),
+     rows( std::move( other.rows ) ),
+     cols( std::move( other.cols ) ),
+     values( std::move( other.values ) )
+   { }
+
+   RawCOOTripletBuffer & operator=( RawCOOTripletBuffer && other ) noexcept
+   {
+      if ( this != &other )
+      {
+         num_rows = std::exchange( other.num_rows, IndexType( 0 ) );
+         num_cols = std::exchange( other.num_cols, IndexType( 0 ) );
+         nnz_raw = std::exchange( other.nnz_raw, IndexType( 0 ) );
+         rows = std::move( other.rows );
+         cols = std::move( other.cols );
+         values = std::move( other.values );
+      }
+      return *this;
+   }
+
+   ~RawCOOTripletBuffer() = default;
 };
+
+namespace details
+{
 
 template <
    typename ValueType = Real,
    typename IndexType = GlobalIndex >
-auto MakeRawCOOTripletBuffer(
+auto AllocateRawCOOTripletBuffer(
    const IndexType num_rows,
    const IndexType num_cols,
    const IndexType nnz_raw )
@@ -47,61 +76,44 @@ auto MakeRawCOOTripletBuffer(
    buffer.num_rows = num_rows;
    buffer.num_cols = num_cols;
    buffer.nnz_raw = nnz_raw;
-
-   AllocateHostPointer( nnz_raw, buffer.rows );
-   AllocateDevicePointer( nnz_raw, buffer.rows );
-   AllocateHostPointer( nnz_raw, buffer.cols );
-   AllocateDevicePointer( nnz_raw, buffer.cols );
-   AllocateHostPointer( nnz_raw, buffer.values );
-   AllocateDevicePointer( nnz_raw, buffer.values );
-
-   for ( IndexType i = 0; i < nnz_raw; ++i )
-   {
-      buffer.rows[i] = IndexType( 0 );
-      buffer.cols[i] = IndexType( 0 );
-      buffer.values[i] = ValueType( 0 );
-   }
-
-   ToDevice( static_cast< GlobalIndex >( nnz_raw ), buffer.rows );
-   ToDevice( static_cast< GlobalIndex >( nnz_raw ), buffer.cols );
-   ToDevice( static_cast< GlobalIndex >( nnz_raw ), buffer.values );
+   buffer.rows = MakeSyncHostDeviceArray< IndexType >( nnz_raw );
+   buffer.cols = MakeSyncHostDeviceArray< IndexType >( nnz_raw );
+   buffer.values = MakeSyncHostDeviceArray< ValueType >( nnz_raw );
 
    return buffer;
 }
 
-template < typename KernelPolicy, typename Buffer >
-void SyncRawCOOTripletBuffer( Buffer & buffer )
-{
-#if defined(GENDIL_USE_DEVICE)
-   using Policy = std::remove_cvref_t< KernelPolicy >;
+} // namespace details
 
-   if constexpr ( Policy::is_host_configuration )
-   {
-      ToDevice( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.rows );
-      ToDevice( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.cols );
-      ToDevice( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.values );
-   }
-   else
-   {
-      GENDIL_DEVICE_SYNC;
-      ToHost( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.rows );
-      ToHost( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.cols );
-      ToHost( static_cast< GlobalIndex >( buffer.nnz_raw ), buffer.values );
-   }
-#else
-   (void) buffer;
-#endif
-}
-
-template < typename Buffer >
-void FreeRawCOOTripletBuffer( Buffer & buffer )
+/**
+ * Allocate a host-initialized raw triplet buffer.
+ *
+ * The device allocations remain invalid until a device view is requested.
+ */
+template <
+   typename ValueType = Real,
+   typename IndexType = GlobalIndex >
+auto MakeRawCOOTripletBuffer(
+   const IndexType num_rows,
+   const IndexType num_cols,
+   const IndexType nnz_raw )
 {
-   FreeHostPointer( buffer.rows );
-   FreeDevicePointer( buffer.rows );
-   FreeHostPointer( buffer.cols );
-   FreeDevicePointer( buffer.cols );
-   FreeHostPointer( buffer.values );
-   FreeDevicePointer( buffer.values );
+   auto buffer =
+      details::AllocateRawCOOTripletBuffer< ValueType, IndexType >(
+         num_rows,
+         num_cols,
+         nnz_raw );
+
+   auto * rows = WriteHost( buffer.rows );
+   auto * cols = WriteHost( buffer.cols );
+   auto * values = WriteHost( buffer.values );
+   for ( IndexType i = 0; i < nnz_raw; ++i )
+   {
+      rows[i] = IndexType( 0 );
+      cols[i] = IndexType( 0 );
+      values[i] = ValueType( 0 );
+   }
+   return buffer;
 }
 
 } // namespace gendil

@@ -37,18 +37,18 @@ int main()
    TestSpace<"vv", FieldShape::Vector> vv;             // Vector test space
 
    // Shape-compatible seeds
-   auto c = MakeCoefficient<"c", PhysicalCoordinate>(
+   auto c = MakeCoefficient<"c", PhysicalCoordinates>(
       [](const auto&) { return Real{1.0}; });
 
-   auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(
+   auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(
       [](const auto&) { return Real{2.0}; });
 
-   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(
+   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(
       [](const auto&) {
          return std::array<Real, 3>{Real{1.0}, Real{0.0}, Real{0.0}};
       });
 
-   auto A = MakeMatrixCoefficient<"A", PhysicalCoordinate>(
+   auto A = MakeMatrixCoefficient<"A", PhysicalCoordinates>(
       [](const auto&) {
          std::array<std::array<Real, 3>, 3> result = {};
          result[0][0] = Real{1.0};
@@ -581,7 +581,7 @@ int main()
    // Test 21: Vector value channel merge
    {
       // Create another scalar coefficient for this test
-      auto nu = MakeCoefficient<"nu", PhysicalCoordinate>(
+      auto nu = MakeCoefficient<"nu", PhysicalCoordinates>(
          [](const auto&) { return Real{3.0}; });
 
       auto expr = (mu * vv) + (nu * vv);

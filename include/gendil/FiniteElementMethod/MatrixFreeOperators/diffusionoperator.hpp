@@ -382,9 +382,11 @@ void DiffusionExplicitOperator(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          DiffusionElementOperator(
             kernel_conf,
@@ -464,8 +466,9 @@ public:
                output & dofs_out ) const
    {
       static_assert(
-         std::is_same_v< typename FiniteElementSpace::restriction_type, L2Restriction >,
-         "DiffusionOperator::operator() only supports L2Restriction" );
+         ElementwiseIndependentRestriction<
+            typename FiniteElementSpace::restriction_type >,
+         "DiffusionOperator::operator() requires an elementwise-independent broken-space restriction" );
       DiffusionExplicitOperator< KernelPolicy, typename base::integration_rule, typename base::face_integration_rules >
          ( this->finite_element_space,
            this->mesh_quad_data,

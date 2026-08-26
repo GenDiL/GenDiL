@@ -17,8 +17,8 @@ namespace gendil {
  * 
  * @tparam FiniteElementSpace The finite element space.
  * @tparam IntegrationRule The integration rule.
- * @tparam ElementDofToQuad A tuple of DofToQuad types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @tparam ElementDofToQuad TensorProductDofToQuad data.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param u The input degrees-of-freedom.
  * @param Bu The output field values at quadrature points.
  * @param Gu The ouput field gradient values at quadrature points.
@@ -36,7 +36,7 @@ void InterpolateValuesAndGradients(
    Bu.data = details::InterpolateValuesImpl<0>( element_quad_data, u );
    ConstexprLoop< Rank >( [&] ( auto ActiveDim )
    {
-      auto & B1d = std::get< ActiveDim >( element_quad_data );
+      auto & B1d = GetTensorProductEntry<ActiveDim>(element_quad_data);
       using Op1D = std::decay_t< decltype( B1d ) >;
       if constexpr ( Op1D::num_quads >= Op1D::num_dofs)
       {
@@ -66,7 +66,8 @@ void InterpolateValuesAndGradients(
    constexpr bool face_interp = is_face_interpolation_v< ProductOperator >;
    if constexpr ( face_interp )
    {
-      constexpr Integer Rank = std::tuple_size_v< ElementQuadToQuad >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ElementQuadToQuad>;
       ConstexprLoop< Rank >( [&] ( auto ActiveDim )
       {
          details::InterpolateGradientSumFactSerial< ActiveDim >( u, element_quad_data, Gu );
@@ -74,10 +75,11 @@ void InterpolateValuesAndGradients(
    }
    else
    {
-      constexpr Integer Rank = std::tuple_size_v< ElementQuadToQuad >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ElementQuadToQuad>;
       ConstexprLoop< Rank >( [&] ( auto ActiveDim )
       {
-         auto & B1d = std::get< ActiveDim >( element_quad_data );
+         auto & B1d = GetTensorProductEntry<ActiveDim>(element_quad_data);
          details::GradContractionAtQPoints< ActiveDim >( Bu, Gu, B1d );
       } );
    }

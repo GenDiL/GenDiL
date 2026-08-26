@@ -5,6 +5,8 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/identityorientation.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
@@ -20,6 +22,7 @@ template < int D1D >
 struct QuadCell
 {
    static constexpr Integer Dim = 2;
+   using geometry = HyperCube< Dim >;
 
    Real nodes[ D1D ][ D1D ][ Dim ];
 
@@ -28,16 +31,17 @@ struct QuadCell
    using jacobian = std::array< std::array< Real, Dim >, Dim >;
 
    template < typename IntRule >
-   using QuadData =  std::tuple<
-                        CachedDofToQuad<
-                           std::tuple_element_t<0, basis>,
-                           std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >
-                        >,
-                        CachedDofToQuad<
-                           std::tuple_element_t<1, basis>,
-                           std::tuple_element_t<1, typename IntRule::points::points_1d_tuple >
-                        >
-                     >;
+   using QuadData = TensorProductData<
+      CachedDofToQuad<
+         std::tuple_element_t<0, basis>,
+         std::tuple_element_t<
+            0,
+            typename IntRule::points::points_1d_tuple>>,
+      CachedDofToQuad<
+         std::tuple_element_t<1, basis>,
+         std::tuple_element_t<
+            1,
+            typename IntRule::points::points_1d_tuple>>>;
 
    GENDIL_HOST_DEVICE
    QuadCell( const StridedView<2, const Real> & mesh_nodes,
@@ -85,12 +89,12 @@ struct QuadCell
       }
       for (LocalIndex dy = 0; dy < D1D; ++dy)
       {
-         const Real by = std::get<1>(basis).values(qy,dy);
-         const Real gy = std::get<1>(basis).gradients(qy,dy);
+         const Real by = GetTensorProductEntry<1>(basis).values(qy,dy);
+         const Real gy = GetTensorProductEntry<1>(basis).gradients(qy,dy);
          for (LocalIndex dx = 0; dx < D1D; ++dx)
          {
-            const Real bx = std::get<0>(basis).values(qx,dx);
-            const Real gx = std::get<0>(basis).gradients(qx,dx);
+            const Real bx = GetTensorProductEntry<0>(basis).values(qx,dx);
+            const Real gx = GetTensorProductEntry<0>(basis).gradients(qx,dx);
             Real x[2] = { nodes[ dx ][ dy ][ 0 ],
                            nodes[ dx ][ dy ][ 1 ] };
             const Real b = bx * by;
@@ -136,6 +140,9 @@ template <int D1D>
 GENDIL_HOST_DEVICE
 void ApplyOrientationToCell(const Permutation<2>& orientation, QuadCell<D1D>& cell)
 {
+   GENDIL_ASSERT(
+      IsValidSignedPermutation( orientation ),
+      "QuadCell orientation must be a signed permutation." );
    constexpr Integer v_dim = 2;
    constexpr size_t data_size = D1D * D1D;
 
@@ -176,5 +183,12 @@ void ApplyOrientationToCell(const Permutation<2>& orientation, QuadCell<D1D>& ce
       }
    });
 }
+
+template <int D1D>
+GENDIL_HOST_DEVICE
+void ApplyOrientationToCell(
+   const IdentityOrientation<2>&,
+   QuadCell<D1D>&)
+{}
 
 }

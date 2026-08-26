@@ -901,7 +901,7 @@ bool TestMFEMGlobalPartition2D()
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{ fe },
-         std::tuple{ L2Restriction{ 0 } } );
+         std::tuple{ ContiguousL2RestrictionSpecification{ 0 } } );
 
    bool ok = true;
    ok = Check( partition.GetNumberOfCellParts() == 1,
@@ -957,7 +957,7 @@ bool TestMFEMGlobalPartition1D()
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{ fe },
-         std::tuple{ L2Restriction{ 0 } } );
+         std::tuple{ ContiguousL2RestrictionSpecification{ 0 } } );
 
    bool ok = true;
    ok = Check( partition.GetNumberOfCellParts() == 1,
@@ -1016,7 +1016,7 @@ bool TestMFEMGlobalPartition3D()
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{ fe },
-         std::tuple{ L2Restriction{ 0 } } );
+         std::tuple{ ContiguousL2RestrictionSpecification{ 0 } } );
 
    bool ok = true;
    ok = Check( partition.GetNumberOfCellParts() == 1,
@@ -1073,12 +1073,12 @@ bool TestSpecializedAdvectionCompileSpike()
    Cartesian2DMesh coarse_mesh( 1.0, 1.0, 1, 1, Point< 2 >{ 0.0, 0.0 } );
    Cartesian2DMesh fine_mesh( 1.0, 0.5, 1, 2, Point< 2 >{ 1.0, 0.0 } );
    auto fe = MakeLobattoFiniteElement( FiniteElementOrders< p, p >{} );
-   L2Restriction coarse_restriction{ 0 };
+   ContiguousL2RestrictionSpecification coarse_restriction{ 0 };
    auto coarse_fes = MakeFiniteElementSpace( coarse_mesh, fe, coarse_restriction );
-   const Integer coarse_dofs = coarse_fes.GetNumberOfFiniteElementDofs();
-   L2Restriction fine_restriction{ coarse_dofs };
+   const Integer coarse_dofs = GetNumberOfGlobalDofs( coarse_fes );
+   ContiguousL2RestrictionSpecification fine_restriction{ coarse_dofs };
    auto fine_fes = MakeFiniteElementSpace( fine_mesh, fe, fine_restriction );
-   const Integer fine_dofs = fine_fes.GetNumberOfFiniteElementDofs();
+   const Integer fine_dofs = GetNumberOfGlobalDofs( fine_fes );
 
    auto int_rule = MakeIntegrationRule( IntegrationRuleNumPoints< q1d, q1d >{} );
    auto velocity = [] GENDIL_HOST_DEVICE (

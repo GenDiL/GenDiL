@@ -7,7 +7,7 @@
 #ifdef GENDIL_USE_MFEM
 
 #include <mfem.hpp>
-#include "gendil/FiniteElementMethod/Restrictions/restriction.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/indirecth1restriction.hpp"
 #include "gendil/Utilities/MemoryManagement/garbagecollector.hpp"
 
 namespace gendil {
@@ -61,16 +61,18 @@ inline auto GetRestrictionIndices( mfem::Mesh & mesh )
 }
 
 /**
- * @brief Get an H1Restriction from an mfem::FiniteElementSpace
+ * @brief Get an IndirectH1RestrictionSpecification from an mfem::FiniteElementSpace
  * 
  * @param finite_element_space The MFEM finite element space.
- * @return const H1Restriction The H1 restriction.alignas
+ * @return const IndirectH1RestrictionSpecification The H1 restriction.alignas
  * 
- * @note This will return an H1Restriction even if the MFEM finite element space is a DG space.
+ * @note This will return an IndirectH1RestrictionSpecification even if the MFEM finite element space is a DG space.
  */
-inline const H1Restriction GetH1Restriction( const mfem::FiniteElementSpace & finite_element_space )
+inline IndirectH1RestrictionSpecification
+GetIndirectH1RestrictionSpecification(
+   const mfem::FiniteElementSpace & finite_element_space )
 {
-   return H1Restriction{ GetRestrictionIndices( finite_element_space ), (Integer)finite_element_space.GetNDofs() };
+   return IndirectH1RestrictionSpecification{ GetRestrictionIndices( finite_element_space ), (Integer)finite_element_space.GetNDofs() };
 }
 
 }

@@ -527,7 +527,7 @@ Real ElementValueP2(
       {
          const std::array< GlobalIndex, 2 > dof{i, j};
          const auto flat = FlattenLocalDof( fe_space, dof );
-         const auto gdof = GlobalDofIndex( fe_space, element, flat );
+         const auto gdof = GetGlobalDofIndex( fe_space, element, flat );
          value += x[ gdof ] * LobattoP2BasisValue( dof, p );
       }
    }
@@ -549,7 +549,7 @@ void AddElementResidualP2(
       {
          const std::array< GlobalIndex, 2 > dof{i, j};
          const auto flat = FlattenLocalDof( fe_space, dof );
-         const auto gdof = GlobalDofIndex( fe_space, element, flat );
+         const auto gdof = GetGlobalDofIndex( fe_space, element, flat );
          data[ gdof ] += scale * LobattoP2BasisValue( dof, p );
       }
    }
@@ -809,7 +809,7 @@ void FillNonsymmetricDofs( const auto & fe_space, Vector & x )
          {
             const std::array< GlobalIndex, 2 > dof{i, j};
             const auto gdof =
-               GlobalDofIndex( fe_space, element, FlattenLocalDof( fe_space, dof ) );
+               GetGlobalDofIndex( fe_space, element, FlattenLocalDof( fe_space, dof ) );
             data[ gdof ] =
                Real(0.37) + Real(1.9) * element + Real(0.23) * i +
                Real(0.41) * j + Real(0.07) * i * j;
@@ -1099,7 +1099,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto form = integrate( InteriorFacets<"mesh">{}, jump( u ) * jump( v ) );
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">( global_space ),
-      MakeIntegrationDomain<"mesh">( global_space ) );
+      MakeIntegrationDomain<"mesh">( partition ) );
    constexpr Integer num_quad_1d = 5;
    auto ir =
       MakeIntegrationRule(
@@ -1171,7 +1171,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       MakeMixedFiniteElementSpace(
          conforming_partition,
          std::tuple{ fe },
-         std::tuple{ L2Restriction{ 0 } } );
+         std::tuple{ ContiguousL2RestrictionSpecification{ 0 } } );
 
    ok = Check(
       local_space.GetNumberOfFiniteElementDofs() ==
@@ -1192,7 +1192,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
          return Real(1.0);
       };
    auto mu =
-      MakeCoefficient<"diffusivity", PhysicalCoordinate>( diffusivity );
+      MakeCoefficient<"diffusivity", PhysicalCoordinates>( diffusivity );
    auto tau =
       MakeCoefficient<"penalty", InverseFacetSize>(
          [=] GENDIL_HOST_DEVICE ( const Real & h_inv ) -> Real
@@ -1217,11 +1217,11 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto local_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">( local_space ),
-         MakeIntegrationDomain<"mesh">( local_space ) );
+         MakeIntegrationDomain<"mesh">( local_mesh ) );
    auto global_ctx =
       MakeWeakFormContext(
          MakeTrialField<"u">( global_space ),
-         MakeIntegrationDomain<"mesh">( global_space ) );
+         MakeIntegrationDomain<"mesh">( conforming_partition ) );
    auto ir =
       MakeIntegrationRule(
          IntegrationRuleNumPoints< num_quad_1d, num_quad_1d >{} );
@@ -1383,7 +1383,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto form = integrate( BoundaryFacets<"mesh">{}, u * v );
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">( global_space ),
-      MakeIntegrationDomain<"mesh">( global_space ) );
+      MakeIntegrationDomain<"mesh">( partition ) );
    constexpr Integer num_quad_1d = 5;
    auto ir =
       MakeIntegrationRule(
@@ -1404,7 +1404,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       for ( GlobalIndex j = 0; j < 3; ++j )
       {
          const std::array< GlobalIndex, 2 > dof{i, j};
-         x2_data[ GlobalDofIndex(
+         x2_data[ GetGlobalDofIndex(
             fe_space,
             0,
             FlattenLocalDof( fe_space, dof ) ) ] += Real(42.0);
@@ -1429,7 +1429,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
       {
          const std::array< GlobalIndex, 2 > dof{i, j};
          ok = CheckNear(
-                 y1[ GlobalDofIndex(
+                 y1[ GetGlobalDofIndex(
                     fe_space,
                     0,
                     FlattenLocalDof( fe_space, dof ) ) ],

@@ -133,8 +133,8 @@ void FaceReadSpeedOfLightElementOperator(
    KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
 
@@ -158,8 +158,8 @@ void FaceWriteSpeedOfLightElementOperator(
    KernelContext & kernel_conf,
    const FiniteElementSpace & fe_space,
    const GlobalIndex element_index,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    // Read the current element DOFs
    auto u = ReadDofs( kernel_conf, fe_space, element_index, dofs_in );
@@ -186,8 +186,8 @@ void ReadWriteSpeedOfLightFaceOperator(
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
    const GlobalIndex face_index,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    const auto face_info = face_mesh.GetGlobalFaceInfo( face_index );
    
@@ -219,8 +219,8 @@ template <
 void FaceSpeedOfLightExplicitFaceOperator(
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_mesh,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    mesh::GlobalFaceIterator<KernelConfiguration>(
       face_mesh,
@@ -230,16 +230,11 @@ void FaceSpeedOfLightExplicitFaceOperator(
             global_face_speed_of_light_required_shared_memory_v<
                KernelConfiguration,
                FiniteElementSpace >;
-         constexpr size_t shared_memory_block_size =
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size;
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          ReadWriteSpeedOfLightFaceOperator(
             kernel_conf,
@@ -268,8 +263,8 @@ template <
    typename FiniteElementSpace >
 void FaceSpeedOfLightExplicitOperator(
    const FiniteElementSpace & fe_space,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    if constexpr ( KernelType == FaceSoLType::ReadCell )
    {
@@ -284,16 +279,11 @@ void FaceSpeedOfLightExplicitOperator(
                KernelType,
                KernelConfiguration,
                FiniteElementSpace >;
-         constexpr size_t shared_memory_block_size =
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size;
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          FaceReadSpeedOfLightElementOperator(
             kernel_conf,
@@ -312,9 +302,11 @@ void FaceSpeedOfLightExplicitOperator(
       [=] GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
       {
          constexpr size_t required_shared_mem = FiniteElementSpace::finite_element_type::GetNumDofs();
-         GENDIL_SHARED Real _shared_mem[ required_shared_mem ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem > kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          FaceWriteSpeedOfLightElementOperator(
             kernel_conf,
@@ -344,8 +336,8 @@ template <
 void GlobalFaceSpeedOfLightExplicitOperator(
    const FiniteElementSpace & fe_space,
    const FaceMesh & face_meshes,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out )
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out )
 {
    mesh::ForEachFaceMesh(
       face_meshes,
@@ -379,8 +371,8 @@ class FaceSpeedOfLightOperator
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
 public:
    /**
@@ -454,8 +446,8 @@ class GlobalFaceSpeedOfLightOperator
 {
    using base = MatrixFreeBilinearFiniteElementOperator< FiniteElementSpace, IntegrationRule >;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
    const FaceMeshes & face_meshes;
 

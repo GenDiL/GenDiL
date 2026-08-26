@@ -4,8 +4,9 @@
 
 #pragma once
 
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/vectoraccess.hpp"
 #include "gendil/Interfaces/Hypre/hypreerror.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 
 #include <type_traits>
 
@@ -97,18 +98,21 @@ private:
    }
 };
 
+template < HostAccessibleVector VectorType >
 inline HypreParVectorView MakeHostHypreParVectorView(
-   const Vector & vector,
+   const VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {
    GENDIL_VERIFY(
-      vector.Size() == static_cast< size_t >( expected_size ),
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
       "MakeHypreParVectorView received a vector with the wrong size." );
 
-   if constexpr ( std::is_same_v< Real, HYPRE_Complex > )
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( ReadHostVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
    {
-      const Real * data = vector.ReadHostData();
+      const auto * data = ReadHostVector( vector );
       // Hypre's ParVector C API is non-const even for routines that treat the
       // vector as input. This view is semantically read-only; passing it to a
       // mutating Hypre routine is unsupported.
@@ -120,25 +124,28 @@ inline HypreParVectorView MakeHostHypreParVectorView(
    }
    else
    {
-      GENDIL_VERIFY(
-         false,
-         "HypreParVectorView requires GenDiL Vector storage to be exactly HYPRE_Complex." );
-      return {};
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
    }
 }
 
+template < HostAccessibleVector VectorType >
 inline HypreParVectorView MakeHostHypreParVectorView(
-   Vector & vector,
+   VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {
    GENDIL_VERIFY(
-      vector.Size() == static_cast< size_t >( expected_size ),
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
       "MakeHypreParVectorView received a vector with the wrong size." );
 
-   if constexpr ( std::is_same_v< Real, HYPRE_Complex > )
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( ReadWriteHostVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
    {
-      Real * data = vector.ReadWriteHostData();
+      auto * data = ReadWriteHostVector( vector );
       return HypreParVectorView(
          data,
          expected_size,
@@ -147,26 +154,58 @@ inline HypreParVectorView MakeHostHypreParVectorView(
    }
    else
    {
-      GENDIL_VERIFY(
-         false,
-         "HypreParVectorView requires GenDiL Vector storage to be exactly HYPRE_Complex." );
-      return {};
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
    }
 }
 
-inline HypreParVectorView MakeDeviceHypreParVectorView(
-   const Vector & vector,
+template < HostAccessibleVector VectorType >
+inline HypreParVectorView MakeHostHypreParVectorWriteView(
+   VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {
    GENDIL_VERIFY(
-      vector.Size() == static_cast< size_t >( expected_size ),
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
+      "MakeHypreParVectorView received a vector with the wrong size." );
+
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( WriteHostVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
+   {
+      return HypreParVectorView(
+         WriteHostVector( vector ),
+         expected_size,
+         comm,
+         HYPRE_MEMORY_HOST );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
+   }
+}
+
+template < DeviceAccessibleVector VectorType >
+inline HypreParVectorView MakeDeviceHypreParVectorView(
+   const VectorType & vector,
+   const HYPRE_Int expected_size,
+   MPI_Comm comm = hypre_MPI_COMM_SELF )
+{
+   GENDIL_VERIFY(
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
       "MakeHypreParVectorView received a vector with the wrong size." );
 
 #ifdef GENDIL_USE_HYPRE_DEVICE
-   if constexpr ( std::is_same_v< Real, HYPRE_Complex > )
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( ReadDeviceVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
    {
-      const Real * data = vector.ReadDeviceData();
+      const auto * data = ReadDeviceVector( vector );
       // Hypre's ParVector C API is non-const even for routines that treat the
       // vector as input. This view is semantically read-only; passing it to a
       // mutating Hypre routine is unsupported.
@@ -178,12 +217,13 @@ inline HypreParVectorView MakeDeviceHypreParVectorView(
    }
    else
    {
-      GENDIL_VERIFY(
-         false,
-         "HypreParVectorView requires GenDiL Vector storage to be exactly HYPRE_Complex." );
-      return {};
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
    }
 #else
+   (void) vector;
    (void) comm;
    GENDIL_VERIFY(
       false,
@@ -192,19 +232,22 @@ inline HypreParVectorView MakeDeviceHypreParVectorView(
 #endif
 }
 
+template < DeviceAccessibleVector VectorType >
 inline HypreParVectorView MakeDeviceHypreParVectorView(
-   Vector & vector,
+   VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {
    GENDIL_VERIFY(
-      vector.Size() == static_cast< size_t >( expected_size ),
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
       "MakeHypreParVectorView received a vector with the wrong size." );
 
 #ifdef GENDIL_USE_HYPRE_DEVICE
-   if constexpr ( std::is_same_v< Real, HYPRE_Complex > )
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( ReadWriteDeviceVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
    {
-      Real * data = vector.ReadWriteDeviceData();
+      auto * data = ReadWriteDeviceVector( vector );
       return HypreParVectorView(
          data,
          expected_size,
@@ -213,12 +256,13 @@ inline HypreParVectorView MakeDeviceHypreParVectorView(
    }
    else
    {
-      GENDIL_VERIFY(
-         false,
-         "HypreParVectorView requires GenDiL Vector storage to be exactly HYPRE_Complex." );
-      return {};
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
    }
 #else
+   (void) vector;
    (void) comm;
    GENDIL_VERIFY(
       false,
@@ -227,10 +271,48 @@ inline HypreParVectorView MakeDeviceHypreParVectorView(
 #endif
 }
 
-template < typename MatrixBackend >
+template < DeviceAccessibleVector VectorType >
+inline HypreParVectorView MakeDeviceHypreParVectorWriteView(
+   VectorType & vector,
+   const HYPRE_Int expected_size,
+   MPI_Comm comm = hypre_MPI_COMM_SELF )
+{
+   GENDIL_VERIFY(
+      GetVectorSize( vector ) == static_cast< size_t >( expected_size ),
+      "MakeHypreParVectorView received a vector with the wrong size." );
+
+#ifdef GENDIL_USE_HYPRE_DEVICE
+   using ValueType = std::remove_cv_t<
+      std::remove_pointer_t< decltype( WriteDeviceVector( vector ) ) > >;
+   if constexpr ( std::is_same_v< ValueType, HYPRE_Complex > )
+   {
+      return HypreParVectorView(
+         WriteDeviceVector( vector ),
+         expected_size,
+         comm,
+         HYPRE_MEMORY_DEVICE );
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v< ValueType >,
+         "HypreParVectorView requires vector storage element type to be "
+         "exactly HYPRE_Complex." );
+   }
+#else
+   (void) vector;
+   (void) comm;
+   GENDIL_VERIFY(
+      false,
+      "DeviceMatVecBackend HypreParVectorView requires GENDIL_USE_HYPRE_DEVICE. Configure GenDiL with CUDA/HIP and a matching device-enabled Hypre." );
+   return {};
+#endif
+}
+
+template < typename MatrixBackend, typename VectorType >
 inline HypreParVectorView MakeHypreParVectorView(
-   const MatrixBackend & backend,
-   const Vector & vector,
+   const MatrixBackend &,
+   const VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {
@@ -244,10 +326,10 @@ inline HypreParVectorView MakeHypreParVectorView(
    }
 }
 
-template < typename MatrixBackend >
+template < typename MatrixBackend, typename VectorType >
 inline HypreParVectorView MakeHypreParVectorView(
-   const MatrixBackend & backend,
-   Vector & vector,
+   const MatrixBackend &,
+   VectorType & vector,
    const HYPRE_Int expected_size,
    MPI_Comm comm = hypre_MPI_COMM_SELF )
 {

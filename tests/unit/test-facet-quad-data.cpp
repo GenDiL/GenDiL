@@ -21,13 +21,18 @@ struct SerialKernel
 using Shape1D = GaussLobattoLegendreShapeFunctions<1>;
 using Points1D = GaussLegendrePoints<2>;
 using DofToQuad1D = CachedDofToQuad<Shape1D, Points1D>;
-using LocalFaceQData = std::tuple<DofToQuad1D, DofToQuad1D>;
+using LocalFaceQData =
+   TensorProductDofToQuad<DofToQuad1D, DofToQuad1D>;
 using SparseFaceQData =
    std::tuple<Empty, LocalFaceQData, Empty, Empty>;
-using StaticSquareFaceQData0 = std::tuple<ZeroPoint, Points1D>;
-using StaticSquareFaceQData1 = std::tuple<Points1D, OnePoint>;
-using StaticCubeFaceQData0 = std::tuple<ZeroPoint, Points1D, Points1D>;
-using StaticCubeFaceQData2 = std::tuple<Points1D, Points1D, OnePoint>;
+using StaticSquareFaceQData0 =
+   TensorProductData<ZeroPoint, Points1D>;
+using StaticSquareFaceQData1 =
+   TensorProductData<Points1D, OnePoint>;
+using StaticCubeFaceQData0 =
+   TensorProductData<ZeroPoint, Points1D, Points1D>;
+using StaticCubeFaceQData2 =
+   TensorProductData<Points1D, Points1D, OnePoint>;
 
 using Geometry = HyperCube<2>;
 using FaceIndex = std::integral_constant<Integer, 1>;
@@ -70,7 +75,9 @@ SparseFaceQData MakeSparseFaceQData()
 {
    return SparseFaceQData{
       Empty{},
-      LocalFaceQData{DofToQuad1D{}, DofToQuad1D{}},
+      MakeTensorProductData(
+         DofToQuad1D{},
+         DofToQuad1D{}),
       Empty{},
       Empty{}};
 }
@@ -119,6 +126,11 @@ bool TestMapReferenceToFaceCoordinates1d()
 
 bool TestConformingFacetQuadDataReference()
 {
+   using Actual = decltype(GetFacetQuadData(
+      std::declval<const SparseFaceQData&>(),
+      std::declval<const ConformingFace&>()));
+   static_assert(std::same_as<Actual, const LocalFaceQData&>);
+
    auto face_quad_data = MakeSparseFaceQData();
    const auto& expected = std::get<1>(face_quad_data);
    auto&& selected = GetFacetQuadData(face_quad_data, MakeConformingFace());
@@ -150,7 +162,8 @@ bool TestNonconformingFacetQuadDataMappingAndLifetime()
    auto mapped_qd = GetFacetQuadData(face_quad_data, MakeNonconformingFace());
 
    using MappedQData = std::remove_cvref_t<decltype(mapped_qd)>;
-   using FirstMappedDofToQuad = std::tuple_element_t<0, MappedQData>;
+   using FirstMappedDofToQuad =
+      tensor_product_entry_t<0, MappedQData>;
    static_assert(
       !std::is_reference_v<typename FirstMappedDofToQuad::face_type>,
       "Nonconforming mapped qdata face_type must be an owned value type.");
@@ -165,22 +178,94 @@ bool TestNonconformingFacetQuadDataMappingAndLifetime()
    bool success = true;
    success =
       CheckClose(
-         std::get<0>(mapped_qd).values(0, 1),
+         GetTensorProductEntry<0>(mapped_qd).values(0, 1),
          mapped_x,
          "mapped basis value in x") &&
       success;
    success =
       CheckClose(
-         std::get<1>(mapped_qd).values(0, 1),
+         GetTensorProductEntry<1>(mapped_qd).values(0, 1),
          mapped_y,
          "mapped basis value in y") &&
       success;
    success =
       CheckClose(
-         std::get<0>(mapped_qd).gradients(0, 1),
+         GetTensorProductEntry<0>(mapped_qd).gradients(0, 1),
          1.0,
          "unscaled mapped reference gradient") &&
       success;
+   return success;
+}
+
+bool TestNonconformingVectorFacetQuadDataMapsEveryComponent()
+{
+   using QuadraticShape1D = GaussLobattoLegendreShapeFunctions<2>;
+   using QuadraticDofToQuad1D =
+      CachedDofToQuad<QuadraticShape1D, Points1D>;
+
+   const auto linear_component = MakeTensorProductData(
+      DofToQuad1D{},
+      DofToQuad1D{});
+   const auto quadratic_component = MakeTensorProductData(
+      QuadraticDofToQuad1D{},
+      QuadraticDofToQuad1D{});
+   const auto vector_qd = MakeVectorDofToQuad(
+      linear_component,
+      quadratic_component);
+   const auto mapped = MakeNonconformingFacetQuadData(
+      MakeNonconformingFace(),
+      vector_qd);
+
+   using Mapped = std::remove_cvref_t<decltype(mapped)>;
+   static_assert(is_vector_dof_to_quad_v<Mapped>);
+   static_assert(
+      std::tuple_size_v<typename Mapped::components_type> == 2);
+
+   const Real q0 = Points1D::GetCoord(0);
+   const Real mapped_x = 0.25 + 0.5 * q0;
+   const Real mapped_y = 0.5 + 0.25 * q0;
+   const auto& linear = GetVectorComponent<0>(mapped);
+   const auto& quadratic = GetVectorComponent<1>(mapped);
+
+   bool success = true;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).values(0, 1),
+      mapped_x,
+      "mapped vector linear-component value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(linear).values(0, 1),
+      mapped_y,
+      "mapped vector linear-component tangential value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(quadratic).values(0, 1),
+      Real{4} * mapped_x * (Real{1} - mapped_x),
+      "mapped vector quadratic-component value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(quadratic).values(0, 1),
+      Real{4} * mapped_y * (Real{1} - mapped_y),
+      "mapped vector quadratic-component tangential value") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).gradients(0, 1),
+      Real{1},
+      "mapped vector linear-component gradient") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(quadratic).gradients(0, 1),
+      Real{4} - Real{8} * mapped_x,
+      "mapped vector quadratic-component gradient") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(linear).weights(0),
+      Points1D::GetWeight(0),
+      "mapped vector linear-component weight") && success;
+   success = CheckClose(
+      GetTensorProductEntry<1>(quadratic).weights(0),
+      Points1D::GetWeight(0),
+      "mapped vector quadratic-component weight") && success;
+   success = CheckClose(
+      GetTensorProductEntry<0>(linear).quad_gradients(0, 1),
+      LagrangeShapeFunctions<Points1D>::ComputeGradientValue(
+         1,
+         mapped_x),
+      "mapped vector linear-component quadrature gradient") && success;
    return success;
 }
 
@@ -226,7 +311,8 @@ auto MakeSparseStaticQData(LocalQData qdata)
 bool TestAffineMappedQDataFixedCoordinateFirst()
 {
    auto face_quad_data =
-      MakeSparseStaticQData(StaticSquareFaceQData0{ZeroPoint{}, Points1D{}});
+      MakeSparseStaticQData(
+         MakeTensorProductData(ZeroPoint{}, Points1D{}));
    auto face =
       MakeEmbeddedMapFace(
          Point<2>{0.0, 0.25},
@@ -262,7 +348,8 @@ bool TestAffineMappedQDataFixedCoordinateFirst()
 bool TestAffineMappedQDataFixedCoordinateLast()
 {
    auto face_quad_data =
-      MakeSparseStaticQData(StaticSquareFaceQData1{Points1D{}, OnePoint{}});
+      MakeSparseStaticQData(
+         MakeTensorProductData(Points1D{}, OnePoint{}));
    auto face =
       MakeEmbeddedMapFace(
          Point<2>{0.125, 0.0},
@@ -321,7 +408,10 @@ bool TestAffineMappedQData3D()
       };
 
    auto qd0 = MakeSparseStaticQData(
-      StaticCubeFaceQData0{ZeroPoint{}, Points1D{}, Points1D{}});
+      MakeTensorProductData(
+         ZeroPoint{},
+         Points1D{},
+         Points1D{}));
    auto face0 =
       make_face(
          Point<3>{0.0, 0.1, 0.2},
@@ -329,7 +419,10 @@ bool TestAffineMappedQData3D()
    auto mapped0 = GetFacetQuadData(qd0, face0);
 
    auto qd2 = MakeSparseStaticQData(
-      StaticCubeFaceQData2{Points1D{}, Points1D{}, OnePoint{}});
+      MakeTensorProductData(
+         Points1D{},
+         Points1D{},
+         OnePoint{}));
    auto face2 =
       make_face(
          Point<3>{0.2, 0.3, 0.0},
@@ -377,6 +470,371 @@ bool TestAffineMappedQData3D()
    return success;
 }
 
+bool TestNestedNonconformingQDataRootOffset()
+{
+   using Geometry3D = HyperCube<3>;
+   using FaceIndex3D = std::integral_constant<Integer, 1>;
+   using Orientation3D = IdentityOrientation<3>;
+   using Normal3D = Point<3>;
+   using NonconformingFace3D = FaceView<
+      FaceIndex3D,
+      Geometry3D,
+      Orientation3D,
+      Normal3D,
+      NonconformingHyperCubeFaceMap<3>>;
+
+   const NonconformingFace3D face{
+      0,
+      FaceIndex3D{},
+      Orientation3D{},
+      Normal3D{1.0, 0.0, 0.0},
+      NonconformingHyperCubeFaceMap<3>{
+         Point<3>{0.1, 0.2, 0.3},
+         std::array<Real, 3>{0.25, 0.5, 0.75}},
+      typename NonconformingFace3D::boundary_type{}};
+
+   const auto nested_dof_qdata = MakeTensorProductData(
+      MakeTensorProductData(DofToQuad1D{}),
+      MakeTensorProductData(DofToQuad1D{}, DofToQuad1D{}));
+   using ExpectedDofQData = TensorProductData<
+      TensorProductData<
+         NonconformingDofToQuad<
+            Shape1D,
+            Points1D,
+            NonconformingFace3D,
+            0>>,
+      TensorProductData<
+         NonconformingDofToQuad<
+            Shape1D,
+            Points1D,
+            NonconformingFace3D,
+            1>,
+         NonconformingDofToQuad<
+            Shape1D,
+            Points1D,
+            NonconformingFace3D,
+            2>>>;
+   using ActualDofQData = decltype(
+      MakeNonconformingFacetQuadData(face, nested_dof_qdata));
+   static_assert(std::same_as<ActualDofQData, ExpectedDofQData>);
+   const auto mapped_dof_qdata =
+      MakeNonconformingFacetQuadData(face, nested_dof_qdata);
+
+   using MappedDofQData = decltype(mapped_dof_qdata);
+   using FirstDofGroup = tensor_product_entry_t<0, MappedDofQData>;
+   using SecondDofGroup = tensor_product_entry_t<1, MappedDofQData>;
+   static_assert(is_tensor_product_data_v<FirstDofGroup>);
+   static_assert(is_tensor_product_data_v<SecondDofGroup>);
+   static_assert(tensor_product_entry_count_v<FirstDofGroup> == 1);
+   static_assert(tensor_product_entry_count_v<SecondDofGroup> == 2);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<0, FirstDofGroup>,
+      NonconformingDofToQuad<
+         Shape1D,
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<0, SecondDofGroup>,
+      NonconformingDofToQuad<
+         Shape1D,
+         Points1D,
+         NonconformingFace3D,
+         1>>);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<1, SecondDofGroup>,
+      NonconformingDofToQuad<
+         Shape1D,
+         Points1D,
+         NonconformingFace3D,
+         2>>);
+   static_assert(!std::is_reference_v<
+      typename tensor_product_entry_t<
+         0,
+         FirstDofGroup>::face_type>);
+
+   const auto nested_point_qdata = MakeTensorProductData(
+      MakeTensorProductData(Points1D{}),
+      MakeTensorProductData(Points1D{}, Points1D{}));
+   using ExpectedPointQData = TensorProductData<
+      TensorProductData<
+         NonconformingMappedPointSet1D<
+            Points1D,
+            NonconformingFace3D,
+            0>>,
+      TensorProductData<
+         NonconformingMappedPointSet1D<
+            Points1D,
+            NonconformingFace3D,
+            1>,
+         NonconformingMappedPointSet1D<
+            Points1D,
+            NonconformingFace3D,
+            2>>>;
+   using ActualPointQData = decltype(
+      MakeNonconformingFacetQuadData(
+         face,
+         nested_point_qdata));
+   static_assert(std::same_as<ActualPointQData, ExpectedPointQData>);
+   const auto mapped_point_qdata =
+      MakeNonconformingFacetQuadData(face, nested_point_qdata);
+
+   using SingleDofQData = decltype(
+      MakeNonconformingFacetQuadData(face, DofToQuad1D{}));
+   using SinglePointQData = decltype(
+      MakeNonconformingFacetQuadData(face, Points1D{}));
+   static_assert(std::same_as<
+      SingleDofQData,
+      NonconformingDofToQuad<
+         Shape1D,
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   static_assert(std::same_as<
+      SinglePointQData,
+      NonconformingMappedPointSet1D<
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   const auto mapped_single_dof =
+      MakeNonconformingFacetQuadData(face, DofToQuad1D{});
+   const auto mapped_single_point =
+      MakeNonconformingFacetQuadData(face, Points1D{});
+
+   const auto mixed_qdata = MakeTensorProductData(
+      MakeTensorProductData(DofToQuad1D{}),
+      MakeTensorProductData(
+         Points1D{},
+         MakeTensorProductData(DofToQuad1D{})));
+   using ExpectedMixedQData = TensorProductData<
+      TensorProductData<
+         NonconformingDofToQuad<
+            Shape1D,
+            Points1D,
+            NonconformingFace3D,
+            0>>,
+      TensorProductData<
+         NonconformingMappedPointSet1D<
+            Points1D,
+            NonconformingFace3D,
+            1>,
+         TensorProductData<
+            NonconformingDofToQuad<
+               Shape1D,
+               Points1D,
+               NonconformingFace3D,
+               2>>>>;
+   using ActualMixedQData = decltype(
+      MakeNonconformingFacetQuadData(face, mixed_qdata));
+   static_assert(std::same_as<ActualMixedQData, ExpectedMixedQData>);
+   const auto mapped_mixed_qdata =
+      MakeNonconformingFacetQuadData(face, mixed_qdata);
+
+   using MappedPointQData = decltype(mapped_point_qdata);
+   using FirstPointGroup = tensor_product_entry_t<0, MappedPointQData>;
+   using SecondPointGroup = tensor_product_entry_t<1, MappedPointQData>;
+   static_assert(is_tensor_product_data_v<FirstPointGroup>);
+   static_assert(is_tensor_product_data_v<SecondPointGroup>);
+   static_assert(tensor_product_entry_count_v<FirstPointGroup> == 1);
+   static_assert(tensor_product_entry_count_v<SecondPointGroup> == 2);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<0, FirstPointGroup>,
+      NonconformingMappedPointSet1D<
+         Points1D,
+         NonconformingFace3D,
+         0>>);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<0, SecondPointGroup>,
+      NonconformingMappedPointSet1D<
+         Points1D,
+         NonconformingFace3D,
+         1>>);
+   static_assert(std::is_same_v<
+      tensor_product_entry_t<1, SecondPointGroup>,
+      NonconformingMappedPointSet1D<
+         Points1D,
+         NonconformingFace3D,
+         2>>);
+   static_assert(!std::is_reference_v<decltype(
+      std::declval<tensor_product_entry_t<
+         0,
+         FirstPointGroup>>().face)>);
+
+   const Integer q = 1;
+   const Real reference_coord = Points1D::GetCoord(q);
+   const Real reference_weight = Points1D::GetWeight(q);
+   const auto& mapped_dof_x = GetTensorProductEntry<0>(
+      GetTensorProductEntry<0>(mapped_dof_qdata));
+   const auto& mapped_dof_y = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(mapped_dof_qdata));
+   const auto& mapped_dof_z = GetTensorProductEntry<1>(
+      GetTensorProductEntry<1>(mapped_dof_qdata));
+   const auto& mapped_point_x = GetTensorProductEntry<0>(
+      GetTensorProductEntry<0>(mapped_point_qdata));
+   const auto& mapped_point_y = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(mapped_point_qdata));
+   const auto& mapped_point_z = GetTensorProductEntry<1>(
+      GetTensorProductEntry<1>(mapped_point_qdata));
+   const auto& mapped_mixed_y = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(mapped_mixed_qdata));
+   const auto& mapped_mixed_z = GetTensorProductEntry<0>(
+      GetTensorProductEntry<1>(
+         GetTensorProductEntry<1>(mapped_mixed_qdata)));
+
+   bool success = true;
+   success =
+      CheckClose(
+         mapped_single_dof.values(q, 1),
+         0.1 + 0.25 * reference_coord,
+         "single mapped dof x coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_single_point.coord(q),
+         0.1 + 0.25 * reference_coord,
+         "single mapped point x coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_dof_x.values(q, 1),
+         0.1 + 0.25 * reference_coord,
+         "nested mapped dof x coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_dof_y.values(q, 1),
+         0.2 + 0.5 * reference_coord,
+         "nested mapped dof y coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_dof_z.values(q, 1),
+         0.3 + 0.75 * reference_coord,
+         "nested mapped dof z coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_point_x.coord(q),
+         0.1 + 0.25 * reference_coord,
+         "nested mapped point x coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_point_y.coord(q),
+         0.2 + 0.5 * reference_coord,
+         "nested mapped point y coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_point_z.coord(q),
+         0.3 + 0.75 * reference_coord,
+         "nested mapped point z coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_dof_z.weights(q),
+         reference_weight,
+         "nested mapped dof weight") &&
+      success;
+   success =
+      CheckClose(
+         mapped_point_z.weights(q),
+         reference_weight,
+         "nested mapped point weight") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_y.coord(q),
+         0.2 + 0.5 * reference_coord,
+         "mixed nested mapped point y coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.values(q, 1),
+         0.3 + 0.75 * reference_coord,
+         "mixed nested mapped dof z coordinate") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.gradients(q, 1),
+         1.0,
+         "mixed nested mapped dof gradient") &&
+      success;
+   success =
+      CheckClose(
+         mapped_mixed_z.quad_gradients(q, 1),
+         LagrangeShapeFunctions<Points1D>::ComputeGradientValue(
+            1,
+            0.3 + 0.75 * reference_coord),
+         "mixed nested mapped quadrature gradient") &&
+      success;
+
+   const TensorIndex<3> qi{
+      static_cast<GlobalIndex>(q),
+      static_cast<GlobalIndex>(q),
+      static_cast<GlobalIndex>(q)};
+   const Real expected_weight =
+      reference_weight * reference_weight * reference_weight;
+   success =
+      CheckClose(
+         GetWeight(qi, mapped_dof_qdata),
+         expected_weight,
+         "nested mapped dof product weight") &&
+      success;
+   success =
+      CheckClose(
+         GetWeight(qi, mapped_point_qdata),
+         expected_weight,
+         "nested mapped point product weight") &&
+      success;
+   success =
+      CheckClose(
+         GetWeight(qi, mapped_mixed_qdata),
+         expected_weight,
+         "mixed nested mapped product weight") &&
+      success;
+   return success;
+}
+
+bool TestTensorProductWeight()
+{
+   using FlatMeshQData =
+      TensorProductData<
+         Points1D,
+         Points1D,
+         Points1D>;
+   using NestedMeshQData =
+      TensorProductData<
+         TensorProductData<Points1D>,
+         TensorProductData<
+            TensorProductData<Points1D>,
+            TensorProductData<Points1D>>>;
+
+   const TensorIndex<3> qi{
+      GlobalIndex{0},
+      GlobalIndex{1},
+      GlobalIndex{0}};
+   const Real expected =
+      Points1D::GetWeight(0) *
+      Points1D::GetWeight(1) *
+      Points1D::GetWeight(0);
+
+   bool success = true;
+   success =
+      CheckClose(
+         GetWeight(qi, FlatMeshQData{}),
+         expected,
+         "flat mesh qdata weight") &&
+      success;
+   success =
+      CheckClose(
+         GetWeight(qi, NestedMeshQData{}),
+         expected,
+         "nested product mesh qdata weight") &&
+      success;
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -386,10 +844,13 @@ int main()
    success = TestConformingFacetQuadDataReference() && success;
    success = TestEmptyFacetQuadDataTrait() && success;
    success = TestNonconformingFacetQuadDataMappingAndLifetime() && success;
+   success = TestNonconformingVectorFacetQuadDataMapsEveryComponent() && success;
    success = TestInterpolateValuesUsesFacetQuadData() && success;
    success = TestAffineMappedQDataFixedCoordinateFirst() && success;
    success = TestAffineMappedQDataFixedCoordinateLast() && success;
    success = TestAffineMappedQData3D() && success;
+   success = TestNestedNonconformingQDataRootOffset() && success;
+   success = TestTensorProductWeight() && success;
 
    if (!success)
    {

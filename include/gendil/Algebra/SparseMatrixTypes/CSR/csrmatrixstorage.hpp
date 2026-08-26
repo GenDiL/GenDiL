@@ -5,10 +5,15 @@
 #pragma once
 
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/VendorSparse/vendorsparsebackend.hpp"
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
+#include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
-namespace gendil {
+#include <type_traits>
+#include <utility>
+
+namespace gendil
+{
 
 template <
    typename ComputeType = void,
@@ -28,26 +33,19 @@ struct NativeDeviceCSRBackend : DeviceMatVecBackend
    using accumulator_type = AccumulatorType;
 };
 
-// Standalone CSR storage default. GenericAssembly dispatch uses
-// DefaultBackendFor_t<MatrixAssemblyType::CSR> instead.
+#if defined(GENDIL_USE_DEVICE)
+using DefaultCSRBackend = VendorDeviceCSRBackend<>;
+#else
 using DefaultCSRBackend = HostCSRBackend<>;
+#endif
 
+/**
+ * Canonical, move-only compressed sparse row matrix owner.
+ */
 template <
    typename ValueType = Real,
    typename IndexType = GlobalIndex,
    typename Backend = DefaultCSRBackend >
-struct CSRMatrix;
-
-/**
- * Canonical compressed sparse row matrix.
- *
- * Column indices are sorted within each row, each coordinate appears at most
- * once, and exact zeros produced by duplicate reduction are retained.
- */
-template <
-   typename ValueType,
-   typename IndexType,
-   typename Backend >
 struct CSRMatrix
 {
    using value_type = ValueType;
@@ -58,11 +56,47 @@ struct CSRMatrix
    IndexType num_cols = 0;
    IndexType nnz = 0;
 
-   HostDevicePointer< IndexType > row_ptr; // size = num_rows + 1
-   HostDevicePointer< IndexType > col_ind; // size = nnz
-   HostDevicePointer< ValueType > values;  // size = nnz
+   SyncHostDeviceArray< IndexType, IndexType > row_ptr{};
+   SyncHostDeviceArray< IndexType, IndexType > col_ind{};
+   SyncHostDeviceArray< ValueType, IndexType > values{};
 
+   // Keep the backend last so cached descriptors are destroyed before arrays.
    Backend backend{};
+
+   CSRMatrix() = default;
+   CSRMatrix( const CSRMatrix & ) = delete;
+   CSRMatrix & operator=( const CSRMatrix & ) = delete;
+
+   CSRMatrix( CSRMatrix && other )
+      noexcept( std::is_nothrow_move_constructible_v< Backend > )
+   : num_rows( std::exchange( other.num_rows, IndexType( 0 ) ) ),
+     num_cols( std::exchange( other.num_cols, IndexType( 0 ) ) ),
+     nnz( std::exchange( other.nnz, IndexType( 0 ) ) ),
+     row_ptr( std::move( other.row_ptr ) ),
+     col_ind( std::move( other.col_ind ) ),
+     values( std::move( other.values ) ),
+     backend( std::move( other.backend ) )
+   { }
+
+   CSRMatrix & operator=( CSRMatrix && other )
+      noexcept( std::is_nothrow_move_assignable_v< Backend > )
+   {
+      if ( this != &other )
+      {
+         ResetState( backend );
+
+         num_rows = std::exchange( other.num_rows, IndexType( 0 ) );
+         num_cols = std::exchange( other.num_cols, IndexType( 0 ) );
+         nnz = std::exchange( other.nnz, IndexType( 0 ) );
+         row_ptr = std::move( other.row_ptr );
+         col_ind = std::move( other.col_ind );
+         values = std::move( other.values );
+         backend = std::move( other.backend );
+      }
+      return *this;
+   }
+
+   ~CSRMatrix() = default;
 
    template < typename InputVector, typename OutputVector >
    void operator()( const InputVector & x, OutputVector & y ) const;
@@ -82,28 +116,12 @@ auto MakeCSRMatrix(
    matrix.num_rows = num_rows;
    matrix.num_cols = num_cols;
    matrix.nnz = nnz;
-   matrix.backend = backend;
-
-   const IndexType row_ptr_size = num_rows + IndexType( 1 );
-   AllocateHostPointer( row_ptr_size, matrix.row_ptr );
-   AllocateDevicePointer( row_ptr_size, matrix.row_ptr );
-   AllocateHostPointer( nnz, matrix.col_ind );
-   AllocateDevicePointer( nnz, matrix.col_ind );
-   AllocateHostPointer( nnz, matrix.values );
-   AllocateDevicePointer( nnz, matrix.values );
-
+   matrix.row_ptr =
+      MakeSyncHostDeviceArray< IndexType >( num_rows + IndexType( 1 ) );
+   matrix.col_ind = MakeSyncHostDeviceArray< IndexType >( nnz );
+   matrix.values = MakeSyncHostDeviceArray< ValueType >( nnz );
+   matrix.backend = std::move( backend );
    return matrix;
-}
-
-template < typename Matrix >
-void FreeCSRMatrix( Matrix & matrix )
-{
-   FreeHostPointer( matrix.row_ptr );
-   FreeDevicePointer( matrix.row_ptr );
-   FreeHostPointer( matrix.col_ind );
-   FreeDevicePointer( matrix.col_ind );
-   FreeHostPointer( matrix.values );
-   FreeDevicePointer( matrix.values );
 }
 
 } // namespace gendil

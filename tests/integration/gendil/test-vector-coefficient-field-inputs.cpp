@@ -451,7 +451,7 @@ int TestVectorCoefficientFieldInputs()
       MakeWeakFormContext(
          MakeTrialField<"u">(scalar_fe_space),
          MakeFiniteElementField<"w_vec">(vector_fe_space, w_vec_view),
-         MakeIntegrationDomain<"mesh">(scalar_fe_space));
+         MakeIntegrationDomain<"mesh">(mesh));
 
    auto cell_value_form =
       integrate(cells, value_coeff * u * v);

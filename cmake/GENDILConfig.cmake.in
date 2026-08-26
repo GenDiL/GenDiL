@@ -2,6 +2,10 @@
 
 include(CMakeFindDependencyMacro)
 
+if (@USE_HYPRE@ AND NOT CMAKE_C_COMPILER_LOADED)
+    enable_language(C)
+endif()
+
 if (@USE_OPENMP@)
     find_dependency(OpenMP REQUIRED)
 endif()
@@ -9,6 +13,19 @@ endif()
 if (@USE_MFEM@)
     set(MFEM_DIR "@MFEM_DIR@" CACHE PATH "")
     find_dependency(MFEM)
+
+    if (@USE_CUDA@ AND NOT MFEM_USE_CUDA)
+        message(FATAL_ERROR
+            "This GenDiL package was built with CUDA and requires a "
+            "CUDA-enabled MFEM, but the found MFEM was built without CUDA "
+            "support.")
+    endif()
+    if (@USE_HIP@ AND NOT MFEM_USE_HIP)
+        message(FATAL_ERROR
+            "This GenDiL package was built with HIP and requires a "
+            "HIP-enabled MFEM, but the found MFEM was built without HIP "
+            "support.")
+    endif()
 endif()
 
 if (@USE_RAJA@)
@@ -25,10 +42,24 @@ if (@USE_HYPRE@)
     find_dependency(HYPRE CONFIG REQUIRED)
 endif()
 
+if (@USE_CUDA@)
+    find_dependency(CUDAToolkit REQUIRED)
+endif()
+
+if (@USE_HIP@)
+    find_dependency(HIP REQUIRED)
+    find_dependency(rocsparse CONFIG REQUIRED)
+    if (@GENDIL_HAS_DEVICE_SPARSE_FINALIZATION@)
+        find_dependency(rocprim CONFIG REQUIRED)
+    endif()
+endif()
+
 set(GENDIL_USE_CUDA "@USE_CUDA@")
 set(GENDIL_USE_HIP "@USE_HIP@")
 set(GENDIL_USE_HYPRE "@USE_HYPRE@")
 set(GENDIL_USE_HYPRE_DEVICE "@GENDIL_USE_HYPRE_DEVICE@")
+set(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+    "@GENDIL_HAS_DEVICE_SPARSE_FINALIZATION@")
 
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 

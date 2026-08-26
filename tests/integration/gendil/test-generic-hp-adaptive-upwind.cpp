@@ -231,9 +231,9 @@ Vector ApplyManualOracle(
       (p_minus > p_plus ? p_minus : p_plus) + 3;
    using QuadPoints = GaussLegendrePoints<q1d>;
 
-   Vector y(
-      minus_space.GetNumberOfFiniteElementDofs()
-    + plus_space.GetNumberOfFiniteElementDofs());
+   // The plus restriction is shifted into the final two-part vector, so its
+   // algebraic extent already covers both logical part contributions.
+   Vector y(GetAlgebraicDofExtent( plus_space ));
    y = 0.0;
 
    const Real beta_x = static_cast<Real>(beta_x_value);
@@ -451,11 +451,11 @@ bool TestFacetOnlyCase(
    auto fe_plus =
       MakeLobattoFiniteElement(FiniteElementOrders<p_plus, p_plus>{});
 
-   auto minus_space = MakeFiniteElementSpace(meshL, fe_minus, L2Restriction{0});
-   const Integer ndofs_minus = minus_space.GetNumberOfFiniteElementDofs();
+   auto minus_space = MakeFiniteElementSpace(meshL, fe_minus, ContiguousL2RestrictionSpecification{0});
+   const Integer ndofs_minus = GetNumberOfGlobalDofs( minus_space );
    auto plus_space =
-      MakeFiniteElementSpace(meshR, fe_plus, L2Restriction{ndofs_minus});
-   const Integer ndofs_plus = plus_space.GetNumberOfFiniteElementDofs();
+      MakeFiniteElementSpace(meshR, fe_plus, ContiguousL2RestrictionSpecification{ndofs_minus});
+   const Integer ndofs_plus = GetNumberOfGlobalDofs( plus_space );
 
    NonconformingCartesianIntermeshFaceConnectivity<2, 2>
       iface({nxL, nyL}, {nxR, nyR});
@@ -468,7 +468,7 @@ bool TestFacetOnlyCase(
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe_minus, fe_plus},
-         std::tuple{L2Restriction{0}, L2Restriction{ndofs_minus}});
+         std::tuple{ContiguousL2RestrictionSpecification{0}, ContiguousL2RestrictionSpecification{ndofs_minus}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -484,7 +484,7 @@ bool TestFacetOnlyCase(
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer q1d =
       (p_minus > p_plus ? p_minus : p_plus) + 3;
@@ -496,7 +496,7 @@ bool TestFacetOnlyCase(
          wf_context,
          integration_rule);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
+   Vector x(GetAlgebraicDofExtent( mixed ));
    x = 0.0;
    if constexpr (p_minus == 0 && p_plus == 0)
    {
@@ -551,7 +551,7 @@ bool TestFacetOnlyCase(
 
    if (check_dense)
    {
-      const Integer size = mixed.GetNumberOfFiniteElementDofs();
+      const Integer size = GetAlgebraicDofExtent( mixed );
       const auto dense_generic =
          BuildDenseMatrix(
             size,
@@ -590,10 +590,10 @@ bool TestFullCellAndFacetCase(
    auto fe_plus =
       MakeLobattoFiniteElement(FiniteElementOrders<p_plus, p_plus>{});
 
-   auto minus_space = MakeFiniteElementSpace(meshL, fe_minus, L2Restriction{0});
-   const Integer ndofs_minus = minus_space.GetNumberOfFiniteElementDofs();
+   auto minus_space = MakeFiniteElementSpace(meshL, fe_minus, ContiguousL2RestrictionSpecification{0});
+   const Integer ndofs_minus = GetNumberOfGlobalDofs( minus_space );
    auto plus_space =
-      MakeFiniteElementSpace(meshR, fe_plus, L2Restriction{ndofs_minus});
+      MakeFiniteElementSpace(meshR, fe_plus, ContiguousL2RestrictionSpecification{ndofs_minus});
 
    NonconformingCartesianIntermeshFaceConnectivity<2, 2>
       iface({nxL, nyL}, {nxR, nyR});
@@ -606,7 +606,7 @@ bool TestFullCellAndFacetCase(
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe_minus, fe_plus},
-         std::tuple{L2Restriction{0}, L2Restriction{ndofs_minus}});
+         std::tuple{ContiguousL2RestrictionSpecification{0}, ContiguousL2RestrictionSpecification{ndofs_minus}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -624,7 +624,7 @@ bool TestFullCellAndFacetCase(
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer q1d =
       (p_minus > p_plus ? p_minus : p_plus) + 3;
@@ -636,7 +636,7 @@ bool TestFullCellAndFacetCase(
          wf_context,
          integration_rule);
 
-   Vector x(mixed.GetNumberOfFiniteElementDofs());
+   Vector x(GetAlgebraicDofExtent( mixed ));
    x = 0.0;
    FillMinusDofs<p_minus, decltype(minus_space), LinearState>(
       minus_space,
@@ -656,7 +656,7 @@ bool TestFullCellAndFacetCase(
 
    if (check_dense)
    {
-      const Integer size = mixed.GetNumberOfFiniteElementDofs();
+      const Integer size = GetAlgebraicDofExtent( mixed );
       const auto dense_generic =
          BuildDenseMatrix(
             size,

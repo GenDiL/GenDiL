@@ -86,7 +86,7 @@ public:
       const TestFiniteElementSpace & test_finite_element_space,
       const IntegrationRule & int_rules ) :
 #ifdef GENDIL_USE_MFEM
-      Operator( test_finite_element_space.GetNumberOfFiniteElementDofs(), trial_finite_element_space.GetNumberOfFiniteElementDofs() ),
+      Operator( GetAlgebraicDofExtent( test_finite_element_space ), GetAlgebraicDofExtent( trial_finite_element_space ) ),
 #endif // GENDIL_USE_MFEM
       trial_finite_element_space( trial_finite_element_space ),
       test_finite_element_space( test_finite_element_space ),

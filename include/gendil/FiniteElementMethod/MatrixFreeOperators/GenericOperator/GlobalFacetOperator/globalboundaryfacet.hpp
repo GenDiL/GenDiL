@@ -55,7 +55,7 @@ void GenericGlobalBoundaryFacetIntegrandOperator(
 
       ElementContext element_context{
          face_info.MinusSide().GetCellIndex(),
-         face_domain.GetCellFiniteElementSpace().GetCell(
+         face_domain.GetCellMesh().GetCell(
             face_info.MinusSide().GetCellIndex())
       };
 
@@ -167,10 +167,7 @@ void GenericGlobalBoundaryFacetDomainOperator(
             KernelPolicy,
             std::remove_cvref_t<decltype(test_space)>,
             DofsOutView>);
-   constexpr size_t shared_memory_block_size =
-      KernelContext<
-         KernelPolicy,
-         required_shared_mem >::shared_memory_block_size;
+   using Context = KernelContext<KernelPolicy, required_shared_mem>;
 
    const auto& face_mesh = face_domain.GetFaceMesh();
    auto facet_op_ctx =
@@ -187,11 +184,8 @@ void GenericGlobalBoundaryFacetDomainOperator(
          (void)facet_op_ctx;
          (void)integrand;
 
-         GENDIL_SHARED Real _shared_mem[
-            shared_memory_block_size == 0
-               ? 1
-               : shared_memory_block_size ];
-         KernelContext<KernelPolicy, required_shared_mem> kernel(_shared_mem);
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
+         Context kernel(_shared_mem);
 
          const auto face_info = face_mesh.GetGlobalFaceInfo(face_index);
 
@@ -211,15 +205,13 @@ void GenericGlobalBoundaryFacetDomainOperator(
 }
 
 template<
-   StaticString TrialName,
-   StaticString TestName,
    class KernelPolicy,
    class WeakForm,
    class WeakFormContext,
    StaticString DomainName,
    size_t FaceI,
    class FacePart,
-   class CellSpace,
+   class CellMesh,
    class IntegrationRule,
    class DofsInVector,
    class DofsOutVector>
@@ -227,17 +219,20 @@ void GenericGlobalBoundaryFaceDomainOperator(
    const WeakForm& weak_form,
    const WeakFormContext& wf_ctx,
    BoundaryFacets<DomainName> domain_tag,
-   const BoundaryFaceExecutionBatch<
+   const SelectedBoundaryFaceExecutionDomain<
       DomainName,
       FaceI,
       FacePart,
-      CellSpace>& batch,
+      CellMesh>& batch,
    const IntegrationRule& integration_rule,
    const DofsInVector& dofs_vector_in,
    DofsOutVector& dofs_vector_out)
 {
+   constexpr auto TrialName = requirements<WeakForm>::trial_name;
+   constexpr auto TestName = requirements<WeakForm>::test_name;
+
    auto batch_ctx =
-      MakeRestrictedWeakFormContext<TrialName, TestName>(
+      MakeRestrictedWeakFormContext<WeakForm>(
          wf_ctx,
          domain_tag,
          batch);

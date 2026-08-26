@@ -9,7 +9,6 @@
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Meshes/Geometries/canonicalvector.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/segmentcell.hpp"
-#include "gendil/Meshes/Connectivities/orientation.hpp"
 #include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianlocalfaceconnectivity.hpp"
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/periodiccartesianconnectivity.hpp"

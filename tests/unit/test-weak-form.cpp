@@ -7,17 +7,93 @@
 using namespace std;
 using namespace gendil;
 
+namespace {
+
+struct CountOnlyMesh
+{
+   using cell_type = SegmentCell;
+
+   GlobalIndex num_cells;
+   Real h;
+
+   GlobalIndex GetNumberOfCells() const { return num_cells; }
+
+   cell_type GetCell(GlobalIndex i) const
+   {
+      return cell_type(Point<1>{h * i}, h);
+   }
+};
+
+struct TraitFaceSide
+{
+   using geometry = mesh::mesh_geometry_t<CountOnlyMesh>;
+};
+
+struct TraitFaceInfo
+{
+   using minus_side_type = TraitFaceSide;
+   using plus_side_type = TraitFaceSide;
+};
+
+struct TraitFaceMesh
+{
+   TraitFaceInfo GetGlobalFaceInfo(GlobalIndex) const { return {}; }
+};
+
+} // namespace
+
 int main()
 {
+   using MeshCellSelection =
+      SelectedCellExecutionDomain<"mesh", 0, CountOnlyMesh, false>;
+   using PartitionCellSelection =
+      SelectedCellExecutionDomain<"partition", 0, CountOnlyMesh, true>;
+   using BoundarySelection =
+      SelectedBoundaryFaceExecutionDomain<
+         "partition",
+         0,
+         BoundaryFacePart<0, TraitFaceMesh>,
+         CountOnlyMesh>;
+   using InteriorSelection =
+      SelectedInteriorFaceExecutionDomain<
+         "partition",
+         0,
+         InteriorFacePart<0, 0, TraitFaceMesh>,
+         CountOnlyMesh,
+         CountOnlyMesh>;
+
+   static_assert(
+      !is_partitioned_selected_execution_domain_v<MeshCellSelection>);
+   static_assert(
+      is_partitioned_selected_execution_domain_v<PartitionCellSelection>);
+   static_assert(
+      is_partitioned_selected_execution_domain_v<BoundarySelection>);
+   static_assert(
+      is_partitioned_selected_execution_domain_v<InteriorSelection>);
+   static_assert(
+      !is_partitioned_selected_execution_domain_v<
+         const MeshCellSelection&>);
+   static_assert(
+      is_partitioned_selected_execution_domain_v<
+         const PartitionCellSelection&>);
+
    // Creating trial and test spaces
    using T = TrialSpace< "trial" >;
    static_assert(T::name.view() == "trial");
    TrialSpace<"temp"> u;
    TestSpace<"temp"> v;
    // Simple coefficient and expression tests
-   auto c = MakeCoefficient<"diffusivity", PhysicalCoordinate, Jacobian, FieldValue<"displacement">>(
-      []( const auto& x_phys, const auto& J, const auto& u ) {
-         return 1.0 + x_phys[0]*x_phys[0] + J[0][0] + u[0];
+   auto c = MakeCoefficient<
+      "diffusivity",
+      PhysicalCoordinates,
+      ReferenceCoordinates,
+      Jacobian,
+      FieldValue<"displacement">>(
+      []( const auto& x_phys,
+          const auto& x_ref,
+          const auto& J,
+          const auto& u ) {
+         return 1.0 + x_phys[0]*x_phys[0] + x_ref[0] + J[0][0] + u[0];
       }
    );
    auto product = u * v;
@@ -57,6 +133,116 @@ int main()
    const Integer n = 10;
    const Real h = 1.0/n;
    Cartesian1DMesh mesh(h,n);
+   Cartesian1DMesh same_mesh(h,n);
+   Cartesian1DMesh different_geometry(2.0 * h,n);
+   Cartesian1DMesh different_count(h,n + 1);
+
+   static_assert(
+      IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::value);
+   static_assert(MeshIdentityTraits<Cartesian1DMesh>::available);
+   static_assert(
+      !IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian2DMesh>::value);
+   assert((
+      IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::Check(mesh, same_mesh)));
+   assert((
+      !IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::Check(mesh, different_geometry)));
+   assert((
+      !IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::Check(mesh, different_count)));
+   assert((
+      !IsCompatibleMeshDomain<
+         CountOnlyMesh,
+         CountOnlyMesh>::Check(
+            CountOnlyMesh{n, h},
+            CountOnlyMesh{n, 2.0 * h})));
+
+   static_assert(!MeshIdentityTraits<CountOnlyMesh>::available);
+   static_assert(
+      MeshIdentityTraits<Cartesian2DMesh>::available &&
+      MeshIdentityTraits<Cartesian3DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian1DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian2DMesh>::available &&
+      MeshIdentityTraits<PeriodicCartesian3DMesh>::available);
+
+   Cartesian1DMesh mesh_y(h, 3);
+   Cartesian1DMesh same_mesh_y(h, 3);
+   Cartesian1DMesh different_mesh_y(2.0 * h, 3);
+   auto product_mesh = MakeCartesianProductMesh(mesh, mesh_y);
+   using ProductMesh = std::remove_cvref_t<decltype(product_mesh)>;
+   static_assert(MeshIdentityTraits<ProductMesh>::available);
+   if (!IsCompatibleMeshDomain<ProductMesh, ProductMesh>::Check(
+          product_mesh,
+          MakeCartesianProductMesh(same_mesh, same_mesh_y)))
+   {
+      return 1;
+   }
+   if (IsCompatibleMeshDomain<ProductMesh, ProductMesh>::Check(
+          product_mesh,
+          MakeCartesianProductMesh(same_mesh, different_mesh_y)))
+   {
+      return 1;
+   }
+
+   using UnstructuredMesh = LineMesh<1>;
+   static_assert(MeshIdentityTraits<UnstructuredMesh>::available);
+   StridedView<1, const Real> empty_nodes{
+      PointerContainer<const Real>{nullptr},
+      StridedLayout<1>{GlobalIndex{1}}};
+   HostDeviceStridedView<2, const int> empty_restriction{
+      HostDevicePointer<const int>{},
+      StridedLayout<2>{GlobalIndex{1}, GlobalIndex{1}}};
+   UnstructuredConformingConnectivity<HyperCube<1>> connectivity(1);
+   UnstructuredMesh unstructured_mesh{
+      empty_nodes,
+      empty_restriction,
+      connectivity,
+      1};
+   if (!IsCompatibleMeshDomain<
+          UnstructuredMesh,
+          UnstructuredMesh>::Check(
+             unstructured_mesh,
+             UnstructuredMesh{unstructured_mesh}))
+   {
+      return 1;
+   }
+   if (IsCompatibleMeshDomain<
+          UnstructuredMesh,
+          UnstructuredMesh>::Check(
+             unstructured_mesh,
+             UnstructuredMesh{
+                empty_nodes,
+                empty_restriction,
+                UnstructuredConformingConnectivity<HyperCube<1>>{1},
+                1}))
+   {
+      return 1;
+   }
+
+   static_assert(MeshIdentityTraits<LineCellMesh<1>>::available);
+   static_assert(MeshIdentityTraits<QuadCellMesh<1>>::available);
+   static_assert(MeshIdentityTraits<HexCellMesh<1>>::available);
+
+   auto mesh_domain_entry = MakeIntegrationDomain<"mesh_type">(mesh);
+   using MeshDomain =
+      typename decltype(mesh_domain_entry)::value_type;
+   static_assert(is_mesh_integration_domain_v<MeshDomain>);
+   auto cell_only_partition =
+      MakePartition(MakeCellPart(mesh));
+   auto partition_domain_entry =
+      MakeIntegrationDomain<"partition_type">(cell_only_partition);
+   using PartitionDomain =
+      typename decltype(partition_domain_entry)::value_type;
+   static_assert(is_partition_integration_domain_v<PartitionDomain>);
+
    constexpr Integer order = 2;
    FiniteElementOrders<order> orders;
    auto fe = MakeLegendreFiniteElement( orders );
@@ -68,13 +254,15 @@ int main()
    v_h = 0.0;
    auto weak_form_context = MakeWeakFormContext(
       MakeFiniteElementField<"displacement">(fe_space, u_h),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
 
    auto& u_f = weak_form_context.fe_field<"displacement">();
    auto& domain_f = weak_form_context.domain<"mesh1">();
    std::cout << "u_f size: " << u_f.dofs.Size()
-             << ", domain size: " << domain_f.space.GetNumberOfCells() << "\n";
+             << ", domain size: "
+             << GetCellIntegrationDomainMesh(domain_f).GetNumberOfCells()
+             << "\n";
 
    ////////////////
    // Mass Operator
@@ -83,7 +271,7 @@ int main()
    TrialSpace<"displacement"> u_mass;
    TestSpace<"displacement"> v_mass;
    // InteriorFacets<"mesh1"> domain_interior_facets;
-   auto rho = MakeCoefficient<"density", PhysicalCoordinate>(
+   auto rho = MakeCoefficient<"density", PhysicalCoordinates>(
       []( const auto& x_phys ) {
          return 1.0 + x_phys[0]*x_phys[0];
       }
@@ -96,8 +284,15 @@ int main()
    
    auto mass_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh),
+      MakeIntegrationDomain<"unused_partition">(cell_only_partition)
    );
+   [[maybe_unused]] const auto& mass_domain_mesh =
+      GetCellIntegrationDomainMesh(mass_weak_form, mass_wf_context);
+   assert((
+      IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::Check(mesh, mass_domain_mesh)));
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints<num_quad_1d> nq;
@@ -145,7 +340,7 @@ int main()
       const Real x = X[0];
       return { x * (1.0 - x) };
    };
-   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinate>(beta_fn);
+   auto beta = MakeVectorCoefficient<"beta", PhysicalCoordinates>(beta_fn);
 
    auto advection_dg_wf =
       integrate(cells, -u_adv * dot(beta, grad(v_adv)))
@@ -155,8 +350,14 @@ int main()
 
    auto advection_wf_context = MakeWeakFormContext(
       MakeTrialField<"displacement">(fe_space),
-      MakeIntegrationDomain<"mesh1">(fe_space)
+      MakeIntegrationDomain<"mesh1">(mesh)
    );
+   [[maybe_unused]] const auto& advection_domain_mesh =
+      GetCellIntegrationDomainMesh(advection_dg_wf, advection_wf_context);
+   assert((
+      IsCompatibleMeshDomain<
+         Cartesian1DMesh,
+         Cartesian1DMesh>::Check(mesh, advection_domain_mesh)));
    
    auto advection_op = MakeGenericOperator<KernelPolicy>( advection_dg_wf, advection_wf_context, integration_rule );
 

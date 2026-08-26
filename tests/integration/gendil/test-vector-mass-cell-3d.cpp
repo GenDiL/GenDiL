@@ -179,13 +179,13 @@ int TestVectorMass()
    VectorTrialSpace<"u"> u;
    VectorTestSpace<"u"> v;
 
-   auto rho = MakeCoefficient<"density", PhysicalCoordinate>(rho_fn);
+   auto rho = MakeCoefficient<"density", PhysicalCoordinates>(rho_fn);
 
    auto weak_form = integrate(domain, rho * dot(u, v));
 
    auto weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(vector_fe_space),  // Vector shape comes from FE space
-      MakeIntegrationDomain<"mesh1">(vector_fe_space));
+      MakeIntegrationDomain<"mesh1">(mesh));
 
    auto vector_mass_operator =
       MakeGenericOperator<KernelPolicy>(
@@ -246,7 +246,7 @@ int TestVectorMass()
 
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
-      MakeIntegrationDomain<"mesh1">(scalar_fe_space));
+      MakeIntegrationDomain<"mesh1">(mesh));
 
    auto scalar_mass_operator =
       MakeGenericOperator<KernelPolicy>(

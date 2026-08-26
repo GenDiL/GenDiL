@@ -51,6 +51,13 @@ struct all_cached_dof_to_quad< std::tuple< Ts... > >
 {
 };
 
+template < typename... Ts >
+struct all_cached_dof_to_quad<
+   TensorProductData<Ts...>>
+   : std::bool_constant<(all_cached_dof_to_quad<Ts>::value && ...)>
+{
+};
+
 template < typename T >
 inline constexpr bool all_cached_dof_to_quad_v =
    all_cached_dof_to_quad< std::remove_cvref_t< T > >::value;
@@ -69,6 +76,13 @@ struct all_computed_dof_to_quad<
 template < typename... Ts >
 struct all_computed_dof_to_quad< std::tuple< Ts... > >
    : std::bool_constant< ( all_computed_dof_to_quad< Ts >::value && ... ) >
+{
+};
+
+template < typename... Ts >
+struct all_computed_dof_to_quad<
+   TensorProductData<Ts...>>
+   : std::bool_constant<(all_computed_dof_to_quad<Ts>::value && ...)>
 {
 };
 
@@ -165,13 +179,44 @@ bool CompareDofToQuadTuple(
          label ) && ... );
 }
 
+template <
+   typename CachedTensor,
+   typename ComputedTensor,
+   size_t... Is >
+bool CompareTensorProductDofToQuad(
+   const CachedTensor& cached,
+   const ComputedTensor& computed,
+   const char* label,
+   std::index_sequence<Is...>)
+{
+   return (
+      CompareDofToQuadData(
+         GetTensorProductEntry<Is>(cached),
+         GetTensorProductEntry<Is>(computed),
+         label) && ...);
+}
+
 template < typename Cached, typename Computed >
 bool CompareDofToQuadData(
    const Cached & cached,
    const Computed & computed,
    const char * label )
 {
-   if constexpr ( is_tuple_v< Cached > )
+   if constexpr (is_tensor_product_data_v<Cached>)
+   {
+      static_assert(
+         is_tensor_product_data_v<Computed>);
+      static_assert(
+         tensor_product_entry_count_v<Cached> ==
+         tensor_product_entry_count_v<Computed>);
+      return CompareTensorProductDofToQuad(
+         cached,
+         computed,
+         label,
+         std::make_index_sequence<
+            tensor_product_entry_count_v<Cached>>{});
+   }
+   else if constexpr ( is_tuple_v< Cached > )
    {
       static_assert( is_tuple_v< Computed > );
       static_assert(
@@ -425,7 +470,46 @@ int main()
             ComputedFaceKernel,
             TensorShape3D,
             FaceRules3D >() );
+   using FirstCellMap =
+      tensor_product_entry_t<0, DefaultCellMap>;
+   using SecondCellMap =
+      tensor_product_entry_t<1, DefaultCellMap>;
+   using ThirdCellMap =
+      tensor_product_entry_t<2, DefaultCellMap>;
+   using FirstFaceMap =
+      std::tuple_element_t<0, DefaultFaceMap>;
 
+   using LowerOrderTensorShape3D =
+      TensorShapeFunctions<
+         GaussLegendreShapeFunctions<1>,
+         GaussLegendreShapeFunctions<1>,
+         GaussLegendreShapeFunctions<1>>;
+   using VectorShape3D =
+      VectorShapeFunctions<
+         LowerOrderTensorShape3D,
+         TensorShape3D>;
+   using VectorCellMap =
+      decltype(MakeDofToQuad<VectorShape3D, TensorRule3D>());
+
+   static_assert(
+      is_tensor_product_data_v<DefaultCellMap>);
+   static_assert(
+      std::is_same_v<
+         DefaultCellMap,
+         TensorProductDofToQuad<
+            FirstCellMap,
+            SecondCellMap,
+            ThirdCellMap>>);
+   static_assert(tensor_product_entry_count_v<DefaultCellMap> == 3);
+   static_assert(is_tensor_product_data_v<FirstFaceMap>);
+   static_assert(is_vector_dof_to_quad_v<VectorCellMap>);
+   static_assert(vector_component_count_v<VectorCellMap> == 2);
+   static_assert(
+      is_tensor_product_data_v<
+         vector_component_t<0, VectorCellMap>>);
+   static_assert(
+      is_tensor_product_data_v<
+         vector_component_t<1, VectorCellMap>>);
    static_assert( all_cached_dof_to_quad_v< DefaultCellMap > );
    static_assert( all_cached_dof_to_quad_v< PolicyCellMap > );
    static_assert( all_cached_dof_to_quad_v< DefaultFaceMap > );

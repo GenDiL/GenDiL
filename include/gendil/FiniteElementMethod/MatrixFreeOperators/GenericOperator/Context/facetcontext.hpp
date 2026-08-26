@@ -13,20 +13,6 @@
 
 namespace gendil {
 
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetFacetContextCellDomainSpace(
-   const CellIntegrationDomain<Space>& domain)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   static_assert(
-      is_cell_finite_element_space_v<SpaceType>,
-      "Facet context construction requires a selected homogeneous "
-      "CellIntegrationDomain<Space>. Mixed or raw domains must be normalized "
-      "and restricted before context construction.");
-   return (domain.space);
-}
-
 template<typename FaceInfo, typename PlusCellView>
 struct FacetContext : FaceInfo
 {
@@ -55,14 +41,13 @@ template<typename WeakFormContext, typename Integrand, typename FaceInfo>
 GENDIL_HOST_DEVICE
 auto MakeLocalInteriorFacetContext(
    const WeakFormContext& wf_ctx,
-   const Integrand& /*integrand*/,
+   const Integrand& integrand,
    const FaceInfo& face_info)
 {
    if constexpr (local_interior_context_requires_plus_side_jacobian_v<Integrand>)
    {
-      constexpr auto DomainName = Integrand::domain_type::name;
       const auto& mesh =
-         GetFacetContextCellDomainSpace(wf_ctx.template domain<DomainName>());
+         GetCellIntegrationDomainMesh(integrand, wf_ctx);
 
       auto plus_cell =
          mesh.GetCell(face_info.PlusSide().GetCellIndex());
@@ -99,16 +84,16 @@ auto MakeGlobalInteriorFacetContext(
       static_assert(
          requires (const FaceDomain& domain)
          {
-            domain.GetPlusCellFiniteElementSpace();
+            domain.GetPlusCellMesh();
          },
          "Global interior facet context requires a face execution space "
-         "that exposes GetPlusCellFiniteElementSpace() when plus-side geometry "
+         "that exposes GetPlusCellMesh() when plus-side geometry "
          "is needed.");
 
-      const auto& plus_space = face_domain.GetPlusCellFiniteElementSpace();
+      const auto& plus_mesh = face_domain.GetPlusCellMesh();
 
       auto plus_cell =
-         plus_space.GetCell(face_info.PlusSide().GetCellIndex());
+         plus_mesh.GetCell(face_info.PlusSide().GetCellIndex());
 
       ApplyOrientationToCell(
          face_info.PlusSide().GetOrientation(),

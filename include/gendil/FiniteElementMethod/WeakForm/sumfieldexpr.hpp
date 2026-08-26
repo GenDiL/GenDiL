@@ -39,9 +39,9 @@ struct SumExpr : FieldBase
    constexpr auto operator()(Args&&... args) const
    {
       return std::apply(
-         [&] GENDIL_HOST_DEVICE (auto const&... ts)
+         [&] (const auto&... terms)
          {
-            return (ts(std::forward<Args>(args)...) + ...);
+            return (terms(std::forward<Args>(args)...) + ...);
          },
          terms
       );
@@ -78,7 +78,7 @@ GENDIL_HOST_DEVICE
 constexpr auto MakeSumExprFromTuple(Tuple&& tuple)
 {
    return std::apply(
-      [] GENDIL_HOST_DEVICE (auto&&... xs)
+      [] (auto&&... xs)
       {
          using Sum = SumExpr<std::remove_cvref_t<decltype(xs)>...>;
          return Sum(std::forward<decltype(xs)>(xs)...);

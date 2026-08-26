@@ -121,8 +121,8 @@ int TestTensorProductH1Diffusion4D()
    mfem::FiniteElementSpace mfem_fes0( &mfem_mesh0, &fec0 );
    mfem::FiniteElementSpace mfem_fes1( &mfem_mesh1, &fec1 );
 
-   auto factor_restriction0 = GetH1Restriction( mfem_fes0 );
-   auto factor_restriction1 = GetH1Restriction( mfem_fes1 );
+   auto factor_restriction0 = GetIndirectH1RestrictionSpecification( mfem_fes0 );
+   auto factor_restriction1 = GetIndirectH1RestrictionSpecification( mfem_fes1 );
    auto factor_space0 =
       MakeFiniteElementSpace( mesh0, factor_fe, factor_restriction0 );
    auto factor_space1 =
@@ -135,11 +135,11 @@ int TestTensorProductH1Diffusion4D()
       MakeTensorProductRestriction( factor_space0, factor_space1 );
    using ProductRestriction =
       std::remove_cvref_t< decltype( product_restriction ) >;
-   static_assert( is_tensor_product_restriction_v< ProductRestriction > );
+   static_assert( TensorElementDoFRestriction< ProductRestriction > );
    static_assert(
-      restriction_traits< ProductRestriction >::is_direct_index_map );
+      static_restriction_entry_count_v< ProductRestriction > == 1 );
    static_assert(
-      !restriction_traits< ProductRestriction >::is_injective );
+      restriction_may_share_global_dofs_v< ProductRestriction > );
 
    auto fe_space =
       MakeFiniteElementSpace( product_mesh, product_fe, product_restriction );
@@ -180,14 +180,14 @@ int TestTensorProductH1Diffusion4D()
    TestSpace< "u" > v;
 
    auto diffusivity =
-      MakeCoefficient< "diffusivity", PhysicalCoordinate >( diffusivity_fn );
+      MakeCoefficient< "diffusivity", PhysicalCoordinates >( diffusivity_fn );
    auto weak_form =
       integrate( cells, diffusivity * dot( grad( u ), grad( v ) ) );
 
    auto weak_form_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( product_mesh ) );
 
    auto matrix_free_operator =
       MakeGenericOperator< KernelPolicy >(

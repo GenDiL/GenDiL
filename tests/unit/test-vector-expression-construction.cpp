@@ -88,7 +88,7 @@ int main()
 
       // Define a simple coefficient lambda
       auto mu_fn = [](const auto& X) -> Real { return 1.0; };
-      auto mu = MakeCoefficient<"mu", PhysicalCoordinate>(mu_fn);
+      auto mu = MakeCoefficient<"mu", PhysicalCoordinates>(mu_fn);
 
       // Coefficient * expression should still work
       auto scaled = mu * u * v;

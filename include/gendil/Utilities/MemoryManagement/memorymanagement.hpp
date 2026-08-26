@@ -5,6 +5,9 @@
 // A pointer structure working both on host and device.
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
+// A move-only synchronized host/device array owner.
+#include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
+
 // A simple memory arena
 #include "gendil/Utilities/MemoryManagement/memoryarena.hpp"
 

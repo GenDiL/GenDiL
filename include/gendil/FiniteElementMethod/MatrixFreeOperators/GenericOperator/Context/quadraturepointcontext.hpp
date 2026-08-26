@@ -16,20 +16,6 @@
 namespace gendil
 {
 
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetCellIntegrationDomainSpace(
-   const CellIntegrationDomain<Space>& domain)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   static_assert(
-      is_cell_finite_element_space_v<SpaceType>,
-      "Quadrature-point context construction requires a selected homogeneous "
-      "CellIntegrationDomain<Space>. Mixed or raw domains must be normalized "
-      "and restricted before context construction.");
-   return (domain.space);
-}
-
 template<class QuadIndex, class PhysicalCoordinates, class Jacobian>
 struct QuadraturePointContext
 {
@@ -115,17 +101,13 @@ auto MakeQuadraturePointContext(
    // Volume domains only for now: Cells<DomainName> must provide `static constexpr auto name`
    constexpr auto DomainName = I::domain_type::name;
 
-   constexpr auto TrialName = requirements<I>::trial_name;
-   static_assert(TrialName != StaticString("Error"),
-      "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
-
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
-   const auto& mesh_quad_data   = op_ctx.template mesh_quad_data<DomainName>();
-   const auto& trial_quad_data  = op_ctx.template finite_element_quad_data<TrialName>();
+   const auto& mesh_quad_data =
+      op_ctx.template mesh_quad_data<DomainName>();
 
    // Types for X and Jacobian from the domain mesh type
    const auto& mesh =
-      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
+      GetCellIntegrationDomainMesh(integrand, wf_ctx);
    using Mesh = std::remove_cvref_t<decltype(mesh)>;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;
@@ -137,7 +119,7 @@ auto MakeQuadraturePointContext(
    ec.cell.GetValuesAndJacobian(quad_index, mesh_quad_data, qc.X, qc.J_mesh);
 
    qc.det_J   = ComputeInverseAndDeterminant(qc.J_mesh, qc.inv_J_mesh);
-   qc.weight = GetWeight(quad_index, trial_quad_data);
+   qc.weight = GetWeight(quad_index, mesh_quad_data);
 
    return qc;
 }
@@ -165,10 +147,6 @@ auto MakeQuadraturePointContext(
    // Volume domains only for now: Cells<DomainName> must provide `static constexpr auto name`
    constexpr auto DomainName = I::domain_type::name;
 
-   constexpr auto TrialName = requirements<I>::trial_name;
-   static_assert(TrialName != StaticString("Error"),
-      "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
-
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
    const auto& mesh_quad_data =
       op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
@@ -176,7 +154,7 @@ auto MakeQuadraturePointContext(
 
    // Types for X and Jacobian from the domain mesh type
    const auto& mesh =
-      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
+      GetCellIntegrationDomainMesh(integrand, wf_ctx);
    using Mesh = std::remove_cvref_t<decltype(mesh)>;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;
@@ -229,17 +207,13 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
 
    constexpr auto DomainName = Integrand::domain_type::name;
 
-   constexpr auto TrialName = requirements<Integrand>::trial_name;
-   static_assert(TrialName != StaticString("Error"),
-      "MakeQuadraturePointContext: trial_name == \"Error\". Integrand must contain a TrialSpace.");
-
    const auto& mesh_quad_data =
       op_ctx.template mesh_facet_quad_data<DomainName>();
    auto&& mesh_minus_quad_data =
       GetFacetQuadData(mesh_quad_data.MinusSide(), face.MinusSide());
 
    const auto& mesh =
-      GetCellIntegrationDomainSpace(wf_ctx.template domain<DomainName>());
+      GetCellIntegrationDomainMesh(integrand, wf_ctx);
    using Mesh = std::remove_cvref_t<decltype(mesh)>;
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;

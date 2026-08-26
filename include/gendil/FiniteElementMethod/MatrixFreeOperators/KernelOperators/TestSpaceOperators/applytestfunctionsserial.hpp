@@ -70,7 +70,7 @@ inline auto ApplyTestFunctionsImpl( ElementDofToQuad const & element_quad_data, 
    constexpr Integer Rank = get_rank_v< InputTensor >;
    static_assert( ActiveDim < Rank );
 
-   auto& B = std::get< ActiveDim >( element_quad_data );
+   auto& B = GetTensorProductEntry<ActiveDim>( element_quad_data );
    constexpr bool gradient = ActiveDim == DiffDim;
 
    if constexpr ( ActiveDim+1 == Rank )
@@ -87,8 +87,8 @@ inline auto ApplyTestFunctionsImpl( ElementDofToQuad const & element_quad_data, 
  * @tparam Add Specify if values should be accumulated or overwritten.
  * @tparam QuadPointTensor The input container for the values at quadrature points.
  * @tparam DofTensor The output container for the dofs.
- * @tparam ElementDofToQuad A tuple of DofToQuad types.
- * @param element_quad_data The tuple containing data at quadrature point for each dimension.
+ * @tparam ElementDofToQuad TensorProductDofToQuad data.
+ * @param element_quad_data Strongly typed tensor-product quadrature data.
  * @param Buq The values at quadrature point.
  * @param dofs_out The contribution to the degrees-of-freedom.
  * 

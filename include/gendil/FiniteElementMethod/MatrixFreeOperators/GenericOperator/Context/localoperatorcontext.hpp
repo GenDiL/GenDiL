@@ -83,38 +83,20 @@ struct OperatorContext
    }
 };
 
-template<class IntegrationRule, class Space>
-constexpr auto MakeMeshFacetQuadData(const CellIntegrationDomain<Space>& /*dom*/)
+template<class IntegrationRule, class Domain>
+constexpr auto MakeMeshFacetQuadData(
+   const CellIntegrationDomain<Domain>& domain)
 {
-   using SpaceType = std::remove_cvref_t<Space>;
    using FaceIRs = decltype(GetFaceIntegrationRules(IntegrationRule{}));
-
-   if constexpr (is_mixed_finite_element_space_v<SpaceType>)
-   {
-      static_assert(
-         dependent_false_v<SpaceType>,
-         "MakeMeshFacetQuadData builds local/cell-owned facet qdata for one "
-         "selected homogeneous CellIntegrationDomain<Space>. Mixed domains "
-         "must be iterated and restricted to a homogeneous cell batch before "
-         "MakeOperatorContext is built.");
-   }
-   else if constexpr (is_cell_finite_element_space_v<SpaceType>)
-   {
-      using Mesh = typename SpaceType::mesh_type;
-      auto qd = MakeMeshFaceQuadData<Mesh>(FaceIRs{});
-      using QD = std::remove_cvref_t<decltype(qd)>;
-      // Local/cell-owned facet compatibility: local traversal may visit any
-      // local face of the active Cell, so this stores the full all-face tuple.
-      // Global face-domain traversal uses side-selected face qdata instead.
-      return LocalFacetQuadratureData<QD>{ static_cast<QD>(qd) };
-   }
-   else
-   {
-      static_assert(
-         dependent_false_v<SpaceType>,
-         "MakeMeshFacetQuadData requires CellIntegrationDomain<Space> to wrap "
-         "a selected homogeneous cell finite element space.");
-   }
+   const auto& mesh = GetCellIntegrationDomainMesh(domain);
+   using Mesh = std::remove_cvref_t<decltype(mesh)>;
+   operator_context_detail::ValidateIntegrationRuleGeometry<
+      IntegrationRule,
+      Mesh>();
+   auto qd = MakeMeshFaceQuadData<Mesh>(FaceIRs{});
+   using QD = std::remove_cvref_t<decltype(qd)>;
+   // Local traversal may visit any local face of the active domain Cell.
+   return LocalFacetQuadratureData<QD>{ static_cast<QD>(qd) };
 }
 
 template<class IntegrationRule, class SpaceView>
@@ -131,24 +113,28 @@ template<class IntegrationRule, class SpaceView>
 constexpr auto MakeFiniteElementFacetQuadData(const SpaceView& space)
 {
    using Space = std::remove_cvref_t<SpaceView>;
-   static_assert(
-      is_cell_finite_element_space_v<Space>,
-      "MakeFiniteElementFacetQuadData builds local/cell-owned facet qdata "
-      "from a volume finite element space. Face finite element spaces are "
-      "valid only in side-selected global facet contexts.");
-
-   // Local/cell-owned facet compatibility case. The binding is a volume finite
-   // element space, and the local traversal may select any local face. Global
-   // face-domain contexts use side-selected qdata so they can select exactly
-   // the minus/plus face family of the face mesh.
-   auto qd =
-      MakeVolumeFiniteElementFacetQuadData<IntegrationRule>(space);
-   using QD = std::remove_cvref_t<decltype(qd)>;
-   return LocalFacetQuadratureData<QD>{ static_cast<QD>(qd) };
+   if constexpr (is_cell_finite_element_space_v<Space>)
+   {
+      // Local traversal may select any local face. Global face-domain contexts
+      // use side-selected qdata for the exact minus/plus face family.
+      auto qd =
+         MakeVolumeFiniteElementFacetQuadData<IntegrationRule>(space);
+      using QD = std::remove_cvref_t<decltype(qd)>;
+      return LocalFacetQuadratureData<QD>{ static_cast<QD>(qd) };
+   }
+   else
+   {
+      static_assert(
+         dependent_false_v<Space>,
+         "MakeFiniteElementFacetQuadData builds local/cell-owned facet qdata "
+         "from a selected homogeneous finite element space. Mixed finite "
+         "element spaces must be restricted to a selected cell batch; global "
+         "facet contexts use side-selected field bindings.");
+   }
 }
 
 template<class IR, class DomainEntry>
-constexpr auto domain_entry_to_mesh_facet_qd_tuple(const DomainEntry& e)
+constexpr auto MakeLocalFacetMeshQuadDataEntryTuple(const DomainEntry& e)
 {
    using Key = typename DomainEntry::key_type;
    auto qd   = MakeMeshFacetQuadData<IR>(e.value);
@@ -157,7 +143,8 @@ constexpr auto domain_entry_to_mesh_facet_qd_tuple(const DomainEntry& e)
 }
 
 template<class IR, class FEFieldEntry>
-constexpr auto fe_field_entry_to_facet_qd_tuple(const FEFieldEntry& e)
+constexpr auto MakeLocalFacetFiniteElementQuadDataEntryTuple(
+   const FEFieldEntry& e)
 {
    using Key       = typename FEFieldEntry::key_type;
    const auto& fev = e.value;
@@ -176,7 +163,8 @@ constexpr auto MakeOperatorContext(const WFContext& wf_ctx, const IntegrationRul
    auto mesh_qd_t = std::apply(
       [&](auto const&... dom_entries)
       {
-         return std::tuple_cat(domain_entry_to_mesh_qd_tuple<IR>(dom_entries)...);
+         return std::tuple_cat(
+            MakeMeshQuadDataEntryTuple<IR>(dom_entries)...);
       },
       wf_ctx.domains.entries
    );
@@ -184,7 +172,8 @@ constexpr auto MakeOperatorContext(const WFContext& wf_ctx, const IntegrationRul
    auto fe_qd_t = std::apply(
       [&](auto const&... fe_entries)
       {
-         return std::tuple_cat(fe_field_entry_to_elem_qd_tuple<IR>(fe_entries)...);
+         return std::tuple_cat(
+            MakeFiniteElementQuadDataEntryTuple<IR>(fe_entries)...);
       },
       wf_ctx.fe_fields.entries
    );
@@ -192,7 +181,8 @@ constexpr auto MakeOperatorContext(const WFContext& wf_ctx, const IntegrationRul
    auto mesh_facet_qd_t = std::apply(
       [&](auto const&... dom_entries)
       {
-         return std::tuple_cat(domain_entry_to_mesh_facet_qd_tuple<IR>(dom_entries)...);
+         return std::tuple_cat(
+            MakeLocalFacetMeshQuadDataEntryTuple<IR>(dom_entries)...);
       },
       wf_ctx.domains.entries
    );
@@ -200,7 +190,9 @@ constexpr auto MakeOperatorContext(const WFContext& wf_ctx, const IntegrationRul
    auto fe_facet_qd_t = std::apply(
       [&](auto const&... fe_entries)
       {
-         return std::tuple_cat(fe_field_entry_to_facet_qd_tuple<IR>(fe_entries)...);
+         return std::tuple_cat(
+            MakeLocalFacetFiniteElementQuadDataEntryTuple<IR>(
+               fe_entries)...);
       },
       wf_ctx.fe_fields.entries
    );

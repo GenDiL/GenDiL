@@ -40,9 +40,9 @@ bool Near( const Real a, const Real b )
    return std::abs( a - b ) < tolerance;
 }
 
-template < typename Matrix >
+template < typename MatrixView >
 void SetBlockEntry(
-   Matrix & matrix,
+   MatrixView & matrix,
    const GlobalIndex block,
    const GlobalIndex local_row,
    const GlobalIndex local_col,
@@ -53,7 +53,7 @@ void SetBlockEntry(
       static_cast< GlobalIndex >( matrix.block_rows ) *
       static_cast< GlobalIndex >( matrix.block_cols );
 
-   if constexpr ( Matrix::block_layout == BlockLayout::ColumnMajor )
+   if constexpr ( MatrixView::block_layout == BlockLayout::ColumnMajor )
    {
       matrix.values[
          block_offset +
@@ -85,25 +85,24 @@ auto MakeManualBsrMatrix(
    matrix.num_col_blocks = num_col_blocks;
    matrix.num_blocks = static_cast< GlobalIndex >( col_indices.size() );
 
-   AllocateHostPointer( matrix.num_row_blocks + 1, matrix.row_offsets );
-   AllocateDevicePointer( matrix.num_row_blocks + 1, matrix.row_offsets );
-   AllocateHostPointer( matrix.num_blocks, matrix.col_indices );
-   AllocateDevicePointer( matrix.num_blocks, matrix.col_indices );
-   AllocateHostPointer(
-      matrix.num_blocks * matrix.block_rows * matrix.block_cols,
-      matrix.values );
-   AllocateDevicePointer(
-      matrix.num_blocks * matrix.block_rows * matrix.block_cols,
-      matrix.values );
+   matrix.row_offsets =
+      MakeSyncHostDeviceArray< GlobalIndex >(
+         matrix.num_row_blocks + GlobalIndex( 1 ) );
+   matrix.col_indices =
+      MakeSyncHostDeviceArray< GlobalIndex >( matrix.num_blocks );
+   matrix.values =
+      MakeSyncHostDeviceArray< Real >(
+         matrix.num_blocks * matrix.block_rows * matrix.block_cols );
 
+   auto matrix_data = GetHostWriteView( matrix );
    for ( GlobalIndex i = 0; i < matrix.num_row_blocks + 1; ++i )
    {
-      matrix.row_offsets[ i ] = row_offsets[ i ];
+      matrix_data.row_offsets[ i ] = row_offsets[ i ];
    }
 
    for ( GlobalIndex i = 0; i < matrix.num_blocks; ++i )
    {
-      matrix.col_indices[ i ] = col_indices[ i ];
+      matrix_data.col_indices[ i ] = col_indices[ i ];
    }
 
    for ( GlobalIndex block = 0; block < matrix.num_blocks; ++block )
@@ -121,23 +120,24 @@ auto MakeManualBsrMatrix(
                Real( 10 * ( block + 1 ) ) +
                Real( 2 * local_row ) -
                Real( 3 * local_col );
-            SetBlockEntry( matrix, block, local_row, local_col, value );
+            SetBlockEntry(
+               matrix_data,
+               block,
+               local_row,
+               local_col,
+               value );
          }
       }
    }
 
-   ToDevice( matrix.num_row_blocks + 1, matrix.row_offsets );
-   ToDevice( matrix.num_blocks, matrix.col_indices );
-   ToDevice(
-      matrix.num_blocks * matrix.block_rows * matrix.block_cols,
-      matrix.values );
+   Sync( matrix );
 
    return matrix;
 }
 
 template < typename Matrix >
 bool CompareDeviceApplyWithCpu(
-   const Matrix & matrix,
+   Matrix & matrix,
    const char * failure_message )
 {
    const GlobalIndex x_size =
@@ -159,7 +159,7 @@ bool CompareDeviceApplyWithCpu(
    y_cpu = 0.0;
    y_gpu = 0.0;
 
-   matrix( x, y_cpu );
+   Apply( HostBSRBackend{}, matrix, x, y_cpu );
    NativeDeviceBSRBackend device_backend{};
    Apply( device_backend, matrix, x, y_gpu );
 
@@ -174,12 +174,49 @@ bool CompareDeviceApplyWithCpu(
          failure_message ) && success;
    }
 
+   y_cpu = 3.0;
+   y_gpu = 3.0;
+   ApplyAdd( HostBSRBackend{}, matrix, x, y_cpu );
+   ApplyAdd( device_backend, matrix, x, y_gpu );
+   cpu_data = y_cpu.ReadHostData();
+   gpu_data = y_gpu.ReadHostData();
+   for ( GlobalIndex i = 0; i < y_size; ++i )
+   {
+      success = Check(
+         Near( cpu_data[i], gpu_data[i] ),
+         "Native BSR ApplyAdd disagrees with host BSR ApplyAdd." ) &&
+         success;
+   }
+
+   const GlobalIndex value_count =
+      matrix.num_blocks *
+      matrix.block_rows *
+      matrix.block_cols;
+   Real * device_values = ReadWriteDevice( matrix.values );
+   DeviceLoop(
+      value_count,
+      [=] GENDIL_HOST_DEVICE ( GlobalIndex i )
+      {
+         device_values[i] *= Real( 2 );
+      } );
+   Apply( HostBSRBackend{}, matrix, x, y_cpu );
+   Apply( device_backend, matrix, x, y_gpu );
+   cpu_data = y_cpu.ReadHostData();
+   gpu_data = y_gpu.ReadHostData();
+   for ( GlobalIndex i = 0; i < y_size; ++i )
+   {
+      success = Check(
+         Near( cpu_data[i], gpu_data[i] ),
+         "BSR device-value modification did not synchronize back to host." ) &&
+         success;
+   }
+
    return success;
 }
 
 bool TestSquareBsrDeviceApply()
 {
-   const auto matrix =
+   auto matrix =
       MakeManualBsrMatrix< BlockLayout::ColumnMajor >(
          2,
          2,
@@ -195,7 +232,7 @@ bool TestSquareBsrDeviceApply()
 
 bool TestRectangularBsrDeviceApply()
 {
-   const auto matrix =
+   auto matrix =
       MakeManualBsrMatrix< BlockLayout::RowMajor >(
          2,
          3,

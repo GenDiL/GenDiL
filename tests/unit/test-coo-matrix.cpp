@@ -72,32 +72,33 @@ void FillSentinel( Vector & y )
 bool TestHandWrittenCOOAction()
 {
    auto matrix = MakeCOOMatrix< Real, GlobalIndex >( 4, 3, 6 );
+   auto matrix_data = GetHostWriteView( matrix );
 
    // Canonical COO: sorted, unique coordinates. Row 2 is intentionally empty,
    // and entry (1, 2) is an explicit zero retained by the matrix.
-   matrix.rows[0] = 0;
-   matrix.cols[0] = 0;
-   matrix.values[0] = 1.0;
+   matrix_data.rows[0] = 0;
+   matrix_data.cols[0] = 0;
+   matrix_data.values[0] = 1.0;
 
-   matrix.rows[1] = 0;
-   matrix.cols[1] = 2;
-   matrix.values[1] = 4.0;
+   matrix_data.rows[1] = 0;
+   matrix_data.cols[1] = 2;
+   matrix_data.values[1] = 4.0;
 
-   matrix.rows[2] = 1;
-   matrix.cols[2] = 0;
-   matrix.values[2] = 1.5;
+   matrix_data.rows[2] = 1;
+   matrix_data.cols[2] = 0;
+   matrix_data.values[2] = 1.5;
 
-   matrix.rows[3] = 1;
-   matrix.cols[3] = 1;
-   matrix.values[3] = -1.0;
+   matrix_data.rows[3] = 1;
+   matrix_data.cols[3] = 1;
+   matrix_data.values[3] = -1.0;
 
-   matrix.rows[4] = 1;
-   matrix.cols[4] = 2;
-   matrix.values[4] = 0.0;
+   matrix_data.rows[4] = 1;
+   matrix_data.cols[4] = 2;
+   matrix_data.values[4] = 0.0;
 
-   matrix.rows[5] = 3;
-   matrix.cols[5] = 1;
-   matrix.values[5] = -2.0;
+   matrix_data.rows[5] = 3;
+   matrix_data.cols[5] = 1;
+   matrix_data.values[5] = -2.0;
 
    Vector x( 3 );
    FillInput( x );
@@ -127,7 +128,6 @@ bool TestHandWrittenCOOAction()
       -6.0,
       "COOMatrix::operator()(x, y) produced the wrong result." ) && success;
 
-   FreeCOOMatrix( matrix );
    return success;
 }
 

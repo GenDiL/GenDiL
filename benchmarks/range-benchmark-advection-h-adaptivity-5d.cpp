@@ -75,13 +75,13 @@ void bench_face_components_once_5D(int nx_half, int nyL, int nzL, int nwL, int n
   auto fe = MakeLobattoFiniteElement(FiniteElementOrders<p,p,p,p,p>{});
 
   // split layout: [L | R]
-  L2Restriction resL{0};
+  ContiguousL2RestrictionSpecification resL{0};
   auto feL = MakeFiniteElementSpace(meshL, fe, resL);
-  const Integer dofsL = feL.GetNumberOfFiniteElementDofs();
+  const Integer dofsL = GetNumberOfGlobalDofs( feL );
 
-  L2Restriction resR{dofsL};
+  ContiguousL2RestrictionSpecification resR{dofsL};
   auto feR = MakeFiniteElementSpace(meshR, fe, resR);
-  const Integer dofsR = feR.GetNumberOfFiniteElementDofs();
+  const Integer dofsR = GetNumberOfGlobalDofs( feR );
 
   ndofsL = dofsL;
   ndofsR = dofsR;

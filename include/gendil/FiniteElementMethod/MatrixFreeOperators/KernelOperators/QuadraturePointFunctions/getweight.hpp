@@ -4,17 +4,33 @@
 
 #pragma once
 
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/tensorindex.hpp"
-#include "gendil/Utilities/MathHelperFunctions/product.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 
 namespace gendil {
 
 namespace details
 {
+
+template<class T>
+struct TensorProductDimension : std::integral_constant<Integer, 1>
+{
+};
+
+template<class... Entries>
+struct TensorProductDimension<TensorProductData<Entries...>>
+   : std::integral_constant<
+        Integer,
+        (TensorProductDimension<std::remove_cvref_t<Entries>>::value +
+         ... + 0)>
+{
+};
 
 template<class QData1D>
 GENDIL_HOST_DEVICE
@@ -42,55 +58,105 @@ Real GetWeight1D(const QData1D& qdata, Integer q)
    }
 }
 
+template<Integer Dim, class QData>
+GENDIL_HOST_DEVICE
+Real GetTensorProductWeightImpl(
+   const TensorIndex<Dim>& index,
+   const QData& qdata,
+   Integer& dimension);
+
+template<Integer Dim, class... Entries, size_t... Is>
+GENDIL_HOST_DEVICE
+Real GetTensorProductWeightImpl(
+   const TensorIndex<Dim>& index,
+   const TensorProductData<Entries...>& qdata,
+   Integer& dimension,
+   std::index_sequence<Is...>)
+{
+   Real weight = 1.0;
+   (
+      (weight *= GetTensorProductWeightImpl(
+         index,
+         GetTensorProductEntry<Is>(qdata),
+         dimension)),
+      ...);
+   return weight;
+}
+
+template<Integer Dim, class QData>
+GENDIL_HOST_DEVICE
+Real GetTensorProductWeightImpl(
+   const TensorIndex<Dim>& index,
+   const QData& qdata,
+   Integer& dimension)
+{
+   if constexpr (is_tensor_product_data_v<QData>)
+   {
+      return GetTensorProductWeightImpl(
+         index,
+         qdata,
+         dimension,
+         std::make_index_sequence<
+            tensor_product_entry_count_v<QData>>{});
+   }
+   else
+   {
+      return GetWeight1D(qdata, index[dimension++]);
+   }
+}
+
 } // namespace details
 
 /**
  * @brief Get the quadrature weight at a given quadrature point.
  * 
  * @tparam Dim The dimension of the space.
- * @tparam DofToQuads 1D DofToQuad objects for each dimension.
+ * @tparam Entries Immediate one-dimensional or nested tensor-product qdata
+ * entries.
  * @param index The index of the quadrature point.
- * @param quad_data The DofToQuad objects containing 1D data for each dimension.
+ * @param quad_data Strongly typed tensor-product quadrature data.
  * @return The quadrature weight.
  * 
  * @note Assumes tensor finite element with tensor integration rule.
  */
-template < Integer Dim, typename... DofToQuads >
+template<Integer Dim, class... Entries>
 GENDIL_HOST_DEVICE
-Real GetWeight( const TensorIndex< Dim > & index,
-                const std::tuple< DofToQuads... > & quad_data );
-
-template <
-   Integer Dim,
-   typename ... ScalarDofToQuads,
-   typename ... RestVectorDofToQuads >
-GENDIL_HOST_DEVICE
-Real GetWeight( const TensorIndex< Dim > & index,
-                const std::tuple< std::tuple< ScalarDofToQuads... >, RestVectorDofToQuads... > & quad_data )
+Real GetWeight(
+   const TensorIndex<Dim>& index,
+   const TensorProductData<Entries...>& quad_data)
 {
-   return GetWeight( index, std::get< 0 >( quad_data ) );
+   static_assert(
+      details::TensorProductDimension<
+         TensorProductData<Entries...>>::value == Dim,
+      "GetWeight requires the flattened tensor-product quadrature dimension "
+      "to match TensorIndex::Dim.");
+   Integer dimension = 0;
+   return details::GetTensorProductWeightImpl(
+      index,
+      quad_data,
+      dimension);
 }
 
-template < Integer Dim,
-           typename... DofToQuads,
-           size_t... Is >
+template<Integer Dim, class... ScalarMaps>
 GENDIL_HOST_DEVICE
-Real GetWeight( const TensorIndex< Dim > & index,
-                const std::tuple< DofToQuads... > & quad_data,
-                std::index_sequence< Is... > )
+Real GetWeight(
+   const TensorIndex<Dim>& index,
+   const VectorDofToQuad<ScalarMaps...>& quad_data)
 {
-   return Product(
-      details::GetWeight1D( std::get< Is >( quad_data ), index[ Is ] )... );
+   return GetWeight(index, GetVectorComponent<0>(quad_data));
 }
 
-template < Integer Dim, typename... DofToQuads >
+template<Integer Dim, class... QData>
 GENDIL_HOST_DEVICE
-Real GetWeight( const TensorIndex< Dim > & index,
-                const std::tuple< DofToQuads... > & quad_data )
+Real GetWeight(
+   const TensorIndex<Dim>&,
+   const std::tuple<QData...>&)
 {
-   return GetWeight( index,
-                     quad_data,
-                     std::make_index_sequence< Dim >{} );
+   static_assert(
+      dependent_false_v<std::tuple<QData...>>,
+      "GetWeight volume qdata requires TensorProductData; plain "
+      "std::tuple volume qdata is unsupported.");
+   return 0.0;
 }
 
 template < CellFaceView FaceInfo, Integer Dim, typename... DofToQuads >

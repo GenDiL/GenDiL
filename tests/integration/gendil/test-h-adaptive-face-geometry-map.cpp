@@ -195,7 +195,8 @@ bool TestCartesianHAdaptiveGeometryMapCharacterization()
 
    using MinusLocalFaceQD =
       std::remove_cvref_t<decltype(std::get<MeshFaceIndex>(mesh_face_qd_L))>;
-   using MinusTangentialPoints = std::tuple_element_t<1, MinusLocalFaceQD>;
+   using MinusTangentialPoints =
+      tensor_product_entry_t<1, MinusLocalFaceQD>;
 
    bool success = true;
    Real integral_one = 0.0;
@@ -384,7 +385,7 @@ bool TestLowLevelOrientationAndNonconformingMapKernels()
 
    Cartesian2DMesh mesh(1.0, 1, 1, Point<2>{0.0, 0.0});
    auto fe = MakeLobattoFiniteElement(FiniteElementOrders<p, p>{});
-   auto fe_space = MakeFiniteElementSpace(mesh, fe, L2Restriction{0});
+   auto fe_space = MakeFiniteElementSpace(mesh, fe, ContiguousL2RestrictionSpecification{0});
 
    using Connectivity =
       MaterializedOneFaceNonconformingConnectivity<LocalFaceIndex>;
@@ -458,7 +459,8 @@ bool TestLowLevelOrientationAndNonconformingMapKernels()
 
    using LocalFaceQD =
       std::remove_cvref_t<decltype(std::get<LocalFaceIndex>(face_qd))>;
-   using TangentialQD = std::tuple_element_t<1, LocalFaceQD>;
+   using TangentialQD =
+      tensor_product_entry_t<1, LocalFaceQD>;
    using Shape1D = GaussLobattoLegendreShapeFunctions<p>;
 
    bool success = true;
@@ -647,10 +649,10 @@ bool TestGenericOperatorP0JumpResidualCancellation()
    FiniteElementOrders<order, order> orders;
    auto fe = MakeLegendreFiniteElement(orders);
 
-   auto fe_space_L = MakeFiniteElementSpace(meshL, fe, L2Restriction{0});
-   const Integer ndofsL = fe_space_L.GetNumberOfFiniteElementDofs();
-   auto fe_space_R = MakeFiniteElementSpace(meshR, fe, L2Restriction{ndofsL});
-   const Integer ndofsR = fe_space_R.GetNumberOfFiniteElementDofs();
+   auto fe_space_L = MakeFiniteElementSpace(meshL, fe, ContiguousL2RestrictionSpecification{0});
+   const Integer ndofsL = GetNumberOfGlobalDofs( fe_space_L );
+   auto fe_space_R = MakeFiniteElementSpace(meshR, fe, ContiguousL2RestrictionSpecification{ndofsL});
+   const Integer ndofsR = GetNumberOfGlobalDofs( fe_space_R );
 
    NonconformingCartesianIntermeshFaceConnectivity<Dim, MeshFaceIndex>
       iface({nxL, nyL}, {nxR, nyR});
@@ -663,7 +665,7 @@ bool TestGenericOperatorP0JumpResidualCancellation()
       MakeMixedFiniteElementSpace(
          partition,
          std::tuple{fe, fe},
-         std::tuple{L2Restriction{0}, L2Restriction{ndofsL}});
+         std::tuple{ContiguousL2RestrictionSpecification{0}, ContiguousL2RestrictionSpecification{ndofsL}});
 
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -672,7 +674,7 @@ bool TestGenericOperatorP0JumpResidualCancellation()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField<"u">(mixed),
-         MakeIntegrationDomain<"mesh">(mixed));
+         MakeIntegrationDomain<"mesh">(partition));
 
    constexpr Integer num_quad_1d = 1;
    auto integration_rule =

@@ -22,6 +22,9 @@
 // A tensor index.
 #include "tensorindex.hpp"
 
+// A strongly typed tensor-product data container.
+#include "tensorproductdata.hpp"
+
 // FIFO multi-index linearization helpers.
 #include "multiindex.hpp"
 
@@ -30,6 +33,9 @@
 
 // Debugging macros
 #include "debug.hpp"
+
+// Checked arithmetic for unsigned counts, sizes, and offsets.
+#include "checkedarithmetic.hpp"
 
 // A map structure with static string keys.
 #include "gendil/Utilities/staticmap.hpp"

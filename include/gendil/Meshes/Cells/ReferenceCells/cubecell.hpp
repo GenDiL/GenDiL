@@ -5,8 +5,11 @@
 #pragma once
 
 #include "gendil/Utilities/tensorindex.hpp"
+#include "gendil/Meshes/Connectivities/Orientations/identityorientation.hpp"
+#include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/Meshes/Geometries/point.hpp"
 #include "gendil/NumericalIntegration/QuadraturePoints/getcoord.hpp"
+#include "gendil/Utilities/tensorproductdata.hpp"
 
 namespace gendil {
 
@@ -17,6 +20,7 @@ namespace gendil {
 struct CubeCell
 {
     static constexpr Integer Dim = 3;
+    using geometry = HyperCube< Dim >;
 
     const Real h_x, h_y, h_z;
     const Point<Dim> origin;
@@ -24,11 +28,16 @@ struct CubeCell
    using physical_coordinates = std::array< Real, Dim >;
    using jacobian = std::array< Real, Dim >;
     template < typename IntRule >
-    using QuadData =  std::tuple<
-                        typename std::tuple_element_t<0, typename IntRule::points::points_1d_tuple >,
-                        typename std::tuple_element_t<1, typename IntRule::points::points_1d_tuple >,
-                        typename std::tuple_element_t<2, typename IntRule::points::points_1d_tuple >
-                    >;
+    using QuadData = TensorProductData<
+       std::tuple_element_t<
+          0,
+          typename IntRule::points::points_1d_tuple>,
+       std::tuple_element_t<
+          1,
+          typename IntRule::points::points_1d_tuple>,
+       std::tuple_element_t<
+          2,
+          typename IntRule::points::points_1d_tuple>>;
 
    GENDIL_HOST_DEVICE
    CubeCell( Point< Dim > origin,
@@ -88,10 +97,7 @@ struct CubeCell
 };
 
 GENDIL_HOST_DEVICE
-void ApplyOrientationToCell(const Permutation<3>& orientation, CubeCell& cell)
-{
-    GENDIL_VERIFY( orientation == MakeReferencePermutation<3>(),
-        "Orientation of CubeCell must be the reference orientation." );
-}
+void ApplyOrientationToCell(const IdentityOrientation<3>&, CubeCell&)
+{}
 
 }

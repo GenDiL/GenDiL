@@ -9,6 +9,7 @@
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/vectoraccess.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 
 namespace gendil {
@@ -123,13 +124,11 @@ void LinearFormOperator( const FiniteElementSpace & fe_space,
       {
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelConfiguration, IntegrationRule >;
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          LinearFormElementOperator(
             kernel_conf,
@@ -198,43 +197,27 @@ public:
    LinearForm( const FiniteElementSpace & finite_element_space,
                const IntegrationRule & int_rules,
                Lambda && lambda ) :
-      Vector( finite_element_space.GetNumberOfFiniteElementDofs() ),
+      Vector( GetAlgebraicDofExtent( finite_element_space ) ),
       finite_element_space( finite_element_space ),
       int_rules( int_rules )
    {
       MeshQuadData mesh_quad_data;
       ElementQuadData element_quad_data;
 
-      if constexpr (
-         std::is_same_v<
-            typename FiniteElementSpace::restriction_type,
-            L2Restriction > )
-      {
-         auto dofs_out =
-            MakeWriteOnlyElementTensorView< KernelPolicy >(
-               finite_element_space,
-               *this );
-         LinearFormOperator< KernelPolicy, integration_rule >(
+      constexpr bool on_device =
+         is_device_configuration_v< KernelPolicy >;
+      Zero< on_device >( static_cast< Vector & >( *this ) );
+
+      auto dofs_out =
+         MakeReadWriteElementTensorView< KernelPolicy >(
             finite_element_space,
-            mesh_quad_data,
-            element_quad_data,
-            lambda,
-            dofs_out );
-      }
-      else
-      {
-         static_cast< Vector & >( *this ) = 0.0;
-         auto dofs_out =
-            MakeReadWriteElementTensorView< KernelPolicy >(
-               finite_element_space,
-               *this );
-         LinearFormOperator< KernelPolicy, integration_rule >(
-            finite_element_space,
-            mesh_quad_data,
-            element_quad_data,
-            lambda,
-            dofs_out );
-      }
+            *this );
+      LinearFormOperator< KernelPolicy, integration_rule >(
+         finite_element_space,
+         mesh_quad_data,
+         element_quad_data,
+         lambda,
+         dofs_out );
    }
 };
 

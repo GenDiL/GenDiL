@@ -95,7 +95,7 @@ Real Dot( KernelContext & kernel_conf, const ThreadedView< Sizes, KernelContext,
       ThreadLoop< tshape >( kernel_conf, [&] ( auto... t )
       {
          Real local_res = Dot( u.data, v.data );
-         AtomicAdd( *res, local_res );
+         AtomicAddInPlace( *res, local_res );
       });
       kernel_conf.Sync();
       Real result = *res;

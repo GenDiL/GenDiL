@@ -116,8 +116,8 @@ void MassInverseExplicitOperator(
    const MeshQuadData & mesh_quad_data,
    const ElementQuadData & element_quad_data,
    Sigma & sigma,
-   const StridedView< FiniteElementSpace::Dim + 1, const Real > & dofs_in,
-   StridedView< FiniteElementSpace::Dim + 1, Real > & dofs_out,
+   const element_tensor_view_t< FiniteElementSpace, const Real > & dofs_in,
+   element_tensor_view_t< FiniteElementSpace, Real > & dofs_out,
    const Integer max_iters,
    const Real tolerance )
 {
@@ -128,13 +128,11 @@ void MassInverseExplicitOperator(
          constexpr size_t required_shared_mem =
             required_shared_memory_v< KernelConfiguration, IntegrationRule > +
             required_threaded_dot_shared_memory_v< KernelConfiguration >;
-         GENDIL_SHARED Real _shared_mem[
-            KernelContext<
-               KernelConfiguration,
-               required_shared_mem >::shared_memory_block_size ];
+         using Context =
+            KernelContext< KernelConfiguration, required_shared_mem >;
+         GENDIL_SHARED Real _shared_mem[Context::shared_memory_block_size];
 
-         KernelContext< KernelConfiguration, required_shared_mem >
-            kernel_conf( _shared_mem );
+         Context kernel_conf( _shared_mem );
 
          auto op = [&]( const auto & in, auto & out )
          {
@@ -181,8 +179,8 @@ class MassInverseFiniteElementOperator
    Integer max_iters;
    Real tolerance;
 
-   using input = StridedView< FiniteElementSpace::Dim + 1, const Real >;
-   using output = StridedView< FiniteElementSpace::Dim + 1, Real >;
+   using input = element_tensor_view_t< FiniteElementSpace, const Real >;
+   using output = element_tensor_view_t< FiniteElementSpace, Real >;
 
 public:
    /**

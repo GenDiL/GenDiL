@@ -1,305 +1,147 @@
 cmake_minimum_required(VERSION 3.25.2)
 
 project(
-    "GENDIL"
-    VERSION 0.0.3
-    DESCRIPTION "A C++ Generic Discretization Library."
-    HOMEPAGE_URL "https://github.com/GenDiL/GenDiL")
+  "GENDIL"
+  VERSION 0.0.6
+  DESCRIPTION "A C++ Generic Discretization Library."
+  HOMEPAGE_URL "https://github.com/GenDiL/GenDiL"
+)
 
 include(GNUInstallDirs)
+include(CTest)
+include("${PROJECT_SOURCE_DIR}/cmake/GENDILOptions.cmake")
+include(
+  "${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILDeviceSparseFinalization.cmake"
+)
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILOpenMP.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILRAJA.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILMFEM.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILCaliper.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILHypre.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILCUDA.cmake")
+include("${PROJECT_SOURCE_DIR}/cmake/dependencies/GENDILHIP.cmake")
 
-# Set optimization flags for different build types
-set(CMAKE_CXX_FLAGS_DEBUG "-g -fsanitize=address -fno-omit-frame-pointer" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -funroll-loops -DNDEBUG" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -DNDEBUG -g" CACHE STRING "")
+# Set optimization flags for different build types.
+set(
+  CMAKE_CXX_FLAGS_DEBUG
+  "-g -fsanitize=address -fno-omit-frame-pointer"
+  CACHE STRING ""
+)
+set(
+  CMAKE_CXX_FLAGS_RELEASE
+  "-O3 -march=native -funroll-loops -DNDEBUG"
+  CACHE STRING ""
+)
+set(
+  CMAKE_CXX_FLAGS_RELWITHDEBINFO
+  "-O2 -DNDEBUG -g"
+  CACHE STRING ""
+)
 
-# Print warnings
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-limit=0")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-unused-local-typedefs") # supress some warnings
-
-# Options for third-party dependencies
-option(USE_MFEM "Enables MFEM interface." OFF)
-option(USE_OPENMP "Enables OpenMP parallelization features." ON)
-option(USE_CUDA "Enables CUDA support." OFF)
-option(USE_HIP "Enables HIP support." OFF)
-option(USE_RAJA "Enables RAJA features." OFF)
-option(USE_CALIPER "Enables Caliper interface for benchmarking." OFF)
-option(USE_HYPRE "Enables Hypre interface." OFF)
-option(GENDIL_ENABLE_BENCHMARKS "Build GenDiL benchmark executables" OFF)
-set(GENDIL_USE_HYPRE_DEVICE OFF)
+# Print warnings.
+set(
+  CMAKE_CXX_FLAGS
+  "${CMAKE_CXX_FLAGS} -pedantic -Wall -ftemplate-backtrace-limit=0"
+)
+set(
+  CMAKE_CXX_FLAGS
+  "${CMAKE_CXX_FLAGS} -Wno-sign-compare -Wno-unused-local-typedefs"
+)
 
 add_library(GENDIL INTERFACE)
-
-# Add -pg to compile and link flags to enable gprof profiling
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pg")
-# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pg")
-
-# OpenMP
-if(USE_OPENMP)
-  find_package(OpenMP REQUIRED)
-  message(STATUS "OpenMP found!")
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_OPENMP)
-  target_link_libraries(GENDIL INTERFACE OpenMP::OpenMP_CXX)
-endif()
-
-# RAJA
-if(USE_RAJA)
-  find_package(RAJA REQUIRED CONFIG HINTS "${RAJA_DIR}"
-              "${RAJA_DIR}/share/raja/cmake"
-              "${RAJA_DIR}/lib/cmake/raja" NO_DEFAULT_PATH)
-  message(STATUS "RAJA found!")
-  target_link_libraries(GENDIL INTERFACE RAJA)
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_RAJA)
-  # Print RAJA include directories
-  get_target_property(RAJA_INCLUDE_DIRS RAJA INTERFACE_INCLUDE_DIRECTORIES)
-  message(STATUS "RAJA include directories: ${RAJA_INCLUDE_DIRS}")
-  get_target_property(RAJA_LIBRARIES RAJA INTERFACE_LINK_LIBRARIES)
-  message(STATUS "RAJA libraries: ${RAJA_LIBRARIES}")
-else()
-  message(STATUS "RAJA support is not enabled.")
-endif()
-
-# MFEM
-if(USE_MFEM)
-  if (USE_HIP)
-    find_package(HIP REQUIRED)
-    find_package(HIPBLAS REQUIRED)
-    find_package(HIPSPARSE REQUIRED)
-  endif()
-  find_package(MFEM REQUIRED NAMES MFEM HINTS "${MFEM_DIR}"
-              "${MFEM_DIR}/lib/cmake/mfem" NO_DEFAULT_PATH)
-  message(STATUS "MFEM found!")
-  target_include_directories(GENDIL INTERFACE ${MFEM_INCLUDE_DIRS})
-  target_link_libraries(GENDIL INTERFACE ${MFEM_LIBRARIES})
-  message(STATUS "mfem include directories: ${MFEM_INCLUDE_DIRS}")
-  message(STATUS "mfem libraries: ${MFEM_LIBRARIES}")
-  message(STATUS "MFEM_DIR is set to: ${MFEM_LIBRARY_DIR}/..")
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_MFEM)
-  add_definitions(-DMFEM_DIR="${MFEM_LIBRARY_DIR}/..")
-
-  if (MFEM_USE_CUDA)
-    set(USE_CUDA ON)
-  endif()
-else()
-  message(STATUS "MFEM support is not enabled.")
-endif()
-
-# Caliper
-if(USE_CALIPER)
-  find_package(caliper REQUIRED HINTS "${caliper_DIR}"
-              "${caliper_DIR}/share/cmake/caliper" NO_DEFAULT_PATH)
-  message(STATUS "Caliper found!")
-  target_link_libraries(GENDIL INTERFACE caliper)
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CALIPER)
-  # Print Caliper include directories and libraries
-  get_target_property(CALIPER_INCLUDE_DIRS caliper INTERFACE_INCLUDE_DIRECTORIES)
-  message(STATUS "Caliper include directories: ${CALIPER_INCLUDE_DIRS}")
-  get_target_property(CALIPER_LIBRARIES caliper INTERFACE_LINK_LIBRARIES)
-  message(STATUS "Caliper libraries: ${CALIPER_LIBRARIES}")
-else()
-  message(STATUS "Caliper support is not enabled.")
-endif()
-
-# Hypre
-if(USE_HYPRE)
-  find_package(HYPRE REQUIRED CONFIG)
-  message(STATUS "Hypre found!")
-  target_link_libraries(GENDIL INTERFACE HYPRE::HYPRE)
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE)
-
-  if(HYPRE_ENABLE_SYCL)
-    message(FATAL_ERROR
-      "USE_HYPRE=ON found a SYCL-enabled Hypre, but GenDiL's Hypre device "
-      "backend supports only CUDA and HIP in this version.")
-  endif()
-
-  if(USE_CUDA)
-    if(HYPRE_ENABLE_CUDA)
-      set(GENDIL_USE_HYPRE_DEVICE ON)
-      target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE_DEVICE)
-      message(STATUS "GenDiL HypreCSR default backend: HypreCSRDeviceBackend (CUDA)")
-    elseif(HYPRE_ENABLE_HIP)
-      message(FATAL_ERROR
-        "USE_CUDA=ON requires a CUDA-enabled Hypre for HypreCSRDeviceBackend, "
-        "but the found Hypre was built with HIP support.")
-    else()
-      message(STATUS
-        "GenDiL device support is enabled, but the found Hypre is host-only; "
-        "HypreCSR will use HypreCSRHostBackend by default.")
-    endif()
-  elseif(USE_HIP)
-    if(HYPRE_ENABLE_HIP)
-      set(GENDIL_USE_HYPRE_DEVICE ON)
-      target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HYPRE_DEVICE)
-      message(STATUS "GenDiL HypreCSR default backend: HypreCSRDeviceBackend (HIP)")
-    elseif(HYPRE_ENABLE_CUDA)
-      message(FATAL_ERROR
-        "USE_HIP=ON requires a HIP-enabled Hypre for HypreCSRDeviceBackend, "
-        "but the found Hypre was built with CUDA support.")
-    else()
-      message(STATUS
-        "GenDiL device support is enabled, but the found Hypre is host-only; "
-        "HypreCSR will use HypreCSRHostBackend by default.")
-    endif()
-  elseif(HYPRE_ENABLE_CUDA OR HYPRE_ENABLE_HIP)
-    message(STATUS
-      "The found Hypre has device support, but GenDiL device support is off; "
-      "HypreCSR will use HypreCSRHostBackend by default.")
-  endif()
-
-  include(CheckCXXSourceCompiles)
-  get_target_property(HYPRE_INCLUDE_DIRS HYPRE::HYPRE INTERFACE_INCLUDE_DIRECTORIES)
-  set(GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS ${HYPRE_INCLUDE_DIRS})
-  foreach(_hypre_include_dir IN LISTS HYPRE_INCLUDE_DIRS)
-    if(EXISTS "${_hypre_include_dir}/seq_block_mv/_hypre_seq_block_mv.h")
-      list(APPEND GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS "${_hypre_include_dir}/seq_block_mv")
-    endif()
-  endforeach()
-  target_include_directories(GENDIL INTERFACE ${GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS})
-
-  set(CMAKE_REQUIRED_INCLUDES ${GENDIL_HYPRE_INTERNAL_INCLUDE_DIRS})
-  set(CMAKE_REQUIRED_LIBRARIES HYPRE::HYPRE)
-  check_cxx_source_compiles("
-    #include <HYPRE.h>
-    #include <HYPRE_parcsr_mv.h>
-    #include <HYPRE_parcsr_ls.h>
-    #include <HYPRE_utilities.h>
-    #include \"_hypre_utilities.h\"
-    #include \"_hypre_seq_mv.h\"
-    #include \"_hypre_parcsr_mv.h\"
-    int main()
-    {
-      HYPRE_Initialized();
-      (void) &hypre_SeqVectorSetData;
-      (void) &hypre_ParVectorInitializeShell;
-      (void) &hypre_ParVectorInitialize_v2;
-      (void) &hypre_ParCSRMatrixInitialize_v2;
-      return 0;
-    }
-  " GENDIL_HYPRE_HAS_INTERNAL_HEADERS)
-  unset(CMAKE_REQUIRED_INCLUDES)
-  unset(CMAKE_REQUIRED_LIBRARIES)
-  if(NOT GENDIL_HYPRE_HAS_INTERNAL_HEADERS)
-    message(FATAL_ERROR
-      "USE_HYPRE=ON requires Hypre internal headers "
-      "(_hypre_utilities.h, _hypre_seq_mv.h, _hypre_parcsr_mv.h) "
-      "and the corresponding internal aliasing APIs for zero-copy "
-      "HYPRE_ParCSRMatrix/HYPRE_ParVector views.")
-  endif()
-else()
-  message(STATUS "Hypre support is not enabled.")
-endif()
-
+add_library(GENDIL::GENDIL ALIAS GENDIL)
 target_include_directories(
   GENDIL
-  INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-
+  INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 target_compile_features(GENDIL INTERFACE cxx_std_20)
 
-# CUDA
+gendil_validate_device_platform()
+
+gendil_configure_openmp(GENDIL GENDIL_OPENMP_CXX_FLAGS)
+gendil_configure_raja(GENDIL)
+gendil_configure_mfem(GENDIL GENDIL_MFEM_ENABLE_CUDA)
+if(GENDIL_MFEM_ENABLE_CUDA)
+  set(USE_CUDA ON)
+endif()
+
+# MFEM can select CUDA after the initial user-option validation.
+gendil_validate_device_platform()
+
+gendil_configure_caliper(GENDIL)
+gendil_configure_hypre(GENDIL GENDIL_USE_HYPRE_DEVICE)
+
+set(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION OFF)
 if(USE_CUDA)
+  if(NOT CMAKE_CUDA_HOST_COMPILER)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
+  endif()
   enable_language(CUDA)
-  find_package(CUDAToolkit REQUIRED)
-  target_compile_features(GENDIL INTERFACE cuda_std_20)
-  target_include_directories(GENDIL
-    INTERFACE
-      ${CUDAToolkit_INCLUDE_DIRS}
+  gendil_configure_cuda(
+    GENDIL
+    "${GENDIL_OPENMP_CXX_FLAGS}"
+    GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
   )
-
-  if (NOT CMAKE_CUDA_HOST_COMPILER)
-    set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
-  endif()
-
-  # NVCC-specific flags
-  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
-    target_compile_options(GENDIL INTERFACE
-      $<$<COMPILE_LANGUAGE:CUDA>:--extended-lambda>
-      $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
-      $<$<COMPILE_LANGUAGE:CUDA>:-keep>
-      $<$<COMPILE_LANGUAGE:CUDA>:-ftemplate-backtrace-limit=0>
-      $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>
-      $<$<COMPILE_LANGUAGE:CUDA>:-ccbin=${CMAKE_CXX_COMPILER}>
-    )
-  endif()
-  if(USE_OPENMP)
-    if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
-      # NVCC requires OpenMP flags to be passed via -Xcompiler
-      target_compile_options(GENDIL INTERFACE
-        $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${OpenMP_CXX_FLAGS}>
-      )
-    else()
-      # Clang-CUDA and other compilers accept OpenMP flags directly
-      target_compile_options(GENDIL INTERFACE
-        $<$<COMPILE_LANGUAGE:CUDA>:${OpenMP_CXX_FLAGS}>
-      )
-    endif()
-  endif()
-
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_CUDA)
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_DEVICE)
-endif()
-
-# HIP
-if(USE_HIP)
+elseif(USE_HIP)
   enable_language(HIP)
-  find_package(HIP REQUIRED)
-  # target_compile_features(GENDIL INTERFACE HIP)
-  target_include_directories(GENDIL INTERFACE ${hip_INCLUDE_DIRS})
-  target_compile_options(GENDIL INTERFACE $<$<COMPILE_LANGUAGE:HIP>:
-    -ftemplate-backtrace-limit=0
-  >)
-  target_compile_definitions(GENDIL INTERFACE GENDIL_USE_HIP GENDIL_USE_DEVICE)
-  message(STATUS "HIP support enabled!")
+  gendil_configure_hip(
+    GENDIL
+    GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
+  )
 endif()
 
-# Debug message to print include directories
+gendil_finalize_device_sparse_finalization(
+  GENDIL
+  "${GENDIL_HAS_DEVICE_SPARSE_FINALIZATION}"
+)
+
 get_target_property(GENDIL_INCLUDES GENDIL INTERFACE_INCLUDE_DIRECTORIES)
 message(STATUS "GENDIL include directories: ${GENDIL_INCLUDES}")
-
-# Debug message to print compile definitions
 get_target_property(GENDIL_DEFINITIONS GENDIL INTERFACE_COMPILE_DEFINITIONS)
 message(STATUS "GENDIL definitions: ${GENDIL_DEFINITIONS}")
-
-# Debug message to print linked libraries
 get_target_property(GENDIL_LIBRARIES GENDIL INTERFACE_LINK_LIBRARIES)
 message(STATUS "GENDIL libraries: ${GENDIL_LIBRARIES}")
 
-# Install header files
 install(DIRECTORY include/ DESTINATION include)
-
-install(TARGETS GENDIL
-        EXPORT GENDIL_Targets
-        INCLUDES DESTINATION include
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(
+  TARGETS GENDIL
+  EXPORT GENDIL_Targets
+  INCLUDES DESTINATION include
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
   "GENDILConfigVersion.cmake"
   VERSION ${PROJECT_VERSION}
-  COMPATIBILITY SameMajorVersion)
-
+  COMPATIBILITY SameMajorVersion
+)
 configure_package_config_file(
   "${PROJECT_SOURCE_DIR}/cmake/GENDILConfig.cmake.in"
   "${PROJECT_BINARY_DIR}/GENDILConfig.cmake"
-  INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake)
+  INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake
+)
+install(
+  EXPORT GENDIL_Targets
+  FILE GENDILTargets.cmake
+  NAMESPACE GENDIL::
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake
+)
+install(
+  FILES
+    "${PROJECT_BINARY_DIR}/GENDILConfig.cmake"
+    "${PROJECT_BINARY_DIR}/GENDILConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake
+)
 
-# Export the targets
-install(EXPORT GENDIL_Targets
-        FILE GENDILTargets.cmake
-        NAMESPACE GENDIL::
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake)
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
-install(FILES "${PROJECT_BINARY_DIR}/GENDILConfig.cmake"
-              "${PROJECT_BINARY_DIR}/GENDILConfigVersion.cmake"
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/gendil/cmake)
-
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/gendil DESTINATION include)
-
-enable_testing()
-add_subdirectory(tests)
 if(GENDIL_ENABLE_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()

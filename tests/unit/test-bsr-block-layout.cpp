@@ -6,11 +6,33 @@
 
 #include <cmath>
 #include <iostream>
+#include <type_traits>
 
 using namespace gendil;
 
 namespace
 {
+
+// Backend for rectangular block tests: vendor BSR requires square blocks
+#if defined(GENDIL_USE_DEVICE)
+using RectangularTestBackend = NativeDeviceBSRBackend<>;
+#else
+using RectangularTestBackend = HostBSRBackend<>;
+#endif
+
+static_assert( !std::is_copy_constructible_v< BSRMatrix<> > );
+static_assert( !std::is_copy_assignable_v< BSRMatrix<> > );
+static_assert( std::is_move_constructible_v< BSRMatrix<> > );
+static_assert( std::is_move_assignable_v< BSRMatrix<> > );
+static_assert( !std::is_copy_constructible_v< COOMatrix<> > );
+static_assert( !std::is_copy_constructible_v< CSRMatrix<> > );
+static_assert( !std::is_copy_constructible_v< CSCMatrix<> > );
+static_assert(
+   !std::is_copy_constructible_v< RawCOOTripletBuffer<> > );
+static_assert( !std::is_copy_constructible_v< RawCOOAssemblyLayout > );
+static_assert( std::is_copy_constructible_v< HostDevicePointer< Real > > );
+static_assert(
+   std::is_copy_constructible_v< RawCOOAssemblyTarget<> > );
 
 constexpr Real tolerance = 1.0e-12;
 
@@ -39,9 +61,9 @@ Real LogicalBlockEntry(
       0.25 * static_cast< Real >( local_col + 1 );
 }
 
-template < typename Matrix >
+template < typename MatrixView >
 void SetStoredBlockEntry(
-   Matrix & matrix,
+   MatrixView & matrix,
    const GlobalIndex block_index,
    const GlobalIndex local_row,
    const GlobalIndex local_col,
@@ -50,7 +72,7 @@ void SetStoredBlockEntry(
    const GlobalIndex block_offset =
       block_index * matrix.block_rows * matrix.block_cols;
 
-   if constexpr ( Matrix::block_layout == BlockLayout::ColumnMajor )
+   if constexpr ( MatrixView::block_layout == BlockLayout::ColumnMajor )
    {
       matrix.values[block_offset + local_col * matrix.block_rows + local_row] =
          value;
@@ -65,18 +87,19 @@ void SetStoredBlockEntry(
 template < typename Matrix >
 void FillLogicalBlocks( Matrix & matrix )
 {
-   for ( GlobalIndex block = 0; block < matrix.num_blocks; ++block )
+   auto matrix_data = GetHostValuesReadWriteView( matrix );
+   for ( GlobalIndex block = 0; block < matrix_data.num_blocks; ++block )
    {
       for ( GlobalIndex local_row = 0;
-            local_row < matrix.block_rows;
+            local_row < matrix_data.block_rows;
             ++local_row )
       {
          for ( GlobalIndex local_col = 0;
-               local_col < matrix.block_cols;
+               local_col < matrix_data.block_cols;
                ++local_col )
          {
             SetStoredBlockEntry(
-               matrix,
+               matrix_data,
                block,
                local_row,
                local_col,
@@ -91,20 +114,24 @@ bool CheckLogicalBlockEntries(
    const Matrix & matrix,
    const char * message )
 {
+   const auto matrix_data = GetHostReadView( matrix );
    bool success = true;
-   for ( GlobalIndex block = 0; block < matrix.num_blocks; ++block )
+   for ( GlobalIndex block = 0; block < matrix_data.num_blocks; ++block )
    {
       for ( GlobalIndex local_row = 0;
-            local_row < matrix.block_rows;
+            local_row < matrix_data.block_rows;
             ++local_row )
       {
          for ( GlobalIndex local_col = 0;
-               local_col < matrix.block_cols;
+               local_col < matrix_data.block_cols;
                ++local_col )
          {
             success = Check(
                Near(
-                  matrix.GetBlockEntry( block, local_row, local_col ),
+                  matrix_data.GetBlockEntry(
+                     block,
+                     local_row,
+                     local_col ),
                   LogicalBlockEntry( block, local_row, local_col ) ),
                message ) && success;
          }
@@ -119,12 +146,14 @@ bool TestRawApplySupportsBothBlockLayouts()
       MakeBlockDiagonalDGBSRPattern<
          Real,
          GlobalIndex,
-         BlockLayout::ColumnMajor >( 3, 2, 3 );
+         BlockLayout::ColumnMajor,
+         RectangularTestBackend >( 3, 2, 3 );
    auto row_matrix =
       MakeBlockDiagonalDGBSRPattern<
          Real,
          GlobalIndex,
-         BlockLayout::RowMajor >( 3, 2, 3 );
+         BlockLayout::RowMajor,
+         RectangularTestBackend >( 3, 2, 3 );
 
    FillLogicalBlocks( column_matrix );
    FillLogicalBlocks( row_matrix );
@@ -155,6 +184,7 @@ bool TestRawApplySupportsBothBlockLayouts()
 
    const Real * y_column_data = y_column.ReadHostData();
    const Real * y_row_data = y_row.ReadHostData();
+   const auto column_data = GetHostReadView( column_matrix );
    for ( GlobalIndex block_row = 0;
          block_row < column_matrix.num_row_blocks;
          ++block_row )
@@ -164,11 +194,11 @@ bool TestRawApplySupportsBothBlockLayouts()
             ++local_row )
       {
          Real expected = 0.0;
-         for ( GlobalIndex block_it = column_matrix.row_offsets[block_row];
-               block_it < column_matrix.row_offsets[block_row + 1];
+         for ( GlobalIndex block_it = column_data.row_offsets[block_row];
+               block_it < column_data.row_offsets[block_row + 1];
                ++block_it )
          {
-            const GlobalIndex block_col = column_matrix.col_indices[block_it];
+            const GlobalIndex block_col = column_data.col_indices[block_it];
             for ( GlobalIndex local_col = 0;
                   local_col < column_matrix.block_cols;
                   ++local_col )
@@ -210,7 +240,7 @@ bool TestAssemblySupportsBothBlockLayouts()
    TrialSpace< "u" > u;
    TestSpace< "u" > v;
    auto rho =
-      MakeCoefficient< "density", PhysicalCoordinate >(
+      MakeCoefficient< "density", PhysicalCoordinates >(
          [] ( const auto & x_phys )
          {
             return 1.0 + x_phys[0] * x_phys[0];
@@ -219,7 +249,7 @@ bool TestAssemblySupportsBothBlockLayouts()
    auto wf_context =
       MakeWeakFormContext(
          MakeTrialField< "u" >( fe_space ),
-         MakeIntegrationDomain< "mesh" >( fe_space ) );
+         MakeIntegrationDomain< "mesh" >( mesh ) );
 
    constexpr Integer num_quad_1d = order + 2;
    IntegrationRuleNumPoints< num_quad_1d > nq;
@@ -232,19 +262,24 @@ bool TestAssemblySupportsBothBlockLayouts()
       MakeDGBSRPattern< Real, GlobalIndex, BlockLayout::RowMajor >(
          fe_space );
 
+   auto column_view = GetHostValuesReadWriteView( column_matrix );
+   auto row_view = GetHostValuesReadWriteView( row_matrix );
+
    using KernelPolicy = SerialKernelConfiguration;
    GenericAssembly< KernelPolicy >(
       weak_form,
       wf_context,
       integration_rule,
-      column_matrix );
+      column_view );
    GenericAssembly< KernelPolicy >(
       weak_form,
       wf_context,
       integration_rule,
-      row_matrix );
+      row_view );
 
    bool success = true;
+   const auto column_data = GetHostReadView( column_matrix );
+   const auto row_data = GetHostReadView( row_matrix );
    success = Check(
       column_matrix.num_blocks == row_matrix.num_blocks,
       "Row-major and column-major BSR patterns have different block counts." ) &&
@@ -267,8 +302,14 @@ bool TestAssemblySupportsBothBlockLayouts()
          {
             success = Check(
                Near(
-                  column_matrix.GetBlockEntry( block, local_row, local_col ),
-                  row_matrix.GetBlockEntry( block, local_row, local_col ) ),
+                  column_data.GetBlockEntry(
+                     block,
+                     local_row,
+                     local_col ),
+                  row_data.GetBlockEntry(
+                     block,
+                     local_row,
+                     local_col ) ),
                "Assembled row-major and column-major BSR logical entries differ." ) &&
                success;
          }
@@ -302,6 +343,58 @@ bool TestAssemblySupportsBothBlockLayouts()
    return success;
 }
 
+template < typename Backend >
+bool TestBSRBackendConfiguration()
+{
+   BSRMatrix<
+      Real,
+      GlobalIndex,
+      BlockLayout::ColumnMajor,
+      Backend > matrix;
+   matrix.block_rows = 2;
+   matrix.block_cols = 2;
+   matrix.num_row_blocks = 3;
+   matrix.num_col_blocks = 3;
+   matrix.num_blocks = 0;
+
+   ConfigureBSRBackend(
+      matrix.backend,
+      matrix.block_rows,
+      matrix.block_cols,
+      matrix.num_row_blocks,
+      matrix.num_col_blocks,
+      matrix.num_blocks );
+
+   bool success = true;
+   success = Check(
+      matrix.backend.AssembledSquareBlocks(),
+      "ConfigureBSRBackend did not record square blocks." ) && success;
+   success = Check(
+      !matrix.backend.AssembledVendorEligible(),
+      "ConfigureBSRBackend marked empty storage as vendor eligible." ) &&
+      success;
+
+   matrix.num_blocks = 3;
+   matrix.block_cols = 3;
+   ConfigureBSRBackend(
+      matrix.backend,
+      matrix.block_rows,
+      matrix.block_cols,
+      matrix.num_row_blocks,
+      matrix.num_col_blocks,
+      matrix.num_blocks );
+
+   success = Check(
+      !matrix.backend.AssembledSquareBlocks(),
+      "ConfigureBSRBackend did not record rectangular blocks." ) && success;
+   success = Check(
+      !matrix.backend.AssembledVendorEligible(),
+      "ConfigureBSRBackend marked rectangular blocks as vendor eligible." ) &&
+      success;
+
+   return success;
+}
+
 } // namespace
 
 int main()
@@ -309,6 +402,10 @@ int main()
    bool success = true;
    success = TestRawApplySupportsBothBlockLayouts() && success;
    success = TestAssemblySupportsBothBlockLayouts() && success;
+   success =
+      TestBSRBackendConfiguration< CuSparseBSRBackend<> >() && success;
+   success =
+      TestBSRBackendConfiguration< RocSparseBSRBackend<> >() && success;
 
    return success ? 0 : 1;
 }

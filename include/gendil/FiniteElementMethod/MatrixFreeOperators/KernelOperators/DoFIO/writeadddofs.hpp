@@ -35,7 +35,7 @@ void WriteAddDofs(
    DofLoop< FiniteElementSpace >(
       [&]( auto... indices )
       {
-         AtomicAdd( global_dofs( indices..., element_index ), local_dofs( indices... ) );
+         AtomicAddInPlace( global_dofs( indices..., element_index ), local_dofs( indices... ) );
       }
    );
 }

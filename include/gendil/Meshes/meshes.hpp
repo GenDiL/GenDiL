@@ -15,6 +15,9 @@
 // The common functions to all cells
 #include "cell.hpp"
 
+// Signed, identity, and tensor-product orientation representations and maps.
+#include "Connectivities/Orientations/orientations.hpp"
+
 // A set of Cartesian meshes data structures
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianmesh.hpp"
 
@@ -23,3 +26,6 @@
 
 // A cartesian product mesh
 #include "gendil/Meshes/MeshDataStructures/TensorProductMesh/productmesh.hpp"
+
+// A cartesian product of partitions
+#include "gendil/Meshes/MeshDataStructures/TensorProductMesh/productpartition.hpp"

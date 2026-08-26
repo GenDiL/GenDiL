@@ -13,14 +13,14 @@ namespace gendil {
 template <
    bool Add,
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... ScalarMaps,
    typename... ValueInputTypes,
    typename... GradientInputTypes,
    typename... OutputTypes >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctionsThreaded(
    KernelContext & thread,
-   const ElementDofToQuad & element_quad_data,
+   const VectorDofToQuad<ScalarMaps...>& element_quad_data,
    const std::tuple<ValueInputTypes...> & values_tuple,
    const std::tuple<GradientInputTypes...> & gradients_tuple,
    std::tuple<OutputTypes...> & output_tuple )
@@ -36,9 +36,9 @@ void ApplyValuesAndGradientTestFunctionsThreaded(
    constexpr Integer NumComponents = sizeof...(ValueInputTypes);
 
    static_assert(
-      std::tuple_size_v<std::remove_cvref_t<ElementDofToQuad>> == NumComponents,
+      sizeof...(ScalarMaps) == NumComponents,
       "Vector ApplyValuesAndGradientTestFunctionsThreaded: element_quad_data must "
-      "have one DofToQuad tuple per vector component.");
+      "have one map per vector component.");
 
    ConstexprLoop<NumComponents>([&](auto c)
    {
@@ -46,7 +46,7 @@ void ApplyValuesAndGradientTestFunctionsThreaded(
 
       ApplyValuesAndGradientTestFunctionsThreaded<Add>(
          thread,
-         std::get<C>(element_quad_data),
+         GetVectorComponent<C>(element_quad_data),
          std::get<C>(values_tuple),
          std::get<C>(gradients_tuple),
          std::get<C>(output_tuple));
@@ -56,18 +56,20 @@ void ApplyValuesAndGradientTestFunctionsThreaded(
 template <
    bool Add,
    typename KernelContext,
-   typename ElementDofToQuad,
+   typename ... Entries,
    typename ValuesInput,
    typename GradientsInput,
    typename Output >
 GENDIL_HOST_DEVICE
 void ApplyValuesAndGradientTestFunctionsThreaded(
    KernelContext & thread,
-   const ElementDofToQuad & element_quad_data,
+   const TensorProductData<Entries...>& element_quad_data,
    const ValuesInput & Duq,
    const GradientsInput & DGuq,
    Output & dofs_out )
 {
+   using ElementDofToQuad =
+      TensorProductData<Entries...>;
    constexpr bool face_interp = is_face_interpolation_v< ElementDofToQuad >;
 
    if constexpr ( face_interp )
@@ -76,7 +78,8 @@ void ApplyValuesAndGradientTestFunctionsThreaded(
          dofs_out += ApplyTestFunctionsThreaded( thread, element_quad_data, Duq );
       else
          dofs_out  = ApplyTestFunctionsThreaded( thread, element_quad_data, Duq );
-      constexpr Integer Rank = std::tuple_size_v< ElementDofToQuad >;
+      constexpr Integer Rank =
+         tensor_product_entry_count_v<ElementDofToQuad>;
       ConstexprLoop<Rank>([&]( auto dim )
       {
          dofs_out += ApplyTestFunctionsThreaded< dim >( thread, element_quad_data, DGuq );
