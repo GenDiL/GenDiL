@@ -255,19 +255,19 @@ public:
    #endif
    }
 
-   GENDIL_DEVICE
+   GENDIL_HOST_DEVICE
    inline void Sync() const
    {
       GENDIL_SYNC_THREADS();
    }
 
-   GENDIL_DEVICE
+   GENDIL_HOST_DEVICE
    inline void SyncWorkItem() const
    {
       Sync();
    }
 
-   GENDIL_DEVICE
+   GENDIL_HOST_DEVICE
    inline void Synchronize() const
    {
       Sync();
