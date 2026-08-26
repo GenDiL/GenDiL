@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25.2)
 
 project(
   "GENDIL"
-  VERSION 0.0.5
+  VERSION 0.0.6
   DESCRIPTION "A C++ Generic Discretization Library."
   HOMEPAGE_URL "https://github.com/GenDiL/GenDiL"
 )

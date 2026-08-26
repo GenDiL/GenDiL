@@ -24,7 +24,7 @@ Useful options:
   with `--apply`.
 - `--include-docs` also scans `.md`, `.rst`, and `.txt` files.
 
-To migrate code from `v0.0.3` to the planned `v0.0.6` API, run the scripts in
+To migrate code from `v0.0.3` to the `v0.0.6` API, run the scripts in
 order:
 
 ```sh
