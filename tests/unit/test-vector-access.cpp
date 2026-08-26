@@ -59,6 +59,10 @@ static_assert(
          WriteKernelVector< false >(
             std::declval< Vector & >() ) ),
       Real * > );
+static_assert(
+   std::is_same_v<
+      decltype( Zero< false >( std::declval< Vector & >() ) ),
+      void > );
 
 #ifdef GENDIL_USE_MFEM
 static_assert( HostAccessibleVector< mfem::Vector > );
@@ -199,6 +203,56 @@ bool TestKernelVectorAccess()
    return success;
 }
 
+bool TestKernelVectorZero()
+{
+   Vector vector( 3 );
+   auto * host_data = WriteHostVector( vector );
+   host_data[0] = Real( 2 );
+   host_data[1] = Real( 4 );
+   host_data[2] = Real( 6 );
+
+   Zero< false >( vector );
+   bool success = Check(
+      vector.IsHostValid() && !vector.IsDeviceValid(),
+      "Zero<false> produced the wrong GenDiL validity state." );
+   const auto * host_zero = ReadHostVector( vector );
+   success = Check(
+      host_zero[0] == Real( 0 ) &&
+      host_zero[1] == Real( 0 ) &&
+      host_zero[2] == Real( 0 ),
+      "Zero<false> did not zero the GenDiL vector." ) && success;
+
+   host_data = WriteHostVector( vector );
+   host_data[0] = Real( 3 );
+   host_data[1] = Real( 5 );
+   host_data[2] = Real( 7 );
+   Zero< true >( vector );
+#ifdef GENDIL_USE_DEVICE
+   success = Check(
+      !vector.IsHostValid() && vector.IsDeviceValid(),
+      "Zero<true> produced the wrong GenDiL validity state." ) && success;
+#else
+   success = Check(
+      vector.IsHostValid() && !vector.IsDeviceValid(),
+      "CPU Zero<true> should use GenDiL host storage." ) && success;
+#endif
+   const auto * device_zero = ReadHostVector( vector );
+   success = Check(
+      device_zero[0] == Real( 0 ) &&
+      device_zero[1] == Real( 0 ) &&
+      device_zero[2] == Real( 0 ),
+      "Zero<true> did not zero the GenDiL vector." ) && success;
+
+   Vector empty;
+   Zero< false >( empty );
+   Zero< true >( empty );
+   success = Check(
+      GetVectorSize( empty ) == size_t( 0 ),
+      "Zero changed an empty GenDiL vector." ) && success;
+
+   return success;
+}
+
 #ifdef GENDIL_USE_MFEM
 bool TestMFEMVectorAccess()
 {
@@ -209,13 +263,21 @@ bool TestMFEMVectorAccess()
    data[2] = 6.0;
 
    const auto * read = ReadHostVector( vector );
-   return
+   bool success =
       Check(
          GetVectorSize( vector ) == size_t( 3 ),
          "GetVectorSize returned the wrong MFEM vector size." ) &&
       Check(
          read[0] == 4.0 && read[1] == 5.0 && read[2] == 6.0,
          "MFEM host vector access changed values." );
+
+   Zero< false >( vector );
+   read = ReadHostVector( vector );
+   success = Check(
+      read[0] == 0.0 && read[1] == 0.0 && read[2] == 0.0,
+      "Zero<false> did not zero the MFEM vector." ) && success;
+
+   return success;
 }
 #endif
 
@@ -225,6 +287,7 @@ int main()
 {
    bool success = TestGenDiLVectorAccess();
    success = TestKernelVectorAccess() && success;
+   success = TestKernelVectorZero() && success;
 #ifdef GENDIL_USE_MFEM
    success = TestMFEMVectorAccess() && success;
 #endif

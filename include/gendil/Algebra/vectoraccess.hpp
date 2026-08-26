@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Algebra/vector.hpp"
+#include "gendil/Utilities/Loop/kernelloop.hpp"
 
 #include <concepts>
 #include <cstddef>
@@ -189,6 +190,26 @@ auto WriteKernelVector( VectorType & vector )
    {
       return WriteHostVector( vector );
    }
+}
+
+/**
+ * @brief Zero every vector entry in the selected kernel memory space.
+ *
+ * This operation acquires write-only storage because it overwrites the complete
+ * vector. The selected memory space becomes valid and the opposite space is
+ * invalidated according to the vector access contract.
+ */
+template < bool OnDevice, typename VectorType >
+requires KernelAccessibleVector< OnDevice, VectorType >
+void Zero( VectorType & vector )
+{
+   auto data = WriteKernelVector< OnDevice >( vector );
+   KernelLoop< OnDevice >(
+      GetVectorSize( vector ),
+      [data] GENDIL_HOST_DEVICE ( const size_t i )
+      {
+         data[i] = Real{0};
+      } );
 }
 
 } // namespace gendil

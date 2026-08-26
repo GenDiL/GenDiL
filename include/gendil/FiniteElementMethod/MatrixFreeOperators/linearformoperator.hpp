@@ -7,7 +7,6 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
-#include "gendil/Utilities/Loop/kernelloop.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
@@ -207,14 +206,7 @@ public:
 
       constexpr bool on_device =
          is_device_configuration_v< KernelPolicy >;
-      auto * data = WriteKernelVector< on_device >(
-         static_cast< Vector & >( *this ) );
-      KernelLoop< on_device >(
-         this->Size(),
-         [=] GENDIL_HOST_DEVICE ( const size_t i )
-         {
-            data[i] = Real{0};
-         } );
+      Zero< on_device >( static_cast< Vector & >( *this ) );
 
       auto dofs_out =
          MakeReadWriteElementTensorView< KernelPolicy >(
