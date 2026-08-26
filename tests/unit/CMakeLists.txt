@@ -14,7 +14,7 @@ gendil_add_test(test-structural-broken-space-restriction test-structural-broken-
 gendil_add_test(test-cell-reference-geometry test-cell-reference-geometry.cpp)
 gendil_add_test(test-orientation test-orientation.cpp)
 gendil_add_test(test-face-read-dofs-direct-global test-face-read-dofs-direct-global.cpp)
-gendil_add_test(test-face-read-dofs-direct-global-vector test-face-read-dofs-direct-global-vector.cpp)
+gendil_add_non_nvcc_test(test-face-read-dofs-direct-global-vector test-face-read-dofs-direct-global-vector.cpp)
 gendil_add_test(test-generic-oriented-dof-view test-generic-oriented-dof-view.cpp)
 gendil_add_non_nvcc_test(test-bsr-block-layout test-bsr-block-layout.cpp)
 gendil_add_test(test-bsr-dof-layout test-bsr-dof-layout.cpp)
