@@ -91,8 +91,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const RocSparseCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
@@ -140,8 +140,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const RocSparseCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,

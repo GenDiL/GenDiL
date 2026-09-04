@@ -92,8 +92,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const CuSparseCSRBackend< BackendComputeType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
@@ -141,8 +141,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const CuSparseCSRBackend< BackendComputeType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,

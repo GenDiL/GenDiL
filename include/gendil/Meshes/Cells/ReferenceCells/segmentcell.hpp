@@ -72,7 +72,7 @@ struct SegmentCell
 };
 
 GENDIL_HOST_DEVICE
-void ApplyOrientationToCell( const IdentityOrientation<1>&, SegmentCell& )
+inline void ApplyOrientationToCell( const IdentityOrientation<1>&, SegmentCell& )
 {}
 
 }

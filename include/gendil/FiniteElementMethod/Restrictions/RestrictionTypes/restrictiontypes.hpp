@@ -16,5 +16,8 @@
 // Completed indirect H1 restrictions and their construction specifications.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/indirecth1restriction.hpp"
 
+// Map-free nodal H1 restrictions for Cartesian meshes.
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/cartesianh1restriction.hpp"
+
 // Completed tensor-product restrictions and factor addressing.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/tensorproductrestriction.hpp"

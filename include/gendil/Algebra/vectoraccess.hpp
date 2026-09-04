@@ -105,51 +105,75 @@ inline mfem::real_t * WriteDeviceVector( mfem::Vector & vector )
 
 #endif
 
-/**
- * Vector type exposing the complete host access interface.
- *
- * This constraint keeps sparse overloads from accepting unrelated vector
- * types and preserves their focused unsupported-vector diagnostics.
- */
+/// Vector type exposing read-only host access.
 template < typename VectorType >
-concept HostAccessibleVector =
-   requires(
-      const std::remove_reference_t< VectorType > & input,
-      std::remove_reference_t< VectorType > & output )
+concept HostReadableVector =
+   requires( const std::remove_reference_t< VectorType > & input )
    {
       { GetVectorSize( input ) } -> std::same_as< size_t >;
       ReadHostVector( input );
+   };
+
+/// Vector type exposing mutable host access.
+template < typename VectorType >
+concept HostWritableVector =
+   requires( std::remove_reference_t< VectorType > & output )
+   {
+      { GetVectorSize( output ) } -> std::same_as< size_t >;
       ReadWriteHostVector( output );
       WriteHostVector( output );
    };
 
-/**
- * Vector type exposing the complete device access interface.
- *
- * Device access falls back to host storage where supported by the underlying
- * vector implementation.
- */
+/// Vector type exposing both read-only and mutable host access.
 template < typename VectorType >
-concept DeviceAccessibleVector =
-   requires(
-      const std::remove_reference_t< VectorType > & input,
-      std::remove_reference_t< VectorType > & output )
+concept HostAccessibleVector =
+   HostReadableVector< VectorType > && HostWritableVector< VectorType >;
+
+/// Vector type exposing read-only device access.
+template < typename VectorType >
+concept DeviceReadableVector =
+   requires( const std::remove_reference_t< VectorType > & input )
    {
       { GetVectorSize( input ) } -> std::same_as< size_t >;
       ReadDeviceVector( input );
+   };
+
+/// Vector type exposing mutable device access.
+template < typename VectorType >
+concept DeviceWritableVector =
+   requires( std::remove_reference_t< VectorType > & output )
+   {
+      { GetVectorSize( output ) } -> std::same_as< size_t >;
       ReadWriteDeviceVector( output );
       WriteDeviceVector( output );
    };
 
+/// Vector type exposing both read-only and mutable device access.
+template < typename VectorType >
+concept DeviceAccessibleVector =
+   DeviceReadableVector< VectorType > && DeviceWritableVector< VectorType >;
+
+/// Vector type readable in the memory space selected by OnDevice.
+template < bool OnDevice, typename VectorType >
+concept KernelReadableVector =
+   ( OnDevice && DeviceReadableVector< VectorType > ) ||
+   ( !OnDevice && HostReadableVector< VectorType > );
+
+/// Vector type writable in the memory space selected by OnDevice.
+template < bool OnDevice, typename VectorType >
+concept KernelWritableVector =
+   ( OnDevice && DeviceWritableVector< VectorType > ) ||
+   ( !OnDevice && HostWritableVector< VectorType > );
+
 /// Vector type accessible in the memory space selected by OnDevice.
 template < bool OnDevice, typename VectorType >
 concept KernelAccessibleVector =
-   ( OnDevice && DeviceAccessibleVector< VectorType > ) ||
-   ( !OnDevice && HostAccessibleVector< VectorType > );
+   KernelReadableVector< OnDevice, VectorType > &&
+   KernelWritableVector< OnDevice, VectorType >;
 
 /// Return read-only data, synchronizing the selected kernel memory space.
 template < bool OnDevice, typename VectorType >
-requires KernelAccessibleVector< OnDevice, VectorType >
+requires KernelReadableVector< OnDevice, VectorType >
 auto ReadKernelVector( const VectorType & vector )
 {
    if constexpr ( OnDevice )
@@ -164,7 +188,7 @@ auto ReadKernelVector( const VectorType & vector )
 
 /// Return mutable data, preserving values and invalidating the opposite space.
 template < bool OnDevice, typename VectorType >
-requires KernelAccessibleVector< OnDevice, VectorType >
+requires KernelWritableVector< OnDevice, VectorType >
 auto ReadWriteKernelVector( VectorType & vector )
 {
    if constexpr ( OnDevice )
@@ -179,7 +203,7 @@ auto ReadWriteKernelVector( VectorType & vector )
 
 /// Return write-only data without syncing and invalidate the opposite space.
 template < bool OnDevice, typename VectorType >
-requires KernelAccessibleVector< OnDevice, VectorType >
+requires KernelWritableVector< OnDevice, VectorType >
 auto WriteKernelVector( VectorType & vector )
 {
    if constexpr ( OnDevice )
@@ -200,7 +224,7 @@ auto WriteKernelVector( VectorType & vector )
  * invalidated according to the vector access contract.
  */
 template < bool OnDevice, typename VectorType >
-requires KernelAccessibleVector< OnDevice, VectorType >
+requires KernelWritableVector< OnDevice, VectorType >
 void Zero( VectorType & vector )
 {
    auto data = WriteKernelVector< OnDevice >( vector );

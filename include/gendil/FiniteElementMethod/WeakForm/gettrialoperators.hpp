@@ -21,7 +21,7 @@ enum class TrialOperatorType
    InterpolateGradients
 };
 
-std::ostream& operator<<(std::ostream& os, const TrialOperatorType& op_type )
+inline std::ostream& operator<<(std::ostream& os, const TrialOperatorType& op_type )
 {
    switch ( op_type )
    {
@@ -131,7 +131,7 @@ auto operator+(
    return TrialOperator<Name, OpTypes...>{};
 }
 
-auto operator+(
+inline auto operator+(
    const Empty & lhs,
    const Empty & rhs )
 {
@@ -275,7 +275,7 @@ auto GetTrialOperators( const UpwindExpr<AdvExpr, Expr> & expr )
    return adv_ops + expr_ops;
 }
 
-auto GetTrialOperators( const Normal & expr )
+inline auto GetTrialOperators( const Normal & expr )
    // -> Empty
 {
    return Empty{};

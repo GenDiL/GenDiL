@@ -97,7 +97,7 @@ struct CubeCell
 };
 
 GENDIL_HOST_DEVICE
-void ApplyOrientationToCell(const IdentityOrientation<3>&, CubeCell&)
+inline void ApplyOrientationToCell(const IdentityOrientation<3>&, CubeCell&)
 {}
 
 }

@@ -134,8 +134,8 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   KernelAccessibleVector< OnDevice, InputVector > &&
-   KernelAccessibleVector< OnDevice, OutputVector >
+   KernelReadableVector< OnDevice, InputVector > &&
+   KernelWritableVector< OnDevice, OutputVector >
 void GatherBsrKernel(
    const FiniteElementSpace & finite_element_space,
    const GlobalIndex num_elements,
@@ -166,8 +166,8 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   KernelAccessibleVector< OnDevice, InputVector > &&
-   KernelAccessibleVector< OnDevice, OutputVector >
+   KernelReadableVector< OnDevice, InputVector > &&
+   KernelWritableVector< OnDevice, OutputVector >
 void ScatterBsrKernel(
    const FiniteElementSpace & finite_element_space,
    const GlobalIndex num_elements,
@@ -234,8 +234,8 @@ void GatherBsr(
       "HostMatVecBackend or DeviceMatVecBackend." );
 
    if constexpr (
-      KernelAccessibleVector< on_device, InputVector > &&
-      KernelAccessibleVector< on_device, OutputVector > )
+      KernelReadableVector< on_device, InputVector > &&
+      KernelWritableVector< on_device, OutputVector > )
    {
 #if !defined(GENDIL_USE_DEVICE)
       if constexpr ( on_device )
@@ -289,8 +289,8 @@ void ScatterBsr(
       "HostMatVecBackend or DeviceMatVecBackend." );
 
    if constexpr (
-      KernelAccessibleVector< on_device, InputVector > &&
-      KernelAccessibleVector< on_device, OutputVector > )
+      KernelReadableVector< on_device, InputVector > &&
+      KernelWritableVector< on_device, OutputVector > )
    {
 #if !defined(GENDIL_USE_DEVICE)
       if constexpr ( on_device )

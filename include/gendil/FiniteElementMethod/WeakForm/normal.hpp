@@ -59,7 +59,7 @@ struct Normal : FieldBase
    }
 };
 
-std::ostream& operator<<(std::ostream& os, const Normal& normal)
+inline std::ostream& operator<<(std::ostream& os, const Normal& normal)
 {
    return os << "n";
 }

@@ -135,8 +135,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const NativeDeviceCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
@@ -173,8 +173,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const NativeDeviceCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,

@@ -16,11 +16,18 @@ namespace details
 {
 
 template < typename Backend, typename VectorType >
-concept SGBSRVectorAccessibleForBackend =
+concept SGBSRVectorReadableForBackend =
    ( is_host_matvec_backend_v< Backend > &&
-     HostAccessibleVector< VectorType > ) ||
+     HostReadableVector< VectorType > ) ||
    ( is_device_matvec_backend_v< Backend > &&
-     DeviceAccessibleVector< VectorType > );
+     DeviceReadableVector< VectorType > );
+
+template < typename Backend, typename VectorType >
+concept SGBSRVectorWritableForBackend =
+   ( is_host_matvec_backend_v< Backend > &&
+     HostWritableVector< VectorType > ) ||
+   ( is_device_matvec_backend_v< Backend > &&
+     DeviceWritableVector< VectorType > );
 
 } // namespace details
 
@@ -32,8 +39,8 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   details::SGBSRVectorAccessibleForBackend< Backend, InputVector > &&
-   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector > &&
+   details::SGBSRVectorReadableForBackend< Backend, InputVector > &&
+   details::SGBSRVectorWritableForBackend< Backend, OutputVector > &&
    GatherOperatorType< TrialGather, Backend, InputVector, Vector > &&
    ScatterOperatorType< TestScatter, Backend, Vector, OutputVector >
 void Apply(
@@ -60,10 +67,10 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   details::SGBSRVectorAccessibleForBackend<
+   details::SGBSRVectorReadableForBackend<
       typename BSRType::backend_type,
       InputVector > &&
-   details::SGBSRVectorAccessibleForBackend<
+   details::SGBSRVectorWritableForBackend<
       typename BSRType::backend_type,
       OutputVector > &&
    GatherOperatorType<
@@ -101,8 +108,8 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   details::SGBSRVectorAccessibleForBackend< Backend, InputVector > &&
-   details::SGBSRVectorAccessibleForBackend< Backend, OutputVector > &&
+   details::SGBSRVectorReadableForBackend< Backend, InputVector > &&
+   details::SGBSRVectorWritableForBackend< Backend, OutputVector > &&
    GatherOperatorType< TrialGather, Backend, InputVector, Vector > &&
    ScatterOperatorType< TestScatter, Backend, Vector, OutputVector >
 void ApplyAdd(
@@ -130,10 +137,10 @@ template <
    typename InputVector,
    typename OutputVector >
 requires
-   details::SGBSRVectorAccessibleForBackend<
+   details::SGBSRVectorReadableForBackend<
       typename BSRType::backend_type,
       InputVector > &&
-   details::SGBSRVectorAccessibleForBackend<
+   details::SGBSRVectorWritableForBackend<
       typename BSRType::backend_type,
       OutputVector > &&
    GatherOperatorType<

@@ -511,7 +511,7 @@ private:
    mutable bool host_valid{false}, device_valid{false};
 };
 
-std::ostream& operator<<(std::ostream& os, const Vector& vec)
+inline std::ostream& operator<<(std::ostream& os, const Vector& vec)
 {
    if (vec.Size() == 0)
    {
@@ -535,7 +535,7 @@ std::ostream& operator<<(std::ostream& os, const Vector& vec)
  * @pre `x.Size() == y.Size()`.
  * @note Operates on host; marks device invalid for @p x.
  */
-Vector & operator+=( Vector & x, Vector const & y )
+inline Vector & operator+=( Vector & x, Vector const & y )
 {
    GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
 
@@ -554,7 +554,7 @@ Vector & operator+=( Vector & x, Vector const & y )
  * @pre `x.Size() == y.Size()`.
  * @note Operates on host; marks device invalid for @p x.
  */
-Vector & operator-=( Vector & x, Vector const & y )
+inline Vector & operator-=( Vector & x, Vector const & y )
 {
    GENDIL_VERIFY(x.Size() == y.Size(), "Vector sizes must match for assignment.");
 
@@ -574,7 +574,7 @@ Vector & operator-=( Vector & x, Vector const & y )
  * @param a Scalar multiplier.
  * @note Operates on host; marks device invalid for @p x.
  */
-Vector& operator*=(
+inline Vector& operator*=(
    Vector & x,
    const Real & a )
 {
@@ -593,7 +593,7 @@ Vector& operator*=(
  * @param a Scalar divisor.
  * @note Operates on host; marks device invalid for @p x.
  */
-Vector& operator/=(
+inline Vector& operator/=(
    Vector & x,
    const Real & a )
 {
@@ -616,7 +616,7 @@ Vector& operator/=(
  * @pre `x.Size() == y.Size()`.
  * @note Operates on host; marks device invalid for @p y.
  */
-void Axpy(
+inline void Axpy(
    const Real & a,
    const Vector & x,
    Vector & y )
@@ -631,7 +631,7 @@ void Axpy(
    });
 }
 
-void FillRandom(
+inline void FillRandom(
    Vector& v,
    unsigned int seed = 12345,
    Real min_value = Real(-1),

@@ -147,8 +147,8 @@ template <
    BlockLayout Layout,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const CuSparseBSRBackend< BackendComputeType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
@@ -198,8 +198,8 @@ template <
    BlockLayout Layout,
    typename MatrixBackend,
    typename BackendComputeType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const CuSparseBSRBackend< BackendComputeType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,

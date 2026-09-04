@@ -15,8 +15,8 @@ namespace gendil
 
 template <
    typename MatrixBackend,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void Apply(
    const HypreCSRHostBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,
@@ -28,8 +28,8 @@ void Apply(
 
 template <
    typename MatrixBackend,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void ApplyAdd(
    const HypreCSRHostBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,
@@ -46,8 +46,8 @@ void ApplyAdd(
 
 template <
    typename MatrixBackend,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const HypreCSRDeviceBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,
@@ -59,8 +59,8 @@ void Apply(
 
 template <
    typename MatrixBackend,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const HypreCSRDeviceBackend &,
    const HypreCSRMatrix< MatrixBackend > & matrix,

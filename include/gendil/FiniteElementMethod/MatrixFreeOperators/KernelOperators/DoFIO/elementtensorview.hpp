@@ -144,7 +144,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelReadableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeReadOnlyElementTensorView(
@@ -167,7 +167,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelWritableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeWriteOnlyElementTensorView(
@@ -190,7 +190,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelWritableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeReadWriteElementTensorView(

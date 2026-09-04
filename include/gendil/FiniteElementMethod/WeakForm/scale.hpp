@@ -39,7 +39,7 @@ struct ScaleExpr : FieldBase
    }
 };
 
-std::ostream& operator<<(std::ostream& os, const ScaleExpr& Scale)
+inline std::ostream& operator<<(std::ostream& os, const ScaleExpr& Scale)
 {
    return os << Scale.scale_factor;
 }

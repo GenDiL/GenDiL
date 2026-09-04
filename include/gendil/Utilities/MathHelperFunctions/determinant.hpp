@@ -9,25 +9,25 @@
 namespace gendil {
 
 GENDIL_HOST_DEVICE
-Real Determinant( const Real & A )
+inline Real Determinant( const Real & A )
 {
     return A;
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const Real (& A)[1][1] )
+inline Real Determinant( const Real (& A)[1][1] )
 {
     return A[0][0];
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const Real (& A)[2][2] )
+inline Real Determinant( const Real (& A)[2][2] )
 {
     return A[0][0]*A[1][1] - A[1][0]*A[0][1];
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const Real (& A)[3][3] )
+inline Real Determinant( const Real (& A)[3][3] )
 {
     return A[0][0] * (A[1][1] * A[2][2] - A[2][1] * A[1][2])
            - A[1][0] * (A[0][1] * A[2][2] - A[2][1] * A[0][2])
@@ -35,19 +35,19 @@ Real Determinant( const Real (& A)[3][3] )
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const std::array< std::array< Real, 1 >, 1 > & A )
+inline Real Determinant( const std::array< std::array< Real, 1 >, 1 > & A )
 {
     return A[0][0];
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const std::array< std::array< Real, 2 >, 2 > & A )
+inline Real Determinant( const std::array< std::array< Real, 2 >, 2 > & A )
 {
     return A[0][0]*A[1][1] - A[1][0]*A[0][1];
 }
 
 GENDIL_HOST_DEVICE
-Real Determinant( const std::array< std::array< Real, 3 >, 3 > & A )
+inline Real Determinant( const std::array< std::array< Real, 3 >, 3 > & A )
 {
     return A[0][0] * (A[1][1] * A[2][2] - A[2][1] * A[1][2])
            - A[1][0] * (A[0][1] * A[2][2] - A[2][1] * A[0][2])
