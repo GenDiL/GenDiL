@@ -10,6 +10,7 @@
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/vectoroperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 
 #include <type_traits>

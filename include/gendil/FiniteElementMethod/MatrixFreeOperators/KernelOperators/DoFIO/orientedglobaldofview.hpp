@@ -212,7 +212,7 @@ void FillStridedOrientedGlobalDofView(
       const size_t native_global_axis = Offset + native_axis;
       const auto native_stride =
          static_cast< OrientedGlobalDofSignedIndex >(
-            global_dofs.layout.strides[ native_global_axis ] );
+            GetStride( global_dofs.layout, native_global_axis ) );
       if ( mapped_axis < 0 )
       {
          view.base_offset += static_cast< OrientedGlobalDofSignedIndex >(
@@ -236,7 +236,7 @@ void FillStridedOrientedGlobalDofView(
    {
       view.strides[ Offset + axis ] =
          static_cast< OrientedGlobalDofSignedIndex >(
-            global_dofs.layout.strides[ Offset + axis ] );
+            GetStride( global_dofs.layout, Offset + axis ) );
    } );
 }
 
@@ -263,7 +263,7 @@ void FillStridedOrientedGlobalDofView(
             orientation );
       const auto native_stride =
          static_cast< OrientedGlobalDofSignedIndex >(
-            global_dofs.layout.strides[ native_axis ] );
+            GetStride( global_dofs.layout, native_axis ) );
       if constexpr (
          detail::is_static_orientation_axis_v< decltype( mapped_axis ) > )
       {
@@ -307,7 +307,7 @@ auto MakeStridedOrientedGlobalDofView(
       element_index,
       static_cast< OrientedGlobalDofSignedIndex >( element_index ) *
          static_cast< OrientedGlobalDofSignedIndex >(
-            global_dofs.layout.strides[ Dim ] ),
+            GetStride( global_dofs.layout, Dim ) ),
       {} };
 
    FillStridedOrientedGlobalDofView< 0 >(

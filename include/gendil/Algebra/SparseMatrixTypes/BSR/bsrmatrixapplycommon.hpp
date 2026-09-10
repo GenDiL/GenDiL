@@ -7,9 +7,10 @@
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixview.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/vectormapconcept.hpp"
 #include "gendil/Utilities/checkedarithmetic.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
 
+#include <concepts>
 #include <cstddef>
 #include <type_traits>
 
@@ -83,19 +84,6 @@ template <
    typename ValueType,
    typename IndexType,
    BlockLayout Layout,
-   typename MatrixBackend >
-template < typename InputVector, typename OutputVector >
-void BSRMatrix< ValueType, IndexType, Layout, MatrixBackend >::operator()(
-   const InputVector & x,
-   OutputVector & y ) const
-{
-   Apply( backend, *this, x, y );
-}
-
-template <
-   typename ValueType,
-   typename IndexType,
-   BlockLayout Layout,
    typename MatrixBackend,
    typename InputVector,
    typename OutputVector >
@@ -103,58 +91,12 @@ void ApplyAdd(
    const BSRMatrix< ValueType, IndexType, Layout, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { ApplyAdd( matrix.backend, matrix, x, y ) } -> std::same_as< void >;
+}
 {
    ApplyAdd( matrix.backend, matrix, x, y );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   BlockLayout Layout,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void Apply(
-   const Backend &,
-   const BSRMatrix< ValueType, IndexType, Layout, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         BSRMatrix< ValueType, IndexType, Layout, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No BSRMatrix Apply overload is available for this backend/vector "
-      "combination. Include bsrmatrixapply.hpp and use a supported BSR "
-      "backend/vector type." );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   BlockLayout Layout,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void ApplyAdd(
-   const Backend &,
-   const BSRMatrix< ValueType, IndexType, Layout, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         BSRMatrix< ValueType, IndexType, Layout, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No BSRMatrix ApplyAdd overload is available for this backend/vector "
-      "combination. Include bsrmatrixapply.hpp and use a supported BSR "
-      "backend/vector type." );
 }
 
 } // namespace gendil

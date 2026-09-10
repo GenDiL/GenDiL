@@ -207,7 +207,7 @@ public:
    void operator()( const Vector & dofs_vector_in, Vector & dofs_vector_out ) const
    {
       if constexpr (
-         !restriction_may_share_global_dofs_v<
+         restriction_scatter_is_conflict_free_v<
             typename FiniteElementSpace::restriction_type > )
       {
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );
@@ -234,7 +234,7 @@ public:
               mfem::Vector & dofs_vector_out ) const override
    {
       if constexpr (
-         !restriction_may_share_global_dofs_v<
+         restriction_scatter_is_conflict_free_v<
             typename FiniteElementSpace::restriction_type > )
       {
          auto dofs_in = MakeReadOnlyElementTensorView< KernelPolicy >( this->finite_element_space, dofs_vector_in );

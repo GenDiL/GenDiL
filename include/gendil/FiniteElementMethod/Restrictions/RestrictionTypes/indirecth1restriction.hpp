@@ -161,6 +161,10 @@ inline constexpr bool restriction_may_share_global_dofs_v<
    IndirectH1Restriction< DofShape > > = true;
 
 template < StaticDofShape DofShape >
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   IndirectH1Restriction< DofShape > > = true;
+
+template < StaticDofShape DofShape >
 struct restriction_supports_element_reference_view<
    IndirectH1Restriction< DofShape > > : std::true_type { };
 

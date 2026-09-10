@@ -13,6 +13,8 @@
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/Utilities/checkedarithmetic.hpp"
+
+#include <limits>
 #include "gendil/Utilities/KernelContext/kernelcontexttraits.hpp"
 #include "gendil/Utilities/Loop/kernelloop.hpp"
 
@@ -58,8 +60,12 @@ MakeAssemblyRawCOOTripletBuffer(
       nnz_raw,
       [=] GENDIL_HOST_DEVICE ( const IndexType i )
       {
-         view.rows[i] = IndexType( 0 );
-         view.cols[i] = IndexType( 0 );
+         // An out-of-range sentinel distinguishes an uninitialized slot from
+         // the valid algebraic coordinate (0,0). Emission replaces every
+         // sentinel; debug builds can then verify stable slot identity when
+         // several terms or quadrature contributions share a slot.
+         view.rows[i] = std::numeric_limits< IndexType >::max();
+         view.cols[i] = std::numeric_limits< IndexType >::max();
          view.values[i] = ValueType( 0 );
       } );
    return buffer;
@@ -101,12 +107,10 @@ auto MakePartitionCellRawCOOLayouts(
          false>(
             std::get<Part>(partition.CellParts()).mesh,
             CheckedMultiply(
-               LocalDofCount<
-                  finite_element_space_shape_functions_t< decltype(
-                     test_space.template GetCellFiniteElementSpace< Part >() ) > >(),
-               LocalDofCount<
-                  finite_element_space_shape_functions_t< decltype(
-                     trial_space.template GetCellFiniteElementSpace< Part >() ) > >(),
+               CountElementRestrictionEntries< decltype(
+                  test_space.template GetCellFiniteElementSpace< Part >() ) >(),
+               CountElementRestrictionEntries< decltype(
+                  trial_space.template GetCellFiniteElementSpace< Part >() ) >(),
                "Partition RawCOO local block size overflow."))...};
 }
 
@@ -144,8 +148,8 @@ auto MakePartitionBoundaryRawCOOLayout(
    const auto& test =
       test_space.template GetCellFiniteElementSpace<CellPart>();
    const GlobalIndex block_entry_count = CheckedMultiply(
-      LocalDofCount<finite_element_space_shape_functions_t<decltype(test)>>(),
-      LocalDofCount<finite_element_space_shape_functions_t<decltype(trial)>>(),
+      CountElementRestrictionEntries<decltype(test)>(),
+      CountElementRestrictionEntries<decltype(trial)>(),
       "Partition RawCOO boundary block size overflow.");
    return MakeRawCOOEntityBlockLayout(
       face_part.face_mesh.GetNumberOfFaces(),
@@ -222,14 +226,14 @@ auto MakePartitionInteriorRawCOOLayout(
       test_space.template GetCellFiniteElementSpace<MinusPart>();
    const auto& test_plus =
       test_space.template GetCellFiniteElementSpace<PlusPart>();
-   constexpr GlobalIndex ntrial_minus = LocalDofCount<
-      finite_element_space_shape_functions_t<decltype(trial_minus)>>();
-   constexpr GlobalIndex ntrial_plus = LocalDofCount<
-      finite_element_space_shape_functions_t<decltype(trial_plus)>>();
-   constexpr GlobalIndex ntest_minus = LocalDofCount<
-      finite_element_space_shape_functions_t<decltype(test_minus)>>();
-   constexpr GlobalIndex ntest_plus = LocalDofCount<
-      finite_element_space_shape_functions_t<decltype(test_plus)>>();
+   constexpr GlobalIndex ntrial_minus =
+      CountElementRestrictionEntries<decltype(trial_minus)>();
+   constexpr GlobalIndex ntrial_plus =
+      CountElementRestrictionEntries<decltype(trial_plus)>();
+   constexpr GlobalIndex ntest_minus =
+      CountElementRestrictionEntries<decltype(test_minus)>();
+   constexpr GlobalIndex ntest_plus =
+      CountElementRestrictionEntries<decltype(test_plus)>();
    const GlobalIndex num_faces = face_part.face_mesh.GetNumberOfFaces();
 
    return RawCOOInteriorFaceTargets{
@@ -854,15 +858,11 @@ auto GenericRawCOOAssembly(
       }
       else
       {
-         using TrialShapeFunctions =
-            finite_element_space_shape_functions_t< TrialSpace >;
-         using TestShapeFunctions =
-            finite_element_space_shape_functions_t< TestSpace >;
          using OffsetType = RawCOOAssemblyLayout::offset_type;
          constexpr OffsetType ntrial = static_cast<OffsetType>(
-            LocalDofCount<TrialShapeFunctions>());
+            CountElementRestrictionEntries<TrialSpace>());
          constexpr OffsetType ntest = static_cast<OffsetType>(
-            LocalDofCount<TestShapeFunctions>());
+            CountElementRestrictionEntries<TestSpace>());
          const OffsetType block_entry_count = CheckedMultiply(
             ntest,
             ntrial,
@@ -948,16 +948,11 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
 
       using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
       using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-      using TrialShapeFunctions =
-         finite_element_space_shape_functions_t< TrialSpace >;
-      using TestShapeFunctions =
-         finite_element_space_shape_functions_t< TestSpace >;
-
       using OffsetType = RawCOOAssemblyLayout::offset_type;
       constexpr OffsetType ntrial =
-         static_cast<OffsetType>(LocalDofCount<TrialShapeFunctions>());
+         static_cast<OffsetType>(CountElementRestrictionEntries<TrialSpace>());
       constexpr OffsetType ntest =
-         static_cast<OffsetType>(LocalDofCount<TestShapeFunctions>());
+         static_cast<OffsetType>(CountElementRestrictionEntries<TestSpace>());
       const OffsetType block_entry_count =
          CheckedMultiply(
             ntest,

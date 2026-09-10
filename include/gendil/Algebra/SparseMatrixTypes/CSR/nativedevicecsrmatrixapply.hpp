@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/dependentfalse.hpp"
+
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixapplycommon.hpp"
 
 #include <limits>

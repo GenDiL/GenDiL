@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/dependentfalse.hpp"
+
 #include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixapplycommon.hpp"
 #include "gendil/Utilities/MathHelperFunctions/atomicadd.hpp"
 

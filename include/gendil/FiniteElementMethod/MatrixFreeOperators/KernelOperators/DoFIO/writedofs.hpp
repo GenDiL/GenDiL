@@ -43,7 +43,7 @@ void WriteDofs( const GlobalIndex element_index,
    
 
    if constexpr (
-      !restriction_may_share_global_dofs_v<
+      restriction_scatter_is_conflict_free_v<
          typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
@@ -88,7 +88,7 @@ void SerialWriteDofs(
    );
 
    if constexpr (
-      !restriction_may_share_global_dofs_v<
+      restriction_scatter_is_conflict_free_v<
          typename FiniteElementSpace::restriction_type > )
    {
       DofLoop< FiniteElementSpace >(
@@ -139,7 +139,7 @@ void ThreadedWriteDofs(
    using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
 
    if constexpr (
-      !restriction_may_share_global_dofs_v<
+      restriction_scatter_is_conflict_free_v<
          typename FiniteElementSpace::restriction_type > )
    {
       ThreadLoop< tshape >( thread, [&] ( auto... t )
@@ -209,7 +209,7 @@ void WriteVectorDofsSerial(
    using dof_shape = typename FiniteElementSpace::finite_element_type::shape_functions::dof_shape;
 
    if constexpr (
-      !restriction_may_share_global_dofs_v<
+      restriction_scatter_is_conflict_free_v<
          typename FiniteElementSpace::restriction_type > )
    {
       ConstexprLoop< v_dim >( [&]( auto i )
@@ -265,7 +265,7 @@ void WriteVectorDofsThreaded(
          {
             if constexpr (
                !Add &&
-               !restriction_may_share_global_dofs_v<
+               restriction_scatter_is_conflict_free_v<
                   typename FiniteElementSpace::restriction_type > )
                std::get<i>( global_dofs )( t..., k..., element_index ) = std::get<i>( local_dofs )( k... );
             else

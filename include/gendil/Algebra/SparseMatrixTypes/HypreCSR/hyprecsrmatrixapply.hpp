@@ -85,6 +85,10 @@ void Apply(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { Apply( backend, matrix.csr, x, y ) } -> std::same_as< void >;
+}
 {
    Apply( backend, matrix.csr, x, y );
 }
@@ -99,6 +103,10 @@ void ApplyAdd(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { ApplyAdd( backend, matrix.csr, x, y ) } -> std::same_as< void >;
+}
 {
    ApplyAdd( backend, matrix.csr, x, y );
 }
@@ -111,6 +119,10 @@ void Apply(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { Apply( matrix.backend, matrix, x, y ) } -> std::same_as< void >;
+}
 {
    Apply( matrix.backend, matrix, x, y );
 }
@@ -123,17 +135,12 @@ void ApplyAdd(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { ApplyAdd( matrix.backend, matrix, x, y ) } -> std::same_as< void >;
+}
 {
    ApplyAdd( matrix.backend, matrix, x, y );
-}
-
-template < typename MatrixBackend >
-template < typename InputVector, typename OutputVector >
-void HypreCSRMatrix< MatrixBackend >::operator()(
-   const InputVector & x,
-   OutputVector & y ) const
-{
-   Apply( *this, x, y );
 }
 
 } // namespace gendil

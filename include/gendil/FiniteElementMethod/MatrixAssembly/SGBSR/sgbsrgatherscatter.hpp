@@ -8,6 +8,7 @@
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/restrictionoperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/Loop/kernelloop.hpp"
@@ -20,11 +21,22 @@ namespace gendil
 
 // Built-in mappings execute in the memory space selected by their matvec
 // backend. Parallel H1 mappings use atomic accumulation for shared true DoFs.
-// The current coordinate implementation requires one unit-weight entry per
-// restriction row. Multi-entry mappings can later retain the same element-block
-// representation by gathering through E and scattering through its adjoint.
+// The BSR payload remains the unweighted element-local operator. These maps
+// apply arbitrary fixed- or dynamic-cardinality algebraic restrictions while
+// gathering into and scattering out of that payload.
 namespace details
 {
+
+/** @brief How one completed local row updates its algebraic destination. */
+enum class ScatterPolicy
+{
+   /** Store a complete final contribution for each affected coordinate. */
+   Overwrite,
+   /** Add when the executor guarantees conflict-free writes. */
+   Add,
+   /** Atomically add when concurrent writes may conflict. */
+   AtomicAdd
+};
 
 template < typename FiniteElementSpace >
 GlobalIndex BsrInternalSize(
@@ -42,14 +54,14 @@ GlobalIndex BsrExternalSize(
 
 template <
    typename FiniteElementSpace,
-   typename InputValue,
-   typename OutputValue >
+   typename InputAccess,
+   typename OutputAccess >
 GENDIL_HOST_DEVICE
 void GatherBsrElement(
    const FiniteElementSpace & finite_element_space,
    const GlobalIndex element_index,
-   const InputValue * fe_data,
-   OutputValue * bsr_data )
+   const InputAccess & fe_data,
+   OutputAccess & bsr_data )
 {
    using Space = std::remove_cvref_t< FiniteElementSpace >;
    using ShapeFunctions =
@@ -68,27 +80,27 @@ void GatherBsrElement(
                finite_element_space,
                component,
                indices );
-         const GlobalIndex fe_index = GetGlobalDofIndex(
-            finite_element_space,
-            component,
+         const auto local_dof = MakeRestrictionLocalDof(
+            finite_element_space, component, indices );
+         bsr_data[bsr_index] = GatherRestrictionRow(
+            GetRestriction( finite_element_space ),
             element_index,
-            indices );
-         bsr_data[bsr_index] = fe_data[fe_index];
+            local_dof,
+            fe_data );
       } );
 }
 
 template <
-   bool Add,
-   bool Atomic,
+   ScatterPolicy Policy,
    typename FiniteElementSpace,
-   typename InputValue,
-   typename OutputValue >
+   typename InputAccess,
+   typename OutputAccess >
 GENDIL_HOST_DEVICE
 void ScatterBsrElement(
    const FiniteElementSpace & finite_element_space,
    const GlobalIndex element_index,
-   const InputValue * bsr_data,
-   OutputValue * fe_data )
+   const InputAccess & bsr_data,
+   OutputAccess & fe_data )
 {
    using Space = std::remove_cvref_t< FiniteElementSpace >;
    using ShapeFunctions =
@@ -107,23 +119,36 @@ void ScatterBsrElement(
                finite_element_space,
                component,
                indices );
-         const GlobalIndex fe_index = GetGlobalDofIndex(
-            finite_element_space,
-            component,
-            element_index,
-            indices );
+         const auto local_dof = MakeRestrictionLocalDof(
+            finite_element_space, component, indices );
+         const auto & restriction = GetRestriction( finite_element_space );
 
-         if constexpr ( Atomic )
+         if constexpr ( Policy == ScatterPolicy::AtomicAdd )
          {
-            AtomicAddInPlace( fe_data[fe_index], bsr_data[bsr_index] );
+            AtomicScatterAddRestrictionRowAdjoint(
+               restriction,
+               element_index,
+               local_dof,
+               bsr_data[bsr_index],
+               fe_data );
          }
-         else if constexpr ( Add )
+         else if constexpr ( Policy == ScatterPolicy::Add )
          {
-            fe_data[fe_index] += bsr_data[bsr_index];
+            ScatterAddRestrictionRowAdjoint(
+               restriction,
+               element_index,
+               local_dof,
+               bsr_data[bsr_index],
+               fe_data );
          }
          else
          {
-            fe_data[fe_index] = bsr_data[bsr_index];
+            ScatterAssignRestrictionRowAdjoint(
+               restriction,
+               element_index,
+               local_dof,
+               bsr_data[bsr_index],
+               fe_data );
          }
       } );
 }
@@ -142,13 +167,13 @@ void GatherBsrKernel(
    const InputVector & x_fe,
    OutputVector & x_bsr )
 {
-   const auto * fe_data = ReadKernelVector< OnDevice >( x_fe );
-   auto * bsr_data = WriteKernelVector< OnDevice >( x_bsr );
+   auto fe_data = ReadKernelVector< OnDevice >( x_fe );
+   auto bsr_data = WriteKernelVector< OnDevice >( x_bsr );
    const auto kernel_space = finite_element_space;
 
    KernelLoop< OnDevice >(
       num_elements,
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex element_index )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex element_index ) mutable
       {
          GatherBsrElement(
             kernel_space,
@@ -156,6 +181,33 @@ void GatherBsrKernel(
             fe_data,
             bsr_data );
       } );
+}
+
+/**
+ * @brief Whether replacement requires zeroing the complete destination.
+ *
+ * A conflict-free, statically one-entry restriction maps the executed rows
+ * injectively into the algebraic output. When both sets have the same size,
+ * that injection is a complete overwrite and no preceding zero pass is
+ * required. The row count is supplied by the executor rather than inferred
+ * from restriction metadata so the decision describes the work actually run.
+ */
+template < typename Restriction >
+constexpr bool SGBSRReplacementRequiresDestinationZeroing(
+   const GlobalIndex executed_row_count,
+   const GlobalIndex output_extent )
+{
+   if constexpr (
+      restriction_scatter_is_conflict_free_v< Restriction > &&
+      static_restriction_entry_count_v<
+         std::remove_cvref_t< Restriction > > == 1 )
+   {
+      return executed_row_count != output_extent;
+   }
+   else
+   {
+      return true;
+   }
 }
 
 template <
@@ -175,38 +227,55 @@ void ScatterBsrKernel(
    const InputVector & y_bsr,
    OutputVector & y_fe )
 {
-   const auto * bsr_data = ReadKernelVector< OnDevice >( y_bsr );
-   using OutputValue =
-      std::remove_pointer_t<
-         decltype( WriteKernelVector< OnDevice >( y_fe ) ) >;
-   OutputValue * fe_data = nullptr;
-   if constexpr ( Add )
+   auto bsr_data = ReadKernelVector< OnDevice >( y_bsr );
+   auto fe_data = [&]
    {
-      fe_data = ReadWriteKernelVector< OnDevice >( y_fe );
-   }
-   else
-   {
-      fe_data = WriteKernelVector< OnDevice >( y_fe );
-   }
+      if constexpr ( Add )
+      {
+         return ReadWriteKernelVector< OnDevice >( y_fe );
+      }
+      else
+      {
+         return WriteKernelVector< OnDevice >( y_fe );
+      }
+   }();
+   using OutputValue = typename decltype( fe_data )::element_type;
 
-   if constexpr ( !Injective && !Add )
+   using Space = std::remove_cvref_t< FiniteElementSpace >;
+   using Restriction = typename Space::restriction_type;
+   using ShapeFunctions =
+      finite_element_space_shape_functions_t< Space >;
+   constexpr GlobalIndex block_size = LocalDofCount< ShapeFunctions >();
+   static_assert(
+      Injective == restriction_scatter_is_conflict_free_v< Restriction >,
+      "SGBSR scatter conflict policy must match the restriction facts." );
+   const GlobalIndex executed_row_count = num_elements * block_size;
+   if constexpr ( !Add )
    {
-      KernelLoop< OnDevice >(
-         output_size,
-         [=] GENDIL_HOST_DEVICE ( const GlobalIndex i )
-         {
-            fe_data[i] = OutputValue( 0 );
-         } );
+      if ( SGBSRReplacementRequiresDestinationZeroing< Restriction >(
+              executed_row_count,
+              output_size ) )
+      {
+         KernelLoop< OnDevice >(
+            output_size,
+            [=] GENDIL_HOST_DEVICE ( const GlobalIndex i ) mutable
+            {
+               fe_data[i] = OutputValue( 0 );
+            } );
+      }
    }
 
    const auto kernel_space = finite_element_space;
-   constexpr bool accumulate = Add || !Injective;
-   constexpr bool use_atomic = !Injective;
+   constexpr ScatterPolicy scatter_policy = !Injective
+      ? ScatterPolicy::AtomicAdd
+      : ( Add
+         ? ScatterPolicy::Add
+         : ScatterPolicy::Overwrite );
    KernelLoop< OnDevice >(
       num_elements,
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex element_index )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex element_index ) mutable
       {
-         ScatterBsrElement< accumulate, use_atomic >(
+         ScatterBsrElement< scatter_policy >(
             kernel_space,
             element_index,
             bsr_data,
@@ -335,10 +404,6 @@ concept DefaultBsrMappingSpace =
       typename std::remove_cvref_t< FESpace >::restriction_type;
    } &&
    ElementDoFRestriction<
-      typename std::remove_cvref_t< FESpace >::restriction_type > &&
-   static_restriction_entry_count_v<
-      typename std::remove_cvref_t< FESpace >::restriction_type > == 1 &&
-   restriction_supports_element_reference_view_v<
       typename std::remove_cvref_t< FESpace >::restriction_type > &&
    requires(
       const typename std::remove_cvref_t<
@@ -478,7 +543,7 @@ private:
          "element space." );
 
       constexpr bool injective =
-         !restriction_may_share_global_dofs_v< Restriction >;
+         restriction_scatter_is_conflict_free_v< Restriction >;
       details::ScatterBsr< Add, injective >(
          backend,
          finite_element_space,
@@ -521,8 +586,8 @@ struct DefaultBsrGatherFor
    using space_type = std::remove_cvref_t< FESpace >;
    static_assert(
       DefaultBsrMappingSpace< space_type >,
-      "DefaultBsrGatherFor requires a statically one-entry, unit-weight "
-      "completed restriction with backend-access validation." );
+      "DefaultBsrGatherFor requires a completed restriction with "
+      "backend-access validation." );
    using type = RestrictionGatherToBsr< space_type >;
 
    static type Make( const space_type & finite_element_space )
@@ -541,8 +606,8 @@ struct DefaultBsrScatterFor
    using space_type = std::remove_cvref_t< FESpace >;
    static_assert(
       DefaultBsrMappingSpace< space_type >,
-      "DefaultBsrScatterFor requires a statically one-entry, unit-weight "
-      "completed restriction with backend-access validation." );
+      "DefaultBsrScatterFor requires a completed restriction with "
+      "backend-access validation." );
    using type = RestrictionScatterFromBsr< space_type >;
 
    static type Make( const space_type & finite_element_space )

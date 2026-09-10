@@ -56,11 +56,17 @@ struct HostDevicePointer
    T * device_pointer = nullptr;
 #endif
 
+   GENDIL_HOST_DEVICE
    HostDevicePointer() = default;
+
+   GENDIL_HOST_DEVICE
    HostDevicePointer( const HostDevicePointer& ) = default;
+
+   GENDIL_HOST_DEVICE
    HostDevicePointer& operator=( const HostDevicePointer& ) = default;
 
    // Move constructor
+   GENDIL_HOST_DEVICE
    HostDevicePointer(HostDevicePointer&& other) noexcept
       : host_pointer(other.host_pointer)
 #ifdef GENDIL_USE_DEVICE
@@ -74,6 +80,7 @@ struct HostDevicePointer
    }
 
    // Move assignment operator
+   GENDIL_HOST_DEVICE
    HostDevicePointer& operator=(HostDevicePointer&& other) noexcept
    {
       if (this != &other)

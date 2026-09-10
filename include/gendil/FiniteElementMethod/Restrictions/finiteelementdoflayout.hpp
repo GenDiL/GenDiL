@@ -45,6 +45,39 @@ struct LocalComponentDoFIndex
    std::array< GlobalIndex, TensorDim > local_dof;
 };
 
+/**
+ * @brief Convert generic component-tagged coordinates to a restriction row key.
+ *
+ * Scalar restrictions consume the coordinate array directly. Vector
+ * restrictions additionally require the compile-time component tag. This
+ * helper keeps generic gather/scatter and sparse-emission code independent of
+ * that representational distinction.
+ */
+template <
+   typename FESpace,
+   size_t Component,
+   Integer Dim >
+GENDIL_HOST_DEVICE
+constexpr auto MakeRestrictionLocalDof(
+   const FESpace &,
+   std::integral_constant< size_t, Component >,
+   const std::array< GlobalIndex, Dim > & indices )
+{
+   using ShapeFunctions = typename std::remove_cvref_t<
+      FESpace >::finite_element_type::shape_functions;
+   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   {
+      return LocalComponentDoFIndex< Component, Dim >{ indices };
+   }
+   else
+   {
+      static_assert(
+         Component == 0,
+         "Scalar finite element spaces only have component zero." );
+      return indices;
+   }
+}
+
 namespace details {
 
 template < typename Shape, Integer Dim, size_t... I >

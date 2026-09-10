@@ -232,6 +232,10 @@ inline constexpr bool restriction_may_share_global_dofs_v<
    CartesianH1Restriction<DofShape, Dim>> = true;
 
 template<StaticDofShape DofShape, Integer Dim>
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   CartesianH1Restriction<DofShape, Dim>> = true;
+
+template<StaticDofShape DofShape, Integer Dim>
 struct restriction_supports_element_reference_view<
    CartesianH1Restriction<DofShape, Dim>> : std::true_type { };
 

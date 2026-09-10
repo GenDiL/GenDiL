@@ -23,16 +23,42 @@ struct View
 
    template < typename... Indices >
    GENDIL_HOST_DEVICE
-   auto & operator()( Indices... idx ) const
+   decltype(auto) operator()( Indices... idx ) const
    {
       return data[ layout.Offset( idx... ) ];
    }
 
    template < typename... Indices >
    GENDIL_HOST_DEVICE
-   auto & operator()( Indices... idx )
+   decltype(auto) operator()( Indices... idx )
    {
       return data[ layout.Offset( idx... ) ];
+   }
+
+   template < typename Index >
+      requires ( rank == 1 )
+   GENDIL_HOST_DEVICE
+   decltype(auto) operator[]( Index index ) const
+   {
+      return (*this)( index );
+   }
+
+   template < typename Index >
+      requires ( rank == 1 )
+   GENDIL_HOST_DEVICE
+   decltype(auto) operator[]( Index index )
+   {
+      return (*this)( index );
+   }
+
+   GENDIL_HOST_DEVICE
+   auto Size() const
+      requires requires( const Layout & candidate )
+      {
+         candidate.Size();
+      }
+   {
+      return layout.Size();
    }
 };
 

@@ -5,19 +5,35 @@
 #pragma once
 
 #include "gendil/Algebra/vector.hpp"
-#include "gendil/Utilities/Loop/kernelloop.hpp"
+#include "gendil/Utilities/View/Containers/referencecontainer.hpp"
+#include "gendil/Utilities/View/Layouts/vectorlayout.hpp"
+#include "gendil/Utilities/View/Layouts/offsetlayout.hpp"
 
 #include <concepts>
 #include <cstddef>
 #include <type_traits>
+#include <utility>
 
 namespace gendil
 {
 
 /// Return the number of entries in a GenDiL vector.
+GENDIL_HOST_DEVICE
 inline size_t GetVectorSize( const Vector & vector )
 {
    return vector.Size();
+}
+
+/// Return the logical extent of any complete rank-one generic view.
+template<class Container, class Layout>
+   requires (
+      Layout::rank == 1 &&
+      has_complete_extents_v<Layout>)
+GENDIL_HOST_DEVICE
+inline size_t GetVectorSize(
+   const View<Container, Layout>& vector)
+{
+   return static_cast<size_t>(vector.Size());
 }
 
 /// Return read-only host data, synchronizing the GenDiL vector to the host.
@@ -105,6 +121,177 @@ inline mfem::real_t * WriteDeviceVector( mfem::Vector & vector )
 
 #endif
 
+namespace vector_access_detail
+{
+
+template<class ParentVector>
+GENDIL_HOST_DEVICE
+void ValidateVectorSubviewRange(
+   const ParentVector& parent,
+   const size_t offset,
+   const size_t extent)
+{
+   const size_t parent_size = GetVectorSize(parent);
+   GENDIL_VERIFY(
+      offset <= parent_size && extent <= parent_size - offset,
+      "Vector subview range exceeds its parent vector." );
+}
+
+} // namespace vector_access_detail
+
+/**
+ * @brief Create an owner-bound vector subview without selecting storage.
+ *
+ * The parent remains the sole synchronization and validity authority. A const
+ * parent produces a read-only subview. Pointer-backed kernel access obtained
+ * from this view is deeply const, so a writable access captured by value must
+ * be used from a mutable closure. The parent must outlive the returned view and
+ * must not move.
+ */
+template<class ParentVector>
+   requires (
+      !is_view_v<ParentVector> &&
+      requires(const ParentVector& parent)
+      {
+         { GetVectorSize(parent) } -> std::same_as<size_t>;
+      })
+GENDIL_HOST_DEVICE
+auto MakeVectorView(
+   ParentVector& parent,
+   const size_t offset,
+   const size_t extent)
+{
+   vector_access_detail::ValidateVectorSubviewRange(
+      parent, offset, extent);
+   return MakeView(
+      ReferenceContainer<ParentVector>{parent},
+      MakeOffsetLayout(VectorLayout{extent}, offset));
+}
+
+/** Create a storage-bound subview by copying and advancing its shallow handle. */
+template<class T, class IndexType>
+GENDIL_HOST_DEVICE
+auto MakeVectorView(
+   const View<PointerContainer<T, IndexType>, VectorLayout>& parent,
+   const size_t offset,
+   const size_t extent)
+{
+   vector_access_detail::ValidateVectorSubviewRange(
+      parent, offset, extent);
+   return MakeVectorView(parent.data.data + offset, extent);
+}
+
+/** Create a nested owner-bound subview flattened to the original parent. */
+template<class ParentVector, class IndexType>
+GENDIL_HOST_DEVICE
+auto MakeVectorView(
+   const View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& parent,
+   const size_t offset,
+   const size_t extent)
+{
+   vector_access_detail::ValidateVectorSubviewRange(
+      parent, offset, extent);
+   const GlobalIndex combined_offset = CheckedAdd(
+      parent.layout.BaseOffset(),
+      static_cast<GlobalIndex>(offset),
+      "Vector subview offset overflow." );
+   return MakeView(
+      parent.data,
+      MakeOffsetLayout(VectorLayout{extent}, combined_offset));
+}
+
+template<class ParentVector, class IndexType>
+   requires requires(const ParentVector& parent)
+   {
+      ReadHostVector(parent);
+   }
+auto ReadHostVector(
+   const View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return ReadHostVector(std::as_const(vector.data.Get())) +
+      vector.layout.BaseOffset();
+}
+
+template<class ParentVector, class IndexType>
+   requires (
+      !std::is_const_v<ParentVector> &&
+      requires(ParentVector& parent)
+      {
+         ReadWriteHostVector(parent);
+      })
+auto ReadWriteHostVector(
+   View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return ReadWriteHostVector(vector.data.Get()) +
+      vector.layout.BaseOffset();
+}
+
+template<class ParentVector, class IndexType>
+   requires (
+      !std::is_const_v<ParentVector> &&
+      requires(ParentVector& parent)
+      {
+         WriteHostVector(parent);
+      })
+auto WriteHostVector(
+   View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return WriteHostVector(vector.data.Get()) + vector.layout.BaseOffset();
+}
+
+template<class ParentVector, class IndexType>
+   requires requires(const ParentVector& parent)
+   {
+      ReadDeviceVector(parent);
+   }
+auto ReadDeviceVector(
+   const View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return ReadDeviceVector(std::as_const(vector.data.Get())) +
+      vector.layout.BaseOffset();
+}
+
+template<class ParentVector, class IndexType>
+   requires (
+      !std::is_const_v<ParentVector> &&
+      requires(ParentVector& parent)
+      {
+         ReadWriteDeviceVector(parent);
+      })
+auto ReadWriteDeviceVector(
+   View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return ReadWriteDeviceVector(vector.data.Get()) +
+      vector.layout.BaseOffset();
+}
+
+template<class ParentVector, class IndexType>
+   requires (
+      !std::is_const_v<ParentVector> &&
+      requires(ParentVector& parent)
+      {
+         WriteDeviceVector(parent);
+      })
+auto WriteDeviceVector(
+   View<
+      ReferenceContainer<ParentVector, IndexType>,
+      OffsetLayout<VectorLayout>>& vector)
+{
+   return WriteDeviceVector(vector.data.Get()) + vector.layout.BaseOffset();
+}
+
 /// Vector type exposing read-only host access.
 template < typename VectorType >
 concept HostReadableVector =
@@ -171,69 +358,71 @@ concept KernelAccessibleVector =
    KernelReadableVector< OnDevice, VectorType > &&
    KernelWritableVector< OnDevice, VectorType >;
 
-/// Return read-only data, synchronizing the selected kernel memory space.
+/**
+ * @brief Return a read-only pointer-backed vector view in kernel space.
+ *
+ * Synchronization is performed before the view is created. The returned value
+ * is inexpensive to capture in a host or device kernel and remains valid only
+ * while the vector's selected storage remains allocated and unmoved.
+ */
 template < bool OnDevice, typename VectorType >
 requires KernelReadableVector< OnDevice, VectorType >
 auto ReadKernelVector( const VectorType & vector )
 {
+   const size_t extent = GetVectorSize( vector );
    if constexpr ( OnDevice )
    {
-      return ReadDeviceVector( vector );
+      return MakeVectorView( ReadDeviceVector( vector ), extent );
    }
    else
    {
-      return ReadHostVector( vector );
-   }
-}
-
-/// Return mutable data, preserving values and invalidating the opposite space.
-template < bool OnDevice, typename VectorType >
-requires KernelWritableVector< OnDevice, VectorType >
-auto ReadWriteKernelVector( VectorType & vector )
-{
-   if constexpr ( OnDevice )
-   {
-      return ReadWriteDeviceVector( vector );
-   }
-   else
-   {
-      return ReadWriteHostVector( vector );
-   }
-}
-
-/// Return write-only data without syncing and invalidate the opposite space.
-template < bool OnDevice, typename VectorType >
-requires KernelWritableVector< OnDevice, VectorType >
-auto WriteKernelVector( VectorType & vector )
-{
-   if constexpr ( OnDevice )
-   {
-      return WriteDeviceVector( vector );
-   }
-   else
-   {
-      return WriteHostVector( vector );
+      return MakeVectorView( ReadHostVector( vector ), extent );
    }
 }
 
 /**
- * @brief Zero every vector entry in the selected kernel memory space.
+ * @brief Return a mutable pointer-backed vector view, preserving its values.
  *
- * This operation acquires write-only storage because it overwrites the complete
- * vector. The selected memory space becomes valid and the opposite space is
- * invalidated according to the vector access contract.
+ * Acquiring the view invalidates the opposite memory space according to the
+ * underlying vector's synchronization contract. Access must remain non-const;
+ * a view captured by value in a kernel therefore requires a mutable closure.
  */
 template < bool OnDevice, typename VectorType >
 requires KernelWritableVector< OnDevice, VectorType >
-void Zero( VectorType & vector )
+auto ReadWriteKernelVector( VectorType & vector )
 {
-   auto data = WriteKernelVector< OnDevice >( vector );
-   KernelLoop< OnDevice >(
-      GetVectorSize( vector ),
-      [data] GENDIL_HOST_DEVICE ( const size_t i )
-      {
-         data[i] = Real{0};
-      } );
+   const size_t extent = GetVectorSize( vector );
+   if constexpr ( OnDevice )
+   {
+      return MakeVectorView( ReadWriteDeviceVector( vector ), extent );
+   }
+   else
+   {
+      return MakeVectorView( ReadWriteHostVector( vector ), extent );
+   }
+}
+
+/**
+ * @brief Return a write-only pointer-backed vector view in kernel space.
+ *
+ * No values are synchronized before access. The opposite memory space is
+ * invalidated according to the underlying vector's storage contract. Access
+ * must remain non-const; a view captured by value in a kernel therefore
+ * requires a mutable closure.
+ */
+template < bool OnDevice, typename VectorType >
+requires KernelWritableVector< OnDevice, VectorType >
+auto WriteKernelVector( VectorType & vector )
+{
+   const size_t extent = GetVectorSize( vector );
+   if constexpr ( OnDevice )
+   {
+      return MakeVectorView( WriteDeviceVector( vector ), extent );
+   }
+   else
+   {
+      return MakeVectorView( WriteHostVector( vector ), extent );
+   }
 }
 
 } // namespace gendil

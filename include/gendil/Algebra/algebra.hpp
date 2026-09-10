@@ -17,5 +17,14 @@
 // Unified host/device access for GenDiL and external vector types.
 #include "gendil/Algebra/vectoraccess.hpp"
 
+// BLAS-like operations on owning vectors and generic vector views.
+#include "gendil/Algebra/vectoroperations.hpp"
+
+// Callable protocol for sized maps between vectors.
+#include "gendil/Algebra/vectormapconcept.hpp"
+
+// Allocation-free heterogeneous tuple composition of rectangular vector maps.
+#include "gendil/Algebra/blockvectormap.hpp"
+
 // The supported sparse matrix types.
 #include "gendil/Algebra/SparseMatrixTypes/sparsematrixtypes.hpp"

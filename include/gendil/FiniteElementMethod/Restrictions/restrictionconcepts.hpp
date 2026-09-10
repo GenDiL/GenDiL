@@ -49,7 +49,9 @@ struct RestrictionEntryConceptProbe
  * The restriction exposes a @c dof_shape_type and a matching @c tensor_dim,
  * final local/global dimensions, an algebraic DoF extent, and row
  * visitation for a native @c std::array local DoF coordinate. The visitor is
- * invoked once for every nonzero entry in the selected restriction row.
+ * invoked once for every explicitly represented entry in the selected
+ * restriction row, including entries whose weight is zero and multiple
+ * entries that reference the same algebraic coordinate.
  */
 template < typename Restriction >
 concept TensorElementDoFRestriction =
@@ -183,7 +185,7 @@ concept ElementwiseIndependentRestriction =
    static_restriction_entry_count_v<
       std::remove_cvref_t< Restriction > > == 1 &&
    restriction_supports_element_reference_view_v< Restriction > &&
-   !restriction_may_share_global_dofs_v<
+   restriction_scatter_is_conflict_free_v<
       std::remove_cvref_t< Restriction > >;
 
 /**

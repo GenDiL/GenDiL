@@ -7,8 +7,9 @@
 #include "gendil/Algebra/SparseMatrixTypes/CSC/cscmatrixview.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/Algebra/vectormapconcept.hpp"
 
+#include <concepts>
 #include <cstddef>
 
 namespace gendil
@@ -44,18 +45,6 @@ void CheckCSCApplyDimensions(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
-template < typename InputVector, typename OutputVector >
-void CSCMatrix< ValueType, IndexType, MatrixBackend >::operator()(
-   const InputVector & x,
-   OutputVector & y ) const
-{
-   Apply( backend, *this, x, y );
-}
-
-template <
-   typename ValueType,
-   typename IndexType,
    typename MatrixBackend,
    typename InputVector,
    typename OutputVector >
@@ -63,56 +52,12 @@ void ApplyAdd(
    const CSCMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { ApplyAdd( matrix.backend, matrix, x, y ) } -> std::same_as< void >;
+}
 {
    ApplyAdd( matrix.backend, matrix, x, y );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void Apply(
-   const Backend &,
-   const CSCMatrix< ValueType, IndexType, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         CSCMatrix< ValueType, IndexType, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No CSCMatrix Apply overload is available for this backend/vector "
-      "combination. Include cscmatrixapply.hpp and use a supported CSC "
-      "backend/vector type." );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void ApplyAdd(
-   const Backend &,
-   const CSCMatrix< ValueType, IndexType, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         CSCMatrix< ValueType, IndexType, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No CSCMatrix ApplyAdd overload is available for this backend/vector "
-      "combination. Include cscmatrixapply.hpp and use a supported CSC "
-      "backend/vector type." );
 }
 
 } // namespace gendil

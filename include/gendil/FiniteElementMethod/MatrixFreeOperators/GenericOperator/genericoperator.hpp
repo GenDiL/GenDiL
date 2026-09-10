@@ -9,6 +9,9 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/LocalFacetOperator/localfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/GlobalFacetOperator/globalfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/Algebra/vectormapconcept.hpp"
+#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 
 namespace gendil {
 
@@ -109,13 +112,55 @@ public:
       , ir(std::move(ir_))
    {}
 
+   size_t InputSize() const
+   {
+      constexpr auto TrialName = requirements<WeakForm>::trial_name;
+      return static_cast<size_t>(
+         GetAlgebraicDofExtent(wf_ctx.template fe_field<TrialName>().space));
+   }
+
+   size_t OutputSize() const
+   {
+      constexpr auto TestName = requirements<WeakForm>::test_name;
+      return static_cast<size_t>(
+         GetAlgebraicDofExtent(wf_ctx.template fe_field<TestName>().space));
+   }
+
    template<class input, class output>
+      requires
+         KernelReadableVector<
+            is_device_configuration_v<KernelPolicy>,
+            input> &&
+         KernelWritableVector<
+            is_device_configuration_v<KernelPolicy>,
+            output>
    void operator()(const input& dofs_vector_in, output& dofs_vector_out) const
    {
       // Prepare the output exactly once. Recursive term and domain-batch
       // dispatch contributes additively into this vector.
-      dofs_vector_out = 0.0;
+      constexpr bool OnDevice =
+         is_device_configuration_v<KernelPolicy>;
+      Zero<OnDevice>(dofs_vector_out);
 
+      GenericExplicitOperator<KernelPolicy>(
+         weak_form,
+         wf_ctx,
+         ir,
+         dofs_vector_in,
+         dofs_vector_out);
+   }
+
+   /** @brief Accumulate this operator without clearing the destination. */
+   template<class input, class output>
+      requires
+         KernelReadableVector<
+            is_device_configuration_v<KernelPolicy>,
+            input> &&
+         KernelWritableVector<
+            is_device_configuration_v<KernelPolicy>,
+            output>
+   void ApplyAdd(const input& dofs_vector_in, output& dofs_vector_out) const
+   {
       GenericExplicitOperator<KernelPolicy>(
          weak_form,
          wf_ctx,

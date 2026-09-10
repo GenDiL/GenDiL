@@ -12,6 +12,7 @@
 #include "gendil/Algebra/accessors.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/vectoroperations.hpp"
 #include "gendil/FiniteElementMethod/componentfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionunitweight.hpp"
@@ -205,7 +206,7 @@ void InterpolateNonsharingCellSpace(
       local_dofs,
       "Nodal interpolation row count overflow." );
    constexpr bool OnDevice = is_device_configuration_v<KernelPolicy>;
-   Real* values = WriteKernelVector<OnDevice>(output);
+   auto values = WriteKernelVector<OnDevice>(output);
    const auto cell_space_copy = cell_space;
    KernelLoop<OnDevice>(
       num_rows,

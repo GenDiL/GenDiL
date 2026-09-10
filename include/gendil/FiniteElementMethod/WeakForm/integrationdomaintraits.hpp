@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/View/Layouts/strides.hpp"
+
 /**
  * @file
  * @brief Indexed mesh identity and integration-domain compatibility traits.
@@ -198,9 +200,9 @@ template<class Mesh>
    requires requires (const Mesh& mesh)
    {
       mesh.nodes.data.data;
-      mesh.nodes.layout.strides;
+      requires has_strides_v<decltype(mesh.nodes.layout)>;
       mesh.restriction.data.host_pointer;
-      mesh.restriction.layout.strides;
+      requires has_strides_v<decltype(mesh.restriction.layout)>;
       mesh.connectivity.element_connectivities.host_pointer;
       mesh.num_elems;
    }
@@ -214,7 +216,7 @@ struct MeshIdentityTraits<Mesh>
       std::index_sequence<I...>)
    {
       return std::array<GlobalIndex, sizeof...(I)>{
-         view.layout.strides[I]...};
+         GetStride<I>(view.layout)...};
    }
 
    static auto Get(const Mesh& mesh)
@@ -246,9 +248,9 @@ template<class Mesh>
       requires (const Mesh& mesh)
       {
          mesh.nodes.data.data;
-         mesh.nodes.layout.strides;
+         requires has_strides_v<decltype(mesh.nodes.layout)>;
          mesh.restriction.data.host_pointer;
-         mesh.restriction.layout.strides;
+         requires has_strides_v<decltype(mesh.restriction.layout)>;
          mesh.num_elems;
       } &&
       !requires (const Mesh& mesh)
@@ -265,7 +267,7 @@ struct MeshIdentityTraits<Mesh>
       std::index_sequence<I...>)
    {
       return std::array<GlobalIndex, sizeof...(I)>{
-         view.layout.strides[I]...};
+         GetStride<I>(view.layout)...};
    }
 
    static auto Get(const Mesh& mesh)
@@ -535,4 +537,3 @@ struct IsCompatiblePartitionTopology
 {};
 
 } // namespace gendil
-

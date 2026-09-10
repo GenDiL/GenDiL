@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrbackendconfiguration.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/COO/localrestrictionentrylayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/SGBSR/sgbsrgatherscatter.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/restrictedweakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
@@ -93,21 +94,20 @@ inline constexpr bool weak_form_uses_partition_integration_domain_v =
 
 namespace details {
 
-template<class Restriction>
-concept RawCOOCoordinateRestriction =
-   ElementDoFRestriction<Restriction> &&
-   static_restriction_entry_count_v<Restriction> == 1 &&
-   restriction_supports_element_reference_view_v<Restriction>;
+template<class Space>
+concept RawCOOCoordinateAssemblySpace =
+   requires { typename std::remove_cvref_t<Space>::restriction_type; } &&
+   ElementDoFRestriction<
+      typename std::remove_cvref_t<Space>::restriction_type> &&
+   has_static_expanded_restriction_rows_v<std::remove_cvref_t<Space>>;
 
 template<class CellSpacesTuple, size_t... I>
 consteval bool IsRawCOOPartitionCellAssemblySpace(
    std::index_sequence<I...>)
 {
    return (
-      RawCOOCoordinateRestriction<
-          typename std::tuple_element_t<
-             I,
-             CellSpacesTuple>::restriction_type> && ...);
+      RawCOOCoordinateAssemblySpace<
+         std::tuple_element_t<I, CellSpacesTuple>> && ...);
 }
 
 } // namespace details
@@ -126,8 +126,7 @@ struct IsRawCOOCellAssemblySpace
       }
       else
       {
-         using Restriction = typename Space::restriction_type;
-         return details::RawCOOCoordinateRestriction<Restriction>;
+         return details::RawCOOCoordinateAssemblySpace<Space>;
       }
    }();
 };
@@ -146,8 +145,7 @@ struct IsRawCOOFaceAssemblySpace
       }
       else
       {
-         using Restriction = typename Space::restriction_type;
-         return details::RawCOOCoordinateRestriction<Restriction>;
+         return details::RawCOOCoordinateAssemblySpace<Space>;
       }
    }();
 };
@@ -421,20 +419,20 @@ consteval void ValidateSparseAssemblySpaceContract()
       {
          static_assert(
             Contract::raw_coo_supported,
-            "GenericAssembly<RawCOO> requires statically one-entry, unit-weight "
-            "reference-addressable completed restrictions. Unsupported "
-            "nonconforming FE transforms, multi-entry rows, and variable-size "
-            "runtime emission remain unsupported.");
+            "GenericAssembly<RawCOO> requires an exact compile-time entry "
+            "count for every native trial and test restriction row. Dynamic-"
+            "cardinality coordinate planning and unsupported nonconforming FE "
+            "transforms remain unsupported.");
       }
       else
       {
          static_assert(
             Contract::raw_coo_supported,
-            "GenericRawCOOElementBlockDiagonalAssembly requires statically "
-            "one-entry, unit-weight reference-addressable completed "
-            "restrictions. Mixed-space faces, unsupported "
-            "nonconforming FE transforms, global face traversal, multi-entry "
-            "rows, and variable-size hp emission remain unsupported.");
+            "GenericRawCOOElementBlockDiagonalAssembly requires exact compile-"
+            "time entry counts for all native restriction rows. Mixed-space "
+            "faces, unsupported nonconforming FE transforms, global face "
+            "traversal, dynamic-cardinality rows, and variable-size hp "
+            "emission remain unsupported.");
       }
    }
    else if constexpr (Format == MatrixAssemblyType::SGBSR)
@@ -443,8 +441,8 @@ consteval void ValidateSparseAssemblySpaceContract()
       {
          static_assert(
             Contract::sgbsr_mappings_supported,
-            "SGBSR GenericAssembly requires statically one-entry, unit-weight "
-            "trial and test restrictions with backend-access validation." );
+            "SGBSR GenericAssembly requires completed trial and test "
+            "restrictions with backend-access validation." );
          if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
@@ -458,8 +456,8 @@ consteval void ValidateSparseAssemblySpaceContract()
          static_assert(
             Contract::sgbsr_mappings_supported,
             "SGBSR element block-diagonal assembly requires independently "
-            "supported, statically one-entry, unit-weight trial gather and "
-            "test scatter mappings with backend-access validation." );
+            "supported trial gather and test scatter restrictions with "
+            "backend-access validation." );
          if constexpr (Contract::sgbsr_mappings_supported)
          {
             static_assert(
