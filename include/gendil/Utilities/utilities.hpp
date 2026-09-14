@@ -37,5 +37,8 @@
 // Checked arithmetic for unsigned counts, sizes, and offsets.
 #include "checkedarithmetic.hpp"
 
+// Type traits for std::array specializations.
+#include "arraytraits.hpp"
+
 // A map structure with static string keys.
 #include "gendil/Utilities/staticmap.hpp"

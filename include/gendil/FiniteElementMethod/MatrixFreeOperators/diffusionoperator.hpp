@@ -6,6 +6,7 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/Interfaces/interfaces.hpp"
 #include "gendil/NumericalIntegration/faceintegrationrules.hpp"
 #include "gendil/Meshes/makefacequaddata.hpp"

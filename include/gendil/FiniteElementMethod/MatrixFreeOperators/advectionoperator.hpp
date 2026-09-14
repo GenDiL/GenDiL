@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctions.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctions.hpp"

@@ -6,9 +6,16 @@
 
 // Unit coefficient emitted by built-in unit-weight restriction rows.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionunitweight.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionweight.hpp"
+
+// Scalar completed restrictions with compile-time row weights and runtime indices.
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/fixedstencilrestriction.hpp"
 
 // Compile-time aggregation of component restriction maps.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/vectorrestriction.hpp"
+
+// Runtime row-orientation signs applied to completed restrictions.
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/signedrestriction.hpp"
 
 // Completed contiguous L2 restrictions and their construction specifications.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/contiguousl2restriction.hpp"

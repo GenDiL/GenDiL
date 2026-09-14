@@ -8,6 +8,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
+#include "gendil/Utilities/arraytraits.hpp"
 
 namespace gendil
 {
@@ -26,16 +27,6 @@ namespace gendil
 
 namespace details
 {
-
-// Type trait to detect std::array
-template <typename T>
-struct is_std_array : std::false_type {};
-
-template <typename T, std::size_t N>
-struct is_std_array<std::array<T, N>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_std_array_v = is_std_array<T>::value;
 
 // Scalar case: use operator+
 template <typename T>

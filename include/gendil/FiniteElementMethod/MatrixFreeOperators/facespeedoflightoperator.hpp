@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 

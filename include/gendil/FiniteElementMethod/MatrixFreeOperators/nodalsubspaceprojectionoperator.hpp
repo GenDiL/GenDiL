@@ -19,6 +19,7 @@
 #include "gendil/Interfaces/interfaces.hpp"
 #include "gendil/Meshes/meshes.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/NumericalIntegration/numericalintegration.hpp"
 #include "gendil/Algebra/vector.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"

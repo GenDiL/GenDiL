@@ -10,6 +10,7 @@
  */
 
 #include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
+#include "gendil/Utilities/View/extents.hpp"
 
 #include <array>
 #include <tuple>
@@ -38,6 +39,17 @@ struct RestrictionLayout
       static_cast< size_t >( restriction_type::tensor_dim ) + 1;
 
    restriction_type restriction;
+
+   template < size_t Axis >
+      requires ( Axis < rank - 1 )
+   GENDIL_HOST_DEVICE
+   static constexpr auto Get( AxisTag< Axis > )
+   {
+      return std::integral_constant<
+         GlobalIndex,
+         static_cast< GlobalIndex >(
+            seq_get_v< Axis, typename restriction_type::dof_shape_type > ) >{};
+   }
 
 private:
    template < typename Indices, size_t... LocalIndex >

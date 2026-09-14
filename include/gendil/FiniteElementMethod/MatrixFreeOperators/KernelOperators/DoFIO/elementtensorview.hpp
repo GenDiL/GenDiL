@@ -12,7 +12,7 @@
 #include "gendil/Algebra/vectoraccess.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictionlayout.hpp"
-#include "gendil/FiniteElementMethod/Restrictions/restrictionrowview.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/weightedrestrictionview.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/vectorrestriction.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/tensorview.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
@@ -39,7 +39,7 @@ auto MakeRestrictionElementView(
    return MakeView( data, MakeRestrictionLayout( restriction ) );
 }
 
-/** @brief Bind algebraic storage through a weighted restriction-row proxy. */
+/** @brief Bind algebraic storage through weighted local-DoF proxies. */
 template < typename Restriction, typename Container >
    requires (
       TensorElementDoFRestriction< Restriction > &&
@@ -51,7 +51,7 @@ auto MakeRestrictionElementView(
    const Restriction & restriction,
    const Container & data )
 {
-   return MakeRestrictionRowView( restriction, data );
+   return MakeWeightedRestrictionView( restriction, data );
 }
 
 namespace details {

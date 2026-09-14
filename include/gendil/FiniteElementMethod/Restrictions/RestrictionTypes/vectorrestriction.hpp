@@ -47,6 +47,22 @@ public:
    GlobalIndex algebraic_dof_extent;
 };
 
+/** @brief Select one child restriction type from a vector restriction. */
+template <
+   typename... ComponentRestrictions,
+   size_t Component >
+struct RestrictionComponent<
+   VectorRestriction< ComponentRestrictions... >,
+   Component >
+{
+   static_assert(
+      Component < sizeof...( ComponentRestrictions ),
+      "Vector restriction component index is out of bounds." );
+   using type = std::tuple_element_t<
+      Component,
+      std::tuple< ComponentRestrictions... > >;
+};
+
 /** @brief Semantic name for a vector restriction composed of L2 leaves. */
 template < typename... ComponentRestrictions >
 using VectorL2Restriction =
@@ -139,6 +155,37 @@ inline constexpr size_t static_restriction_entry_count_v<
       return dynamic_restriction_entry_count;
    }
 }();
+
+/**
+ * @brief Forward exact native-row cardinality to the selected scalar child.
+ *
+ * The outer tag's component selects a vector child. Native local DoF indices
+ * are component-local, so the selected scalar child receives component zero.
+ */
+template <
+   typename... ComponentRestrictions,
+   size_t Component,
+   GlobalIndex ComponentLocalDofIndex >
+inline constexpr size_t static_restriction_entry_count_for_v<
+   VectorRestriction< ComponentRestrictions... >,
+   NativeRestrictionRowTag< Component, ComponentLocalDofIndex > > =
+      static_restriction_entry_count_for_v<
+         restriction_component_t<
+            VectorRestriction< ComponentRestrictions... >,
+            Component >,
+         NativeRestrictionRowTag< 0, ComponentLocalDofIndex > >;
+
+template < typename... ComponentRestrictions >
+inline constexpr bool restriction_may_share_global_dofs_v<
+   VectorRestriction< ComponentRestrictions... > > =
+      ( restriction_may_share_global_dofs_v<
+           ComponentRestrictions > || ... );
+
+template < typename... ComponentRestrictions >
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   VectorRestriction< ComponentRestrictions... > > =
+      ( restriction_rows_have_unique_coordinates_v<
+           ComponentRestrictions > && ... );
 
 template < typename... ComponentRestrictions >
 struct restriction_supports_element_reference_view<
