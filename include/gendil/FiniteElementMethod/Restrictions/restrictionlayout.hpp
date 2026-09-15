@@ -24,7 +24,8 @@ namespace gendil {
  * interface.
  *
  * The final layout coordinate is the element ordinal. All preceding
- * coordinates form the restriction's native local tensor index.
+ * coordinates form the restriction's native local tensor index and retain
+ * their static DoF extents. The element-axis extent is not stored here.
  */
 template < typename Restriction >
    requires (

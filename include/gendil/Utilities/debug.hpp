@@ -32,8 +32,9 @@ void Assert(bool should_be_true, const char msg[] = "")
     #endif
 }
 
-inline void Assert(bool condition, const char* condition_str,
-                   const char* file, int line, const char* msg = "")
+inline constexpr void Assert(
+   bool condition, const char* condition_str,
+   const char* file, int line, const char* msg = "")
 {
    if (!condition)
    {
@@ -53,16 +54,17 @@ inline void Assert(bool condition, const char* condition_str,
 #ifdef NDEBUG
 #define GENDIL_ASSERT(cond, ...)
 #else
-#define GENDIL_ASSERT(cond, ...) Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define GENDIL_ASSERT(cond, ...) \
+   ::gendil::Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
 #endif
 
-#define GENDIL_VERIFY(cond, ...) Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
+#define GENDIL_VERIFY(cond, ...) \
+   ::gendil::Assert((cond), #cond, __FILE__, __LINE__ __VA_OPT__(,) __VA_ARGS__)
 // GPU
 #else
 #define GENDIL_ASSERT(cond, ...)
 #define GENDIL_VERIFY(cond, ...)
 #endif
-
 
 #if defined(GENDIL_USE_CUDA)
 

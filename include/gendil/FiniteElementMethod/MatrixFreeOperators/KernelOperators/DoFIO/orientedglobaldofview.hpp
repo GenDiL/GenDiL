@@ -22,6 +22,7 @@
 #include "gendil/Utilities/getrank.hpp"
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
+#include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {
 
@@ -34,9 +35,9 @@ struct is_explicitly_strided_element_view : std::false_type
 {
 };
 
-template < typename Container, Integer Rank >
+template < typename Container, Integer Rank, class Extents >
 struct is_explicitly_strided_element_view<
-   View< Container, StridedLayout< Rank > > > : std::true_type
+   View< Container, StridedLayout< Rank, Extents > > > : std::true_type
 {
 };
 

@@ -11,3 +11,6 @@
 
 // A container using an indirection to access an underlying container 
 #include "gendil/Utilities/View/Containers/indirectedcontainer.hpp"
+
+// A non-owning container bound to an lvalue parent container.
+#include "gendil/Utilities/View/Containers/referencecontainer.hpp"

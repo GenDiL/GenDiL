@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
+#include "gendil/Utilities/gettensorsize.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/indexsequencehelperfunctions.hpp"
 #include "gendil/Utilities/View/Layouts/fixedstridedlayout.hpp"
@@ -15,6 +16,19 @@ namespace gendil
 
 namespace details
 {
+   // These containers expose ordinary scalar storage. A public data pointer
+   // alone is not evidence that bypassing operator[] preserves semantics.
+   template < class Container >
+   inline constexpr bool direct_dimension_slice_storage_v = false;
+
+   template < class T, class Index >
+   inline constexpr bool direct_dimension_slice_storage_v<
+      PointerContainer< T, Index > > = true;
+
+   template < class T, size_t Size, class Index >
+   inline constexpr bool direct_dimension_slice_storage_v<
+      StaticContainer< T, Size, Index > > = true;
+
    template < typename Op1D >
    struct DomainRangeDimensions;
 
@@ -108,7 +122,22 @@ using make_contraction_output_shape =
       std::make_index_sequence<
          tensor_product_entry_count_v<ProductOp>>>::type;
 
+/** Select one axis of a direct fixed-layout register or shared-memory buffer. */
 template < size_t Dimension, typename Container, typename Sizes, Integer... Strides, typename... Indices >
+   requires details::direct_dimension_slice_storage_v< Container >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto MakeDimensionSubView(FixedStridedView<Container, Sizes, Strides...>& x, Indices... indices)
+{
+   constexpr Integer Size = seq_get_v<Dimension, Sizes>;
+   constexpr Integer Stride = vseq_get_v<Dimension, Strides...>;
+   get<Dimension>(indices...) = 0;
+   const Integer offset = (0 + ... + (Strides * indices));
+   return MakeView(x.data.data + offset,
+      FixedStridedLayout<std::index_sequence<Size>, Stride>{});
+}
+
+template < size_t Dimension, typename Container, typename Sizes, Integer... Strides, typename... Indices >
+   requires details::direct_dimension_slice_storage_v< Container >
 GENDIL_HOST_DEVICE GENDIL_INLINE
 constexpr auto MakeDimensionSubView( const FixedStridedView< Container, Sizes, Strides... > & x, Indices... indices )
 {
@@ -119,8 +148,28 @@ constexpr auto MakeDimensionSubView( const FixedStridedView< Container, Sizes, S
    get< Dimension >( indices... ) = 0;
    const Integer offset = ( 0 + ... + ( Strides * indices) );
 
-   return MakeView( x.data.data+offset, FixedStridedLayout< std::index_sequence< Size >, Stride>{} );
+   using Element = std::remove_reference_t<decltype(x.data[GlobalIndex{}])>;
+   return MakeView( static_cast<Element*>(x.data.data) + offset,
+      FixedStridedLayout< std::index_sequence< Size >, Stride>{} );
 }
+
+// A temporary pointer handle may disappear without destroying its storage.
+template<size_t Dimension, class T, class Index, class Sizes,
+         Integer... Strides, class... Indices>
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto MakeDimensionSubView(
+   FixedStridedView<PointerContainer<T, Index>, Sizes, Strides...>&& x,
+   Indices... indices)
+{
+   return MakeDimensionSubView<Dimension>(x, indices...);
+}
+
+// Do not let either const or mutable temporary inline storage bind to const&.
+template<size_t Dimension, class T, size_t Size, class Index, class Sizes,
+         Integer... Strides, class... Indices>
+void MakeDimensionSubView(
+   const FixedStridedView<StaticContainer<T, Size, Index>, Sizes, Strides...>&&,
+   Indices...) = delete;
 
 /// @brief Returns a view for the active dimension. If ActiveDim is threaded
 /// then places values in shared memory and syncs the threads (the view is to

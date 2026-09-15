@@ -7,6 +7,10 @@
 /**
  * @file
  * @brief Checked arithmetic for unsigned counts, sizes, and offsets.
+ *
+ * Host execution rejects overflow, including release and constant evaluation.
+ * Device compilation emits only arithmetic; callers must establish
+ * representability through host setup or static type checks.
  */
 
 #include "gendil/Utilities/debug.hpp"
@@ -23,7 +27,7 @@ template < typename T >
       std::unsigned_integral< T > &&
       !std::same_as< std::remove_cv_t< T >, bool > )
 GENDIL_HOST_DEVICE GENDIL_INLINE
-T CheckedAdd(
+constexpr T CheckedAdd(
    const T lhs,
    const T rhs,
    const char * message )
@@ -40,7 +44,7 @@ template < typename T >
       std::unsigned_integral< T > &&
       !std::same_as< std::remove_cv_t< T >, bool > )
 GENDIL_HOST_DEVICE GENDIL_INLINE
-T CheckedMultiply(
+constexpr T CheckedMultiply(
    const T lhs,
    const T rhs,
    const char * message )

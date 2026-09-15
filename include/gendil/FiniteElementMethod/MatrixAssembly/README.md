@@ -92,18 +92,43 @@ to provide `ValidateRestrictionMemoryAccess<OnDevice>(restriction,
 num_elements)` through normal lookup or ADL. This operation validates any
 borrowed mapping storage for the memory space selected by the matvec backend;
 contiguous restrictions implement it as a no-op, while vector and tensor
-products recurse into their children. Current mappings require one unit-weight
-entry per row. Multi-entry mappings can retain the element-block matrix by
-gathering through the restriction and scattering through its adjoint once a
-general weight protocol is available.
+products recurse into their children. Weighted mappings, including custom
+runtime-cardinality restrictions, gather through the restriction and scatter
+through its adjoint while retaining the same unweighted element-block matrix.
+Replacement through a
+complete, conflict-free, statically one-entry mapping writes every output
+coordinate directly and therefore needs no preliminary zeroing pass. Gapped or
+shared mappings initialize the complete algebraic destination once before
+accumulation, including coordinates not covered by the restriction.
 
 RawCOO and its derived COO/CSR/CSC formats support conforming mesh-local and
-partition global-facet terms for statically one-entry, unit-weight,
-reference-addressable completed restrictions. Partition assembly emits one
-monolithic matrix in the trial/test algebraic extents and preserves explicit
-placement, automatic L2 direct sums, and shared H1 aliases as duplicate raw
-coordinates. Each interior-face part owns exact `--`, `-+`, `+-`, and `++`
+partition global-facet terms for completed restrictions whose native rows all
+have exact compile-time entry counts. RawCOO incorporates the adjoint test and
+trial restriction weights exactly once while emitting contributions to
+`E_test^* A_local E_trial`; it does not require a separately materialized local
+matrix. Uniform cardinalities use closed-form placement, while genuinely
+nonuniform rows use compile-time prefix metadata. Partition assembly emits one
+monolithic matrix in the independent trial/test algebraic extents and preserves
+explicit placement, automatic L2 direct sums, and shared aliases as duplicate
+raw coordinates. Each interior-face part owns exact `--`, `-+`, `+-`, and `++`
 segments; canonical finalization reduces duplicates within and across parts.
+These segments reserve dense element-pair blocks; RawCOO does not infer
+basis-dependent trace sparsity from nodal zeros. Dynamic-cardinality RawCOO
+planning remains unsupported.
+
+`FixedStencilRestriction<Shape, Stencil>` supplies one such statically
+plannable weighted map. Its stencil definition provides exact native-row
+cardinalities and compile-time weights, while the completed restriction
+borrows only the runtime algebraic indices. Every stencil definition produces
+a distinct restriction type, so p-adaptive spaces compose homogeneous groups
+such as Q2--Q3 and Q3--Q4 constraints without runtime stencil dispatch.
+Matrix-free and SGBSR
+kernels therefore load no weight table, and RawCOO uses the same exact row
+metadata for its uniform or nonuniform placement path. GenDiL does not provide
+a completed dynamic-stencil restriction; custom runtime-cardinality
+restrictions remain possible through the generic visitation protocol. The
+fixed representation describes manually supplied constraints; it does not
+construct p-nonconforming constraints from mesh topology automatically.
 
 Nonconforming global facets support scalar and componentwise
 `VectorShapeFunctions` value/gradient transformations. Geometric Piola,

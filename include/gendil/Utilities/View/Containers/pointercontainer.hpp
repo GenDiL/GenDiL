@@ -6,6 +6,13 @@
 
 namespace gendil {
 
+   /**
+    * @brief Lightweight indexable wrapper around a non-owning pointer.
+    *
+    * Access is deeply const: a const `PointerContainer<T>` returns
+    * `const T&`. Mutating the referenced values requires both a mutable
+    * container and a mutable element type.
+    */
    template < typename T, typename IndexType = GlobalIndex >
    struct PointerContainer
    {

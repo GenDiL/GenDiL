@@ -72,9 +72,7 @@ struct WeightedRestrictionKey
  *
  * The first `local_rank` logical axes are the native local-DoF coordinates;
  * the final axis is the element index. Local-axis extents come statically from
- * the restriction's DoF shape. The runtime element extent is deliberately
- * omitted, so this layout does not by itself provide a complete logical
- * `Size()`.
+ * the restriction's DoF shape. The element-axis extent is not stored here.
  *
  * Unlike an affine layout, `Offset` returns a semantic DoF key rather than a
  * scalar storage offset. `WeightedRestrictionContainer` interprets that key by

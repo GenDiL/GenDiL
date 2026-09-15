@@ -11,6 +11,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -125,16 +126,18 @@ namespace vector_access_detail
 {
 
 template<class ParentVector>
-GENDIL_HOST_DEVICE
+GENDIL_HOST_DEVICE GENDIL_INLINE
 void ValidateVectorSubviewRange(
    const ParentVector& parent,
    const size_t offset,
    const size_t extent)
 {
+#if !defined(NDEBUG) && !defined(GENDIL_DEVICE_CODE)
    const size_t parent_size = GetVectorSize(parent);
-   GENDIL_VERIFY(
+   GENDIL_ASSERT(
       offset <= parent_size && extent <= parent_size - offset,
       "Vector subview range exceeds its parent vector." );
+#endif
 }
 
 } // namespace vector_access_detail
@@ -142,11 +145,12 @@ void ValidateVectorSubviewRange(
 /**
  * @brief Create an owner-bound vector subview without selecting storage.
  *
- * The parent remains the sole synchronization and validity authority. A const
- * parent produces a read-only subview. Pointer-backed kernel access obtained
- * from this view is deeply const, so a writable access captured by value must
- * be used from a mutable closure. The parent must outlive the returned view and
- * must not move.
+ * The parent remains the sole synchronization and validity authority. Indexed
+ * const access follows the parent's const policy (read-only for GenDiL Vector).
+ * Pointer-backed kernel access obtained from this view is deeply const, so a
+ * writable access captured by value must be used from a mutable closure. The
+ * parent must outlive the returned view and must not move.
+ * Subrange bounds are preconditions, checked only in CPU debug builds.
  */
 template<class ParentVector>
    requires (
@@ -193,10 +197,10 @@ auto MakeVectorView(
 {
    vector_access_detail::ValidateVectorSubviewRange(
       parent, offset, extent);
-   const GlobalIndex combined_offset = CheckedAdd(
-      parent.layout.BaseOffset(),
-      static_cast<GlobalIndex>(offset),
+   GENDIL_ASSERT(
+      offset <= std::numeric_limits<GlobalIndex>::max() - parent.layout.BaseOffset(),
       "Vector subview offset overflow." );
+   const GlobalIndex combined_offset = parent.layout.BaseOffset() + offset;
    return MakeView(
       parent.data,
       MakeOffsetLayout(VectorLayout{extent}, combined_offset));
