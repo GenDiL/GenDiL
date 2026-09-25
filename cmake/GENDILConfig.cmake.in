@@ -24,6 +24,9 @@ endif()
 set(GENDIL_USE_CUDA "@USE_CUDA@")
 set(GENDIL_USE_HIP "@USE_HIP@")
 
+# Export Real type configuration
+set(GENDIL_REAL_TYPE "@GENDIL_REAL_TYPE@")
+
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 
 set(GENDIL_INCLUDE_DIRS "@PACKAGE_INCLUDE_INSTALL_DIR@")

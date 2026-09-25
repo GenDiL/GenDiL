@@ -26,6 +26,5 @@ macro(add_my_example target_name source_file)
   )
 endmacro()
 
-add_subdirectory(mass)
-add_subdirectory(advection)
-add_subdirectory(poisson)
+add_subdirectory(convergence_studies)
+add_subdirectory(cg_diagnostic)

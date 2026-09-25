@@ -25,6 +25,32 @@ option(USE_HIP "Enables HIP support." OFF)
 option(USE_RAJA "Enables RAJA features." OFF)
 option(USE_CALIPER "Enables Caliper interface for benchmarking." OFF)
 
+# Configuration for Real type precision
+set(GENDIL_REAL_TYPE "double" CACHE STRING
+    "Floating-point type for gendil::Real (double|float|float16_t|float32_t|float64_t|float128_t|bfloat16_t)")
+set_property(CACHE GENDIL_REAL_TYPE PROPERTY STRINGS
+    "double" "float" "float16_t" "float32_t" "float64_t" "float128_t" "bfloat16_t")
+
+# Validate the Real type choice
+set(VALID_REAL_TYPES "double" "float" "float16_t" "float32_t" "float64_t" "float128_t" "bfloat16_t")
+if(NOT GENDIL_REAL_TYPE IN_LIST VALID_REAL_TYPES)
+  message(FATAL_ERROR "Invalid GENDIL_REAL_TYPE: ${GENDIL_REAL_TYPE}. Must be one of: ${VALID_REAL_TYPES}")
+endif()
+
+# Automatically enable C++23 for C++23-only types
+set(GENDIL_NEEDS_CPP23 FALSE)
+if(GENDIL_REAL_TYPE MATCHES "^(float16_t|float32_t|float64_t|float128_t|bfloat16_t)$")
+  set(GENDIL_NEEDS_CPP23 TRUE)
+  message(STATUS "C++23 enabled automatically for GENDIL_REAL_TYPE=${GENDIL_REAL_TYPE}")
+endif()
+
+message(STATUS "GENDIL Real type configured as: ${GENDIL_REAL_TYPE}")
+
+# Create type-specific flag for preprocessor
+# Map: float16_t -> FLOAT16, bfloat16_t -> BFLOAT16, double -> DOUBLE, etc.
+string(TOUPPER "${GENDIL_REAL_TYPE}" TYPE_UPPER)
+string(REPLACE "_T" "" TYPE_FLAG "${TYPE_UPPER}")
+
 add_library(GENDIL INTERFACE)
 
 # Add -pg to compile and link flags to enable gprof profiling
@@ -102,13 +128,29 @@ target_include_directories(
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-target_compile_features(GENDIL INTERFACE cxx_std_20)
+# Set C++ standard (C++23 if needed for Real type, otherwise C++20)
+if(GENDIL_NEEDS_CPP23)
+  target_compile_features(GENDIL INTERFACE cxx_std_23)
+else()
+  target_compile_features(GENDIL INTERFACE cxx_std_20)
+endif()
+
+# Propagate Real type selection to code
+# Define both the type string and a specific flag for preprocessor selection
+target_compile_definitions(GENDIL INTERFACE
+  GENDIL_REAL_TYPE=${GENDIL_REAL_TYPE}
+  GENDIL_REAL_TYPE_${TYPE_FLAG})
 
 # CUDA
 if(USE_CUDA)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  target_compile_features(GENDIL INTERFACE cuda_std_20)
+  # Set CUDA C++ standard to match host standard
+  if(GENDIL_NEEDS_CPP23)
+    target_compile_features(GENDIL INTERFACE cuda_std_23)
+  else()
+    target_compile_features(GENDIL INTERFACE cuda_std_20)
+  endif()
   target_include_directories(GENDIL
     INTERFACE
       ${CUDAToolkit_INCLUDE_DIRS}
@@ -160,6 +202,18 @@ message(STATUS "GENDIL definitions: ${GENDIL_DEFINITIONS}")
 # Debug message to print linked libraries
 get_target_property(GENDIL_LIBRARIES GENDIL INTERFACE_LINK_LIBRARIES)
 message(STATUS "GENDIL libraries: ${GENDIL_LIBRARIES}")
+
+# Configuration summary
+message(STATUS "")
+message(STATUS "=== GenDiL Configuration Summary ===")
+if(GENDIL_NEEDS_CPP23)
+  message(STATUS "  C++ Standard: C++23 (required for ${GENDIL_REAL_TYPE})")
+else()
+  message(STATUS "  C++ Standard: C++20")
+endif()
+message(STATUS "  Real Type:    ${GENDIL_REAL_TYPE}")
+message(STATUS "=====================================")
+message(STATUS "")
 
 # Install header files
 install(DIRECTORY include/ DESTINATION include)
