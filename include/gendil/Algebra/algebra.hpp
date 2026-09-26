@@ -12,13 +12,22 @@
 #include "gendil/Algebra/matrixvectorops.hpp"
 
 // A simple vector type.
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
 
 // Unified host/device access for GenDiL and external vector types.
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+
+// Borrow equally sized slices of a contiguous vector without copying entries.
+#include "gendil/Algebra/Vector/slices.hpp"
 
 // BLAS-like operations on owning vectors and generic vector views.
-#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
+
+// Completed vector operations inside a native kernel context.
+#include "gendil/Algebra/Vector/localoperations.hpp"
+
+// Explicit Euclidean reductions, projections, and fused basis updates.
+#include "gendil/Algebra/Vector/reductions.hpp"
 
 // Callable protocol for sized maps between vectors.
 #include "gendil/Algebra/vectormapconcept.hpp"

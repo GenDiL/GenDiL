@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
 #include "gendil/Utilities/View/Containers/referencecontainer.hpp"
 #include "gendil/Utilities/View/Layouts/vectorlayout.hpp"
 #include "gendil/Utilities/View/Layouts/offsetlayout.hpp"
@@ -126,6 +126,20 @@ namespace vector_access_detail
 {
 
 template<class ParentVector>
+bool HasValuesToPreserve(const ParentVector& parent)
+{
+   if constexpr (std::is_base_of_v<Vector, ParentVector>)
+   {
+      // Fresh GenDiL allocations have no valid values in either memory space.
+      return parent.IsHostValid() || parent.IsDeviceValid();
+   }
+   else
+   {
+      return true;
+   }
+}
+
+template<class ParentVector>
 GENDIL_HOST_DEVICE GENDIL_INLINE
 void ValidateVectorSubviewRange(
    const ParentVector& parent,
@@ -242,13 +256,20 @@ template<class ParentVector, class IndexType>
       requires(ParentVector& parent)
       {
          WriteHostVector(parent);
+         ReadWriteHostVector(parent);
       })
 auto WriteHostVector(
    View<
       ReferenceContainer<ParentVector, IndexType>,
       OffsetLayout<VectorLayout>>& vector)
 {
-   return WriteHostVector(vector.data.Get()) + vector.layout.BaseOffset();
+   auto& parent = vector.data.Get();
+   const auto offset = vector.layout.BaseOffset();
+   // Parent validity covers its complete allocation, including untouched entries.
+   const bool complete_owner = offset == 0 && GetVectorSize(vector) == GetVectorSize(parent);
+   auto* data = complete_owner || !vector_access_detail::HasValuesToPreserve(parent)
+      ? WriteHostVector(parent) : ReadWriteHostVector(parent);
+   return data + offset;
 }
 
 template<class ParentVector, class IndexType>
@@ -287,13 +308,19 @@ template<class ParentVector, class IndexType>
       requires(ParentVector& parent)
       {
          WriteDeviceVector(parent);
+         ReadWriteDeviceVector(parent);
       })
 auto WriteDeviceVector(
    View<
       ReferenceContainer<ParentVector, IndexType>,
       OffsetLayout<VectorLayout>>& vector)
 {
-   return WriteDeviceVector(vector.data.Get()) + vector.layout.BaseOffset();
+   auto& parent = vector.data.Get();
+   const auto offset = vector.layout.BaseOffset();
+   const bool complete_owner = offset == 0 && GetVectorSize(vector) == GetVectorSize(parent);
+   auto* data = complete_owner || !vector_access_detail::HasValuesToPreserve(parent)
+      ? WriteDeviceVector(parent) : ReadWriteDeviceVector(parent);
+   return data + offset;
 }
 
 /// Vector type exposing read-only host access.
@@ -409,8 +436,9 @@ auto ReadWriteKernelVector( VectorType & vector )
 /**
  * @brief Return a write-only pointer-backed vector view in kernel space.
  *
- * No values are synchronized before access. The opposite memory space is
- * invalidated according to the underlying vector's storage contract. Access
+ * Complete-owner writes need no synchronization. An owner-bound subview
+ * preserves entries outside its range before invalidating the opposite space.
+ * The opposite memory space is invalidated by the underlying owner. Access
  * must remain non-const; a view captured by value in a kernel therefore
  * requires a mutable closure.
  */

@@ -6,7 +6,7 @@
 
 /** @file @brief BLAS-like operations on vector-access objects. */
 
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/Utilities/Loop/kernelloop.hpp"
 
 namespace gendil {
@@ -64,7 +64,7 @@ void ScaleVector(const Real coefficient, VectorType& vector)
 template<bool OnDevice, class InputVector, class OutputVector>
    requires KernelReadableVector<OnDevice, InputVector> &&
             KernelWritableVector<OnDevice, OutputVector>
-void AxpyVector(
+void Axpy(
    const Real coefficient,
    const InputVector& input,
    OutputVector& output)
@@ -74,10 +74,35 @@ void AxpyVector(
       "AXPY requires matching vector extents." );
    auto source = ReadKernelVector<OnDevice>(input);
    auto destination = ReadWriteKernelVector<OnDevice>(output);
-   KernelLoop<OnDevice>(GetVectorSize(input), [=] GENDIL_HOST_DEVICE (size_t i) mutable
+   KernelLoop<OnDevice>(GetVectorSize(input),
+      details::VectorAxpyFunctor{coefficient, source, destination});
+}
+
+/** @brief Divide each entry directly by the supplied scalar. */
+template<bool OnDevice, class VectorType>
+   requires KernelWritableVector<OnDevice, VectorType>
+void Divide(VectorType& vector, const Real length)
+{
+   auto values = ReadWriteKernelVector<OnDevice>(vector);
+   KernelLoop<OnDevice>(GetVectorSize(vector),
+      [=] GENDIL_HOST_DEVICE (size_t i) mutable
+      {
+         values[i] /= length;
+      });
+}
+
+/** @brief Add alpha times a linear combination of basis vectors to output.
+ * Uses one AXPY per basis vector, preserving existing output entries.
+ */
+template<bool OnDevice, class Basis, class Coefficients, class Output>
+void Combine(Basis& basis, const Integer count,
+   const Coefficients& coefficients, const Real alpha, Output& output)
+{
+   for (Integer j = 0; j < count; ++j)
    {
-      destination[i] += coefficient * source[i];
-   });
+      auto&& vector = basis(j);
+      Axpy<OnDevice>(alpha * coefficients[j], vector, output);
+   }
 }
 
 } // namespace gendil

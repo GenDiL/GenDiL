@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
 #include "gendil/Algebra/accessors.hpp"
 #include "gendil/Algebra/staticvector.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"

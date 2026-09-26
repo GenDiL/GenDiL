@@ -62,6 +62,20 @@ struct VectorCopyFunctor
    }
 };
 
+template <typename Input, typename Output>
+struct VectorAxpyFunctor
+{
+   Real coefficient;
+   Input input;
+   Output output;
+
+   GENDIL_HOST_DEVICE
+   void operator()(size_t i)
+   {
+      output[i] += coefficient * input[i];
+   }
+};
+
 } // namespace details
 
 /**
@@ -625,10 +639,7 @@ inline void Axpy(
 
    const Real* u( x.ReadDeviceData() );
    Real* v( y.ReadWriteDeviceData() );
-   DeviceLoop(x.Size(), [=] GENDIL_HOST_DEVICE (Integer i)
-   {
-      v[ i ] = v[ i ] + a * u[ i ] ;
-   });
+   DeviceLoop(x.Size(), details::VectorAxpyFunctor{a, u, v});
 }
 
 inline void FillRandom(

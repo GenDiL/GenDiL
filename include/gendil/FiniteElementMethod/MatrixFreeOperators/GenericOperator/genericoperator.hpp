@@ -10,7 +10,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/GlobalFacetOperator/globalfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
 #include "gendil/Algebra/vectormapconcept.hpp"
-#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 
 namespace gendil {

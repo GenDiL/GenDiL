@@ -17,8 +17,11 @@
  *
  * `VectorMap` is contextual in its input and output vector types. It does not
  * imply linearity, invertibility, ownership, alias safety, or matching runtime
- * dimensions.
+ * dimensions. The forwarding adapters are host/device callable when the
+ * underlying map operations are; the concept does not check device callability.
  */
+
+#include "gendil/Utilities/types.hpp"
 
 #include <concepts>
 #include <cstddef>
@@ -27,6 +30,7 @@ namespace gendil {
 
 /** Return a vector map's input size through its `InputSize()` member. */
 template<class Map>
+GENDIL_HOST_DEVICE
 constexpr std::size_t GetInputSize(const Map& map)
    requires requires { map.InputSize(); }
 {
@@ -40,6 +44,7 @@ constexpr std::size_t GetInputSize(const Map& map)
  * unavailable.
  */
 template<class Map>
+GENDIL_HOST_DEVICE
 constexpr std::size_t GetInputSize(const Map& map)
    requires (
       !requires { map.InputSize(); } &&
@@ -50,6 +55,7 @@ constexpr std::size_t GetInputSize(const Map& map)
 
 /** Return a vector map's output size through its `OutputSize()` member. */
 template<class Map>
+GENDIL_HOST_DEVICE
 constexpr std::size_t GetOutputSize(const Map& map)
    requires requires { map.OutputSize(); }
 {
@@ -63,6 +69,7 @@ constexpr std::size_t GetOutputSize(const Map& map)
  * unavailable.
  */
 template<class Map>
+GENDIL_HOST_DEVICE
 constexpr std::size_t GetOutputSize(const Map& map)
    requires (
       !requires { map.OutputSize(); } &&
@@ -73,6 +80,7 @@ constexpr std::size_t GetOutputSize(const Map& map)
 
 /** Apply a callable vector map with replacement semantics. */
 template<class Map, class InputVector, class OutputVector>
+GENDIL_HOST_DEVICE
 void Apply(
    const Map& map,
    const InputVector& input,
@@ -87,6 +95,7 @@ void Apply(
 
 /** Add a vector map's result to the existing output vector. */
 template<class Map, class InputVector, class OutputVector>
+GENDIL_HOST_DEVICE
 void ApplyAdd(
    const Map& map,
    const InputVector& input,

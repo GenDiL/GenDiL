@@ -10,9 +10,9 @@
  */
 
 #include "gendil/Algebra/accessors.hpp"
-#include "gendil/Algebra/vector.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
-#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/FiniteElementMethod/componentfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionunitweight.hpp"

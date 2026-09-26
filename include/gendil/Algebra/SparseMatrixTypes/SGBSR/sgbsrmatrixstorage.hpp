@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/prelude.hpp"
 
 #include <concepts>

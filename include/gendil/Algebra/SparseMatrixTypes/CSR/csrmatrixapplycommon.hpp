@@ -6,7 +6,7 @@
 
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixview.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/Algebra/vectormapconcept.hpp"
 
 #include <concepts>

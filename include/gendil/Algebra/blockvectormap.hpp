@@ -31,7 +31,7 @@
  */
 
 #include "gendil/Algebra/vectormapconcept.hpp"
-#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/Utilities/checkedarithmetic.hpp"
 
 #include <array>

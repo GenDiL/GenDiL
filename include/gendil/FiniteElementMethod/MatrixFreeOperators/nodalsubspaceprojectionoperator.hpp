@@ -21,7 +21,7 @@
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/NumericalIntegration/numericalintegration.hpp"
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 

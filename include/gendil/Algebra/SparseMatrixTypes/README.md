@@ -10,7 +10,7 @@ to `x = (1,2,3)` gives `y = (-1,18)`:
 
 ```cpp
 #include <gendil/Algebra/SparseMatrixTypes/CSR/csrmatrix.hpp>
-#include <gendil/Algebra/vectoraccess.hpp>
+#include <gendil/Algebra/Vector/access.hpp>
 using namespace gendil;
 
 // A = [ 2  0 -1 ]

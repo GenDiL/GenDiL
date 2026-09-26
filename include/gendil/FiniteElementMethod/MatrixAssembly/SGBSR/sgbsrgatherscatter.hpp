@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictionoperations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"

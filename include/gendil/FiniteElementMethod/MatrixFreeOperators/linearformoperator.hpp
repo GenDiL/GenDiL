@@ -8,9 +8,9 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/Algebra/vector.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
-#include "gendil/Algebra/vectoroperations.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 
 #include <type_traits>

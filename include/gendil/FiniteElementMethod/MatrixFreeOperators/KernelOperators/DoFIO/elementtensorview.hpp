@@ -9,7 +9,7 @@
  * @brief Restriction-backed element tensor views and vector storage binding.
  */
 
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictionlayout.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/weightedrestrictionview.hpp"

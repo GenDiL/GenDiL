@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/Interfaces/Hypre/hypreerror.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
