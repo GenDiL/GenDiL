@@ -10,8 +10,8 @@
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
-#include "gendil/Algebra/vector.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 
 namespace gendil {
 

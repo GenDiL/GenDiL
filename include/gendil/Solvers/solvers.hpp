@@ -3,7 +3,7 @@
 #include "gendil/Solvers/conjugategradient.hpp"
 
 // Restarted GMRES and flexible GMRES with reusable or caller-provided scratch.
-#include "gendil/Solvers/gmres.hpp"
+#include "gendil/Solvers/GMRES/gmres.hpp"
 
 // A simple BiCGSTAB implementation
 #include "gendil/Solvers/bicgstab.hpp"
