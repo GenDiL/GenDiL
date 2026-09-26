@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-#include <gendil/Algebra/vectoraccess.hpp>
+#include <gendil/Algebra/Vector/access.hpp>
 #include <gendil/Utilities/Loop/kernelloop.hpp>
 #include <gendil/Utilities/MathHelperFunctions/atomicadd.hpp>
 
@@ -60,29 +60,28 @@ bool TestHostAtomicAddInPlace()
    return value == T( count );
 }
 
-#ifdef GENDIL_USE_DEVICE
-bool TestDeviceAtomicAddInPlace()
+template < bool OnDevice >
+bool TestKernelAtomicAddInPlace()
 {
    constexpr GlobalIndex count = 4096;
    Vector value( 1 );
-   auto * data = WriteKernelVector< true >( value );
+   auto data = WriteKernelVector< OnDevice >( value );
 
-   KernelLoop< true >(
+   KernelLoop< OnDevice >(
       GlobalIndex( 1 ),
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex ) mutable
       {
          data[0] = Real( 0 );
       } );
-   KernelLoop< true >(
+   KernelLoop< OnDevice >(
       count,
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex ) mutable
       {
          gendil::AtomicAddInPlace( data[0], Real( 1 ) );
       } );
 
    return ReadHostVector( value )[0] == Real( count );
 }
-#endif
 
 } // namespace
 
@@ -91,8 +90,10 @@ int main()
    const bool capture_success = TestAtomicAddCapture();
    const bool integer_update_success = TestHostAtomicAddInPlace< int >();
    const bool real_update_success = TestHostAtomicAddInPlace< Real >();
+   const bool host_kernel_update_success =
+      TestKernelAtomicAddInPlace< false >();
 #ifdef GENDIL_USE_DEVICE
-   const bool device_update_success = TestDeviceAtomicAddInPlace();
+   const bool device_update_success = TestKernelAtomicAddInPlace< true >();
 #else
    constexpr bool device_update_success = true;
 #endif
@@ -109,11 +110,17 @@ int main()
    {
       std::cout << "Device AtomicAddInPlace lost updates under contention.\n";
    }
+   if ( !host_kernel_update_success )
+   {
+      std::cout << "Host kernel-view AtomicAddInPlace lost updates under "
+         "contention.\n";
+   }
 
    const bool success =
       capture_success &&
       integer_update_success &&
       real_update_success &&
+      host_kernel_update_success &&
       device_update_success;
    return success ? 0 : 1;
 }

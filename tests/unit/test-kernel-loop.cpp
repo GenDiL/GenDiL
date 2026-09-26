@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-#include <gendil/Algebra/vectoraccess.hpp>
+#include <gendil/Algebra/Vector/access.hpp>
 #include <gendil/Utilities/Loop/kernelloop.hpp>
 
 #include <iostream>
@@ -26,29 +26,29 @@ bool TestKernelLoopPlacement()
 {
    constexpr GlobalIndex size = 257;
    Vector values( size );
-   auto * data = WriteKernelVector< OnDevice >( values );
+   auto data = WriteKernelVector< OnDevice >( values );
 
    KernelLoop< OnDevice >(
       size,
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex i )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex i ) mutable
       {
          data[i] = Real( 0 );
       } );
    KernelLoop< OnDevice >(
       size,
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex i )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex i ) mutable
       {
          data[i] += Real( 1 );
       } );
    KernelLoop< OnDevice >(
       GlobalIndex( 0 ),
-      [=] GENDIL_HOST_DEVICE ( const GlobalIndex )
+      [=] GENDIL_HOST_DEVICE ( const GlobalIndex ) mutable
       {
          data[0] = Real( -1 );
       } );
    KernelLoop< OnDevice >(
       -3,
-      [=] GENDIL_HOST_DEVICE ( const int )
+      [=] GENDIL_HOST_DEVICE ( const int ) mutable
       {
          data[0] = Real( -2 );
       } );

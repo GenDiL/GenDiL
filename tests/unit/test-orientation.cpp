@@ -9,6 +9,7 @@
 #include <cmath>
 #include <concepts>
 #include <iostream>
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -406,6 +407,15 @@ bool TestValidityAndExtents()
 
    bool success = true;
    static_assert( IsValidOrientation( IdentityOrientation< 3 >{} ) );
+   static_assert( !IsValidOrientation( Permutation< 1 >{
+      { std::numeric_limits< LocalIndex >::min() } } ) );
+   static_assert( !IsValidOrientation( std::integral_constant<
+      Permutation< 2 >, Permutation< 2 >{ { 1, -1 } } >{} ) );
+   // Lifting invalid local entries can disguise them as a valid global map.
+   constexpr auto invalid_factors = TensorProductOrientation{
+      Permutation< 1 >{ { 2 } }, Permutation< 1 >{ { 0 } } };
+   static_assert( !IsValidOrientation( invalid_factors ) );
+   static_assert( IsValidOrientation( FlattenOrientation( invalid_factors ) ) );
    success = Check(
       IsValidOrientation(
          Permutation< 3 >{ { -1, 2, -3 } } ),
@@ -455,6 +465,85 @@ bool TestValidityAndExtents()
             Permutation< 2 >{ { 2, 1 } } ) ),
       "structured unequal-extent permutation accepted" ) && success;
    return success;
+}
+
+bool TestMappingOnlyOrientedLayouts()
+{
+   constexpr auto reverse_swap = Permutation< 2 >{ { -2, 1 } };
+   constexpr auto reversed = MakeOrientedLayout(
+      std::array< size_t, 2 >{ 3, 2 }, reverse_swap );
+   static_assert( std::same_as< std::remove_cv_t< decltype( reversed ) >,
+      OrientedLayout< 2 > > );
+   static_assert( std::is_trivially_copyable_v< OrientedLayout< 2 > > );
+   static_assert( reversed.Offset( 0, 1 ) == 5 );
+   static_assert( reversed.Offset( 2, 0 ) == 0 );
+
+   constexpr auto wide = MakeOrientedLayout(
+      std::array< size_t, 2 >{ 50000, 50000 }, IdentityOrientation< 2 >{} );
+   constexpr auto wide_reversed = MakeOrientedLayout(
+      std::array< size_t, 2 >{ 50000, 50000 }, Permutation< 2 >{ { -1, -2 } } );
+   static_assert( wide.Offset( 49999, 49999 ) == size_t{ 2499999999UL } );
+   static_assert( wide_reversed.Offset( 49999, 49999 ) == 0 );
+   constexpr auto minimum_stride = OrientedLayout< 1 >{
+      std::pair{ std::numeric_limits< int >::min(), size_t{ 2 } } };
+   static_assert( minimum_stride.offset ==
+      static_cast< size_t >( std::numeric_limits< int >::max() ) + 1 );
+   static_assert( minimum_stride.Offset( 0 ) == minimum_stride.offset );
+   static_assert( minimum_stride.Offset( 1 ) == 0 );
+   constexpr auto zero = MakeOrientedLayout(
+      std::array< size_t, 0 >{}, IdentityOrientation< 0 >{} );
+   static_assert( zero.Offset() == 0 );
+
+   constexpr auto structured = TensorProductOrientation{
+      TensorProductOrientation{ IdentityOrientation< 1 >{}, reverse_swap },
+      Permutation< 1 >{ { -1 } } };
+   static_assert( IsValidOrientation( structured ) );
+   static_assert( decltype( detail::GetStructuredOrientationAxis< 0 >( structured ) )::value == 1 );
+   static_assert( detail::GetStructuredOrientationAxis< 1 >( structured ) == -3 );
+   static_assert( detail::GetStructuredOrientationAxis< 2 >( structured ) == 2 );
+   static_assert( detail::GetStructuredOrientationAxis< 3 >( structured ) == -4 );
+   static_assert( FlattenOrientation( structured ) == Permutation< 4 >{ { 1, -3, 2, -4 } } );
+   constexpr auto structured_layout = MakeOrientedLayout(
+      std::array< size_t, 4 >{ 2, 3, 4, 5 }, structured );
+   static_assert( structured_layout.offset == 112 );
+   static_assert( structured_layout.strides[0] == 1 && structured_layout.strides[1] == -8 &&
+                  structured_layout.strides[2] == 2 && structured_layout.strides[3] == -24 );
+   static_assert( structured_layout.Offset( 1, 2, 3, 4 ) == 7 );
+
+   // Shape lengths cannot be recovered from strides: (1,3) has equal FIFO
+   // strides, but swapping/reversing its axes still changes the mapping.
+   for ( const auto sizes : { std::array< size_t, 2 >{ 1, 3 },
+                              std::array< size_t, 2 >{ 2, 3 },
+                              std::array< size_t, 2 >{ 3, 2 } } )
+   for ( const auto orientation : MakeAllSignedPermutations< 2 >() )
+   {
+      const auto layout = MakeOrientedLayout( sizes, orientation );
+      std::array< size_t, 2 > reference_sizes{};
+      for ( size_t axis = 0; axis < 2; ++axis )
+      {
+         const auto mapped = orientation( axis );
+         reference_sizes[static_cast< size_t >( std::abs( mapped ) - 1 )] = sizes[axis];
+      }
+      for ( size_t j = 0; j < sizes[1]; ++j )
+      for ( size_t i = 0; i < sizes[0]; ++i )
+      {
+         const std::array native{ i, j };
+         std::array< size_t, 2 > reference{};
+         for ( size_t axis = 0; axis < 2; ++axis )
+         {
+            const auto mapped = orientation( axis );
+            reference[static_cast< size_t >( std::abs( mapped ) - 1 )] =
+               mapped > 0 ? native[axis] : sizes[axis] - 1 - native[axis];
+         }
+         if ( !Check( layout.Offset( i, j ) == reference[0] + reference_sizes[0] * reference[1],
+                      "oriented layout disagrees with independent reference coordinates" ) )
+            return false;
+      }
+   }
+   Real data[]{ 0, 1, 2, 3, 4, 5 };
+   const auto view = MakeOrientedView( data, std::array< size_t, 2 >{ 3, 2 }, reverse_swap );
+   return Check( view( 0, 1 ) == 5 && view( 2, 0 ) == 0,
+                 "oriented pointer view did not retain its signed mapping" );
 }
 
 bool TestSetAndGetSubPermutation()
@@ -954,6 +1043,7 @@ int main()
    success = TestRoundTrips< 3 >( { 2, 2, 2 } ) && success;
    success = TestRoundTrips< 3 >( { 2, 3, 4 } ) && success;
    success = TestValidityAndExtents() && success;
+   success = TestMappingOnlyOrientedLayouts() && success;
    success = TestSetAndGetSubPermutation() && success;
    success = TestTensorProductTransformComposition() && success;
    success = TestExhaustiveTensorProductTransformComposition() && success;

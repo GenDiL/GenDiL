@@ -194,6 +194,12 @@ inline constexpr bool restriction_may_share_global_dofs_v<
       1,
       ReferenceView > > = false;
 
+template < bool ReferenceView >
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   restriction_layout_test::SyntheticRestriction<
+      1,
+      ReferenceView > > = true;
+
 } // namespace gendil
 
 namespace {
@@ -245,7 +251,8 @@ static_assert( !HasRestrictionLayout< MultiEntryRestriction > );
 static_assert( !HasRestrictionLayout< UnknownCardinalityRestriction > );
 static_assert( HasRestrictionLayout< NoReferenceViewRestriction > );
 static_assert( HasRestrictionElementView< ThirdPartyRestriction > );
-static_assert( !HasRestrictionElementView< NoReferenceViewRestriction > );
+static_assert( HasRestrictionElementView< NoReferenceViewRestriction > );
+static_assert( HasRestrictionElementView< MultiEntryRestriction > );
 static_assert( ElementwiseIndependentRestriction< ThirdPartyRestriction > );
 
 template < typename... FactorRestrictions >
@@ -256,10 +263,10 @@ concept CanFormTensorProductRestriction = requires
 
 static_assert( CanFormTensorProductRestriction< ScalarRestriction > );
 static_assert( CanFormTensorProductRestriction< ThirdPartyRestriction > );
-static_assert( !CanFormTensorProductRestriction< MultiEntryRestriction > );
-static_assert( !CanFormTensorProductRestriction<
+static_assert( CanFormTensorProductRestriction< MultiEntryRestriction > );
+static_assert( CanFormTensorProductRestriction<
    UnknownCardinalityRestriction > );
-static_assert( !CanFormTensorProductRestriction<
+static_assert( CanFormTensorProductRestriction<
    NoReferenceViewRestriction > );
 static_assert( !CanFormTensorProductRestriction< VectorFactorRestriction > );
 

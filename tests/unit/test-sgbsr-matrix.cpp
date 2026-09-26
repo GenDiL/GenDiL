@@ -350,6 +350,8 @@ using CopySGBSRMatrix =
       CopyBsrGather,
       CopyBsrScatter >;
 
+static_assert(VectorMap<CopySGBSRMatrix, Vector, Vector>);
+
 static_assert( !std::is_copy_constructible_v< CopySGBSRMatrix > );
 static_assert( !std::is_copy_assignable_v< CopySGBSRMatrix > );
 static_assert( std::is_move_constructible_v< CopySGBSRMatrix > );
@@ -413,6 +415,26 @@ static_assert( BuiltInMappingConcepts< HostBSRBackend<> > );
 #if defined(GENDIL_USE_DEVICE)
 static_assert( BuiltInMappingConcepts< NativeDeviceBSRBackend<> > );
 #endif
+
+using DirectTensorRestriction = TensorProductRestriction<
+   ContiguousL2Restriction< std::index_sequence< 2 > >,
+   ContiguousL2Restriction< std::index_sequence< 3 > > >;
+
+static_assert(
+   !details::SGBSRReplacementRequiresDestinationZeroing<
+      typename ScalarL2Space::restriction_type >( 8, 8 ) );
+static_assert(
+   !details::SGBSRReplacementRequiresDestinationZeroing<
+      VectorSpaceRestriction >( 12, 12 ) );
+static_assert(
+   !details::SGBSRReplacementRequiresDestinationZeroing<
+      DirectTensorRestriction >( 24, 24 ) );
+static_assert(
+   details::SGBSRReplacementRequiresDestinationZeroing<
+      typename ScalarL2Space::restriction_type >( 8, 15 ) );
+static_assert(
+   details::SGBSRReplacementRequiresDestinationZeroing<
+      typename ScalarH1Space::restriction_type >( 6, 6 ) );
 
 bool TestSGBSRFreeApply()
 {
@@ -560,13 +582,114 @@ bool TestBuiltInSGBSRExternalDimensions()
          DGGatherToBsr< decltype( trial_space ) >{ trial_space },
          DGScatterFromBsr< decltype( test_space ) >{ test_space } );
 
-   return Check(
+   bool success = Check(
       matrix.TrialBsrSize() == 8 && matrix.TestBsrSize() == 8 &&
       matrix.trial_gather.InternalSize() == 8 &&
       matrix.test_scatter.InternalSize() == 8 &&
       matrix.NumCols() == 11 && matrix.NumRows() == 15,
       "Built-in L2 SGBSR mapping dimensions are inconsistent with the BSR "
       "spans or restriction shifts." );
+
+   Vector input( 11 );
+   auto * input_data = WriteHostVector( input );
+   for ( GlobalIndex i = 0; i < input.Size(); ++i )
+   {
+      input_data[i] = 0.5 + static_cast< Real >( i );
+   }
+   Vector output( 15 );
+   output = 99.0;
+   Apply( matrix, input, output );
+   const auto * output_data = ReadHostVector( output );
+   for ( GlobalIndex i = 0; i < 7; ++i )
+   {
+      success = Check(
+         Near( output_data[i], 0.0 ),
+         "Gapped SGBSR replacement did not zero an uncovered coordinate." ) &&
+         success;
+   }
+   for ( GlobalIndex i = 0; i < 8; ++i )
+   {
+      success = Check(
+         Near( output_data[7 + i], input_data[3 + i] ),
+         "Gapped SGBSR replacement wrote the wrong covered value." ) &&
+         success;
+   }
+
+   output = 5.0;
+   ApplyAdd( matrix, input, output );
+   output_data = ReadHostVector( output );
+   for ( GlobalIndex i = 0; i < 7; ++i )
+   {
+      success = Check(
+         Near( output_data[i], 5.0 ),
+         "Gapped SGBSR ApplyAdd changed an uncovered coordinate." ) &&
+         success;
+   }
+   for ( GlobalIndex i = 0; i < 8; ++i )
+   {
+      success = Check(
+         Near( output_data[7 + i], 5.0 + input_data[3 + i] ),
+         "Gapped SGBSR ApplyAdd did not preserve the covered destination." ) &&
+         success;
+   }
+   return success;
+}
+
+bool TestCompleteBuiltInSGBSRMapping()
+{
+   Cartesian1DMesh mesh( 0.5, 2 );
+   const auto finite_element =
+      MakeLegendreFiniteElement( FiniteElementOrders< 1 >{} );
+   const auto space = MakeFiniteElementSpace(
+      mesh,
+      finite_element,
+      ContiguousL2RestrictionSpecification{} );
+
+   constexpr GlobalIndex block_size = 2;
+   auto bsr = MakeBlockDiagonalDGBSRPattern< Real, GlobalIndex >(
+      2,
+      block_size,
+      block_size );
+   FillIdentityBlocks( bsr );
+   SGBSRMatrix<
+      BSRMatrix< Real, GlobalIndex >,
+      DGGatherToBsr< decltype( space ) >,
+      DGScatterFromBsr< decltype( space ) > > matrix(
+         std::move( bsr ),
+         DGGatherToBsr< decltype( space ) >{ space },
+         DGScatterFromBsr< decltype( space ) >{ space } );
+
+   Vector input( 4 );
+   auto * input_data = WriteHostVector( input );
+   for ( GlobalIndex i = 0; i < input.Size(); ++i )
+   {
+      input_data[i] = 0.25 + static_cast< Real >( i );
+   }
+
+   Vector output( 4 );
+   output = 99.0;
+   Apply( matrix, input, output );
+   const auto * output_data = ReadHostVector( output );
+   bool success = true;
+   for ( GlobalIndex i = 0; i < output.Size(); ++i )
+   {
+      success = Check(
+         Near( output_data[i], input_data[i] ),
+         "Complete L2 SGBSR replacement did not overwrite every entry." ) &&
+         success;
+   }
+
+   output = 5.0;
+   ApplyAdd( matrix, input, output );
+   output_data = ReadHostVector( output );
+   for ( GlobalIndex i = 0; i < output.Size(); ++i )
+   {
+      success = Check(
+         Near( output_data[i], 5.0 + input_data[i] ),
+         "Complete L2 SGBSR ApplyAdd did not preserve its destination." ) &&
+         success;
+   }
+   return success;
 }
 
 bool TestRawBsrOperatorDelegatesToBackendApply()
@@ -1250,6 +1373,7 @@ int main()
    success = TestSGBSRFreeApply() && success;
    success = TestSGBSRMoveAssignment() && success;
    success = TestBuiltInSGBSRExternalDimensions() && success;
+   success = TestCompleteBuiltInSGBSRMapping() && success;
    success = TestRawBsrOperatorDelegatesToBackendApply() && success;
    success = TestScalarH1GatherScatterMapping() && success;
    success = TestSharedScalarH1HostScatter() && success;
