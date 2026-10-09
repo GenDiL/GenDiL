@@ -104,7 +104,8 @@ template < typename Input, size_t Dim >
 GENDIL_HOST_DEVICE
 auto Apply( const Input & input, const TensorIndex< Dim > & index )
 {
-   return Apply( input, index, std::make_index_sequence< Dim >{} );
+   return gendil::Apply< Input, Dim >(
+      input, index, std::make_index_sequence< Dim >{} );
 }
 
 }
