@@ -56,14 +56,17 @@ struct FixedStridedLayout
       // Bound each term before arithmetic; validation is entirely type-known.
       constexpr bool span_fits = [&]
       {
-         constexpr std::array< GlobalIndex, rank > strides{ Strides... };
-         GlobalIndex remaining = std::numeric_limits< Integer >::max();
-         for ( size_t axis = 0; axis < rank; ++axis )
+         if constexpr ( rank > 0 )
          {
-            if ( shape[axis] == 0 || strides[axis] == 0 ||
-                 shape[axis] - 1 > remaining / strides[axis] )
-               return false;
-            remaining -= ( shape[axis] - 1 ) * strides[axis];
+            constexpr std::array< GlobalIndex, rank > strides{ Strides... };
+            GlobalIndex remaining = std::numeric_limits< Integer >::max();
+            for ( size_t axis = 0; axis < rank; ++axis )
+            {
+               if ( shape[axis] == 0 || strides[axis] == 0 ||
+                    shape[axis] - 1 > remaining / strides[axis] )
+                  return false;
+               remaining -= ( shape[axis] - 1 ) * strides[axis];
+            }
          }
          return true;
       }();
