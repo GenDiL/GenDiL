@@ -8,6 +8,7 @@
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "Containers/containers.hpp"
 #include "gendil/Utilities/View/extents.hpp"
+#include "gendil/Utilities/VariadicHelperFunctions/get.hpp"
 
 namespace gendil {
 
@@ -20,7 +21,9 @@ struct ThreadedView
    using sizes = Sizes;
    using logical_extents_type = static_extents_from_sequence_t< sizes >;
    using thread_shape = subsequence_t< sizes, typename KernelContext::template threaded_dimensions< Sizes::size() > >;
-   using register_shape = subsequence_t< sizes, typename KernelContext::template register_dimensions< Sizes::size() > >;
+   using register_dimensions =
+      typename KernelContext::template register_dimensions< Sizes::size() >;
+   using register_shape = subsequence_t< sizes, register_dimensions >;
    using register_extents_type =
       static_extents_from_sequence_t< register_shape >;
    static constexpr size_t rank = thread_shape::size() + register_shape::size();
@@ -46,7 +49,7 @@ struct ThreadedView
             register_shape::size() == Container::rank,
             "Threaded view container must have the same rank as register shape."
          );
-         auto register_indices = get( register_shape{}, idx... );
+         auto register_indices = get( register_dimensions{}, idx... );
          return std::apply(data, register_indices );
       }
    }
@@ -69,7 +72,7 @@ struct ThreadedView
             register_shape::size() == Container::rank,
             "Threaded view container must have the same rank as register shape."
          );
-         auto register_indices = get( register_shape{}, idx... );
+         auto register_indices = get( register_dimensions{}, idx... );
          return std::apply(data, register_indices );
       }
    }

@@ -76,7 +76,7 @@ Neither shape nor strides alone guarantee contiguous scalar storage. See
 copying values. For a GenDiL `Vector`, synchronization stays with the parent:
 
 ```cpp
-#include <gendil/Algebra/vectoraccess.hpp>
+#include <gendil/Algebra/Vector/access.hpp>
 
 Vector field(6);
 auto initial = WriteKernelVector<false>(field); // Host access; initialize all entries.

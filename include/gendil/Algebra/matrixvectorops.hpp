@@ -21,15 +21,15 @@ template<class M>
 concept static_matrix = requires {
    { static_num_rows_v<M> } -> std::convertible_to<Integer>;
    { static_num_cols_v<M> } -> std::convertible_to<Integer>;
-   static_num_rows_v<M> != std::dynamic_extent;
-   static_num_cols_v<M> != std::dynamic_extent;
+   requires static_num_rows_v<M> != std::dynamic_extent;
+   requires static_num_cols_v<M> != std::dynamic_extent;
 };
 
 // Concept: rank-1 static vector (SFINAE-safe)
 template<class V>
 concept static_vector_type = requires {
    { static_extent_v<V> } -> std::convertible_to<Integer>;
-   static_extent_v<V> != std::dynamic_extent;
+   requires static_extent_v<V> != std::dynamic_extent;
 };
 
 // Matrix-vector multiplication: y = A * x
