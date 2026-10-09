@@ -87,16 +87,22 @@ consteval bool FixedStencilWeightsAreFinite()
 template < class Stencil >
 consteval std::size_t FixedStencilEntriesPerElement()
 {
-   std::size_t total = 0;
-   for ( const std::size_t count : Stencil::row_entry_counts )
+   constexpr auto result = []
    {
-      if ( count > std::numeric_limits< std::size_t >::max() - total )
+      std::size_t total = 0;
+      for ( const std::size_t count : Stencil::row_entry_counts )
       {
-         throw "Fixed-stencil row-entry total overflows size_t.";
+         if ( count > std::numeric_limits< std::size_t >::max() - total )
+         {
+            return std::pair{ std::size_t{ 0 }, false };
+         }
+         total += count;
       }
-      total += count;
-   }
-   return total;
+      return std::pair{ total, true };
+   }();
+   static_assert( result.second,
+      "Fixed-stencil row-entry total overflows size_t." );
+   return result.first;
 }
 
 /** Return the exact entry count of one native local DoF row. */
@@ -116,17 +122,23 @@ consteval std::size_t FixedStencilRowEntryOffset()
    static_assert(
       Row <= std::tuple_size_v< fixed_stencil_row_counts_t< Stencil > >,
       "Fixed-stencil native row is out of range." );
-   std::size_t offset = 0;
-   for ( std::size_t row = 0; row < Row; ++row )
+   constexpr auto result = []
    {
-      const std::size_t count = Stencil::row_entry_counts[row];
-      if ( count > std::numeric_limits< std::size_t >::max() - offset )
+      std::size_t offset = 0;
+      for ( std::size_t row = 0; row < Row; ++row )
       {
-         throw "Fixed-stencil row-entry prefix overflows size_t.";
+         const std::size_t count = Stencil::row_entry_counts[row];
+         if ( count > std::numeric_limits< std::size_t >::max() - offset )
+         {
+            return std::pair{ std::size_t{ 0 }, false };
+         }
+         offset += count;
       }
-      offset += count;
-   }
-   return offset;
+      return std::pair{ offset, true };
+   }();
+   static_assert( result.second,
+      "Fixed-stencil row-entry prefix overflows size_t." );
+   return result.first;
 }
 
 /**

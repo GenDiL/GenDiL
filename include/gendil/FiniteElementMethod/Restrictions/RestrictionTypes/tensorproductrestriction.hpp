@@ -260,22 +260,28 @@ consteval size_t TensorProductNativeRowEntryCount(
                         TensorRestriction,
                         Factor > >{} ) > >... };
 
-   size_t count = 1;
-   for ( const size_t factor_count : counts )
+   constexpr auto result = [counts]
    {
-      if ( factor_count == dynamic_restriction_entry_count )
+      size_t count = 1;
+      for ( const size_t factor_count : counts )
       {
-         return dynamic_restriction_entry_count;
+         if ( factor_count == dynamic_restriction_entry_count )
+         {
+            return std::pair{ dynamic_restriction_entry_count, true };
+         }
+         if (
+            factor_count != 0 &&
+            count > std::numeric_limits< size_t >::max() / factor_count )
+         {
+            return std::pair{ size_t{ 0 }, false };
+         }
+         count *= factor_count;
       }
-      if (
-         factor_count != 0 &&
-         count > std::numeric_limits< size_t >::max() / factor_count )
-      {
-         throw "Tensor-product static restriction-entry count overflows size_t.";
-      }
-      count *= factor_count;
-   }
-   return count;
+      return std::pair{ count, true };
+   }();
+   static_assert( result.second,
+      "Tensor-product static restriction-entry count overflows size_t." );
+   return result.first;
 }
 
 } // namespace details

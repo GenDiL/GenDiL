@@ -114,26 +114,33 @@ consteval bool ComponentHasStaticNativeRowCounts()
 template < typename Space, size_t Component >
 consteval GlobalIndex ExpandedComponentRowCount()
 {
-   constexpr auto counts = NativeRowCountTable< Space, Component >();
-   GlobalIndex total = 0;
-   for ( const size_t count : counts )
+   constexpr auto result = []
    {
-      if ( count == dynamic_restriction_entry_count )
+      struct Result { GlobalIndex value; bool valid; };
+      constexpr auto counts = NativeRowCountTable< Space, Component >();
+      GlobalIndex total = 0;
+      for ( const size_t count : counts )
       {
-         return static_cast< GlobalIndex >(
-            dynamic_restriction_entry_count );
+         if ( count == dynamic_restriction_entry_count )
+         {
+            return Result{ static_cast< GlobalIndex >(
+               dynamic_restriction_entry_count ), true };
+         }
+         if (
+            count > static_cast< size_t >(
+               std::numeric_limits< GlobalIndex >::max() ) ||
+            total > std::numeric_limits< GlobalIndex >::max() -
+               static_cast< GlobalIndex >( count ) )
+         {
+            return Result{ 0, false };
+         }
+         total += static_cast< GlobalIndex >( count );
       }
-      if (
-         count > static_cast< size_t >(
-            std::numeric_limits< GlobalIndex >::max() ) ||
-         total > std::numeric_limits< GlobalIndex >::max() -
-            static_cast< GlobalIndex >( count ) )
-      {
-         throw "Expanded RawCOO restriction-row count overflows GlobalIndex.";
-      }
-      total += static_cast< GlobalIndex >( count );
-   }
-   return total;
+      return Result{ total, true };
+   }();
+   static_assert( result.valid,
+      "Expanded RawCOO restriction-row count overflows GlobalIndex." );
+   return result.value;
 }
 
 /// @brief Report whether all components have exact native-row entry counts.
@@ -172,23 +179,35 @@ consteval GlobalIndex ExpandedComponentOffset()
 template < typename Space, size_t Component >
 consteval auto NativeRowPrefixTable()
 {
-   constexpr auto counts = NativeRowCountTable< Space, Component >();
-   std::array< GlobalIndex, counts.size() > prefixes{};
-   GlobalIndex prefix = 0;
-   for ( size_t row = 0; row < counts.size(); ++row )
+   constexpr auto result = []
    {
-      prefixes[row] = prefix;
-      if (
-         counts[row] > static_cast< size_t >(
-            std::numeric_limits< GlobalIndex >::max() ) ||
-         prefix > std::numeric_limits< GlobalIndex >::max() -
-            static_cast< GlobalIndex >( counts[row] ) )
+      constexpr auto counts = NativeRowCountTable< Space, Component >();
+      struct Result
       {
-         throw "Expanded RawCOO restriction-row prefix overflows GlobalIndex.";
+         std::array< GlobalIndex,
+            component_native_row_count_v< Space, Component > > values{};
+         bool valid = true;
+      } result;
+      GlobalIndex prefix = 0;
+      for ( size_t row = 0; row < counts.size(); ++row )
+      {
+         result.values[row] = prefix;
+         if (
+            counts[row] > static_cast< size_t >(
+               std::numeric_limits< GlobalIndex >::max() ) ||
+            prefix > std::numeric_limits< GlobalIndex >::max() -
+               static_cast< GlobalIndex >( counts[row] ) )
+         {
+            result.valid = false;
+            return result;
+         }
+         prefix += static_cast< GlobalIndex >( counts[row] );
       }
-      prefix += static_cast< GlobalIndex >( counts[row] );
-   }
-   return prefixes;
+      return result;
+   }();
+   static_assert( result.valid,
+      "Expanded RawCOO restriction-row prefix overflows GlobalIndex." );
+   return result.values;
 }
 
 } // namespace details
