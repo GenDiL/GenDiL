@@ -295,15 +295,19 @@ inline constexpr bool is_extent_query_v = []
       return ExtentIndex< Type >;
 }();
 
+/** Check one axis before folding, avoiding a requires-expression over a pack. */
+template < class Object, size_t Axis >
+concept HasExtentQuery = requires( const Object & object )
+{
+   object.Get( AxisTag< Axis >{} );
+   requires is_extent_query_v< decltype( object.Get( AxisTag< Axis >{} ) ) >;
+};
+
 /** Require a supported query result for each axis in the object's rank. */
 template < class Object, size_t... Axis >
 consteval bool HasCompleteExtentsImpl( std::index_sequence< Axis... > )
 {
-   return ( requires( const Object & object )
-   {
-      object.Get( AxisTag< Axis >{} );
-      requires is_extent_query_v< decltype( object.Get( AxisTag< Axis >{} ) ) >;
-   } && ... );
+   return ( HasExtentQuery< Object, Axis > && ... );
 }
 
 } // namespace detail

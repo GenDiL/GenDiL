@@ -16,6 +16,18 @@
 
 namespace gendil {
 
+namespace detail {
+
+/** Check each pair separately so the constructor constraint folds a concept. */
+template < class Pair >
+concept StrideSizePair = requires( Pair pair )
+{
+    pair.first;
+    pair.second;
+};
+
+} // namespace detail
+
 /**
  * @brief Mapping-only affine layout with signed strides for reversed axes.
  *
@@ -36,7 +48,7 @@ struct OrientedLayout
 
     template < typename... StrideSizePairs >
         requires ( sizeof...( StrideSizePairs ) == Rank && Rank > 0 &&
-                   ( requires( StrideSizePairs pair ) { pair.first; pair.second; } && ... ) )
+                   ( detail::StrideSizePair< StrideSizePairs > && ... ) )
     GENDIL_HOST_DEVICE
     constexpr OrientedLayout( StrideSizePairs... pairs ) :
         strides{ pairs.first... }
