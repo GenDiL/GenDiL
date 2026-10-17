@@ -76,14 +76,18 @@ constexpr decltype(auto) GetStride(
 
 namespace detail {
 
+/** Check one axis before folding, avoiding a requires-expression over a pack. */
+template < class Layout, size_t Axis >
+concept HasStrideQuery = requires( const Layout & layout )
+{
+   GetStride< Axis >( layout );
+};
+
 /** Check that the template query is callable for each axis in the sequence. */
 template < class Layout, size_t... Axis >
 consteval bool HasStridesImpl( std::index_sequence< Axis... > )
 {
-   return ( requires( const Layout & layout )
-   {
-      GetStride< Axis >( layout );
-   } && ... );
+   return ( HasStrideQuery< Layout, Axis > && ... );
 }
 
 } // namespace detail
