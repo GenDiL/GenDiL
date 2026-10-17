@@ -176,7 +176,7 @@ template<class... Views>
 GENDIL_HOST_DEVICE auto MakeReadOnlyElementTensorView(const std::tuple<Views...>& views)
 {
    return std::apply([](const auto&... view) {
-      return std::tuple{MakeReadOnlyElementTensorView(view)...};
+      return std::make_tuple(MakeReadOnlyElementTensorView(view)...);
    }, views);
 }
 

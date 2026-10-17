@@ -112,7 +112,8 @@ void SetSparseMatrixEntry(
          const ValueType value = y(k...);
          const LocalIndex local_row =
             FlattenMultiIndex< TestDofShape >(
-               std::array{ t..., k... } );
+               std::array< GlobalIndex, sizeof...(t) + sizeof...(k) >{
+                  t..., k... } );
 
          bsr_matrix.GetBlockEntry(
             static_cast< IndexType >( block_index ),

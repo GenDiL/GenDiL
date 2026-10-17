@@ -428,8 +428,8 @@ GENDIL_HOST_DEVICE auto KernelSelection(const Selected& selected)
          constexpr auto Name = std::remove_cvref_t<decltype(entries)>::key_type::name;
          if constexpr (Reads::template Contains<NameTag<Name>>() ||
                        Writes::template Contains<NameTag<Name>>())
-            return std::tuple{};
-         else return std::tuple{MakeTrialField<Name>(entries.value.space)};
+            return std::make_tuple();
+         else return std::make_tuple(MakeTrialField<Name>(entries.value.space));
       }()...));
    }, selected.fe_fields.entries);
    return WeakFormContext{selected.domains, selected.interior_face_domains,
@@ -451,8 +451,8 @@ consteval bool IsPreboundElementStorage()
 
 struct NoInputStorage {};
 
-// Local sources keep references to the original tensors; never use tuple CTAD
-// on a tensor itself, because that would create an owning row copy.
+// Tuple entries are shallow handles that reference the original tensors;
+// storing the tensors themselves would create owning row copies.
 template<StaticString Name, bool Read, class... Handles>
 GENDIL_HOST_DEVICE constexpr auto FindLocalHandle(const std::tuple<Handles...>& handles)
 {
@@ -463,8 +463,8 @@ GENDIL_HOST_DEVICE constexpr auto FindLocalHandle(const std::tuple<Handles...>& 
       return std::tuple_cat([&]() {
          using Handle = std::remove_cvref_t<decltype(values)>;
          if constexpr (Handle::name == Name && Handle::is_read == Read)
-         { return std::tuple{values}; }
-         else { return std::tuple{}; }
+         { return std::make_tuple(values); }
+         else { return std::make_tuple(); }
       }()...);
    }, handles);
 }
@@ -709,7 +709,8 @@ GENDIL_HOST_DEVICE auto BindElementDofs(const Parent& parent, Handles... handles
 {
    static_assert(field_requirements_detail::ReadRolesCompatible<typename Requirements::reads>::value,
       "A field cannot be read from both active input and bound storage.");
-   const auto local_handles = std::tuple{handles...};
+   // make_tuple avoids host-only deduction guides in HIP device code.
+   const auto local_handles = std::make_tuple(handles...);
    auto reads = execution_context_detail::BindLocalReads<typename Requirements::reads>::Make(parent, local_handles);
    auto writes = execution_context_detail::BindLocalWrites<typename Requirements::writes>::Make(parent, local_handles);
    return ExecutionContext<const Parent&, decltype(reads), decltype(writes)>{parent, reads, writes};
