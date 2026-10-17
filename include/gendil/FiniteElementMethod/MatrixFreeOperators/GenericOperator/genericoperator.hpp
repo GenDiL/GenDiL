@@ -81,11 +81,15 @@ void ValidateVectorSizes(
          weak_form_context,
          typename Signature::logical_outputs{} ),
       "Weak-form output vector is smaller than its required algebraic extent." );
-   ( ( GENDIL_VERIFY(
-      GetVectorSize( input ) >= GetMaximumAlgebraicDofExtent(
-         weak_form_context,
-         typename Signature::callable_inputs{} ),
-      "Weak-form input vector is smaller than its required algebraic extent." ) ), ... );
+   auto validate_input = [&] ( const auto & input_vector )
+   {
+      GENDIL_VERIFY(
+         GetVectorSize( input_vector ) >= GetMaximumAlgebraicDofExtent(
+            weak_form_context,
+            typename Signature::callable_inputs{} ),
+         "Weak-form input vector is smaller than its required algebraic extent." );
+   };
+   ( validate_input( input ), ... );
 }
 
 // The caller validates first. Acquire each required vector once, clear only for

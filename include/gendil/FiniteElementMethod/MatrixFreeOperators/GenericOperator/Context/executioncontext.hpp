@@ -336,9 +336,13 @@ void ValidateInputExtent(const Selected& selected, size_t extent, type_list<Fiel
 template<class Selected, class... Fields>
 void ValidateOutputExtent(const Selected& selected, size_t extent, type_list<Fields...>)
 {
-   ((GENDIL_VERIFY(extent >= static_cast<size_t>(GetAlgebraicDofExtent(
-         RequiredVolumeSpace<Fields::side>(selected.template GetFiniteElementField<Fields::name>().space))),
-         "Execution output vector is smaller than a required field's algebraic extent.")), ...);
+   auto validate_output = [&]<class Field>()
+   {
+      GENDIL_VERIFY(extent >= static_cast<size_t>(GetAlgebraicDofExtent(
+         RequiredVolumeSpace<Field::side>(selected.template GetFiniteElementField<Field::name>().space))),
+         "Execution output vector is smaller than a required field's algebraic extent.");
+   };
+   (validate_output.template operator()<Fields>(), ...);
 }
 
 // Validate available logical layout extents without assuming a layout's number
