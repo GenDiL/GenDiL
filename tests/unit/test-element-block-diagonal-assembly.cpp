@@ -212,6 +212,19 @@ bool TestElementBlockDiagonalFormats()
             full_form,
             context,
             integration_rule);
+   auto direct_sgbsr =
+      GenericSGBSRAssembly<
+         KernelPolicy,
+         SparseAssemblyMode::ElementBlockDiagonal>(
+            full_form,
+            context,
+            integration_rule);
+   static_assert(std::is_same_v<decltype(sgbsr), decltype(direct_sgbsr)>);
+   success =
+      Check(
+         direct_sgbsr.bsr_matrix.num_blocks == num_elements,
+         "Mode-selected element SGBSR allocated neighbor blocks.") &&
+      success;
    auto coo =
       GenericElementBlockDiagonalAssembly<
          MatrixAssemblyType::COO,
@@ -274,6 +287,13 @@ bool TestElementBlockDiagonalFormats()
          x,
          expected,
          "Element SGBSR action disagrees with element BSR.") &&
+      success;
+   success =
+      CheckAction(
+         direct_sgbsr,
+         x,
+         expected,
+         "Mode-selected element SGBSR action disagrees with element BSR.") &&
       success;
    success =
       CheckAction(
@@ -353,6 +373,16 @@ bool TestH1SGBSRElementBlockDiagonal()
             context,
             integration_rule,
             HostBSRBackend<>{});
+   auto direct_element_matrix =
+      GenericSGBSRAssembly<
+         KernelPolicy,
+         SparseAssemblyMode::ElementBlockDiagonal>(
+            form,
+            context,
+            integration_rule,
+            HostBSRBackend<>{});
+   static_assert(
+      std::is_same_v<decltype(element_matrix), decltype(direct_element_matrix)>);
    auto full_matrix =
       GenericAssembly<MatrixAssemblyType::SGBSR, KernelPolicy>(
          form,
@@ -370,11 +400,19 @@ bool TestH1SGBSRElementBlockDiagonal()
    expected = 0.0;
    full_matrix(x, expected);
 
-   return CheckAction(
+   bool success = CheckAction(
       element_matrix,
       x,
       expected,
       "H1 element SGBSR action disagrees with full cell-only SGBSR.");
+   success =
+      CheckAction(
+         direct_element_matrix,
+         x,
+         expected,
+         "Explicit-backend mode-selected H1 SGBSR disagrees with full cell-only SGBSR.") &&
+      success;
+   return success;
 }
 
 bool TestFacetOnlyRawCOOActivatesTouchedElements()

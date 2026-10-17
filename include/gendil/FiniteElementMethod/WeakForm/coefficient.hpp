@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/coefficientinputs.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymapping.hpp"
 
@@ -15,36 +16,6 @@
 
 namespace gendil
 {
-
-struct ElementIndex          : CoefficientInputBase {};
-struct QuadraturePointIndex  : CoefficientInputBase {};
-struct PhysicalCoordinates   : CoefficientInputBase {};
-struct ReferenceCoordinates  : CoefficientInputBase {};
-struct JacobianDeterminant   : CoefficientInputBase {};
-struct Jacobian              : CoefficientInputBase {};
-struct JacobianInverse       : CoefficientInputBase {};
-
-/**
- * @brief Inverse facet size coefficient input: ||J^{-T} n_ref||
- *
- * Available only with FacetQuadraturePointContext.
- * For Cartesian mesh with spacing h, returns 1/h.
- *
- * Used for SIPDG penalty scaling: tau = kappa * h^{-1}
- */
-struct InverseFacetSize : CoefficientInputBase {};
-
-template <StaticString Name>
-struct FieldValue : CoefficientInputBase
-{
-   static constexpr auto name = Name;
-};
-
-template <StaticString Name>
-struct FieldGradient : CoefficientInputBase
-{
-   static constexpr auto name = Name;
-};
 
 // -----------------------------------------------------------------------------
 // Reusable field readers
@@ -64,7 +35,7 @@ decltype(auto) ReadFieldValueAtQuadraturePoint(
    return ReadQuadratureLocalValues(
       kernel_context,
       quad_pt_context.quad_index,
-      fields.template get<NameTag<Name>>().values);
+      fields.template Get<NameTag<Name>>().values);
 }
 
 template <
@@ -81,7 +52,7 @@ decltype(auto) ReadFieldGradientAtQuadraturePoint(
    auto grad_q = ReadQuadratureLocalGradients(
       kernel_context,
       quad_pt_context.quad_index,
-      fields.template get<NameTag<Name>>().gradients);
+      fields.template Get<NameTag<Name>>().gradients);
    ApplyMapping(quad_pt_context.inv_J_mesh, grad_q);
    return grad_q;
 }
@@ -197,8 +168,13 @@ struct CoefficientInputGetter<ReferenceCoordinates>
       const QuadPtContext& quad_pt_context,
       const Fields&)
    {
-      using IntegrationRule = typename OperatorContext::integration_rule_type;
-      return IntegrationRule::GetPoint(quad_pt_context.quad_index);
+      if constexpr (requires { quad_pt_context.reference_coordinates; })
+         return (quad_pt_context.reference_coordinates);
+      else
+      {
+         using IntegrationRule = typename OperatorContext::integration_rule_type;
+         return IntegrationRule::GetPoint(quad_pt_context.quad_index);
+      }
    }
 };
 

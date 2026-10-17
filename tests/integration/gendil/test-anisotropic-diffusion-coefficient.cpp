@@ -382,7 +382,7 @@ int TestAnisotropicDiffusionCoefficient()
          decltype(dot(transpose(A_const) * grad(u), grad(v)))>);
 
    using NamedReqs =
-      interpolation_named_field_requirements_t<decltype(named_field_form)>;
+      typename form_signature_t<decltype(named_field_form)>::bound_inputs;
    static_assert(contains_named_field_requirement_v<NamedReqs, "a">);
    using AReq = find_named_field_requirement_t<NamedReqs, "a">;
    static_assert(need_values(AReq::mask));

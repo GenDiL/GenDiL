@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/gendil.hpp>
-#include <gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp>
+#include <gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp>
 
 #include <array>
 #include <cmath>

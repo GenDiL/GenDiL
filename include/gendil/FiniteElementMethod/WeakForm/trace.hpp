@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
 
 namespace gendil
 {
@@ -38,6 +39,7 @@ struct MinusTraceExpr : FieldBase
       const Fields& fields) const
    {
       static_assert(
+         !is_physical_boundary_v<QuadPtContext> &&
          requires { quad_pt_context.MinusSide(); } &&
          requires { fields.minus_fields; },
          "minus(expr) is an interior-facet trace operator. Boundary and cell "
@@ -80,6 +82,7 @@ struct PlusTraceExpr : FieldBase
       const Fields& fields) const
    {
       static_assert(
+         !is_physical_boundary_v<QuadPtContext> &&
          requires { quad_pt_context.PlusSide(); } &&
          requires { fields.plus_fields; },
          "plus(expr) is an interior-facet trace operator. Boundary and cell "

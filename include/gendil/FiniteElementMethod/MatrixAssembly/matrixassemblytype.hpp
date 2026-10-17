@@ -24,4 +24,12 @@ enum class MatrixAssemblyType
 #endif
 };
 
+// Select all element couplings or retain only element self-couplings.
+// This controls which contributions are assembled, independently of storage format.
+enum class SparseAssemblyMode
+{
+   Full,
+   ElementBlockDiagonal
+};
+
 } // namespace gendil

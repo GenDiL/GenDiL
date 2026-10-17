@@ -5,9 +5,10 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
 #include "gendil/Utilities/arraytraits.hpp"
 
 namespace gendil
@@ -80,10 +81,16 @@ struct AverageExpr : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      if constexpr ( is_side_evaluable_v<Expr> )
+      static_assert(is_test_free_v<Expr>,
+         "average(expr) numerical evaluation requires a test-free expression; lower test expressions through pullback.");
+      static_assert(!is_physical_boundary_v<QuadPtContext>,
+         "Boundary average(expr) must be lowered through boundary pullback before numerical evaluation.");
+
+      // Pullback consumes test averages and boundary identities. Only interior
+      // input/coefficient averages survive into quadrature-point evaluation.
+      if constexpr (is_test_free_v<Expr> &&
+                    !is_physical_boundary_v<QuadPtContext>)
       {
-         // Side-evaluable average: 0.5 * (minus + plus). This covers trial
-         // traces, coefficient expressions, and explicit FE-field expressions.
          auto minus_value = minus(expr)(
             kernel_context,
             weak_form_context,
@@ -103,18 +110,6 @@ struct AverageExpr : FieldBase
          );
 
          return details::AverageValues(minus_value, plus_value);
-      }
-      else
-      {
-         // Test-side average: 0.5 * minus (only current side)
-         return 0.5 * expr(
-            kernel_context,
-            weak_form_context,
-            operator_context,
-            element_context,
-            quad_pt_context,
-            fields.minus_fields
-         );
       }
    }
 };

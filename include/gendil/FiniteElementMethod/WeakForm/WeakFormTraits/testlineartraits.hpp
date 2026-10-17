@@ -6,10 +6,14 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
 
 namespace gendil
 {
 
+// Classify test dependence for pullback dispatch and direct trace evaluation.
+// This includes internal pullback seeds; it does not validate a complete form.
+// Source admission and homogeneous test dependence use integrand signatures.
 /**
  * @brief Classification of expressions with respect to test-space linearity.
  */
@@ -138,6 +142,23 @@ template<FieldExpr AdvExpr, FieldExpr E>
 struct test_linearity<UpwindExpr<AdvExpr, E>> {
    static constexpr TestLinearity value = test_linearity<E>::value;
    static constexpr auto test_name = test_linearity<E>::test_name;
+};
+
+template<FieldExpr Adv, typename Interior, typename Exterior>
+struct test_linearity<BoundaryUpwindExpr<Adv, Interior, Exterior>>
+{
+   static constexpr TestLinearity value = []
+   {
+      constexpr auto StateIsTestFree = []<typename State>()
+      {
+         if constexpr (weak_form_traits::is_boundary_upwind_zero_v<State>) return true;
+         else return is_test_free_v<State>;
+      };
+      return is_test_free_v<Adv> && StateIsTestFree.template operator()<Interior>() &&
+             StateIsTestFree.template operator()<Exterior>()
+         ? TestLinearity::TestFree : TestLinearity::Unsupported;
+   }();
+   static constexpr auto test_name = StaticString{""};
 };
 
 // ============================================================================

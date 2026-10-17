@@ -51,6 +51,47 @@ using NonconformingFace = FaceView<
    Normal,
    NonconformingHyperCubeFaceMap<2>>;
 
+struct MidpointSet
+{
+   GENDIL_HOST_DEVICE
+   static constexpr Integer GetNumPoints() { return 1; }
+
+   GENDIL_HOST_DEVICE
+   static constexpr Real GetCoord(Integer) { return 0.5; }
+
+   GENDIL_HOST_DEVICE
+   static constexpr Real GetWeight(Integer) { return 2.0; }
+};
+
+struct UnsupportedPointSet {};
+
+using PointTree = TensorProductData<
+   TensorProductData<MidpointSet>,
+   TensorProductData<MidpointSet, MidpointSet>>;
+using MixedTree = TensorProductData<
+   TensorProductData<DofToQuad1D>,
+   TensorProductData<MidpointSet, DofToQuad1D>>;
+
+static_assert(IsSupportedNonconformingFacetDofToQuad1D_v<DofToQuad1D>);
+static_assert(!IsSupportedNonconformingFacetDofToQuad1D_v<MidpointSet>);
+static_assert(IsStaticPointSetFacetQData1D_v<MidpointSet>);
+static_assert(!IsStaticPointSetFacetQData1D_v<UnsupportedPointSet>);
+
+using namespace nonconforming_facet_qdata_detail;
+static_assert(TensorProductQDataLeafCount<PointTree>::value == 3);
+static_assert(TensorProductQDataLeafCount<MixedTree>::value == 3);
+using LeftPointTree = TensorProductData<MidpointSet>;
+using RightPointTree = TensorProductData<MidpointSet, MidpointSet>;
+static_assert(
+   TensorProductQDataEntryOffset<0, LeftPointTree, RightPointTree>::value == 0);
+static_assert(
+   TensorProductQDataEntryOffset<1, LeftPointTree, RightPointTree>::value == 1);
+static_assert(
+   TensorProductQDataEntryOffset<1, MidpointSet, MidpointSet>::value == 1);
+static_assert(
+   TensorProductQDataEntryOffset<1, LeftPointTree, RightPointTree>::value +
+      TensorProductQDataEntryOffset<1, MidpointSet, MidpointSet>::value == 2);
+
 bool CheckClose(
    const Real value,
    const Real reference,
@@ -59,7 +100,8 @@ bool CheckClose(
 {
    const Real diff = std::abs(value - reference);
    const Real scale = std::max(Real{1.0}, std::abs(reference));
-   if (diff > tolerance * scale)
+   if (!std::isfinite(value) || !std::isfinite(reference) ||
+       !std::isfinite(diff) || diff > tolerance * scale)
    {
       std::cout
          << "FAILED: " << label
@@ -139,7 +181,39 @@ bool TestConformingFacetQuadDataReference()
       std::is_lvalue_reference_v<decltype(selected)>,
       "Conforming facet qdata must be returned by reference.");
 
-   return &selected == &expected;
+   using ScalarFace = FaceView<
+      std::integral_constant<Integer, 0>, HyperCube<1>, Permutation<1>,
+      Point<1>, ConformingFaceMap<1>>;
+   const ScalarFace scalar_face{0, {}, {}, {}, {}, {}};
+   const std::tuple<int> scalar_qdata{7};
+   auto&& scalar = GetFacetQuadData(scalar_qdata, scalar_face);
+   static_assert(std::same_as<decltype(scalar), const int&>);
+
+   return &selected == &expected && scalar == 7 &&
+          &scalar == &std::get<0>(scalar_qdata);
+}
+
+bool TestNestedPointSetAxisMapping()
+{
+   using Face = FaceView<
+      std::integral_constant<Integer, 1>, HyperCube<3>, Permutation<3>,
+      Point<3>, NonconformingHyperCubeFaceMap<3>>;
+   const Face face{
+      0, {}, {}, {},
+      {Point<3>{0.1, 0.2, 0.3}, std::array<Real, 3>{0.25, 0.5, 0.75}},
+      {}};
+   const PointTree nested{};
+   using Expected = TensorProductData<
+      TensorProductData<NonconformingMappedPointSet1D<MidpointSet, Face, 0>>,
+      TensorProductData<
+         NonconformingMappedPointSet1D<MidpointSet, Face, 1>,
+         NonconformingMappedPointSet1D<MidpointSet, Face, 2>>>;
+   static_assert(std::same_as<
+      decltype(MakeNonconformingFacetQuadData(face, nested)), Expected>);
+   const auto mapped = MakeNonconformingFacetQuadData(face, nested);
+   const auto& z = GetTensorProductEntry<1>(GetTensorProductEntry<1>(mapped));
+   return CheckClose(z.coord(0), 0.675, "nested midpoint z coordinate") &&
+          CheckClose(z.weights(0), 2.0, "nested midpoint z weight");
 }
 
 bool TestEmptyFacetQuadDataTrait()
@@ -835,6 +909,67 @@ bool TestTensorProductWeight()
    return success;
 }
 
+bool TestSignatureFilteredFacetPreparation()
+{
+   Cartesian1DMesh left(Real(1), 1), right(Real(1), 1);
+   CartesianIntermeshFaceConnectivity<1, 1> faces({1}, {1});
+   auto partition = MakePartition(MakeCellPart(left), MakeCellPart(right),
+      MakeInteriorFacePart<0, 1>(faces));
+   auto mixed = MakeMixedFiniteElementSpace(partition,
+      std::tuple{MakeLegendreFiniteElement(FiniteElementOrders<0>{}),
+                 MakeLobattoFiniteElement(FiniteElementOrders<1>{})},
+      std::tuple{ContiguousL2RestrictionSpecification{0, 3},
+                 ContiguousL2RestrictionSpecification{1, 3}});
+   auto context = MakeWeakFormContext(MakeTrialField<"u">(mixed), MakeTrialField<"p">(mixed),
+      MakeTrialField<"a">(mixed), MakeTestField<"v">(mixed), MakeTestField<"q">(mixed),
+      MakeIntegrationDomain<"mesh">(partition));
+   TrialSpace<"u"> u; TrialSpace<"p"> p; TrialSpace<"a"> a;
+   TestSpace<"v"> v; TestSpace<"q"> q;
+   auto minus_term = integrate(InteriorFacets<"mesh">{}, minus(u) * minus(v));
+   auto plus_term = integrate(InteriorFacets<"mesh">{},
+      plus(p) * dot(plus(grad(q)), gendil::Normal{}));
+   auto form = integrate(Cells<"mesh">{}, a * v) + minus_term + plus_term;
+   using Signature = form_signature_t<decltype(form)>;
+   using FaceSignatures = typename weak_form_traits::domain_signatures<
+      typename Signature::integrands, "mesh", SemanticEntity::InteriorFacet>::type;
+   using Requirements = typename weak_form_execution_detail::signature_requirements<FaceSignatures>::type;
+   auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3>{});
+   ForEachInteriorFaceExecutionDomain(context, InteriorFacets<"mesh">{}, [&](const auto& batch) {
+      auto selected = MakeRestrictedWeakFormContext<Requirements>(context, batch);
+      auto operator_context = MakeFacetOperatorContext(form, selected, rule, batch);
+      using Fields = std::remove_cvref_t<decltype(operator_context.fe_facet_qd)>;
+      static_assert(!Fields::template Contains<FiniteElementFieldKey<"a">>());
+      const auto& u_qd = operator_context.template GetFiniteElementFacetQuadData<"u">();
+      const auto& p_qd = operator_context.template GetFiniteElementFacetQuadData<"p">();
+      const auto& q_qd = operator_context.template GetFiniteElementFacetQuadData<"q">();
+      static_assert(std::is_same_v<std::remove_cvref_t<decltype(u_qd.PlusSide())>, Empty>);
+      static_assert(std::is_same_v<std::remove_cvref_t<decltype(p_qd.MinusSide())>, Empty>);
+      static_assert(std::is_same_v<std::remove_cvref_t<decltype(q_qd.MinusSide())>, Empty>);
+      static_assert(!std::is_same_v<std::remove_cvref_t<decltype(q_qd.PlusSide())>, Empty>);
+      const auto& mesh_qd = operator_context.template GetMeshFacetQuadData<"mesh">();
+      // The plus test gradient requires geometry even without a gradient read.
+      static_assert(!std::is_same_v<std::remove_cvref_t<decltype(mesh_qd.PlusSide())>, Empty>);
+      auto values_only = MakeFacetOperatorContext(minus_term, selected, rule, batch);
+      const auto& values_mesh = values_only.template GetMeshFacetQuadData<"mesh">();
+      static_assert(std::is_same_v<std::remove_cvref_t<decltype(values_mesh.PlusSide())>, Empty>);
+      using ValueFields = std::remove_cvref_t<decltype(values_only.fe_facet_qd)>;
+      static_assert(!ValueFields::template Contains<FiniteElementFieldKey<"p">>());
+      static_assert(!ValueFields::template Contains<FiniteElementFieldKey<"q">>());
+   });
+   using CellSignatures = typename weak_form_traits::domain_signatures<
+      typename Signature::integrands, "mesh", SemanticEntity::Cell>::type;
+   using CellRequirements = typename weak_form_execution_detail::signature_requirements<CellSignatures>::type;
+   ForEachCellExecutionDomain(context, Cells<"mesh">{}, [&](const auto& batch) {
+      auto selected = MakeRestrictedWeakFormContext<CellRequirements>(context, batch);
+      auto operator_context = MakeOperatorContext(form, selected, rule);
+      static_assert(!requires { operator_context.fe_facet_qd; });
+      using Fields = std::remove_cvref_t<decltype(operator_context.fe_qd)>;
+      static_assert(Fields::template Contains<FiniteElementFieldKey<"a">>());
+      static_assert(!Fields::template Contains<FiniteElementFieldKey<"p">>());
+   });
+   return true;
+}
+
 } // namespace
 
 int main()
@@ -842,6 +977,7 @@ int main()
    bool success = true;
    success = TestMapReferenceToFaceCoordinates1d() && success;
    success = TestConformingFacetQuadDataReference() && success;
+   success = TestNestedPointSetAxisMapping() && success;
    success = TestEmptyFacetQuadDataTrait() && success;
    success = TestNonconformingFacetQuadDataMappingAndLifetime() && success;
    success = TestNonconformingVectorFacetQuadDataMapsEveryComponent() && success;
@@ -851,6 +987,7 @@ int main()
    success = TestAffineMappedQData3D() && success;
    success = TestNestedNonconformingQDataRootOffset() && success;
    success = TestTensorProductWeight() && success;
+   success = TestSignatureFilteredFacetPreparation() && success;
 
    if (!success)
    {

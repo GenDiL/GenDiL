@@ -6,7 +6,9 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/signatures.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
@@ -56,90 +58,52 @@ struct generic_operator_domain_kind
    static constexpr auto value = GenericOperatorDomainKind::Invalid;
 };
 
-template<
-   DomainExpr Domain,
-   FieldExpr Expr,
-   class WeakFormContext>
-struct generic_operator_domain_kind<
-   Integrand<Domain, Expr>,
-   WeakFormContext>
+// Dimensions retained by affine transforms still constrain domain admission,
+// even if no numerical term remains on that domain.
+template<class Domain, class WeakFormContext>
+consteval GenericOperatorDomainKind DomainKindFor()
 {
-private:
    using Context = std::remove_cvref_t<WeakFormContext>;
-   static constexpr auto DomainName = Domain::name;
-
-   static consteval GenericOperatorDomainKind Get()
+   if constexpr (!Context::template HasDomain<Domain::name>())
+      return GenericOperatorDomainKind::Invalid;
+   else
    {
-      if constexpr (!Context::template has_domain<DomainName>())
-      {
-         return GenericOperatorDomainKind::Invalid;
-      }
+      using IntegrationDomain = std::remove_cvref_t<decltype(
+         std::declval<const Context&>().template GetDomain<Domain::name>().domain)>;
+      if constexpr (is_mesh_integration_domain_v<IntegrationDomain>)
+         return GenericOperatorDomainKind::Mesh;
+      else if constexpr (is_partition_integration_domain_v<IntegrationDomain>)
+         return GenericOperatorDomainKind::Partition;
       else
-      {
-         using IntegrationDomain =
-            std::remove_cvref_t<
-               decltype(
-                  std::declval<const Context&>()
-                     .template domain<DomainName>().domain)>;
-
-         if constexpr (
-            is_mesh_integration_domain_v<IntegrationDomain>)
-         {
-            return GenericOperatorDomainKind::Mesh;
-         }
-         else if constexpr (
-            is_partition_integration_domain_v<IntegrationDomain>)
-         {
-            return GenericOperatorDomainKind::Partition;
-         }
-         else
-         {
-            return GenericOperatorDomainKind::Invalid;
-         }
-      }
+         return GenericOperatorDomainKind::Invalid;
    }
+}
 
-public:
-   static constexpr auto value = Get();
-};
-
-template<class Key, class T, class WeakFormContext>
-struct generic_operator_domain_kind<
-   Entry<Key, T>,
-   WeakFormContext>
-   : generic_operator_domain_kind<T, WeakFormContext> {};
-
-template<class WeakFormContext>
-struct generic_operator_domain_kind<
-   StaticMap<>,
-   WeakFormContext>
+template<DomainExpr Domain, FieldExpr Expr, class WeakFormContext>
+struct generic_operator_domain_kind<Integrand<Domain, Expr>, WeakFormContext>
 {
-   static constexpr auto value = GenericOperatorDomainKind::Invalid;
+   static constexpr auto value = DomainKindFor<Domain, WeakFormContext>();
 };
 
-template<
-   class WeakFormContext,
-   class FirstEntry,
-   class... RestEntries>
-struct generic_operator_domain_kind<
-   StaticMap<FirstEntry, RestEntries...>,
-   WeakFormContext>
+template<class... Terms, class Context>
+struct generic_operator_domain_kind<std::tuple<Terms...>, Context>
 {
-   static constexpr auto value =
-      MergeDomainKinds<
-         generic_operator_domain_kind<
-            FirstEntry,
-            WeakFormContext>::value,
-         generic_operator_domain_kind<
-            RestEntries,
-            WeakFormContext>::value...>();
+   static constexpr auto value = [] {
+      if constexpr (sizeof...(Terms) == 0) return GenericOperatorDomainKind::Invalid;
+      else return MergeDomainKinds<generic_operator_domain_kind<
+         std::remove_cvref_t<Terms>, Context>::value...>();
+   }();
 };
-
-template<class Map, class WeakFormContext>
-struct generic_operator_domain_kind<
-   SumFormExpr<Map>,
-   WeakFormContext>
-   : generic_operator_domain_kind<Map, WeakFormContext> {};
+template<class Terms, class Symbols, class Context>
+struct generic_operator_domain_kind<SumFormExpr<Terms, Symbols>, Context>
+{
+   static constexpr auto value = []<class... Relations>(type_list<Relations...>) {
+      auto kind = generic_operator_domain_kind<Terms, Context>::value;
+      ((kind = MergeDomainKinds(kind,
+         DomainKindFor<typename Relations::key_type, Context>())), ...);
+      return kind;
+   }(typename form_symbols_t<SumFormExpr<Terms, Symbols>>::declarations::retained_callable_input_relations{});
+};
 
 template<class WeakForm, class WeakFormContext>
 inline constexpr auto generic_operator_domain_kind_v =
@@ -197,6 +161,45 @@ consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
          "H(curl), and de Rham-style nonconforming facet transforms require "
          "separate support and tests.");
    }
+}
+
+
+// Check only fields actually evaluated on each nonconforming side. No singular
+// trial/test pair is needed for loads or coupled residuals.
+template<class FaceDomain, class Signature, class Context>
+constexpr void ValidateNonconformingGlobalInteriorFacetTransformSupport()
+{
+   using FaceInfo = typename FaceDomain::face_mesh_type::face_info_type;
+   auto validate = [&]<SemanticSide Side, class... Fields>(type_list<Fields...>) {
+      constexpr bool Conforming = Side == SemanticSide::Minus
+         ? FaceInfo::minus_side_type::is_conforming : FaceInfo::plus_side_type::is_conforming;
+      if constexpr (!Conforming)
+      {
+         ([&] {
+            using Binding = std::remove_cvref_t<decltype(
+               std::declval<const Context&>().template GetFiniteElementField<Fields::name>().space)>;
+            using Space = std::remove_cvref_t<decltype([](const Binding& binding) -> decltype(auto) {
+               if constexpr (Side == SemanticSide::Minus)
+                  return GetMinusFacetFieldVolumeSpace(binding);
+               else return GetPlusFacetFieldVolumeSpace(binding);
+            }(std::declval<const Binding&>()))>;
+            static_assert(SupportsComponentwiseNonconformingFacetTransform<Space>(),
+               "Nonconforming global interior GenericOperator currently supports "
+               "scalar and componentwise-vector value/gradient facet semantics on "
+               "compatible tensor finite-element restrictions. Piola, H(div), "
+               "H(curl), and de Rham-style nonconforming facet transforms require "
+               "separate support and tests.");
+         }(), ...);
+      }
+   };
+   using Minus = concat_many_t<typename Signature::template active_inputs_on<SemanticSide::Minus>,
+      typename Signature::template bound_inputs_on<SemanticSide::Minus>,
+      typename Signature::template test_outputs_on<SemanticSide::Minus>>;
+   using Plus = concat_many_t<typename Signature::template active_inputs_on<SemanticSide::Plus>,
+      typename Signature::template bound_inputs_on<SemanticSide::Plus>,
+      typename Signature::template test_outputs_on<SemanticSide::Plus>>;
+   validate.template operator()<SemanticSide::Minus>(Minus{});
+   validate.template operator()<SemanticSide::Plus>(Plus{});
 }
 
 } // namespace gendil

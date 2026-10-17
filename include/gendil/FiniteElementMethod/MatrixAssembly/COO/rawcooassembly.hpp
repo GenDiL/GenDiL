@@ -734,167 +734,198 @@ auto GenericRawCOOAssembly(
    const auto can_instantiate =
       details::ValidateSparseAssemblyInputs<
          MatrixAssemblyType::RawCOO,
-         details::SparseAssemblyMode::Full,
+         SparseAssemblyMode::Full,
          KernelPolicy>(weak_form, wf_ctx);
 
    if constexpr (can_instantiate)
    {
-      constexpr auto TrialName = requirements<WeakForm>::trial_name;
-      constexpr auto TestName  = requirements<WeakForm>::test_name;
-
-      const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-      const auto& test_space  = wf_ctx.template fe_field<TestName>().space;
-
-      using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
-      using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-      constexpr bool on_device =
-         is_device_configuration_v< KernelPolicy >;
-      details::ValidateRawCOORestrictionMemoryAccess<on_device>(trial_space);
-      details::ValidateRawCOORestrictionMemoryAccess<on_device>(test_space);
-      if constexpr (
-         is_mixed_finite_element_space_v<TrialSpace> ||
-         is_mixed_finite_element_space_v<TestSpace>)
+      if constexpr ( is_zero< WeakForm > )
       {
-         static_assert(
-            is_mixed_finite_element_space_v<TrialSpace> &&
-               is_mixed_finite_element_space_v<TestSpace>,
-            "Partition RawCOO requires both active spaces to be mixed spaces.");
-         static_assert(
-            TrialSpace::num_cell_spaces == TestSpace::num_cell_spaces,
-            "Partition RawCOO trial and test fields must have the same part count.");
-         constexpr auto DomainName =
-            local_facet_assembly_domain_name_v<WeakForm>;
-         const auto& domain = wf_ctx.template domain<DomainName>();
-         const auto& partition = domain.domain.partition;
-         using DomainPartition =
-            std::remove_cvref_t<decltype(partition)>;
-         constexpr size_t NumParts = TrialSpace::num_cell_spaces;
-         static_assert(
-            DomainPartition::num_cell_parts == NumParts,
-            "Partition RawCOO integration and active field spaces must have "
-            "the same cell-part count.");
-         auto cell_layouts = details::MakePartitionCellRawCOOLayouts<WeakForm>(
-            partition,
-            trial_space,
-            test_space,
-            std::make_index_sequence<NumParts>{});
-         const auto& boundary_parts = partition.BoundaryFaceParts();
-         const auto& interior_parts = partition.InteriorFaceParts();
-         constexpr size_t NumBoundaryParts = std::tuple_size_v<
-            std::remove_cvref_t<decltype(boundary_parts)>>;
-         constexpr size_t NumInteriorParts = std::tuple_size_v<
-            std::remove_cvref_t<decltype(interior_parts)>>;
-         auto boundary_layouts = [&]
+         constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+         constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
+         const auto& trial_space = wf_ctx.template GetFiniteElementField<TrialName>().space;
+         const auto& test_space = wf_ctx.template GetFiniteElementField<TestName>().space;
+         constexpr bool on_device = is_device_configuration_v<KernelPolicy>;
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(trial_space);
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(test_space);
+         using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+         using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+         if constexpr (is_mixed_finite_element_space_v<TrialSpace> ||
+                       is_mixed_finite_element_space_v<TestSpace>)
          {
-            if constexpr (has_boundary_facet_contributions_v<WeakForm>)
-            {
-               return details::MakePartitionBoundaryRawCOOLayouts(
-                  partition,
-                  trial_space,
-                  test_space,
-                  std::make_index_sequence<NumBoundaryParts>{});
-            }
-            else
-            {
-               return std::tuple{};
-            }
-         }();
-         auto interior_layouts = [&]
-         {
-            if constexpr (has_interior_facet_contributions_v<WeakForm>)
-            {
-               return details::MakePartitionInteriorRawCOOLayouts(
-                  partition,
-                  trial_space,
-                  test_space,
-                  std::make_index_sequence<NumInteriorParts>{});
-            }
-            else
-            {
-               return std::tuple{};
-            }
-         }();
-         GlobalIndex nnz_raw = details::PartitionRawCOONonzeroCount(
-            cell_layouts,
-            std::make_index_sequence<NumParts>{});
-         nnz_raw = CheckedAdd(
-            nnz_raw,
-            details::PartitionRawCOONonzeroCount(
-               boundary_layouts,
-               std::make_index_sequence<
-                  std::tuple_size_v<decltype(boundary_layouts)>>{}),
-            "Partition RawCOO capacity overflow.");
-         nnz_raw = CheckedAdd(
-            nnz_raw,
-            details::PartitionRawCOONonzeroCount(
-               interior_layouts,
-               std::make_index_sequence<
-                  std::tuple_size_v<decltype(interior_layouts)>>{}),
-            "Partition RawCOO capacity overflow.");
-         auto coo_buffer =
-            details::MakeAssemblyRawCOOTripletBuffer<
-               on_device,
-               Real,
-               GlobalIndex>(
-                  GetAlgebraicDofExtent(test_space),
-                  GetAlgebraicDofExtent(trial_space),
-                  nnz_raw);
-         auto coo_targets =
-            details::MakePartitionRawCOOTargetBundle<on_device>(
-               coo_buffer,
-               cell_layouts,
-               boundary_layouts,
-               interior_layouts);
-         GenericAssembly<KernelPolicy>(
-            weak_form,
-            wf_ctx,
-            integration_rule,
-            coo_targets);
-         if constexpr (!is_host_configuration_v<KernelPolicy>)
-         {
-            GENDIL_DEVICE_SYNC;
+            static_assert(is_mixed_finite_element_space_v<TrialSpace> &&
+                          is_mixed_finite_element_space_v<TestSpace>,
+               "Partition RawCOO requires both active spaces to be mixed spaces.");
+            static_assert(TrialSpace::num_cell_spaces == TestSpace::num_cell_spaces,
+               "Partition RawCOO trial and test fields must have the same part count.");
+            constexpr auto DomainName = local_facet_assembly_domain_name_v<WeakForm>;
+            using Partition = std::remove_cvref_t<decltype(wf_ctx.template GetDomain<DomainName>().domain.partition)>;
+            static_assert(Partition::num_cell_parts == TrialSpace::num_cell_spaces,
+               "Partition RawCOO integration and active field spaces must have the same cell-part count.");
          }
-         return coo_buffer;
+         return details::AllocateRawCOOTripletBuffer<Real, GlobalIndex>(
+            GetAlgebraicDofExtent(test_space), GetAlgebraicDofExtent(trial_space), 0);
       }
       else
       {
-         using OffsetType = RawCOOAssemblyLayout::offset_type;
-         constexpr OffsetType ntrial = static_cast<OffsetType>(
-            CountElementRestrictionEntries<TrialSpace>());
-         constexpr OffsetType ntest = static_cast<OffsetType>(
-            CountElementRestrictionEntries<TestSpace>());
-         const OffsetType block_entry_count = CheckedMultiply(
-            ntest,
-            ntrial,
-            "RawCOO local trial/test block size overflow.");
-         const auto& domain_mesh =
-            GetCellIntegrationDomainMesh(weak_form, wf_ctx);
-         auto layout = MakeRawCOOAssemblyLayout<
-            has_cell_contributions_v<WeakForm>,
-            has_boundary_facet_contributions_v<WeakForm>,
-            has_interior_facet_contributions_v<WeakForm>>(
-               domain_mesh,
-               block_entry_count);
-         auto coo_buffer =
-            details::MakeAssemblyRawCOOTripletBuffer<
-               on_device,
-               Real,
-               GlobalIndex>(
-                  GetAlgebraicDofExtent(test_space),
-                  GetAlgebraicDofExtent(trial_space),
-                  layout.nnz_raw);
-         auto coo_target =
-            MakeRawCOOAssemblyTarget<on_device>(coo_buffer, layout);
-         GenericAssembly<KernelPolicy>(
-            weak_form,
-            wf_ctx,
-            integration_rule,
-            coo_target);
-         if constexpr (!is_host_configuration_v<KernelPolicy>)
+         constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+         constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
+
+         const auto& trial_space = wf_ctx.template GetFiniteElementField<TrialName>().space;
+         const auto& test_space  = wf_ctx.template GetFiniteElementField<TestName>().space;
+
+         using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+         using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+         constexpr bool on_device =
+            is_device_configuration_v< KernelPolicy >;
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(trial_space);
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(test_space);
+         if constexpr (
+            is_mixed_finite_element_space_v<TrialSpace> ||
+            is_mixed_finite_element_space_v<TestSpace>)
          {
-            GENDIL_DEVICE_SYNC;
+            static_assert(
+               is_mixed_finite_element_space_v<TrialSpace> &&
+                  is_mixed_finite_element_space_v<TestSpace>,
+               "Partition RawCOO requires both active spaces to be mixed spaces.");
+            static_assert(
+               TrialSpace::num_cell_spaces == TestSpace::num_cell_spaces,
+               "Partition RawCOO trial and test fields must have the same part count.");
+            constexpr auto DomainName =
+               local_facet_assembly_domain_name_v<WeakForm>;
+            const auto& domain = wf_ctx.template GetDomain<DomainName>();
+            const auto& partition = domain.domain.partition;
+            using DomainPartition =
+               std::remove_cvref_t<decltype(partition)>;
+            constexpr size_t NumParts = TrialSpace::num_cell_spaces;
+            static_assert(
+               DomainPartition::num_cell_parts == NumParts,
+               "Partition RawCOO integration and active field spaces must have "
+               "the same cell-part count.");
+            auto cell_layouts = details::MakePartitionCellRawCOOLayouts<WeakForm>(
+               partition,
+               trial_space,
+               test_space,
+               std::make_index_sequence<NumParts>{});
+            const auto& boundary_parts = partition.BoundaryFaceParts();
+            const auto& interior_parts = partition.InteriorFaceParts();
+            constexpr size_t NumBoundaryParts = std::tuple_size_v<
+               std::remove_cvref_t<decltype(boundary_parts)>>;
+            constexpr size_t NumInteriorParts = std::tuple_size_v<
+               std::remove_cvref_t<decltype(interior_parts)>>;
+            auto boundary_layouts = [&]
+            {
+               if constexpr (has_boundary_facet_contributions_v<WeakForm>)
+               {
+                  return details::MakePartitionBoundaryRawCOOLayouts(
+                     partition,
+                     trial_space,
+                     test_space,
+                     std::make_index_sequence<NumBoundaryParts>{});
+               }
+               else
+               {
+                  return std::tuple{};
+               }
+            }();
+            auto interior_layouts = [&]
+            {
+               if constexpr (has_interior_facet_contributions_v<WeakForm>)
+               {
+                  return details::MakePartitionInteriorRawCOOLayouts(
+                     partition,
+                     trial_space,
+                     test_space,
+                     std::make_index_sequence<NumInteriorParts>{});
+               }
+               else
+               {
+                  return std::tuple{};
+               }
+            }();
+            GlobalIndex nnz_raw = details::PartitionRawCOONonzeroCount(
+               cell_layouts,
+               std::make_index_sequence<NumParts>{});
+            nnz_raw = CheckedAdd(
+               nnz_raw,
+               details::PartitionRawCOONonzeroCount(
+                  boundary_layouts,
+                  std::make_index_sequence<
+                     std::tuple_size_v<decltype(boundary_layouts)>>{}),
+               "Partition RawCOO capacity overflow.");
+            nnz_raw = CheckedAdd(
+               nnz_raw,
+               details::PartitionRawCOONonzeroCount(
+                  interior_layouts,
+                  std::make_index_sequence<
+                     std::tuple_size_v<decltype(interior_layouts)>>{}),
+               "Partition RawCOO capacity overflow.");
+            auto coo_buffer =
+               details::MakeAssemblyRawCOOTripletBuffer<
+                  on_device,
+                  Real,
+                  GlobalIndex>(
+                     GetAlgebraicDofExtent(test_space),
+                     GetAlgebraicDofExtent(trial_space),
+                     nnz_raw);
+            auto coo_targets =
+               details::MakePartitionRawCOOTargetBundle<on_device>(
+                  coo_buffer,
+                  cell_layouts,
+                  boundary_layouts,
+                  interior_layouts);
+            AssembleSparseTarget<KernelPolicy>(
+               weak_form,
+               wf_ctx,
+               integration_rule,
+               coo_targets);
+            if constexpr (!is_host_configuration_v<KernelPolicy>)
+            {
+               GENDIL_DEVICE_SYNC;
+            }
+            return coo_buffer;
          }
-         return coo_buffer;
+         else
+         {
+            using OffsetType = RawCOOAssemblyLayout::offset_type;
+            constexpr OffsetType ntrial = static_cast<OffsetType>(
+               CountElementRestrictionEntries<TrialSpace>());
+            constexpr OffsetType ntest = static_cast<OffsetType>(
+               CountElementRestrictionEntries<TestSpace>());
+            const OffsetType block_entry_count = CheckedMultiply(
+               ntest,
+               ntrial,
+               "RawCOO local trial/test block size overflow.");
+            const auto& domain_mesh =
+               GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+            auto layout = MakeRawCOOAssemblyLayout<
+               has_cell_contributions_v<WeakForm>,
+               has_boundary_facet_contributions_v<WeakForm>,
+               has_interior_facet_contributions_v<WeakForm>>(
+                  domain_mesh,
+                  block_entry_count);
+            auto coo_buffer =
+               details::MakeAssemblyRawCOOTripletBuffer<
+                  on_device,
+                  Real,
+                  GlobalIndex>(
+                     GetAlgebraicDofExtent(test_space),
+                     GetAlgebraicDofExtent(trial_space),
+                     layout.nnz_raw);
+            auto coo_target =
+               MakeRawCOOAssemblyTarget<on_device>(coo_buffer, layout);
+            AssembleSparseTarget<KernelPolicy>(
+               weak_form,
+               wf_ctx,
+               integration_rule,
+               coo_target);
+            if constexpr (!is_host_configuration_v<KernelPolicy>)
+            {
+               GENDIL_DEVICE_SYNC;
+            }
+            return coo_buffer;
+         }
+
       }
    }
 }
@@ -933,69 +964,85 @@ auto GenericRawCOOElementBlockDiagonalAssembly(
    const auto can_instantiate =
       details::ValidateSparseAssemblyInputs<
          MatrixAssemblyType::RawCOO,
-         details::SparseAssemblyMode::ElementBlockDiagonal,
+         SparseAssemblyMode::ElementBlockDiagonal,
          KernelPolicy>(weak_form, wf_ctx);
 
    if constexpr (can_instantiate)
    {
-      constexpr auto TrialName = requirements<WeakForm>::trial_name;
-      constexpr auto TestName = requirements<WeakForm>::test_name;
-
-      const auto& trial_space =
-         wf_ctx.template fe_field<TrialName>().space;
-      const auto& test_space =
-         wf_ctx.template fe_field<TestName>().space;
-
-      using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
-      using TestSpace = std::remove_cvref_t<decltype(test_space)>;
-      using OffsetType = RawCOOAssemblyLayout::offset_type;
-      constexpr OffsetType ntrial =
-         static_cast<OffsetType>(CountElementRestrictionEntries<TrialSpace>());
-      constexpr OffsetType ntest =
-         static_cast<OffsetType>(CountElementRestrictionEntries<TestSpace>());
-      const OffsetType block_entry_count =
-         CheckedMultiply(
-            ntest,
-            ntrial,
-            "Element RawCOO local trial/test block size overflow.");
-      const auto& domain_mesh =
-         GetCellIntegrationDomainMesh(weak_form, wf_ctx);
-
-      auto layout =
-         MakeRawCOOElementBlockDiagonalAssemblyLayout<
-            has_cell_contributions_v<WeakForm>,
-            has_boundary_facet_contributions_v<WeakForm>,
-            has_interior_facet_contributions_v<WeakForm>>(
-               domain_mesh,
-               block_entry_count);
-
-      constexpr bool on_device =
-         is_device_configuration_v< KernelPolicy >;
-      auto coo_buffer =
-         details::MakeAssemblyRawCOOTripletBuffer<
-            on_device,
-            Real,
-            GlobalIndex >(
-               static_cast<GlobalIndex>(
-                  GetAlgebraicDofExtent(test_space)),
-               static_cast<GlobalIndex>(
-                  GetAlgebraicDofExtent(trial_space)),
-               layout.nnz_raw);
-      auto coo_target =
-         MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
-
-      AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         integration_rule,
-         coo_target);
-
-      if constexpr ( !is_host_configuration_v< KernelPolicy > )
+      if constexpr ( is_zero< WeakForm > )
       {
-         GENDIL_DEVICE_SYNC;
+         constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+         constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
+         const auto& trial_space = wf_ctx.template GetFiniteElementField<TrialName>().space;
+         const auto& test_space = wf_ctx.template GetFiniteElementField<TestName>().space;
+         constexpr bool on_device = is_device_configuration_v<KernelPolicy>;
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(trial_space);
+         details::ValidateRawCOORestrictionMemoryAccess<on_device>(test_space);
+         return details::AllocateRawCOOTripletBuffer<Real, GlobalIndex>(
+            GetAlgebraicDofExtent(test_space), GetAlgebraicDofExtent(trial_space), 0);
       }
+      else
+      {
+         constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+         constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
 
-      return coo_buffer;
+         const auto& trial_space =
+            wf_ctx.template GetFiniteElementField<TrialName>().space;
+         const auto& test_space =
+            wf_ctx.template GetFiniteElementField<TestName>().space;
+
+         using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
+         using TestSpace = std::remove_cvref_t<decltype(test_space)>;
+         using OffsetType = RawCOOAssemblyLayout::offset_type;
+         constexpr OffsetType ntrial =
+            static_cast<OffsetType>(CountElementRestrictionEntries<TrialSpace>());
+         constexpr OffsetType ntest =
+            static_cast<OffsetType>(CountElementRestrictionEntries<TestSpace>());
+         const OffsetType block_entry_count =
+            CheckedMultiply(
+               ntest,
+               ntrial,
+               "Element RawCOO local trial/test block size overflow.");
+         const auto& domain_mesh =
+            GetCellIntegrationDomainMesh(weak_form, wf_ctx);
+
+         auto layout =
+            MakeRawCOOElementBlockDiagonalAssemblyLayout<
+               has_cell_contributions_v<WeakForm>,
+               has_boundary_facet_contributions_v<WeakForm>,
+               has_interior_facet_contributions_v<WeakForm>>(
+                  domain_mesh,
+                  block_entry_count);
+
+         constexpr bool on_device =
+            is_device_configuration_v< KernelPolicy >;
+         auto coo_buffer =
+            details::MakeAssemblyRawCOOTripletBuffer<
+               on_device,
+               Real,
+               GlobalIndex >(
+                  static_cast<GlobalIndex>(
+                     GetAlgebraicDofExtent(test_space)),
+                  static_cast<GlobalIndex>(
+                     GetAlgebraicDofExtent(trial_space)),
+                  layout.nnz_raw);
+         auto coo_target =
+            MakeRawCOOAssemblyTarget< on_device >( coo_buffer, layout );
+
+         AssembleSparseTarget<KernelPolicy, SparseAssemblyMode::ElementBlockDiagonal>(
+            weak_form,
+            wf_ctx,
+            integration_rule,
+            coo_target);
+
+         if constexpr ( !is_host_configuration_v< KernelPolicy > )
+         {
+            GENDIL_DEVICE_SYNC;
+         }
+
+         return coo_buffer;
+
+      }
    }
 }
 

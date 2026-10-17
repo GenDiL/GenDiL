@@ -465,8 +465,7 @@ int TestVectorCoefficientFieldInputs()
       integrate(boundary_facets, gradient_coeff * u * v);
 
    using ValueAndGradientReqs =
-      interpolation_named_field_requirements_t<
-         decltype(cell_value_and_gradient_form)>;
+      typename form_signature_t<decltype(cell_value_and_gradient_form)>::bound_inputs;
    static_assert(
       contains_named_field_requirement_v<ValueAndGradientReqs, "w_vec">);
    using WVecReq =

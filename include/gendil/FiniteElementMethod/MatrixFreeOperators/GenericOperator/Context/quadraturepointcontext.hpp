@@ -5,13 +5,15 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/cell.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/elementcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/facetcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/computefacetgeometry.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/facetquaddata.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 
 namespace gendil
 {
@@ -42,6 +44,59 @@ struct OneSidedFacetQuadraturePointContext
    Real det_J_facet;          // Surface Jacobian determinant
    Real inverse_facet_size;   // Local facet size inverse: ||J^{-T} n_ref||
    PhysicalNormal physical_normal;  // Normalized physical normal (unit length)
+};
+
+namespace quadrature_context_detail
+{
+template<class Shape, class Points, class Face, Integer Axis>
+GENDIL_HOST_DEVICE Real BoundaryReferenceCoordinate(
+   const NonconformingDofToQuad<Shape, Points, Face, Axis>& data, Integer q)
+{
+   const auto point = data.face.template MapReferenceToFaceCoordinates1d<Axis>(
+      Point<1>{Points::GetCoord(q)});
+   return point[0];
+}
+
+template<class Data>
+GENDIL_HOST_DEVICE Real BoundaryReferenceCoordinate(const Data& data, Integer q)
+{
+   if constexpr (requires { data.coord(q); }) return data.coord(q);
+   else if constexpr (requires { typename Data::points; }) return Data::points::GetCoord(q);
+   else return Data::GetCoord(q);
+}
+
+template<class QData, class Index, class Coordinates>
+GENDIL_HOST_DEVICE void BoundaryReferenceCoordinates(const QData& qdata,
+   const Index& index, Coordinates& coordinates, size_t& dimension)
+{
+   if constexpr (is_tensor_product_data_v<QData>)
+   {
+      [&]<size_t... I>(std::index_sequence<I...>)
+      {
+         (BoundaryReferenceCoordinates(GetTensorProductEntry<I>(qdata), index,
+                                       coordinates, dimension), ...);
+      }(std::make_index_sequence<tensor_product_entry_count_v<QData>>{});
+   }
+   else
+   {
+      const auto q = index[dimension];
+      coordinates[dimension] = BoundaryReferenceCoordinate(qdata, q);
+      ++dimension;
+   }
+}
+} // namespace quadrature_context_detail
+
+// Physical boundaries are distinct from one selected side of an interior face.
+// Geometry callback descriptors refer to the adjacent parent cell; the surface
+// determinant remains separate and supplies the integration measure.
+template<class QuadIndex, class PhysicalCoordinates, class Jacobian, class PhysicalNormal>
+struct BoundaryFacetQuadraturePointContext
+   : OneSidedFacetQuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian, PhysicalNormal>
+{
+   static constexpr bool is_physical_boundary = true;
+   Jacobian J_mesh;
+   Real det_J;
+   PhysicalCoordinates reference_coordinates;
 };
 
 template<
@@ -103,7 +158,7 @@ auto MakeQuadraturePointContext(
 
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
    const auto& mesh_quad_data =
-      op_ctx.template mesh_quad_data<DomainName>();
+      op_ctx.template GetMeshQuadData<DomainName>();
 
    // Types for X and Jacobian from the domain mesh type
    const auto& mesh =
@@ -149,7 +204,7 @@ auto MakeQuadraturePointContext(
 
    // Get quad data from operator context (already bound to IntegrationRule when op_ctx was built)
    const auto& mesh_quad_data =
-      op_ctx.template mesh_facet_quad_data<DomainName>().MinusSide();
+      op_ctx.template GetMeshFacetQuadData<DomainName>().MinusSide();
    auto&& mesh_facet_quad_data = GetFacetQuadData(mesh_quad_data, face);
 
    // Types for X and Jacobian from the domain mesh type
@@ -208,7 +263,7 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
    constexpr auto DomainName = Integrand::domain_type::name;
 
    const auto& mesh_quad_data =
-      op_ctx.template mesh_facet_quad_data<DomainName>();
+      op_ctx.template GetMeshFacetQuadData<DomainName>();
    auto&& mesh_minus_quad_data =
       GetFacetQuadData(mesh_quad_data.MinusSide(), face.MinusSide());
 
@@ -379,7 +434,7 @@ auto MakeFacetQuadraturePointContext(
    const Integrand& integrand,
    const QuadIndex& quad_index)
 {
-   if constexpr ( BoundaryFacetIntegrand<Integrand> )
+   if constexpr (BoundaryFacetIntegrand<Integrand>)
    {
       // 1. Create base context using existing factory (preserves old convention)
       auto base_qctx = MakeQuadraturePointContext(
@@ -403,7 +458,7 @@ auto MakeFacetQuadraturePointContext(
       // 4. Construct FacetQuadraturePointContext
       using PhysicalNormal = decltype(facet_geometry.normalized_physical_normal);
 
-      OneSidedFacetQuadraturePointContext<
+      BoundaryFacetQuadraturePointContext<
          QuadIndex,
          decltype(base_qctx.X),
          decltype(base_qctx.J_mesh),
@@ -413,7 +468,17 @@ auto MakeFacetQuadraturePointContext(
       facet_qctx.quad_index = base_qctx.quad_index;
       facet_qctx.X = base_qctx.X;
       facet_qctx.inv_J_mesh = base_qctx.inv_J_mesh;
+      facet_qctx.J_mesh = base_qctx.J_mesh;
+      facet_qctx.det_J = base_qctx.det_J;
       facet_qctx.weight = base_qctx.weight;
+      // Use the selected face qdata, including its fixed normal coordinate and
+      // any reference subface map. A volume-rule lookup has the wrong point.
+      constexpr auto DomainName = Integrand::domain_type::name;
+      const auto& mesh_face_qdata = op_ctx.template GetMeshFacetQuadData<DomainName>();
+      const auto& selected_qdata = GetFacetQuadData(mesh_face_qdata.MinusSide(), face.MinusSide());
+      size_t reference_dimension = 0;
+      quadrature_context_detail::BoundaryReferenceCoordinates(selected_qdata, quad_index,
+         facet_qctx.reference_coordinates, reference_dimension);
 
       // Set facet-specific fields
       facet_qctx.det_J_facet =
@@ -423,7 +488,7 @@ auto MakeFacetQuadraturePointContext(
 
       return facet_qctx;
    }
-   else if constexpr ( InteriorFacetIntegrand<Integrand> )
+   else if constexpr (InteriorFacetIntegrand<Integrand>)
    {
       return MakeLocalInteriorFacetQuadraturePointContext(
          kernel_context,

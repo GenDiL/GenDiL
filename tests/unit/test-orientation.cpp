@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+#include <gendil/Meshes/Connectivities/Orientations/orientations.hpp>
 #include <gendil/gendil.hpp>
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <concepts>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <tuple>
 #include <type_traits>
 #include <vector>
@@ -391,6 +393,17 @@ bool TestRoundTrips(
 
 bool TestValidityAndExtents()
 {
+   using ReverseSwap = std::integral_constant<
+      Permutation<2>, Permutation<2>{{-2, 1}}>;
+   static_assert(orientation_dimension_v<ReverseSwap> == 2);
+   static_assert(orientation_dimension_v<const ReverseSwap&> == 2);
+   static_assert(IsValidOrientation(ReverseSwap{}));
+   static_assert(FlattenOrientation(ReverseSwap{}) == Permutation<2>{{-2, 1}});
+   static_assert(orientation_dimension_v<IdentityOrientation<3>> == 3);
+   static_assert(is_static_identity_orientation_v<IdentityOrientation<3>>);
+   constexpr std::array<size_t, 2> identity_sizes{2, 3};
+   static_assert(OrientedTensorDofShapeIsCompatible(
+      identity_sizes, IdentityOrientation<2>{}));
    const std::array< size_t, 3 > anisotropic{ 2, 3, 4 };
    const std::array< size_t, 3 > repeated{ 2, 3, 2 };
    const auto structured_valid = MakeTensorProductOrientation(
@@ -406,6 +419,14 @@ bool TestValidityAndExtents()
          IdentityOrientation< 1 >{} } };
 
    bool success = true;
+   success = Check(
+      FlattenOrientation(IdentityOrientation<3>{}) ==
+         MakeReferencePermutation<3>(),
+      "identity orientation must flatten to the reference permutation") && success;
+   success = Check(
+      OrientedTensorDofShapeIsCompatible(
+         identity_sizes, Permutation<2>{{-1, 2}}),
+      "anisotropic two-axis reversal rejected") && success;
    static_assert( IsValidOrientation( IdentityOrientation< 3 >{} ) );
    static_assert( !IsValidOrientation( Permutation< 1 >{
       { std::numeric_limits< LocalIndex >::min() } } ) );
@@ -469,6 +490,21 @@ bool TestValidityAndExtents()
 
 bool TestMappingOnlyOrientedLayouts()
 {
+   struct StrideAndSize { int first; size_t second; };
+   struct OnlyStride { int first; };
+   struct OnlySize { size_t second; };
+   using Pair = std::pair< int, size_t >;
+   static_assert(std::is_constructible_v<OrientedLayout<2>, Pair, StrideAndSize>);
+   static_assert(!std::is_constructible_v<OrientedLayout<2>, OnlyStride, Pair>);
+   static_assert(!std::is_constructible_v<OrientedLayout<2>, Pair, OnlyStride>);
+   static_assert(!std::is_constructible_v<OrientedLayout<2>, Pair, OnlySize>);
+   static_assert(!std::is_constructible_v<OrientedLayout<2>, Pair, int>);
+   static_assert(!std::is_constructible_v<OrientedLayout<2>, Pair>);
+   static_assert(std::is_default_constructible_v<OrientedLayout<0>>);
+   static_assert(!std::is_constructible_v<OrientedLayout<0>, Pair>);
+   constexpr OrientedLayout<2> from_pairs{Pair{1, 2}, StrideAndSize{-2, 3}};
+   static_assert(from_pairs.Offset(0, 0) == 4 && from_pairs.Offset(1, 2) == 1);
+
    constexpr auto reverse_swap = Permutation< 2 >{ { -2, 1 } };
    constexpr auto reversed = MakeOrientedLayout(
       std::array< size_t, 2 >{ 3, 2 }, reverse_swap );
@@ -546,8 +582,360 @@ bool TestMappingOnlyOrientedLayouts()
                  "oriented pointer view did not retain its signed mapping" );
 }
 
+namespace product_face_lifting
+{
+
+template<bool Boundary>
+struct SourceConnectivity
+{
+   using geometry = gendil::HyperCube<1>;
+   using face_info_type = gendil::ConformingCellFaceView<
+      geometry,
+      std::integral_constant<gendil::Integer, 1>,
+      std::integral_constant<gendil::Integer, 0>,
+      gendil::Permutation<1>,
+      gendil::CanonicalVector<1, 0, 1>,
+      gendil::CanonicalVector<1, 0, -1>,
+      bool>;
+
+   GENDIL_HOST_DEVICE
+   gendil::GlobalIndex GetNumberOfFaces() const
+   {
+      return 1;
+   }
+
+   GENDIL_HOST_DEVICE
+   face_info_type GetGlobalFaceInfo(gendil::GlobalIndex) const
+   {
+      return face_info_type{
+         {0, {}, {}, {}, {}, Boundary},
+         {1, {}, gendil::Permutation<1>{{-1}}, {}, {}, Boundary}};
+   }
+};
+
+template<bool Boundary, bool NonconformingMinus = false>
+struct IdentitySourceConnectivity
+{
+   using geometry = gendil::HyperCube<1>;
+   using minus_map = std::conditional_t<
+      NonconformingMinus,
+      gendil::NonconformingHyperCubeFaceMap<1>,
+      gendil::ConformingFaceMap<1>>;
+   using minus_side_type = gendil::FaceView<
+      std::integral_constant<gendil::Integer, 1>,
+      geometry,
+      gendil::IdentityOrientation<1>,
+      gendil::CanonicalVector<1, 0, 1>,
+      minus_map,
+      bool>;
+   using plus_side_type = gendil::FaceView<
+      std::integral_constant<gendil::Integer, 0>,
+      geometry,
+      gendil::IdentityOrientation<1>,
+      gendil::CanonicalVector<1, 0, -1>,
+      gendil::ConformingFaceMap<1>,
+      bool>;
+   using face_info_type =
+      gendil::GlobalFaceInfo<minus_side_type, plus_side_type>;
+
+   GENDIL_HOST_DEVICE
+   gendil::GlobalIndex GetNumberOfFaces() const
+   {
+      return 1;
+   }
+
+   GENDIL_HOST_DEVICE
+   face_info_type GetGlobalFaceInfo(gendil::GlobalIndex) const
+   {
+      minus_map map{};
+      if constexpr (NonconformingMinus)
+      {
+         map.origin = gendil::Point<1>{0.2};
+         map.size = {0.3};
+      }
+      return face_info_type{
+         {0, {}, {}, {}, map, Boundary},
+         {1, {}, {}, {}, {}, Boundary}};
+   }
+};
+
+template<bool Boundary>
+struct RuntimeMinusIdentityPlusConnectivity
+{
+   using geometry = gendil::HyperCube<1>;
+   using minus_side_type = gendil::FaceView<
+      std::integral_constant<gendil::Integer, 1>,
+      geometry,
+      gendil::Permutation<1>,
+      gendil::CanonicalVector<1, 0, 1>,
+      gendil::ConformingFaceMap<1>,
+      bool>;
+   using plus_side_type = gendil::FaceView<
+      std::integral_constant<gendil::Integer, 0>,
+      geometry,
+      gendil::IdentityOrientation<1>,
+      gendil::CanonicalVector<1, 0, -1>,
+      gendil::ConformingFaceMap<1>,
+      bool>;
+   using face_info_type =
+      gendil::GlobalFaceInfo<minus_side_type, plus_side_type>;
+
+   GENDIL_HOST_DEVICE
+   gendil::GlobalIndex GetNumberOfFaces() const
+   {
+      return 1;
+   }
+
+   GENDIL_HOST_DEVICE
+   face_info_type GetGlobalFaceInfo(gendil::GlobalIndex) const
+   {
+      return face_info_type{
+         {0, {}, gendil::Permutation<1>{{-1}}, {}, {}, Boundary},
+         {1, {}, {}, {}, {}, Boundary}};
+   }
+};
+
+using FirstFactorInteriorAlias =
+   gendil::cartesian_product_partition_detail::
+      FirstFactorInteriorFaceConnectivity<
+         1,
+         1,
+         SourceConnectivity<false>>;
+using SecondFactorInteriorAlias =
+   gendil::cartesian_product_partition_detail::
+      SecondFactorInteriorFaceConnectivity<
+         1,
+         1,
+         SourceConnectivity<false>>;
+using FirstFactorBoundaryAlias =
+   gendil::cartesian_product_partition_detail::
+      FirstFactorBoundaryFaceConnectivity<
+         1,
+         1,
+         SourceConnectivity<true>>;
+using SecondFactorBoundaryAlias =
+   gendil::cartesian_product_partition_detail::
+      SecondFactorBoundaryFaceConnectivity<
+         1,
+         1,
+         SourceConnectivity<true>>;
+
+static_assert(std::same_as<
+   FirstFactorInteriorAlias,
+   gendil::cartesian_product_partition_detail::
+      CartesianProductInteriorFaceConnectivity<
+         true,
+         1,
+         1,
+         SourceConnectivity<false>>>);
+static_assert(std::same_as<
+   SecondFactorInteriorAlias,
+   gendil::cartesian_product_partition_detail::
+      CartesianProductInteriorFaceConnectivity<
+         false,
+         1,
+         1,
+         SourceConnectivity<false>>>);
+static_assert(std::same_as<
+   FirstFactorBoundaryAlias,
+   gendil::cartesian_product_partition_detail::
+      CartesianProductBoundaryFaceConnectivity<
+         true,
+         1,
+         1,
+         SourceConnectivity<true>>>);
+static_assert(std::same_as<
+   SecondFactorBoundaryAlias,
+   gendil::cartesian_product_partition_detail::
+      CartesianProductBoundaryFaceConnectivity<
+         false,
+         1,
+         1,
+         SourceConnectivity<true>>>);
+
+template<bool SourceIsFirst>
+bool CheckInterior()
+{
+   using Connectivity = gendil::cartesian_product_partition_detail::
+      CartesianProductInteriorFaceConnectivity<
+         SourceIsFirst,
+         1,
+         1,
+         SourceConnectivity<false>>;
+   const Connectivity connectivity{SourceConnectivity<false>{}, 2, 3, 4};
+   const auto face = connectivity.GetGlobalFaceInfo(3);
+   using Face = std::remove_cvref_t<decltype(face)>;
+   static_assert(std::same_as<
+      typename Face::minus_side_type::orientation_type,
+      gendil::IdentityOrientation<2>>);
+   static_assert(std::same_as<
+      typename Face::plus_side_type::orientation_type,
+      std::conditional_t<
+         SourceIsFirst,
+         gendil::TensorProductOrientation<
+            gendil::Permutation<1>, gendil::IdentityOrientation<1>>,
+         gendil::TensorProductOrientation<
+            gendil::IdentityOrientation<1>, gendil::Permutation<1>>>>);
+   return connectivity.GetNumberOfFaces() == 4 &&
+          face.MinusSide().GetCellIndex() == (SourceIsFirst ? 6 : 3) &&
+          gendil::FlattenOrientation(face.PlusSide().GetOrientation()) ==
+             (SourceIsFirst
+                ? gendil::Permutation<2>{{-1, 2}}
+                : gendil::Permutation<2>{{1, -2}});
+}
+
+template<bool SourceIsFirst>
+bool CheckBoundary()
+{
+   using Connectivity = gendil::cartesian_product_partition_detail::
+      CartesianProductBoundaryFaceConnectivity<
+         SourceIsFirst,
+         1,
+         1,
+         SourceConnectivity<true>>;
+   const Connectivity connectivity{SourceConnectivity<true>{}, 2, 4};
+   const auto face = connectivity.GetGlobalFaceInfo(3);
+   using Face = std::remove_cvref_t<decltype(face)>;
+   static_assert(std::same_as<
+      typename Face::minus_side_type::orientation_type,
+      gendil::IdentityOrientation<2>>);
+   static_assert(std::same_as<
+      typename Face::plus_side_type::orientation_type,
+      std::conditional_t<
+         SourceIsFirst,
+         gendil::TensorProductOrientation<
+            gendil::Permutation<1>, gendil::IdentityOrientation<1>>,
+         gendil::TensorProductOrientation<
+            gendil::IdentityOrientation<1>, gendil::Permutation<1>>>>);
+   return connectivity.GetNumberOfFaces() == 4 &&
+          face.PlusSide().GetCellIndex() == 1;
+}
+
+template<bool SourceIsFirst, bool Boundary, bool NonconformingMinus = false>
+bool CheckAllIdentity()
+{
+   using Source =
+      IdentitySourceConnectivity<Boundary, NonconformingMinus>;
+   using Connectivity = std::conditional_t<
+      Boundary,
+      gendil::cartesian_product_partition_detail::
+         CartesianProductBoundaryFaceConnectivity<
+            SourceIsFirst, 1, 1, Source>,
+      gendil::cartesian_product_partition_detail::
+         CartesianProductInteriorFaceConnectivity<
+            SourceIsFirst, 1, 1, Source>>;
+   const Connectivity connectivity = [&]
+   {
+      if constexpr (Boundary)
+      {
+         return Connectivity{Source{}, 2, 3};
+      }
+      else
+      {
+         return Connectivity{Source{}, 2, 2, 3};
+      }
+   }();
+   const auto face = connectivity.GetGlobalFaceInfo(0);
+   using Face = std::remove_cvref_t<decltype(face)>;
+   static_assert(std::same_as<
+      typename Face::minus_side_type::orientation_type,
+      gendil::IdentityOrientation<2>>);
+   static_assert(std::same_as<
+      typename Face::plus_side_type::orientation_type,
+      gendil::IdentityOrientation<2>>);
+   static_assert(
+      Face::minus_side_type::is_conforming == !NonconformingMinus);
+   return gendil::FlattenOrientation(
+             face.MinusSide().GetOrientation()) ==
+             gendil::MakeReferencePermutation<2>() &&
+          gendil::FlattenOrientation(
+             face.PlusSide().GetOrientation()) ==
+             gendil::MakeReferencePermutation<2>();
+}
+
+template<bool SourceIsFirst>
+bool CheckRuntimeMinusIdentityPlus()
+{
+   using Source = RuntimeMinusIdentityPlusConnectivity<false>;
+   using Connectivity = gendil::cartesian_product_partition_detail::
+      CartesianProductInteriorFaceConnectivity<
+         SourceIsFirst, 1, 1, Source>;
+   const Connectivity connectivity{Source{}, 2, 2, 3};
+   const auto face = connectivity.GetGlobalFaceInfo(0);
+   using Face = std::remove_cvref_t<decltype(face)>;
+   static_assert(std::same_as<
+      typename Face::minus_side_type::orientation_type,
+      std::conditional_t<
+         SourceIsFirst,
+         gendil::TensorProductOrientation<
+            gendil::Permutation<1>, gendil::IdentityOrientation<1>>,
+         gendil::TensorProductOrientation<
+            gendil::IdentityOrientation<1>, gendil::Permutation<1>>>>);
+   static_assert(std::same_as<
+      typename Face::plus_side_type::orientation_type,
+      gendil::IdentityOrientation<2>>);
+   return gendil::FlattenOrientation(face.MinusSide().GetOrientation()) ==
+      (SourceIsFirst
+         ? gendil::Permutation<2>{{-1, 2}}
+         : gendil::Permutation<2>{{1, -2}});
+}
+
+bool CheckOrientationLiftPolicy()
+{
+   using namespace gendil;
+   using namespace gendil::cartesian_product_partition_detail;
+   using StaticSigned = std::integral_constant<
+      Permutation<2>,
+      Permutation<2>{{1, -2}}>;
+   using SignedLift = ProductOrientationLift<3, 1, 2, StaticSigned>;
+   static_assert(std::same_as<
+      typename SignedLift::type,
+      TensorProductOrientation<IdentityOrientation<1>, StaticSigned>>);
+   static_assert(std::is_empty_v<IdentityOrientation<3>>);
+   static_assert(std::is_trivially_copyable_v<IdentityOrientation<3>>);
+   static_assert(std::is_trivially_copyable_v<Permutation<3>>);
+   return FlattenOrientation(SignedLift::Apply(StaticSigned{})) ==
+      Permutation<3>{{1, 2, -3}};
+}
+
+} // namespace product_face_lifting
+
+bool TestProductFaceOrientationLifting()
+{
+   using namespace product_face_lifting;
+   const std::array cases{
+      std::pair{&CheckInterior<true>, "first-factor interior orientation"},
+      std::pair{&CheckInterior<false>, "second-factor interior orientation"},
+      std::pair{&CheckBoundary<true>, "first-factor boundary orientation"},
+      std::pair{&CheckBoundary<false>, "second-factor boundary orientation"},
+      std::pair{&CheckAllIdentity<true, false>, "first-factor identity interior"},
+      std::pair{&CheckAllIdentity<false, false>, "second-factor identity interior"},
+      std::pair{&CheckAllIdentity<true, true>, "first-factor identity boundary"},
+      std::pair{&CheckAllIdentity<false, true>, "second-factor identity boundary"},
+      std::pair{&CheckAllIdentity<true, false, true>, "first-factor mapped identity"},
+      std::pair{&CheckAllIdentity<false, false, true>, "second-factor mapped identity"},
+      std::pair{&CheckRuntimeMinusIdentityPlus<true>, "first-factor runtime minus"},
+      std::pair{&CheckRuntimeMinusIdentityPlus<false>, "second-factor runtime minus"},
+      std::pair{&CheckOrientationLiftPolicy, "static signed orientation lift"}};
+   static_assert(cases.size() == 13);
+   bool success = true;
+   for (const auto& [run, label] : cases)
+   {
+      success = Check(run(), label) && success;
+   }
+   return success;
+}
+
+
 bool TestSetAndGetSubPermutation()
 {
+   constexpr auto static_product = []
+   {
+      auto result = MakeReferencePermutation<3>();
+      Set<1>(result, Permutation<2>{{-2, 1}});
+      return result;
+   }();
+   static_assert(static_product == Permutation<3>{{1, -3, 2}});
    bool success = true;
    const Permutation< 2 > first{ { -2, 1 } };
    const Permutation< 2 > second{ { 2, -1 } };
@@ -564,7 +952,49 @@ bool TestSetAndGetSubPermutation()
    success = Check(
       GetSubPermutation< 2 >( product, 3 ) == second,
       "Set/GetSubPermutation round trip failed at nonzero offset" ) && success;
+   auto small_product = MakeReferencePermutation<3>();
+   Set<1>(small_product, first);
+   const auto sub = GetSubPermutation<2>(small_product, 1);
+   std::ostringstream output;
+   output << sub;
+   success = Check(
+      IsValidOrientation(sub) && FlattenOrientation(sub) == first &&
+         !output.str().empty(),
+      "sub-permutation validity, flattening, or stream output failed") && success;
    return success;
+}
+
+bool TestStructuredIndexExamples()
+{
+   const auto orientation = MakeTensorProductOrientation(
+      Permutation<2>{{-2, 1}}, IdentityOrientation<1>{});
+   static_assert(orientation_dimension_v<decltype(orientation)> == 3);
+   static_assert(is_tensor_product_orientation_v<decltype(orientation)>);
+   static_assert(sizeof(orientation) == sizeof(Permutation<2>));
+   const auto first = detail::GetStructuredOrientationAxis<0, 0>(orientation);
+   const auto last = detail::GetStructuredOrientationAxis<2, 0>(orientation);
+   static_assert(decltype(last)::value == 3);
+   const std::array<Integer, 3> reference{1, 0, 2};
+   const std::array<Integer, 3> expected_native{2, 1, 2};
+   const auto native = ReferenceToNativeIndex(
+      reference, std::index_sequence<3, 3, 4>{}, orientation);
+   bool success = Check(
+      IsValidOrientation(orientation) && first == -2 &&
+         FlattenOrientation(orientation) == Permutation<3>{{-2, 1, 3}},
+      "structured orientation axes or flattened mapping changed");
+   success = Check(native == expected_native,
+      "structured reference-to-native example failed") && success;
+   success = Check(NativeToReferenceIndex(
+      expected_native, std::index_sequence<3, 3, 4>{}, orientation) == reference,
+      "structured native-to-reference example failed") && success;
+
+   const auto reversed = MakeTensorProductOrientation(
+      Permutation<1>{{-1}}, IdentityOrientation<1>{});
+   const std::array<Integer, 2> point{1, 2};
+   const std::array<size_t, 2> sizes{3, 4};
+   return Check(NativeToReferenceIndex(
+      ReferenceToNativeIndex(point, sizes, reversed), sizes, reversed) == point,
+      "runtime-sized product orientation round trip failed") && success;
 }
 
 template < Integer HeadDim, Integer TailDim >
@@ -1043,8 +1473,10 @@ int main()
    success = TestRoundTrips< 3 >( { 2, 2, 2 } ) && success;
    success = TestRoundTrips< 3 >( { 2, 3, 4 } ) && success;
    success = TestValidityAndExtents() && success;
+   success = TestStructuredIndexExamples() && success;
    success = TestMappingOnlyOrientedLayouts() && success;
    success = TestSetAndGetSubPermutation() && success;
+   success = TestProductFaceOrientationLifting() && success;
    success = TestTensorProductTransformComposition() && success;
    success = TestExhaustiveTensorProductTransformComposition() && success;
    success = TestProductMeshConnectivity() && success;

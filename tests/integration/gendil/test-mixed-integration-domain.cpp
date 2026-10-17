@@ -177,9 +177,11 @@ bool TestInteriorExecutionBatchAndFieldBindings()
          std::remove_cvref_t<
             decltype(one_cell_part_partition)>>::value);
 
+   Vector mu_values(GetAlgebraicDofExtent(coeff_mixed));
+   mu_values = Real(1);
    auto ctx = MakeWeakFormContext(
       MakeTrialField<"u">(mixed),
-      MakeFiniteElementField<"mu">(coeff_mixed, Empty{}),
+      MakeFiniteElementField<"mu">(coeff_mixed, mu_values),
       MakeIntegrationDomain<"mesh">(partition));
    TrialSpace<"u"> u;
    auto mu =
@@ -204,17 +206,15 @@ bool TestInteriorExecutionBatchAndFieldBindings()
          static_assert(Batch::plus_cell_part_index == 1);
 
          auto restricted =
-            MakeRestrictedWeakFormContext<decltype(form)>(
-               ctx,
-               InteriorFacets<"mesh">{},
-               batch);
+            MakeRestrictedWeakFormContext<lower_signature_requirements_t<form_signature_t<decltype(form)>>>(
+               ctx, batch);
 
          using UBinding =
             std::remove_cvref_t<
-               decltype(restricted.template fe_field<"u">().space)>;
+               decltype(restricted.template GetFiniteElementField<"u">().space)>;
          using MuBinding =
             std::remove_cvref_t<
-               decltype(restricted.template fe_field<"mu">().space)>;
+               decltype(restricted.template GetFiniteElementField<"mu">().space)>;
          static_assert(is_interior_face_field_binding_v<UBinding>);
          static_assert(is_interior_face_field_binding_v<MuBinding>);
          static_assert(is_two_space_interior_face_field_binding_v<UBinding>);
@@ -225,7 +225,7 @@ bool TestInteriorExecutionBatchAndFieldBindings()
                typename Batch::face_part_type>);
 
          auto ir = MakeIntegrationRule(IntegrationRuleNumPoints<4>{});
-         auto op_ctx = MakeFacetOperatorContext(restricted, ir, batch);
+         auto op_ctx = MakeFacetOperatorContext(form, restricted, ir, batch);
          (void)op_ctx;
       });
 
@@ -275,13 +275,11 @@ bool TestBoundaryExecutionBatchAndFieldBindings()
          }
 
          auto restricted =
-            MakeRestrictedWeakFormContext<decltype(form)>(
-               ctx,
-               BoundaryFacets<"mesh">{},
-               batch);
+            MakeRestrictedWeakFormContext<lower_signature_requirements_t<form_signature_t<decltype(form)>>>(
+               ctx, batch);
          using UBinding =
             std::remove_cvref_t<
-               decltype(restricted.template fe_field<"u">().space)>;
+               decltype(restricted.template GetFiniteElementField<"u">().space)>;
          static_assert(is_boundary_face_field_binding_v<UBinding>);
          static_assert(
             std::is_same_v<
@@ -289,7 +287,7 @@ bool TestBoundaryExecutionBatchAndFieldBindings()
                typename Batch::face_part_type>);
 
          auto ir = MakeIntegrationRule(IntegrationRuleNumPoints<4>{});
-         auto op_ctx = MakeFacetOperatorContext(restricted, ir, batch);
+         auto op_ctx = MakeFacetOperatorContext(form, restricted, ir, batch);
          (void)op_ctx;
       });
 
@@ -355,7 +353,7 @@ bool TestFieldIndependentQDataPreparation()
    auto test_only = integrate(Cells<"mesh">{}, v);
    auto test_ctx = MakeWeakFormContext(
       MakeTestField<"v">(fe_space),
-      MakeFiniteElementField<"unused">(fe_space, Empty{}),
+      MakeTrialField<"unused">(fe_space),
       MakeIntegrationDomain<"mesh">(mesh));
 
    bool success = true;
@@ -365,14 +363,12 @@ bool TestFieldIndependentQDataPreparation()
       [&] (const auto& selected)
       {
          auto restricted =
-            MakeRestrictedWeakFormContext<decltype(test_only)>(
-               test_ctx,
-               Cells<"mesh">{},
-               selected);
+            MakeRestrictedWeakFormContext<lower_signature_requirements_t<form_signature_t<decltype(test_only)>>>(
+               test_ctx, selected);
          using Restricted = std::remove_cvref_t<decltype(restricted)>;
-         static_assert(Restricted::template has_fe_field<"v">());
-         static_assert(!Restricted::template has_fe_field<"unused">());
-         auto op_ctx = MakeCellOnlyOperatorContext(restricted, ir);
+         static_assert(Restricted::template HasFiniteElementField<"v">());
+         static_assert(!Restricted::template HasFiniteElementField<"unused">());
+         auto op_ctx = MakeOperatorContext(test_only, restricted, ir);
          (void)op_ctx;
       });
 
@@ -382,9 +378,11 @@ bool TestFieldIndependentQDataPreparation()
       [] (const auto&) { return 1.0; });
    auto coefficient_only =
       integrate(Cells<"mesh">{}, rho + eta);
+   Vector coefficient_values(GetAlgebraicDofExtent(fe_space));
+   coefficient_values = Real(1);
    auto coefficient_ctx = MakeWeakFormContext(
-      MakeFiniteElementField<"rho">(fe_space, Empty{}),
-      MakeFiniteElementField<"eta">(fe_space, Empty{}),
+      MakeFiniteElementField<"rho">(fe_space, coefficient_values),
+      MakeFiniteElementField<"eta">(fe_space, coefficient_values),
       MakeIntegrationDomain<"mesh">(mesh));
    ForEachCellExecutionDomain(
       coefficient_ctx,
@@ -392,14 +390,12 @@ bool TestFieldIndependentQDataPreparation()
       [&] (const auto& selected)
       {
          auto restricted =
-            MakeRestrictedWeakFormContext<decltype(coefficient_only)>(
-               coefficient_ctx,
-               Cells<"mesh">{},
-               selected);
+            MakeRestrictedWeakFormContext<lower_signature_requirements_t<form_signature_t<decltype(coefficient_only)>>>(
+               coefficient_ctx, selected);
          using Restricted = std::remove_cvref_t<decltype(restricted)>;
-         static_assert(Restricted::template has_fe_field<"rho">());
-         static_assert(Restricted::template has_fe_field<"eta">());
-         auto op_ctx = MakeCellOnlyOperatorContext(restricted, ir);
+         static_assert(Restricted::template HasFiniteElementField<"rho">());
+         static_assert(Restricted::template HasFiniteElementField<"eta">());
+         auto op_ctx = MakeOperatorContext(coefficient_only, restricted, ir);
          (void)op_ctx;
       });
 
@@ -414,13 +410,11 @@ bool TestFieldIndependentQDataPreparation()
       [&] (const auto& selected)
       {
          auto restricted =
-            MakeRestrictedWeakFormContext<decltype(geometry_only)>(
-               geometry_ctx,
-               Cells<"mesh">{},
-               selected);
+            MakeRestrictedWeakFormContext<lower_signature_requirements_t<form_signature_t<decltype(geometry_only)>>>(
+               geometry_ctx, selected);
          using Restricted = std::remove_cvref_t<decltype(restricted)>;
-         static_assert(!Restricted::template has_fe_field<"u">());
-         auto op_ctx = MakeCellOnlyOperatorContext(restricted, ir);
+         static_assert(!Restricted::template HasFiniteElementField<"u">());
+         auto op_ctx = MakeOperatorContext(geometry_only, restricted, ir);
          (void)op_ctx;
       });
 

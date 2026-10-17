@@ -10,7 +10,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dot.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/inner.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/mult.hpp"
@@ -24,6 +24,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/jump.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/average.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"
 
 namespace gendil
 {
@@ -104,15 +105,15 @@ struct GradientPlusChannel {};
 
 template<class Channels>
 inline constexpr bool contains_ordinary_test_channel_v =
-   std::remove_cvref_t<Channels>::template contains<ValueChannel>() ||
-   std::remove_cvref_t<Channels>::template contains<GradientChannel>();
+   std::remove_cvref_t<Channels>::template Contains<ValueChannel>() ||
+   std::remove_cvref_t<Channels>::template Contains<GradientChannel>();
 
 template<class Channels>
 inline constexpr bool contains_side_qualified_interior_test_channel_v =
-   std::remove_cvref_t<Channels>::template contains<ValueMinusChannel>() ||
-   std::remove_cvref_t<Channels>::template contains<ValuePlusChannel>() ||
-   std::remove_cvref_t<Channels>::template contains<GradientMinusChannel>() ||
-   std::remove_cvref_t<Channels>::template contains<GradientPlusChannel>();
+   std::remove_cvref_t<Channels>::template Contains<ValueMinusChannel>() ||
+   std::remove_cvref_t<Channels>::template Contains<ValuePlusChannel>() ||
+   std::remove_cvref_t<Channels>::template Contains<GradientMinusChannel>() ||
+   std::remove_cvref_t<Channels>::template Contains<GradientPlusChannel>();
 
 // =============================================================================
 // PullbackResult: StaticMap-Based Channel Storage
@@ -126,8 +127,8 @@ inline constexpr bool contains_side_qualified_interior_test_channel_v =
  *
  * Usage:
  *    auto result = pullback(v, c);
- *    static_assert(decltype(result)::contains<ValueChannel>());
- *    auto& seed = result.template get<ValueChannel>();
+ *    static_assert(decltype(result)::Contains<ValueChannel>());
+ *    auto& seed = result.template Get<ValueChannel>();
  *
  * @tparam Entries Pack of Entry<ChannelTag, SeedExpr> types
  */
@@ -136,7 +137,7 @@ struct PullbackResult : StaticMap<Entries...>
 {
    using StaticMap<Entries...>::StaticMap;
 
-   // Constructor from StaticMap (for make_map compatibility)
+   // Constructor from StaticMap (for MakeStaticMap compatibility)
    GENDIL_HOST_DEVICE
    constexpr PullbackResult(StaticMap<Entries...>&& map)
       : StaticMap<Entries...>(std::move(map))
@@ -147,6 +148,71 @@ struct PullbackResult : StaticMap<Entries...>
       : StaticMap<Entries...>(map)
    {}
 };
+
+// Form lowering records where its channels may be delivered. This adds no
+// row storage: ordinary entities still carry only current-row coefficients,
+// while a canonical interior facet retains its minus/plus channel keys.
+enum class PullbackEntity
+{
+   Cell,
+   BoundaryFacet,
+   LocalInteriorFacet,
+   GlobalInteriorFacet
+};
+
+enum class PullbackRows { Current, MinusPlus };
+
+namespace pullback_detail
+{
+
+template<PullbackRows Rows, class... Entries>
+consteval bool ChannelsMatchRows(const std::tuple<Entries...>*)
+{
+   if constexpr (Rows == PullbackRows::Current)
+   {
+      return ((std::is_same_v<typename Entries::key_type, ValueChannel> ||
+               std::is_same_v<typename Entries::key_type, GradientChannel>) && ...);
+   }
+   else
+   {
+      return ((std::is_same_v<typename Entries::key_type, ValueMinusChannel> ||
+               std::is_same_v<typename Entries::key_type, ValuePlusChannel> ||
+               std::is_same_v<typename Entries::key_type, GradientMinusChannel> ||
+               std::is_same_v<typename Entries::key_type, GradientPlusChannel>) && ...);
+   }
+}
+
+} // namespace pullback_detail
+
+template<class Channels, PullbackRows Rows>
+inline constexpr bool pullback_channels_match_rows_v =
+   pullback_detail::ChannelsMatchRows<Rows>(
+      static_cast<decltype(std::declval<std::remove_cvref_t<Channels>>().entries)*>(nullptr));
+
+template<PullbackEntity Entity, class Channels>
+struct EntityPullbackResult : Channels
+{
+   using channel_map_type = Channels;
+   static constexpr auto entity = Entity;
+   static constexpr auto rows = Entity == PullbackEntity::GlobalInteriorFacet
+      ? PullbackRows::MinusPlus : PullbackRows::Current;
+   static constexpr int output_row_count = rows == PullbackRows::Current ? 1 : 2;
+
+   static_assert(pullback_channels_match_rows_v<Channels, rows>,
+      "Pullback channels do not match the entity's output rows.");
+
+   GENDIL_HOST_DEVICE
+   constexpr explicit EntityPullbackResult(Channels channels)
+      : Channels(std::move(channels))
+   {}
+};
+
+template<PullbackEntity Entity, class Channels>
+GENDIL_HOST_DEVICE
+constexpr auto MakeEntityPullbackResult(Channels channels)
+{
+   return EntityPullbackResult<Entity, Channels>(std::move(channels));
+}
 
 // =============================================================================
 // Seed Shape Validation Helper
@@ -175,6 +241,50 @@ template<class Expr, class Seed>
 inline constexpr bool is_seed_shape_compatible_v =
    is_seed_shape_compatible_impl<Expr, Seed>::value;
 
+namespace pullback_detail
+{
+
+// Name-only bound fields deliberately have no context-free shape. Scalar
+// multiplication retains the seed's known shape while the selected context
+// validates the expression's deferred shape obligations. Check the evaluated
+// factor too, so using the lowerer directly cannot turn a vector into a scalar.
+template<class Seed, class Multiplier>
+struct ScalarMultiplierSeed : FieldBase
+{
+   Seed seed;
+   Multiplier multiplier;
+
+   GENDIL_HOST_DEVICE
+   ScalarMultiplierSeed(const Seed& s, const Multiplier& m)
+      : seed(s), multiplier(m) {}
+
+   template<class... Args>
+   GENDIL_HOST_DEVICE
+   auto operator()(const Args&... args) const
+   {
+      auto factor = multiplier(args...);
+      static_assert(std::is_convertible_v<decltype(factor), Real>,
+         "Multiplication pullback requires a scalar test-free multiplier.");
+      return seed(args...) * factor;
+   }
+};
+
+} // namespace pullback_detail
+
+template<class Seed, class Multiplier>
+struct field_shape_impl<pullback_detail::ScalarMultiplierSeed<Seed, Multiplier>>
+{
+   static constexpr auto value = field_shape_v<Seed>;
+};
+
+template<class Seed, class Multiplier>
+struct test_linearity<pullback_detail::ScalarMultiplierSeed<Seed, Multiplier>>
+{
+   static_assert(is_test_free_v<Seed> && is_test_free_v<Multiplier>);
+   static constexpr auto value = TestLinearity::TestFree;
+   static constexpr auto test_name = StaticString{""};
+};
+
 // =============================================================================
 // Primitive Pullback Rules
 // =============================================================================
@@ -200,7 +310,7 @@ auto pullback(const TestSpace<Name, Shape>& /*v*/, const Seed& seed)
    static_assert(is_seed_shape_compatible_v<TestSpace<Name, Shape>, SeedType>,
       "pullback(expr, seed) requires seed to have the same FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<ValueChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<ValueChannel>(seed))};
 }
 
 /**
@@ -224,7 +334,7 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
    static_assert(is_seed_shape_compatible_v<GradientExpr<TestSpace<Name, Shape>>, SeedType>,
       "pullback(expr, seed) requires seed to have the same FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<GradientChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(seed))};
 }
 
 template<FieldExpr E, class Seed>
@@ -368,6 +478,41 @@ auto pullback(const ProductExpr<LHS, RHS>& expr, const Seed& seed)
    }
 }
 
+// The fallback multiplication node is used when a named bound multiplier's
+// shape is deferred until context selection. Do not change that field's public
+// shape metadata to admit it here.
+template<FieldExpr LHS, FieldExpr RHS, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const MultFieldExpr<LHS, RHS>& expr, const Seed& seed)
+{
+   auto multiply = [&]<class Factor>(const Factor& factor)
+   {
+      if constexpr (has_field_shape_v<Factor>)
+      {
+         static_assert(field_shape_v<Factor> == FieldShape::Scalar,
+            "Multiplication pullback requires a scalar test-free multiplier.");
+         return seed * factor;
+      }
+      else
+      {
+         return pullback_detail::ScalarMultiplierSeed<Seed, Factor>{seed, factor};
+      }
+   };
+   if constexpr (is_test_linear_v<LHS> && is_test_free_v<RHS>)
+   {
+      return pullback(expr.lhs, multiply(expr.rhs));
+   }
+   else if constexpr (is_test_free_v<LHS> && is_test_linear_v<RHS>)
+   {
+      return pullback(expr.rhs, multiply(expr.lhs));
+   }
+   else
+   {
+      static_assert(dependent_false_v<LHS, RHS, Seed>,
+         "Multiplication pullback requires exactly one test-linear operand and one test-free scalar operand.");
+   }
+}
+
 /**
  * @brief Pullback for DotExpr (vector dot product).
  *
@@ -460,7 +605,7 @@ constexpr auto merge_entries_impl(
    const RestEntries&... rest_entries)
 {
    using Key = typename FirstEntry::key_type;
-   auto new_map = map_insert_or_merge<Key>(
+   auto new_map = MapInsertOrMerge<Key>(
       std::move(acc_map),
       first_entry.value,
       [](const auto& old_val, const auto& new_val)
@@ -556,14 +701,9 @@ template<FieldExpr Head, FieldExpr... Tail, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback(const SumExpr<Head, Tail...>& expr, const Seed& seed)
 {
-   using Expr = SumExpr<Head, Tail...>;
-   using S = std::remove_cvref_t<Seed>;
-
-   // Validate seed shape (all SumExpr terms have the same FieldShape)
-   static_assert(is_seed_shape_compatible_v<Expr, S>,
-      "pullback(expr, seed) requires seed to have the same FieldShape as expr.");
-
-   // Pullback each term with the same seed, then merge all channel maps
+   // Each term checks its seed shape recursively. Querying the aggregate's
+   // shape here would prematurely reject named bound multipliers whose shape
+   // remains an obligation until the execution context selects their spaces.
    return std::apply(
       [&](const auto&... terms)
       {
@@ -842,6 +982,115 @@ auto pullback(const JumpExpr<E>& /*expr*/, const Seed& /*seed*/)
 }
 
 // =============================================================================
+// Physical-boundary trace lowering
+// =============================================================================
+
+namespace boundary_pullback_detail
+{
+// Rebuild only the numerical expression. The original form, declarations, and
+// integrand signature remain unchanged. No coefficient callback is evaluated.
+template<class E>
+struct lower
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const E& expr) { return expr; }
+};
+template<FieldExpr E>
+struct lower<JumpExpr<E>>
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const JumpExpr<E>& expr) { return lower<E>::apply(expr.expr); }
+};
+template<FieldExpr E>
+struct lower<AverageExpr<E>>
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const AverageExpr<E>& expr) { return lower<E>::apply(expr.expr); }
+};
+#define GENDIL_BOUNDARY_UNARY(Node) \
+template<FieldExpr E> struct lower<Node<E>> { \
+   GENDIL_HOST_DEVICE static auto apply(const Node<E>& expr) { \
+      auto child = lower<E>::apply(expr.expr); \
+      return Node<std::remove_cvref_t<decltype(child)>>{child}; \
+   } \
+};
+GENDIL_BOUNDARY_UNARY(NegExpr)
+GENDIL_BOUNDARY_UNARY(TransposeExpr)
+#undef GENDIL_BOUNDARY_UNARY
+#define GENDIL_BOUNDARY_BINARY(Node) \
+template<FieldExpr L, FieldExpr R> struct lower<Node<L, R>> { \
+   GENDIL_HOST_DEVICE static auto apply(const Node<L, R>& expr) { \
+      auto lhs = lower<L>::apply(expr.lhs); \
+      auto rhs = lower<R>::apply(expr.rhs); \
+      return Node<std::remove_cvref_t<decltype(lhs)>, std::remove_cvref_t<decltype(rhs)>>{lhs, rhs}; \
+   } \
+};
+GENDIL_BOUNDARY_BINARY(ProductExpr)
+GENDIL_BOUNDARY_BINARY(MultFieldExpr)
+GENDIL_BOUNDARY_BINARY(DotExpr)
+GENDIL_BOUNDARY_BINARY(InnerExpr)
+GENDIL_BOUNDARY_BINARY(OuterExpr)
+#undef GENDIL_BOUNDARY_BINARY
+
+template<FieldExpr Head, FieldExpr... Tail>
+struct lower<SumExpr<Head, Tail...>>
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const SumExpr<Head, Tail...>& expr)
+   {
+      return std::apply([] (const auto&... terms)
+      {
+         return SumExpr{lower<std::remove_cvref_t<decltype(terms)>>::apply(terms)...};
+      }, expr.terms);
+   }
+};
+#define GENDIL_BOUNDARY_REJECT_TRACE(Node) \
+template<FieldExpr E> struct lower<Node<E>> { \
+   GENDIL_HOST_DEVICE static auto apply(const Node<E>&) { \
+      static_assert(dependent_false_v<E>, \
+         "Explicit minus/plus traces are interior-only and are invalid on physical boundaries."); \
+   } \
+};
+GENDIL_BOUNDARY_REJECT_TRACE(MinusTraceExpr)
+GENDIL_BOUNDARY_REJECT_TRACE(PlusTraceExpr)
+#undef GENDIL_BOUNDARY_REJECT_TRACE
+
+template<FieldExpr Adv, FieldExpr E>
+struct lower<UpwindExpr<Adv, E>>
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const UpwindExpr<Adv, E>&)
+   {
+      static_assert(dependent_false_v<Adv, E>,
+         "upwind(beta, expr) requires two interior traces; "
+         "physical-boundary inflow data must be specified explicitly.");
+   }
+};
+
+template<FieldExpr Adv, class Interior, class Exterior>
+struct lower<BoundaryUpwindExpr<Adv, Interior, Exterior>>
+{
+   GENDIL_HOST_DEVICE
+   static auto apply(const BoundaryUpwindExpr<Adv, Interior, Exterior>& expr)
+   {
+      auto velocity = lower<Adv>::apply(expr.adv_expr);
+      auto interior = lower<Interior>::apply(expr.interior_expr);
+      auto exterior = lower<Exterior>::apply(expr.exterior_expr);
+      return BoundaryUpwindExpr<decltype(velocity), decltype(interior), decltype(exterior)>{
+         velocity, interior, exterior};
+   }
+};
+} // namespace boundary_pullback_detail
+
+/** Apply one-sided jump/average identities before the ordinary algebra pullback. */
+template<FieldExpr E, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_boundary(const E& expr, const Seed& seed)
+{
+   return pullback(boundary_pullback_detail::lower<E>::apply(expr), seed);
+}
+
+// =============================================================================
 // Canonical Global Interior Pullback
 // =============================================================================
 //
@@ -1075,7 +1324,7 @@ auto pullback_global_interior(
       "pullback_global_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<ValueMinusChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<ValueMinusChannel>(seed))};
 }
 
 template<StaticString Name, FieldShape Shape, class Seed>
@@ -1091,7 +1340,7 @@ auto pullback_global_interior(
       "pullback_global_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<ValuePlusChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<ValuePlusChannel>(seed))};
 }
 
 template<StaticString Name, FieldShape Shape, class Seed>
@@ -1107,7 +1356,7 @@ auto pullback_global_interior(
       "pullback_global_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<GradientMinusChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientMinusChannel>(seed))};
 }
 
 template<StaticString Name, FieldShape Shape, class Seed>
@@ -1123,7 +1372,7 @@ auto pullback_global_interior(
       "pullback_global_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
-   return PullbackResult{make_map(make_entry<GradientPlusChannel>(seed))};
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientPlusChannel>(seed))};
 }
 
 template<FieldExpr Expr, class Seed>
@@ -1404,21 +1653,23 @@ auto pullback_global_interior(
    using R = std::remove_cvref_t<RHS>;
    using S = std::remove_cvref_t<Seed>;
 
+   auto multiply = [&]<class Factor>(const Factor& factor)
+   {
+      if constexpr (has_field_shape_v<Factor>)
+      {
+         static_assert(field_shape_v<Factor> == FieldShape::Scalar,
+            "Canonical global interior multiplication pullback requires a scalar test-free multiplier.");
+         return seed * factor;
+      }
+      else return pullback_detail::ScalarMultiplierSeed<Seed, Factor>{seed, factor};
+   };
    if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
    {
-      static_assert(
-         field_shape_v<R> == FieldShape::Scalar,
-         "Canonical global interior multiplication pullback requires the "
-         "test-free multiplier to be Scalar.");
-      return pullback_global_interior(expr.lhs, seed * expr.rhs);
+      return pullback_global_interior(expr.lhs, multiply(expr.rhs));
    }
    else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
    {
-      static_assert(
-         field_shape_v<L> == FieldShape::Scalar,
-         "Canonical global interior multiplication pullback requires the "
-         "test-free multiplier to be Scalar.");
-      return pullback_global_interior(expr.rhs, seed * expr.lhs);
+      return pullback_global_interior(expr.rhs, multiply(expr.lhs));
    }
    else
    {

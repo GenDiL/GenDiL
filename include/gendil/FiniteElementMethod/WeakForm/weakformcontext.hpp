@@ -22,7 +22,7 @@ namespace gendil
 // MakeWeakFormContext normalizes those entries into separate maps for:
 //
 // - ordinary coefficient fields;
-// - finite-element fields with their backing DoF storage;
+// - named finite-element spaces, with optional persistent bound-field storage;
 // - cell/local-facet integration topology;
 // - global interior-face integration topology;
 // - global boundary-face integration topology.
@@ -209,8 +209,8 @@ using entry_key_t = typename entry_key<E>::type;
 // Factory summary:
 // - MakeField<Name>(x) stores ordinary non-FE data.
 // - MakeFiniteElementField<Name>(space, dofs) stores a named FE field.
-// - MakeTrialField/MakeTestField register empty FE-field entries used for the
-//   active trial/test space contract.
+// - MakeTrialField/MakeTestField register named spaces without buffer storage.
+//   Symbolic analysis, rather than registration, determines their access roles.
 // - MakeIntegrationDomain<Name>(mesh_or_partition) stores a public integration
 //   topology/geometry request that is
 //   normalized later by MakeWeakFormContext.
@@ -233,9 +233,22 @@ constexpr auto MakeField(T&& x)
    return Entry<FieldKey<Name>, V>{ static_cast<V>(v) };
 }
 
+// A space registration has no implicit input/output storage. The same named
+// space may be read and written through independent invocation endpoints.
+template<class SpaceView>
+struct FiniteElementSpaceView
+{
+   SpaceView space;
+};
+
 template<class SpaceView, class DofsView>
 struct FiniteElementFieldView
 {
+   using space_type = std::remove_cvref_t<SpaceView>;
+   using storage_type = DofsView;
+   // Internal local overlays deliberately borrow their original element rows.
+   // Public registrations and restriction-backed endpoints store shallow values.
+   static constexpr bool is_local = std::is_reference_v<DofsView>;
    // `space` describes how the DoF storage is interpreted. For mixed spaces,
    // restricted contexts select the compatible homogeneous or face-space batch
    // before operator-context construction.
@@ -249,26 +262,36 @@ constexpr auto MakeFiniteElementField(FiniteElementSpace&& fe_space, Field&& u)
    auto fes_v = to_view(std::forward<FiniteElementSpace>(fe_space));
    using FESV = uncvref_t<decltype(fes_v)>;
 
-   auto u_v = to_view(std::forward<Field>(u));
-   using UV = uncvref_t<decltype(u_v)>;
-
-   using View = FiniteElementFieldView<FESV, UV>;
-
-   return Entry<FiniteElementFieldKey<Name>, View>{
-      View{ static_cast<FESV>(fes_v), static_cast<UV>(u_v) }
-   };
+   if constexpr (std::is_same_v<uncvref_t<Field>, Empty>)
+   {
+      // Normalize a storage-free public registration at its entry point.
+      // Internal contexts represent spaces without placeholder DOF members.
+      return Entry<FiniteElementFieldKey<Name>, FiniteElementSpaceView<FESV>>{
+         FiniteElementSpaceView<FESV>{std::move(fes_v)}};
+   }
+   else
+   {
+      auto u_v = to_view(std::forward<Field>(u));
+      using UV = uncvref_t<decltype(u_v)>;
+      using View = FiniteElementFieldView<FESV, UV>;
+      return Entry<FiniteElementFieldKey<Name>, View>{
+         View{std::move(fes_v), std::move(u_v)}};
+   }
 }
 
 template<StaticString Name, class FiniteElementSpace>
 constexpr auto MakeTrialField(FiniteElementSpace&& fe_space)
 {
-  return MakeFiniteElementField<Name>(std::forward<FiniteElementSpace>(fe_space), Empty{});
+   auto space = to_view(std::forward<FiniteElementSpace>(fe_space));
+   using Space = uncvref_t<decltype(space)>;
+   return Entry<FiniteElementFieldKey<Name>, FiniteElementSpaceView<Space>>{
+      FiniteElementSpaceView<Space>{std::move(space)}};
 }
 
 template<StaticString Name, class FiniteElementSpace>
 constexpr auto MakeTestField(FiniteElementSpace&& fe_space)
 {
-  return MakeFiniteElementField<Name>(std::forward<FiniteElementSpace>(fe_space), Empty{});
+   return MakeTrialField<Name>(std::forward<FiniteElementSpace>(fe_space));
 }
 
 template<StaticString Name, class T>
@@ -339,141 +362,172 @@ struct WeakFormContext
    FieldsMap              fields;
 
    template<StaticString Name>
-   static consteval bool has_domain()
+   static consteval bool HasDomain()
    {
-      return DomainsMap::template contains<DomainKey<Name>>();
+      return DomainsMap::template Contains<DomainKey<Name>>();
    }
 
    template<StaticString Name>
-   static consteval bool has_interior_face_domain()
+   static consteval bool HasInteriorFaceDomain()
    {
-      return InteriorFaceDomainsMap::template contains<InteriorFaceDomainKey<Name>>();
+      return InteriorFaceDomainsMap::template Contains<InteriorFaceDomainKey<Name>>();
    }
 
-   static consteval bool has_any_interior_face_domain()
+   static consteval bool HasAnyInteriorFaceDomain()
    {
       return std::tuple_size_v<
          decltype(std::declval<InteriorFaceDomainsMap>().entries)> != 0;
    }
 
    template<StaticString Name>
-   static consteval bool has_boundary_face_domain()
+   static consteval bool HasBoundaryFaceDomain()
    {
-      return BoundaryFaceDomainsMap::template contains<BoundaryFaceDomainKey<Name>>();
+      return BoundaryFaceDomainsMap::template Contains<BoundaryFaceDomainKey<Name>>();
    }
 
-   static consteval bool has_any_boundary_face_domain()
+   static consteval bool HasAnyBoundaryFaceDomain()
    {
       return std::tuple_size_v<
          decltype(std::declval<BoundaryFaceDomainsMap>().entries)> != 0;
    }
 
    template<StaticString Name>
-   static consteval bool has_fe_field()
+   static consteval bool HasFiniteElementField()
    {
-      return FEFieldsMap::template contains<FiniteElementFieldKey<Name>>();
+      return FEFieldsMap::template Contains<FiniteElementFieldKey<Name>>();
    }
 
    template<StaticString Name>
-   static consteval bool has_field()
+   static consteval bool HasSpace()
    {
-      return FieldsMap::template contains<FieldKey<Name>>();
+      return HasFiniteElementField<Name>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) domain() &
+   static consteval bool HasBoundField()
    {
-      static_assert(has_domain<Name>(), "WeakFormContext: missing required domain.");
-      return domains.template get<DomainKey<Name>>();
+      if constexpr (HasFiniteElementField<Name>())
+      {
+         using Field = std::remove_cvref_t<decltype(
+            std::declval<const FEFieldsMap&>().template Get<FiniteElementFieldKey<Name>>())>;
+         return requires(const Field& field) { field.dofs; };
+      }
+      return false;
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) domain() const &
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetSpace() const
    {
-      static_assert(has_domain<Name>(), "WeakFormContext: missing required domain.");
-      return domains.template get<DomainKey<Name>>();
+      return (fe_fields.template Get<FiniteElementFieldKey<Name>>().space);
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) interior_face_domain() &
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetBoundField() const
+   {
+      static_assert(HasBoundField<Name>(),
+         "WeakFormContext: required bound field has no persistent storage.");
+      return (fe_fields.template Get<FiniteElementFieldKey<Name>>().dofs);
+   }
+
+   template<StaticString Name>
+   static consteval bool HasField()
+   {
+      return FieldsMap::template Contains<FieldKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) GetDomain() &
+   {
+      static_assert(HasDomain<Name>(), "WeakFormContext: missing required domain.");
+      return domains.template Get<DomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   constexpr decltype(auto) GetDomain() const &
+   {
+      static_assert(HasDomain<Name>(), "WeakFormContext: missing required domain.");
+      return domains.template Get<DomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetInteriorFaceDomain() &
    {
       static_assert(
-         has_interior_face_domain<Name>(),
+         HasInteriorFaceDomain<Name>(),
          "WeakFormContext: missing required interior face domain.");
-      return interior_face_domains.template get<InteriorFaceDomainKey<Name>>();
+      return interior_face_domains.template Get<InteriorFaceDomainKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) interior_face_domain() const &
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetInteriorFaceDomain() const &
    {
       static_assert(
-         has_interior_face_domain<Name>(),
+         HasInteriorFaceDomain<Name>(),
          "WeakFormContext: missing required interior face domain.");
-      return interior_face_domains.template get<InteriorFaceDomainKey<Name>>();
+      return interior_face_domains.template Get<InteriorFaceDomainKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) boundary_face_domain() &
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetBoundaryFaceDomain() &
    {
       static_assert(
-         has_boundary_face_domain<Name>(),
+         HasBoundaryFaceDomain<Name>(),
          "WeakFormContext: missing required boundary face domain.");
-      return boundary_face_domains.template get<BoundaryFaceDomainKey<Name>>();
+      return boundary_face_domains.template Get<BoundaryFaceDomainKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) boundary_face_domain() const &
+   GENDIL_HOST_DEVICE constexpr decltype(auto) GetBoundaryFaceDomain() const &
    {
       static_assert(
-         has_boundary_face_domain<Name>(),
+         HasBoundaryFaceDomain<Name>(),
          "WeakFormContext: missing required boundary face domain.");
-      return boundary_face_domains.template get<BoundaryFaceDomainKey<Name>>();
+      return boundary_face_domains.template Get<BoundaryFaceDomainKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) fe_field() &
+   constexpr decltype(auto) GetFiniteElementField() &
    {
-      static_assert(has_fe_field<Name>(), "WeakFormContext: missing required finite element field.");
-      return fe_fields.template get<FiniteElementFieldKey<Name>>();
+      static_assert(HasFiniteElementField<Name>(), "WeakFormContext: missing required finite element field.");
+      return fe_fields.template Get<FiniteElementFieldKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) fe_field() const &
+   constexpr decltype(auto) GetFiniteElementField() const &
    {
-      static_assert(has_fe_field<Name>(), "WeakFormContext: missing required finite element field.");
-      return fe_fields.template get<FiniteElementFieldKey<Name>>();
+      static_assert(HasFiniteElementField<Name>(), "WeakFormContext: missing required finite element field.");
+      return fe_fields.template Get<FiniteElementFieldKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) field() &
+   constexpr decltype(auto) GetField() &
    {
-      static_assert(has_field<Name>(), "WeakFormContext: missing required field.");
-      return fields.template get<FieldKey<Name>>();
+      static_assert(HasField<Name>(), "WeakFormContext: missing required field.");
+      return fields.template Get<FieldKey<Name>>();
    }
 
    template<StaticString Name>
-   constexpr decltype(auto) field() const &
+   constexpr decltype(auto) GetField() const &
    {
-      static_assert(has_field<Name>(), "WeakFormContext: missing required field.");
-      return fields.template get<FieldKey<Name>>();
+      static_assert(HasField<Name>(), "WeakFormContext: missing required field.");
+      return fields.template Get<FieldKey<Name>>();
    }
 };
 
 template<class T>
-struct is_empty_finite_element_field_value : std::false_type {};
+struct is_finite_element_space_view : std::false_type {};
 
 template<class SpaceView>
-struct is_empty_finite_element_field_value<
-   FiniteElementFieldView<SpaceView, Empty>> : std::true_type {};
+struct is_finite_element_space_view<FiniteElementSpaceView<SpaceView>>
+   : std::true_type {};
 
 template<class T>
-inline constexpr bool is_empty_finite_element_field_value_v =
-   is_empty_finite_element_field_value<uncvref_t<T>>::value;
+inline constexpr bool is_finite_element_space_view_v =
+   is_finite_element_space_view<uncvref_t<T>>::value;
 
 // Duplicate-key policy after normalization:
 // - ordinary duplicate keys are rejected;
-// - explicit identical trial/test registrations are allowed when both entries
-//   are empty FE fields with the same value type.
+// - identical trial/test space registrations are allowed with the same type;
 //
 // The type-identity check is intentional for this case because the static field
 // name participates in the key/type machinery.
@@ -498,13 +552,13 @@ struct context_entry_pair_is_compatible<LHS, RHS, true>
    static constexpr bool value =
       !std::is_same_v<LKey, RKey> ||
       (
-         // Duplicate empty FE-field entries with identical value type are
+         // Duplicate space entries with identical value type are
          // allowed to support explicit identical trial/test registration. The
          // static field name participates in the key/type, so type identity is
          // the intended check here.
          is_fe_field_key_v<LKey> &&
          std::is_same_v<typename L::value_type, typename R::value_type> &&
-         is_empty_finite_element_field_value_v<typename L::value_type>
+         is_finite_element_space_view_v<typename L::value_type>
       );
 };
 
@@ -674,19 +728,19 @@ constexpr auto insert_fe_field_or_validate(
    using E = uncvref_t<EntryT>;
    using Key = typename E::key_type;
 
-   if constexpr (StaticMap<ExistingEntries...>::template contains<Key>())
+   if constexpr (StaticMap<ExistingEntries...>::template Contains<Key>())
    {
       using ExistingEntry = find_entry_t<Key, ExistingEntries...>;
       static_assert(
          std::is_same_v<typename ExistingEntry::value_type, typename E::value_type> &&
-         is_empty_finite_element_field_value_v<typename E::value_type>,
+         is_finite_element_space_view_v<typename E::value_type>,
          "MakeWeakFormContext: duplicate finite element field keys are allowed "
-         "only for matching empty trial/test field registrations.");
+         "only for matching trial/test space registrations.");
       return map;
    }
    else
    {
-      return append(std::move(map), std::forward<EntryT>(entry));
+      return MapAppend(std::move(map), std::forward<EntryT>(entry));
    }
 }
 
@@ -717,7 +771,7 @@ constexpr auto tuple_to_fe_field_map_allowing_identical_duplicates(Tuple&& t)
       [] (auto&&... entries)
       {
          return make_fe_field_map_allowing_identical_duplicates(
-            make_map(),
+            MakeStaticMap(),
             std::forward<decltype(entries)>(entries)...);
       },
       std::forward<Tuple>(t));
@@ -785,12 +839,12 @@ constexpr auto MakeWeakFormContext(Entries&&... es)
       },
       normalized_entries);
 
-   auto fields_map = tuple_to_map(std::move(fields_t));
-   auto domains_map = tuple_to_map(std::move(domains_t));
+   auto fields_map = ToStaticMap(std::move(fields_t));
+   auto domains_map = ToStaticMap(std::move(domains_t));
    auto interior_face_domains_map =
-      tuple_to_map(std::move(interior_face_domains_t));
+      ToStaticMap(std::move(interior_face_domains_t));
    auto boundary_face_domains_map =
-      tuple_to_map(std::move(boundary_face_domains_t));
+      ToStaticMap(std::move(boundary_face_domains_t));
    auto fe_fields_map =
       tuple_to_fe_field_map_allowing_identical_duplicates(std::move(fe_fields_t));
 

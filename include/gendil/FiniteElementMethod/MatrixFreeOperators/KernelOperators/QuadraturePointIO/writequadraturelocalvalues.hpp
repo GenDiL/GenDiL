@@ -135,6 +135,8 @@ void WriteQuadratureLocalValues(
 {
    using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
    constexpr Integer vdim = sizeof...( Tensors );
+   static_assert(static_extent_v<VecType> == vdim,
+      "Quadrature value component count must match the output field component count.");
    ConstexprLoop< vdim >( [&]( auto i )
    {
       WriteQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ), RegisterDimensions{} );
@@ -156,6 +158,8 @@ void WriteQuadratureLocalValues(
 {
    using RegisterDimensions = typename KernelContext::template register_dimensions< Dim >;
    constexpr Integer vdim = sizeof...( Tensors );
+   static_assert(NumComp == vdim,
+      "Quadrature value component count must match the output field component count.");
    ConstexprLoop< vdim >( [&]( auto i )
    {
       WriteQuadratureLocalValues( quad_index, field_q(i), std::get< i >( field ), RegisterDimensions{} );

@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+#include <gendil/Utilities/KernelContext/kernelconfiguration.hpp>
 #include <gendil/gendil.hpp>
 
 #include <array>
@@ -36,10 +37,59 @@ bool Check( bool condition, const char * message )
    }
    return condition;
 }
+
+struct MinimalKernelConfiguration
+{
+   static constexpr bool is_host_configuration = true;
+   static constexpr bool is_device_configuration = false;
+
+   template < Integer >
+   using register_dimensions = std::index_sequence<>;
+
+   template < Integer >
+   using shared_dimensions = std::index_sequence<>;
+};
+
+bool TestKernelContextMetadata()
+{
+   using Context = KernelContext< MinimalKernelConfiguration, 0 >;
+   static_assert( Context::is_host_configuration );
+   static_assert( !Context::is_device_configuration );
+   static_assert( Context::per_work_item_shared_memory_size == 0 );
+   static_assert( Context::shared_memory_stride_per_work_item == 0 );
+   static_assert( Context::shared_memory_block_size == 1 );
+   static_assert(
+      MemoryArenaCapacity< decltype( Context::SharedAllocator ) >::value == 0 );
+
+   using ThreadFirst =
+      ThreadFirstKernelConfiguration< ThreadBlockLayout< 4 >, 1 >;
+   using Batched =
+      DeviceKernelConfiguration< ThreadBlockLayout< 4 >, 1, 2 >;
+   using BatchedContext = KernelContext< Batched, 3 >;
+   static_assert(
+      std::is_same_v< SerialKernelConfiguration, HostKernelConfiguration > );
+   static_assert( ThreadFirst::batch_size == 1 );
+   static_assert( Batched::batch_size == 2 );
+   static_assert( is_device_configuration_v< Batched > );
+   static_assert( is_batched_device_configuration_v< Batched > );
+   static_assert( is_threaded_v< Batched > );
+   static_assert( Batched::SharedMemoryBlockSize( 3 ) == 6 );
+   static_assert( BatchedContext::per_work_item_shared_memory_size == 3 );
+   static_assert( BatchedContext::shared_memory_stride_per_work_item == 3 );
+   static_assert( BatchedContext::shared_memory_block_size == 6 );
+
+   Real shared[Context::shared_memory_block_size]{};
+   Context context( shared );
+   return Check(
+      context.SharedAllocator.mark() == 0,
+      "A minimal context must begin with an empty shared-memory arena." );
+}
 } // namespace
 
 int main( int, char ** )
 {
+   if ( !TestKernelContextMetadata() ) { return 1; }
+
    using LogicalLayout = ThreadBlockLayout< 2, 3, 5 >;
    static_assert( LogicalLayout::thread_block_dim == 3 );
    static_assert( LogicalLayout::GetNumberOfThreads() == 30 );

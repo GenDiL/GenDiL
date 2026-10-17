@@ -297,6 +297,41 @@ bool TestPartialWritePreservesResidency()
       "Complete-owner view writes introduced an unnecessary transfer.") && success;
 }
 
+bool TestOwningVectorCopy()
+{
+   Vector source(2), destination(2);
+   auto* values = source.WriteHostData();
+   values[0] = 3;
+   values[1] = 5;
+   destination = source;
+   source.ReadWriteHostData()[0] = 7;
+   const auto* copied = destination.ReadHostData();
+   return Check(source.Size() == 2 && destination.Size() == 2 &&
+      copied != source.ReadHostData() && copied[0] == 3 && copied[1] == 5,
+      "Owning vector assignment did not copy independent entries.");
+}
+
+bool TestKernelSubviewAccess()
+{
+   Vector owner(4);
+   auto* values = WriteHostVector(owner);
+   for (size_t i = 0; i < 4; ++i) { values[i] = Real(i + 1); }
+   auto subrange = MakeVectorView(owner, 1, 2);
+   auto input = ReadKernelVector<false>(subrange);
+   auto output = WriteKernelVector<false>(subrange);
+   static_assert(std::is_trivially_copyable_v<decltype(input)>);
+   static_assert(std::is_trivially_copyable_v<decltype(output)>);
+   static_assert(std::is_same_v<decltype(input[0]), const Real&>);
+   static_assert(std::is_same_v<decltype(output[0]), Real&>);
+   static_assert(std::is_same_v<decltype(std::as_const(output)[0]), const Real&>);
+   bool success = Check(GetVectorSize(subrange) == 2 && input[0] == 2,
+      "Kernel subview read lost its extent or origin.");
+   output[0] = 9;
+   const auto* result = ReadHostVector(owner);
+   return Check(result[0] == 1 && result[1] == 9 && result[2] == 3 && result[3] == 4,
+      "Kernel subview write changed entries outside its target.") && success;
+}
+
 bool TestGenDiLVectorAccess()
 {
    Vector vector( 3 );
@@ -466,6 +501,8 @@ bool TestMFEMVectorAccess()
 int main()
 {
    bool success = TestGenDiLVectorAccess();
+   success = TestOwningVectorCopy() && success;
+   success = TestKernelSubviewAccess() && success;
    success = TestKernelVectorAccess() && success;
    success = TestVectorSubviewMetadata() && success;
    success = TestPartialWritePreservesResidency() && success;

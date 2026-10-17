@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
 #include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
 
 namespace gendil
@@ -66,6 +67,13 @@ GENDIL_HOST_DEVICE
 auto operator-(const Expr& expr)
 {
    return MakeNegExpr<Expr>(expr);
+}
+
+template<class Declarations, class LogicalOutputSides>
+GENDIL_HOST_DEVICE constexpr auto operator-(
+   const ZeroExpr<Declarations, LogicalOutputSides>&)
+{
+   return ZeroExpr<Declarations, LogicalOutputSides>{};
 }
 
 } // namespace gendil

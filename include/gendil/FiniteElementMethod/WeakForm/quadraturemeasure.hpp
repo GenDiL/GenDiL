@@ -7,8 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 
 namespace gendil
 {
@@ -32,7 +31,7 @@ namespace gendil
  * **Trait summary:**
  * - FieldShape: Scalar
  * - Test-linear: No (test-free)
- * - Requirements: No trial/test spaces
+ * - Field dependencies: None
  */
 struct QuadratureMeasureExpr : FieldBase
 {
@@ -81,20 +80,6 @@ struct test_linearity<QuadratureMeasureExpr>
    static constexpr auto test_name = StaticString{""};
 };
 
-/**
- * @brief Requirements trait: QuadratureMeasureExpr has no trial/test space requirements.
- *
- * It only accesses quad_pt_context, not field values or test functions.
- */
-template<>
-struct requirements<QuadratureMeasureExpr>
-{
-   static constexpr auto trial_name = StaticString("None");
-   static constexpr auto test_name  = StaticString("None");
-   static constexpr OperatorMask trial_mask = OperatorMask::None;
-   static constexpr OperatorMask test_mask  = OperatorMask::None;
-};
-
 // =============================================================================
 // FacetQuadratureMeasureExpr
 // =============================================================================
@@ -112,7 +97,7 @@ struct requirements<QuadratureMeasureExpr>
  * **Trait summary:**
  * - FieldShape: Scalar
  * - Test-linear: No (test-free)
- * - Requirements: No trial/test spaces
+ * - Field dependencies: None
  */
 struct FacetQuadratureMeasureExpr : FieldBase
 {
@@ -158,15 +143,6 @@ struct test_linearity<FacetQuadratureMeasureExpr>
 {
    static constexpr TestLinearity value = TestLinearity::TestFree;
    static constexpr auto test_name = StaticString{""};
-};
-
-template<>
-struct requirements<FacetQuadratureMeasureExpr>
-{
-   static constexpr auto trial_name = StaticString("None");
-   static constexpr auto test_name  = StaticString("None");
-   static constexpr OperatorMask trial_mask = OperatorMask::None;
-   static constexpr OperatorMask test_mask  = OperatorMask::None;
 };
 
 } // namespace gendil

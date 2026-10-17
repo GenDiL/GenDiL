@@ -382,17 +382,17 @@ bool TestNonconformingFaceInfoAndAliases()
       {
          [[maybe_unused]] auto mesh_qd =
             MakeGlobalFacetMeshQuadData< IntegrationRule >( batch );
-         auto restricted =
-            MakeRestrictedWeakFormContext<decltype(
-               integrate(
-                  InteriorFacets<"mesh">{},
-                  jump(TrialSpace<"u">{}) * jump(TestSpace<"u">{})))>(
-               wf_ctx,
+         using Form = decltype(
+            integrate(
                InteriorFacets<"mesh">{},
-               batch );
+               jump(TrialSpace<"u">{}) * jump(TestSpace<"u">{})));
+         using Requirements =
+            lower_signature_requirements_t<form_signature_t<Form>>;
+         auto restricted =
+            MakeRestrictedWeakFormContext<Requirements>(wf_ctx, batch);
          [[maybe_unused]] auto fe_qd =
             MakeGlobalFacetFiniteElementQuadData< IntegrationRule >(
-               restricted.template fe_field<"u">().space );
+               restricted.template GetFiniteElementField<"u">().space );
       } );
 
    std::cout << ( ok ? "PASS" : "FAIL" )

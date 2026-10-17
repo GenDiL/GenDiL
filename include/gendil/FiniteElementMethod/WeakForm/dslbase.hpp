@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/staticstring.hpp"
 
 namespace gendil
 {
@@ -45,6 +46,7 @@ template < FieldExpr Expr > struct PlusTraceExpr;
 template < FieldExpr Expr > struct AverageExpr;
 template < FieldExpr Expr > struct JumpExpr;
 template < FieldExpr AdvExpr, FieldExpr Expr > struct UpwindExpr;
+template < FieldExpr AdvExpr, typename InteriorExpr, typename ExteriorExpr > struct BoundaryUpwindExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct DotExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct InnerExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct OuterExpr;
@@ -53,12 +55,20 @@ template < FieldExpr LHS, FieldExpr RHS > struct ProductExpr;
 template < FieldExpr Expr > struct TransposeExpr;
 template < FieldExpr Head, FieldExpr... Tail > struct SumExpr;
 template < DomainExpr Domain, FieldExpr Expr > struct Integrand;
-template < typename Map > struct SumFormExpr;
+template < typename TermsTuple, typename Declarations = void > struct SumFormExpr;
+template<class Declarations, class LogicalOutputSides> struct ZeroExpr;
 template < typename Key, typename T > struct Entry;
 template < typename... Entries > struct StaticMap;
 template < StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs > struct Coefficient;
 struct ScaleExpr;
 struct Normal;
 template < StaticString Name > struct FiniteElementField;
+template < StaticString Name > struct FieldValue;
+template < StaticString Name > struct FieldGradient;
+
+namespace weak_form_detail
+{
+template<FieldShape Shape> struct BoundaryUpwindZero;
+}
 
 } // namespace gendil

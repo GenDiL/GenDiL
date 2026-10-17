@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainiteration.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/selectedexecutiondomain.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontextcommon.hpp"
 
 namespace gendil
@@ -80,10 +80,8 @@ inline constexpr size_t global_face_mesh_plus_local_face_index_v =
       global_face_mesh_plus_side_type_t<
          FaceMesh>::local_face_index_type::value);
 
-// Compatibility adapter for lower-level interpolation/apply kernels that still
-// consume the historical all-local-face qdata tuple shape. Global face context
-// construction fills only the selected local-face entry and leaves the other
-// entries Empty; this is not a general face-qdata abstraction.
+// Facet contractions index the local-face tuple. A global batch prepares only
+// its statically selected face family; other tuple entries carry no data.
 template<size_t SelectedIndex, size_t I, class QD>
 constexpr auto MakeSelectedFaceQDataTupleElement(const QD& qd)
 {
@@ -118,37 +116,13 @@ constexpr auto MakeSelectedFaceQDataTuple(const QD& qd)
       std::make_index_sequence<std::tuple_size_v<FaceIRs>>{});
 }
 
-template<class IntegrationRule, class MeshQDMap, class FEQDMap>
-struct CellOnlyOperatorContext
-{
-   using integration_rule_type = IntegrationRule;
-
-   IntegrationRule int_rule;
-   MeshQDMap mesh_qd;
-   FEQDMap fe_qd;
-
-   GENDIL_HOST_DEVICE
-   const IntegrationRule& integration_rule() const { return int_rule; }
-
-   template<StaticString Name>
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) mesh_quad_data() const
-   {
-      return mesh_qd.template get<DomainKey<Name>>();
-   }
-
-   template<StaticString Name>
-   GENDIL_HOST_DEVICE
-   constexpr decltype(auto) finite_element_quad_data() const
-   {
-      return fe_qd.template get<FiniteElementFieldKey<Name>>();
-   }
-};
-
-template<class IntegrationRule, class MeshFacetQDMap, class FEFacetQDMap>
+template<class IntegrationRule, class MeshFacetQDMap, class FEFacetQDMap, class FormSignature>
 struct FacetOperatorContext
 {
    using integration_rule_type = IntegrationRule;
+   using form_signature = FormSignature;
+   template<class Integrand> using signature_for =
+      typename operator_context_detail::signature_for<FormSignature, Integrand>::type;
    using face_integration_rules_type =
       decltype(GetFaceIntegrationRules(IntegrationRule{}));
 
@@ -158,26 +132,26 @@ struct FacetOperatorContext
    FEFacetQDMap fe_facet_qd;
 
    GENDIL_HOST_DEVICE
-   const IntegrationRule& integration_rule() const { return int_rule; }
+   const IntegrationRule& GetIntegrationRule() const { return int_rule; }
 
    GENDIL_HOST_DEVICE
-   const face_integration_rules_type& facet_integration_rules() const
+   const face_integration_rules_type& GetFacetIntegrationRules() const
    {
       return face_int_rules;
    }
 
    template<StaticString Name>
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) mesh_facet_quad_data() const
+   constexpr decltype(auto) GetMeshFacetQuadData() const
    {
-      return mesh_facet_qd.template get<DomainKey<Name>>();
+      return mesh_facet_qd.template Get<DomainKey<Name>>();
    }
 
    template<StaticString Name>
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) finite_element_facet_quad_data() const
+   constexpr decltype(auto) GetFiniteElementFacetQuadData() const
    {
-      return fe_facet_qd.template get<FiniteElementFieldKey<Name>>();
+      return fe_facet_qd.template Get<FiniteElementFieldKey<Name>>();
    }
 };
 
@@ -210,7 +184,7 @@ constexpr auto MakeSelectedFiniteElementFacetQuadDataForSide(
       static_cast<QD>(qd));
 }
 
-template<class IntegrationRule, class FaceDomain>
+template<class IntegrationRule, bool NeedPlus = true, class FaceDomain>
 constexpr auto MakeGlobalFacetMeshQuadData(const FaceDomain& face_domain)
 {
    using Domain = std::remove_cvref_t<FaceDomain>;
@@ -237,9 +211,12 @@ constexpr auto MakeGlobalFacetMeshQuadData(const FaceDomain& face_domain)
       auto minus_qd =
          MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, MinusI>(
             face_domain.GetMinusCellMesh());
-      auto plus_qd =
-         MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, PlusI>(
-            face_domain.GetPlusCellMesh());
+      auto plus_qd = [&]() {
+         if constexpr (NeedPlus)
+            return MakeSelectedMeshFacetQuadDataForSide<IntegrationRule, PlusI>(
+               face_domain.GetPlusCellMesh());
+         else return Empty{};
+      }();
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       using PlusQD = std::remove_cvref_t<decltype(plus_qd)>;
       return InteriorFacetQuadratureData<MinusQD, PlusQD>{
@@ -255,7 +232,7 @@ constexpr auto MakeGlobalFacetMeshQuadData(const FaceDomain& face_domain)
    }
 }
 
-template<class IntegrationRule, class FieldBinding>
+template<class IntegrationRule, bool NeedMinus = true, bool NeedPlus = true, class FieldBinding>
 constexpr auto MakeGlobalFacetFiniteElementQuadData(
    const FieldBinding& field_binding)
 {
@@ -269,10 +246,12 @@ constexpr auto MakeGlobalFacetFiniteElementQuadData(
          "MakeFacetOperatorContext requires a boundary face field binding "
          "whose concrete face mesh type statically fixes its local face family.");
       constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
-      auto minus_qd =
-         MakeSelectedFiniteElementFacetQuadDataForSide<
-            IntegrationRule,
-            MinusI>(field_binding.GetMinusFiniteElementSpace());
+      auto minus_qd = [&]() {
+         if constexpr (NeedMinus)
+            return MakeSelectedFiniteElementFacetQuadDataForSide<IntegrationRule, MinusI>(
+               field_binding.GetMinusFiniteElementSpace());
+         else return Empty{};
+      }();
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       return BoundaryFacetQData<MinusQD>{ static_cast<MinusQD>(minus_qd) };
    }
@@ -286,14 +265,18 @@ constexpr auto MakeGlobalFacetFiniteElementQuadData(
          "face family.");
       constexpr size_t MinusI = global_face_mesh_minus_local_face_index_v<Mesh>;
       constexpr size_t PlusI = global_face_mesh_plus_local_face_index_v<Mesh>;
-      auto minus_qd =
-         MakeSelectedFiniteElementFacetQuadDataForSide<
-            IntegrationRule,
-            MinusI>(field_binding.GetMinusFiniteElementSpace());
-      auto plus_qd =
-         MakeSelectedFiniteElementFacetQuadDataForSide<
-            IntegrationRule,
-            PlusI>(field_binding.GetPlusFiniteElementSpace());
+      auto minus_qd = [&]() {
+         if constexpr (NeedMinus)
+            return MakeSelectedFiniteElementFacetQuadDataForSide<IntegrationRule, MinusI>(
+               field_binding.GetMinusFiniteElementSpace());
+         else return Empty{};
+      }();
+      auto plus_qd = [&]() {
+         if constexpr (NeedPlus)
+            return MakeSelectedFiniteElementFacetQuadDataForSide<IntegrationRule, PlusI>(
+               field_binding.GetPlusFiniteElementSpace());
+         else return Empty{};
+      }();
       using MinusQD = std::remove_cvref_t<decltype(minus_qd)>;
       using PlusQD = std::remove_cvref_t<decltype(plus_qd)>;
       return InteriorFacetQuadratureData<MinusQD, PlusQD>{
@@ -310,70 +293,67 @@ constexpr auto MakeGlobalFacetFiniteElementQuadData(
    }
 }
 
-template<class IR, class DomainEntry, class FaceDomain>
-constexpr auto MakeGlobalFacetMeshQuadDataEntryTuple(
-   const DomainEntry& e,
-   const FaceDomain& face_domain)
+namespace operator_context_detail {
+template<class Signature, class FaceDomain>
+inline constexpr bool selected_facet_signature_v =
+   !Signature::is_zero && Signature::domain_type::name == FaceDomain::domain_name &&
+   (is_selected_boundary_face_execution_domain_v<FaceDomain>
+      ? is_boundary_facets_domain<typename Signature::domain_type>::value
+      : is_interior_facets_domain<typename Signature::domain_type>::value);
+
+template<StaticString Name, class... Fields>
+consteval bool HasFacetField(type_list<Fields...>)
+{ return ((Name == Fields::name) || ...); }
+
+template<StaticString Name, SemanticSide Side, class FaceDomain, class... Signatures>
+consteval bool RequiredFacetField(type_list<Signatures...>)
 {
-   using Key = typename DomainEntry::key_type;
-   (void)e;
-   auto qd = MakeGlobalFacetMeshQuadData<IR>(face_domain);
-   using QD = std::remove_cvref_t<decltype(qd)>;
-   return std::tuple{ Entry<Key, QD>{ static_cast<QD>(qd) } };
+   return ((selected_facet_signature_v<Signatures, FaceDomain> &&
+      HasFacetField<Name>(concat_many_t<
+         typename Signatures::template active_inputs_on<Side>,
+         typename Signatures::template bound_inputs_on<Side>,
+         typename Signatures::template test_outputs_on<Side>>{})) || ...);
 }
 
-template<class IR, class FEFieldEntry>
-constexpr auto MakeGlobalFacetFiniteElementQuadDataEntryTuple(
-   const FEFieldEntry& e)
+template<class FaceDomain, class... Signatures>
+consteval bool RequiresPlusGeometry(type_list<Signatures...>)
 {
-   using Key = typename FEFieldEntry::key_type;
-   const auto& fev = e.value;
-   auto qd =
-      MakeGlobalFacetFiniteElementQuadData<IR>(fev.space);
-   using QD = std::remove_cvref_t<decltype(qd)>;
-   return std::tuple{ Entry<Key, QD>{ static_cast<QD>(qd) } };
+   return ((selected_facet_signature_v<Signatures, FaceDomain> &&
+      Signatures::template geometry_on<SemanticSide::Plus> != GeometryRequirement::None) || ...);
 }
 
-template<class WFContext, class IntegrationRule>
-constexpr auto MakeCellOnlyOperatorContext(
-   const WFContext& wf_ctx,
-   const IntegrationRule& ir)
+template<class IR, class Signatures, class FaceDomain, class EntryType>
+constexpr auto PrepareGlobalFacetField(const EntryType& entry)
 {
-   using IR = std::remove_cvref_t<IntegrationRule>;
-
-   auto mesh_qd_t = std::apply(
-      [&](auto const&... dom_entries)
-      {
-         return std::tuple_cat(
-            MakeMeshQuadDataEntryTuple<IR>(dom_entries)...);
-      },
-      wf_ctx.domains.entries
-   );
-
-   auto fe_qd_t = std::apply(
-      [&](auto const&... fe_entries)
-      {
-         return std::tuple_cat(
-            MakeFiniteElementQuadDataEntryTuple<IR>(fe_entries)...);
-      },
-      wf_ctx.fe_fields.entries
-   );
-
-   auto mesh_qd_map = tuple_to_map(std::move(mesh_qd_t));
-   auto fe_qd_map = tuple_to_map(std::move(fe_qd_t));
-
-   return CellOnlyOperatorContext<
-      IR,
-      decltype(mesh_qd_map),
-      decltype(fe_qd_map)>{
-         ir,
-         std::move(mesh_qd_map),
-         std::move(fe_qd_map)
-      };
+   constexpr auto Name = EntryType::key_type::name;
+   constexpr bool Minus = RequiredFacetField<Name, SemanticSide::Unqualified, FaceDomain>(Signatures{}) ||
+                          RequiredFacetField<Name, SemanticSide::Minus, FaceDomain>(Signatures{});
+   constexpr bool Plus = RequiredFacetField<Name, SemanticSide::Plus, FaceDomain>(Signatures{});
+   if constexpr (Minus || Plus)
+   {
+      auto qd = MakeGlobalFacetFiniteElementQuadData<IR, Minus, Plus>(entry.value.space);
+      return std::tuple{Entry<typename EntryType::key_type, decltype(qd)>{std::move(qd)}};
+   }
+   else return std::tuple{};
 }
 
-template<class WFContext, class IntegrationRule, class FaceDomain>
-constexpr auto MakeFacetOperatorContext(
+template<class IR, class Signatures, class FaceDomain, class EntryType>
+constexpr auto PrepareGlobalFacetMesh(const EntryType& entry, const FaceDomain& face_domain)
+{
+   if constexpr (EntryType::key_type::name == FaceDomain::domain_name &&
+      []<class... Terms>(type_list<Terms...>) {
+         return (selected_facet_signature_v<Terms, FaceDomain> || ...);
+      }(Signatures{}))
+   {
+      constexpr bool Plus = RequiresPlusGeometry<FaceDomain>(Signatures{});
+      auto qd = MakeGlobalFacetMeshQuadData<IR, Plus>(face_domain);
+      return std::tuple{Entry<typename EntryType::key_type, decltype(qd)>{std::move(qd)}};
+   }
+   else return std::tuple{};
+}
+
+template<class FormSignature, class Signatures, class WFContext, class IntegrationRule, class FaceDomain>
+constexpr auto MakeFacetOperatorContextImpl(
    const WFContext& wf_ctx,
    const IntegrationRule& ir,
    const FaceDomain& face_domain)
@@ -387,7 +367,7 @@ constexpr auto MakeFacetOperatorContext(
    using Mesh = std::remove_cvref_t<decltype(face_domain.GetFaceMesh())>;
    static_assert(
       global_face_mesh_has_static_face_family_v<Mesh>,
-      "MakeFacetOperatorContext(wf_ctx, integration_rule, face_domain) "
+      "MakeFacetOperatorContext(form, context, integration_rule, face_domain) "
       "requires a global face execution domain whose concrete face mesh type "
       "statically fixes the minus/plus local face family.");
 
@@ -397,9 +377,7 @@ constexpr auto MakeFacetOperatorContext(
       [&](auto const&... dom_entries)
       {
          return std::tuple_cat(
-            MakeGlobalFacetMeshQuadDataEntryTuple<IR>(
-               dom_entries,
-               face_domain)...);
+            PrepareGlobalFacetMesh<IR, Signatures>(dom_entries, face_domain)...);
       },
       wf_ctx.domains.entries
    );
@@ -408,24 +386,46 @@ constexpr auto MakeFacetOperatorContext(
       [&](auto const&... fe_entries)
       {
          return std::tuple_cat(
-            MakeGlobalFacetFiniteElementQuadDataEntryTuple<IR>(
-               fe_entries)...);
+            PrepareGlobalFacetField<IR, Signatures, FaceDomain>(fe_entries)...);
       },
       wf_ctx.fe_fields.entries
    );
 
-   auto mesh_facet_qd_map = tuple_to_map(std::move(mesh_facet_qd_t));
-   auto fe_facet_qd_map = tuple_to_map(std::move(fe_facet_qd_t));
+   auto mesh_facet_qd_map = ToStaticMap(std::move(mesh_facet_qd_t));
+   auto fe_facet_qd_map = ToStaticMap(std::move(fe_facet_qd_t));
 
    return FacetOperatorContext<
       IR,
       decltype(mesh_facet_qd_map),
-      decltype(fe_facet_qd_map)>{
+      decltype(fe_facet_qd_map),
+      FormSignature>{
          ir,
          face_ir,
          std::move(mesh_facet_qd_map),
          std::move(fe_facet_qd_map)
       };
+}
+
+} // namespace operator_context_detail
+
+template<FormExpr Form, class WFContext, class IntegrationRule, class FaceDomain>
+constexpr auto MakeFacetOperatorContext(const Form&, const WFContext& context,
+                                        const IntegrationRule& rule, const FaceDomain& domain)
+{
+   using Signature = form_signature_t<Form>;
+   return operator_context_detail::MakeFacetOperatorContextImpl<
+      Signature, typename Signature::integrands>(context, rule, domain);
+}
+
+template<class FormSignature, class... Integrands, class Context, class Rule, class FaceDomain>
+auto MakeFacetOperatorContext(const std::tuple<Integrands...>&,
+                              const Context& context, const Rule& rule,
+                              const FaceDomain& domain)
+{
+   using Signatures = type_list<typename operator_context_detail::signature_lookup<
+      std::remove_cvref_t<Integrands>, typename FormSignature::integrands>::type...>;
+   return operator_context_detail::MakeFacetOperatorContextImpl<
+      FormSignature, Signatures>(context, rule, domain);
 }
 
 } // namespace gendil

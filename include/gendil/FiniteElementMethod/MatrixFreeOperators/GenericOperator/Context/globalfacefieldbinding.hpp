@@ -141,4 +141,44 @@ template<class T>
 inline constexpr bool supports_one_sided_face_qdata_v =
    !requires_two_sided_face_qdata_v<std::remove_cvref_t<T>>;
 
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetMinusFacetFieldVolumeSpace(const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+
+   if constexpr (is_face_field_binding_v<SpaceType>)
+   {
+      return space.GetMinusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
+
+template<class Space>
+GENDIL_HOST_DEVICE
+constexpr decltype(auto) GetPlusFacetFieldVolumeSpace(const Space& space)
+{
+   using SpaceType = std::remove_cvref_t<Space>;
+   static_assert(
+      !is_boundary_face_field_binding_v<SpaceType>,
+      "Plus-side finite element field interpolation is not defined for "
+      "boundary face field bindings.");
+
+   if constexpr (is_face_field_binding_v<SpaceType>)
+   {
+      static_assert(
+         is_interior_face_field_binding_v<SpaceType>,
+         "Plus-side finite element field interpolation requires an interior "
+         "face field binding or a homogeneous volume finite element space.");
+      return space.GetPlusFiniteElementSpace();
+   }
+   else
+   {
+      return (space);
+   }
+}
+
 } // namespace gendil

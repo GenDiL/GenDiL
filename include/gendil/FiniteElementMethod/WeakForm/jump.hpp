@@ -5,9 +5,10 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
 
 namespace gendil
 {
@@ -38,7 +39,15 @@ struct JumpExpr : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      if constexpr ( is_side_evaluable_v<Expr> )
+      static_assert(is_test_free_v<Expr>,
+         "jump(expr) numerical evaluation requires a test-free expression; lower test expressions through pullback.");
+      static_assert(!is_physical_boundary_v<QuadPtContext>,
+         "Boundary jump(expr) must be lowered through boundary pullback before numerical evaluation.");
+
+      // Pullback consumes test jumps and boundary identities. Only interior
+      // input/coefficient jumps survive into quadrature-point evaluation.
+      if constexpr (is_test_free_v<Expr> &&
+                    !is_physical_boundary_v<QuadPtContext>)
       {
          return minus(expr)(
             kernel_context,
@@ -55,10 +64,6 @@ struct JumpExpr : FieldBase
             quad_pt_context,
             fields
          );
-      }
-      else
-      {
-         return expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields.minus_fields );
       }
    }
 };

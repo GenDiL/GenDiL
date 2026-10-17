@@ -284,17 +284,17 @@ bool TestContextStorage()
       MakeIntegrationDomain<"mesh">(partition));
 
    using Ctx = decltype(ctx);
-   static_assert(Ctx::template has_domain<"mesh">());
-   static_assert(Ctx::template has_interior_face_domain<"mesh">());
-   static_assert(Ctx::template has_boundary_face_domain<"mesh">());
-   static_assert(Ctx::has_any_interior_face_domain());
-   static_assert(Ctx::has_any_boundary_face_domain());
-   static_assert(!Ctx::template has_interior_face_domain<"other">());
-   static_assert(!Ctx::template has_boundary_face_domain<"other">());
+   static_assert(Ctx::template HasDomain<"mesh">());
+   static_assert(Ctx::template HasInteriorFaceDomain<"mesh">());
+   static_assert(Ctx::template HasBoundaryFaceDomain<"mesh">());
+   static_assert(Ctx::HasAnyInteriorFaceDomain());
+   static_assert(Ctx::HasAnyBoundaryFaceDomain());
+   static_assert(!Ctx::template HasInteriorFaceDomain<"other">());
+   static_assert(!Ctx::template HasBoundaryFaceDomain<"other">());
 
-   (void)ctx.template domain<"mesh">();
-   (void)ctx.template interior_face_domain<"mesh">();
-   (void)ctx.template boundary_face_domain<"mesh">();
+   (void)ctx.template GetDomain<"mesh">();
+   (void)ctx.template GetInteriorFaceDomain<"mesh">();
+   (void)ctx.template GetBoundaryFaceDomain<"mesh">();
 
    std::cout << "PASS: weak-form context stores independent face domains\n";
    return true;
@@ -322,7 +322,6 @@ bool TestInteriorTwoCellSigns()
    using LocalKernelPolicy = SerialKernelConfiguration;
 #endif
    using FESpace = std::remove_cvref_t<decltype(fe_space)>;
-   using IntegrationRule = decltype(integration_rule);
    using SmallIntegrationRule =
       decltype(MakeIntegrationRule(IntegrationRuleNumPoints<1>{}));
 
@@ -337,99 +336,6 @@ bool TestInteriorTwoCellSigns()
          FESpace> ==
       FESpace::finite_element_type::GetNumDofs());
 
-   constexpr size_t integrand_scratch =
-      generic_operator_integrand_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule>;
-   constexpr size_t one_face_read_scratch =
-      generic_operator_face_read_scratch_requirement_v<
-         FullSharedThreadedFaceKernelPolicy,
-         FESpace>;
-   constexpr size_t one_face_write_scratch =
-      generic_operator_face_write_scratch_requirement_v<
-         FullSharedThreadedFaceKernelPolicy,
-         FESpace>;
-   constexpr size_t accurate_global_face_scratch =
-      Max(
-         integrand_scratch,
-         one_face_read_scratch,
-         one_face_write_scratch);
-
-   using ScalarJumpForm = decltype(integrate(
-      InteriorFacets<"solid">{},
-      jump(TrialSpace<"u">{}) * jump(TestSpace<"u">{})));
-   static_assert(
-      two_space_global_interior_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace,
-         FESpace,
-         FESpace,
-         FESpace,
-         ScalarJumpForm> == accurate_global_face_scratch);
-   static_assert(
-      global_generic_boundary_facet_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace> == accurate_global_face_scratch);
-
-   constexpr size_t small_integrand_scratch =
-      generic_operator_integrand_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         SmallIntegrationRule>;
-   constexpr size_t one_read_small_rule_formula =
-      Max(
-         small_integrand_scratch,
-         one_face_read_scratch,
-         one_face_write_scratch);
-   constexpr size_t two_read_small_rule_formula =
-      Max(
-         small_integrand_scratch,
-         2 * one_face_read_scratch,
-         one_face_write_scratch);
-   static_assert(small_integrand_scratch < one_face_read_scratch);
-   static_assert(one_read_small_rule_formula != two_read_small_rule_formula);
-   static_assert(
-      two_space_global_interior_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         SmallIntegrationRule,
-         FESpace,
-         FESpace,
-         FESpace,
-         FESpace,
-         ScalarJumpForm> == one_read_small_rule_formula);
-   static_assert(
-      two_space_global_interior_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         SmallIntegrationRule,
-         FESpace,
-         FESpace,
-         FESpace,
-         FESpace,
-         ScalarJumpForm> != two_read_small_rule_formula);
-   static_assert(
-      global_generic_boundary_facet_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         SmallIntegrationRule,
-         FESpace> == one_read_small_rule_formula);
-   static_assert(
-      local_generic_cell_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace> ==
-      local_generic_interior_facet_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace>);
-   static_assert(
-      local_generic_cell_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace> ==
-      local_generic_boundary_facet_required_shared_memory_v<
-         FullSharedThreadedFaceKernelPolicy,
-         IntegrationRule,
-         FESpace>);
    using BatchedKernelPolicy =
       DeviceKernelConfiguration<ThreadBlockLayout<num_quad_1d>, 1, 2>;
    static_assert(
@@ -470,6 +376,30 @@ bool TestInteriorTwoCellSigns()
    auto global_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(singleton_global_fes),
       MakeIntegrationDomain<"mesh">(partition));
+
+   // Size the actual named endpoints and prepared contractions. Sequential
+   // minus/plus gathers reuse one staging region, not two simultaneous rows.
+   using Requirements = lower_signature_requirements_t<form_signature_t<decltype(sign_sensitive_form)>>;
+   Vector scratch_output(u_h.Size());
+   scratch_output = 0;
+   ForEachInteriorFaceExecutionDomain(global_ctx, InteriorFacets<"mesh">{}, [&](const auto& batch) {
+      auto selected = MakeRestrictedWeakFormContext<Requirements>(global_ctx, batch);
+      auto execution_context = BindExecutionContext<Requirements, LocalKernelPolicy>(
+         selected, u_h, scratch_output);
+      auto check_rule = [&](const auto& rule) {
+         auto operator_context = MakeFacetOperatorContext(sign_sensitive_form, selected, rule, batch);
+         using Resources = GenericOperatorIntegrandRequiredSharedMemory<FullSharedThreadedFaceKernelPolicy,
+            decltype(sign_sensitive_form), decltype(execution_context), decltype(operator_context)>;
+         static_assert(Resources::read_staging_slots == FESpace::finite_element_type::GetNumDofs());
+         static_assert(Resources::write_staging_slots == FESpace::finite_element_type::GetNumDofs());
+         static_assert(Resources::value >= Resources::read_staging_slots);
+         static_assert(Resources::value >= Resources::write_staging_slots);
+         using Kernel = KernelContext<FullSharedThreadedFaceKernelPolicy, Resources::value>;
+         static_assert(Kernel::shared_memory_stride_per_work_item >= Resources::value);
+      };
+      check_rule(integration_rule);
+      check_rule(SmallIntegrationRule{});
+   });
 
    auto local_op =
       MakeGenericOperator<LocalKernelPolicy>(
@@ -855,12 +785,12 @@ bool TestDispatchIndependence()
       counted_global_launches;
    success =
       CheckLaunchCount(
-         "partition per-integrand execution-part launches",
+         "partition execution-batch launches",
          expected_global_launches) &&
       success;
    success =
       CheckClose(
-         "partition per-integrand traversal result",
+         "partition batch traversal result",
          y_counted_global,
          y_both) &&
       success;

@@ -115,6 +115,7 @@ gendil_add_non_nvcc_test(test-unstructured-global-face-connectivity test-unstruc
 gendil_add_non_nvcc_test(test-nonconforming-global-facet-geometry test-nonconforming-global-facet-geometry.cpp)
 gendil_add_non_nvcc_test(test-h-adaptive-face-geometry-map test-h-adaptive-face-geometry-map.cpp)
 gendil_add_non_nvcc_test(test-generic-hp-adaptive-upwind test-generic-hp-adaptive-upwind.cpp)
+gendil_add_non_nvcc_test(test-print-hp-adaptive-sipdg-operator-type test-print-hp-adaptive-sipdg-operator-type.cpp)
 gendil_add_non_nvcc_test(test-mfem-point-matrix-decoder test-mfem-point-matrix-decoder.cpp)
 gendil_add_non_nvcc_test(test-mixed-integration-domain test-mixed-integration-domain.cpp)
 gendil_add_non_nvcc_test(test-partition-mixed-fes test-partition-mixed-fes.cpp)

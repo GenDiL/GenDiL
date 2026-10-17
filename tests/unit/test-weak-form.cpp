@@ -40,10 +40,98 @@ struct TraitFaceMesh
    TraitFaceInfo GetGlobalFaceInfo(GlobalIndex) const { return {}; }
 };
 
+struct IndexedIdentityMesh
+{
+   using cell_type = SegmentCell;
+   struct Connectivity { GlobalIndex size; };
+   Real h;
+   Real mesh_origin;
+   Connectivity connectivity;
+
+   GlobalIndex GetNumberOfCells() const { return connectivity.size; }
+   cell_type GetCell(GlobalIndex index) const
+   {
+      return cell_type(Point<1>{mesh_origin + h * index}, h);
+   }
+};
+
+struct ProductIdentityMesh
+{
+   using cell_type = SegmentCell;
+   std::tuple<IndexedIdentityMesh, IndexedIdentityMesh> sub_meshes;
+   const auto& GetSubMeshes() const { return sub_meshes; }
+   GlobalIndex GetNumberOfCells() const
+   {
+      return std::get<0>(sub_meshes).GetNumberOfCells() *
+             std::get<1>(sub_meshes).GetNumberOfCells();
+   }
+   cell_type GetCell(GlobalIndex index) const
+   {
+      return std::get<0>(sub_meshes).GetCell(index);
+   }
+};
+
+bool TestIndexedIntegrationDomainIdentity()
+{
+   static_assert(MeshIdentityTraits<IndexedIdentityMesh>::available);
+   static_assert(!MeshIdentityTraits<CountOnlyMesh>::available);
+   static_assert(MeshIdentityTraits<ProductIdentityMesh>::available);
+   using IndexedCompatibility =
+      IsCompatibleMeshDomain<IndexedIdentityMesh, IndexedIdentityMesh>;
+   using ProductCompatibility =
+      IsCompatibleMeshDomain<ProductIdentityMesh, ProductIdentityMesh>;
+   static_assert(IndexedCompatibility::value);
+   static_assert(IndexedCompatibility::has_indexed_identity);
+   static_assert(!IsCompatibleMeshDomain<
+      IndexedIdentityMesh, CountOnlyMesh>::value);
+
+   const IndexedIdentityMesh mesh{0.25, 1.5, {4}};
+   const IndexedIdentityMesh same_mesh{0.25, 1.5, {4}};
+   const IndexedIdentityMesh different_geometry{0.5, 1.5, {4}};
+   const ProductIdentityMesh product{{mesh, {0.5, -0.5, {3}}}};
+   const ProductIdentityMesh same_product{{same_mesh, {0.5, -0.5, {3}}}};
+   const ProductIdentityMesh different_product{{same_mesh, {0.5, 0.0, {3}}}};
+   const auto partition = MakePartition(MakeCellPart(mesh));
+   const auto same_partition = MakePartition(MakeCellPart(same_mesh));
+   const auto different_partition =
+      MakePartition(MakeCellPart(different_geometry));
+   const auto count_only_partition =
+      MakePartition(MakeCellPart(CountOnlyMesh{4, 0.25}));
+   using Partition = std::remove_cvref_t<decltype(partition)>;
+   using CountOnlyPartition = std::remove_cvref_t<decltype(count_only_partition)>;
+   using PartitionCompatibility =
+      IsCompatiblePartitionTopology<Partition, Partition>;
+   static_assert(PartitionCompatibility::value);
+   static_assert(PartitionCompatibility::has_indexed_identity);
+   static_assert(!IsCompatiblePartitionTopology<
+      Partition, CountOnlyPartition>::value);
+
+   const bool checks[]{
+      IndexedCompatibility::Check(mesh, same_mesh),
+      !IndexedCompatibility::Check(mesh, different_geometry),
+      ProductCompatibility::Check(product, same_product),
+      !ProductCompatibility::Check(product, different_product),
+      PartitionCompatibility::Check(partition, same_partition),
+      !PartitionCompatibility::Check(partition, different_partition)};
+   for (const bool passed : checks)
+   {
+      if (!passed)
+      {
+         std::cerr << "Indexed integration-domain identity mismatch\n";
+         return false;
+      }
+   }
+   return true;
+}
+
 } // namespace
 
 int main()
 {
+   if (!TestIndexedIntegrationDomainIdentity())
+   {
+      return 1;
+   }
    using MeshCellSelection =
       SelectedCellExecutionDomain<"mesh", 0, CountOnlyMesh, false>;
    using PartitionCellSelection =
@@ -108,8 +196,9 @@ int main()
    Cells<"mesh1"> domain;
    auto vol_form = integrate(domain, gradient);
    std::cout << vol_form << std::endl;
-   auto vol_ops = GetTrialOperators( vol_form );
-   std::cout << vol_ops << std::endl;
+   using VolumeSignature = integrand_signature_t<decltype(vol_form)>;
+   static_assert(is_empty_type_list_v<typename VolumeSignature::active_inputs>);
+   static_assert(contains_named_field_requirement_v<typename VolumeSignature::bound_inputs, "displacement">);
    InteriorFacets<"mesh1"> facet_domain;
    auto jump_term = jump(u) * average(dot(grad(v), Normal{}));
    auto surf_form = integrate(facet_domain, jump_term);
@@ -257,8 +346,8 @@ int main()
       MakeIntegrationDomain<"mesh1">(mesh)
    );
 
-   auto& u_f = weak_form_context.fe_field<"displacement">();
-   auto& domain_f = weak_form_context.domain<"mesh1">();
+   auto& u_f = weak_form_context.GetFiniteElementField<"displacement">();
+   auto& domain_f = weak_form_context.GetDomain<"mesh1">();
    std::cout << "u_f size: " << u_f.dofs.Size()
              << ", domain size: "
              << GetCellIntegrationDomainMesh(domain_f).GetNumberOfCells()

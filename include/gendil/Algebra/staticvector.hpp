@@ -5,6 +5,8 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
+#include "gendil/Utilities/Loop/constexprloop.hpp"
 #include <array>
 #include <span>
 #include <type_traits>

@@ -52,6 +52,7 @@ struct OuterExpr : FieldBase
    LHS lhs;
    RHS rhs;
 
+   GENDIL_HOST_DEVICE
    OuterExpr(const LHS& lhs_, const RHS& rhs_)
       : lhs(lhs_), rhs(rhs_)
    {}

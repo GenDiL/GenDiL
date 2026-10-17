@@ -49,7 +49,7 @@ struct are_unique<T, Rest...>
 {};
 
 template<class Key, class T>
-constexpr auto make_entry(T&& value)
+constexpr auto MakeEntry(T&& value)
 {
    return Entry<Key, std::decay_t<T>>{ std::forward<T>(value) };
 }
@@ -75,57 +75,57 @@ struct StaticMap {
    std::tuple<Entries...> entries;
 
    template<class Key>
-   static consteval bool contains() {
+   static consteval bool Contains() {
       return (std::is_same_v<Key, typename Entries::key_type> || ...);
    }
 
    template<class Key>
-   constexpr decltype(auto) get() & {
+   constexpr decltype(auto) Get() & {
       using E = find_entry_t<Key, Entries...>;
       return (std::get<E>(entries).value);
    }
 
    template<class Key>
-   constexpr decltype(auto) get() const & {
+   constexpr decltype(auto) Get() const & {
       using E = find_entry_t<Key, Entries...>;
       return (std::get<E>(entries).value);
    }
 };
 
 template<class... Es>
-constexpr auto make_map(Es&&... es) {
+constexpr auto MakeStaticMap(Es&&... es) {
    using Map = StaticMap<std::decay_t<Es>...>;
    return Map{ std::tuple<std::decay_t<Es>...>{ std::forward<Es>(es)... } };
 }
 
 // template<class Key, class... Entries>
-// consteval bool contains( const StaticMap<Entries...> & map )
+// consteval bool Contains( const StaticMap<Entries...> & map )
 // {
-//    return StaticMap<Entries...>::template contains<Key>();
+//    return StaticMap<Entries...>::template Contains<Key>();
 // }
 
 template<class Tuple>
-constexpr auto tuple_to_map(Tuple&& t) {
+constexpr auto ToStaticMap(Tuple&& t) {
    return std::apply(
       [](auto&&... es) {
-      return make_map(std::forward<decltype(es)>(es)...);
+      return MakeStaticMap(std::forward<decltype(es)>(es)...);
       },
       std::forward<Tuple>(t)
    );
 }
 
 template<class... Entries, class NewEntry>
-constexpr auto append(StaticMap<Entries...> map, NewEntry&& new_entry)
+constexpr auto MapAppend(StaticMap<Entries...> map, NewEntry&& new_entry)
 {
    using E = std::decay_t<NewEntry>;
    static_assert(
-      !StaticMap<Entries...>::template contains<typename E::key_type>(),
+      !StaticMap<Entries...>::template Contains<typename E::key_type>(),
       "StaticMap: duplicate key in MapAppend.");
 
    return std::apply(
       [&](auto&&... es)
       {
-         return make_map(
+         return MakeStaticMap(
             std::forward<decltype(es)>(es)...,
             std::forward<NewEntry>(new_entry));
       },
@@ -134,7 +134,7 @@ constexpr auto append(StaticMap<Entries...> map, NewEntry&& new_entry)
 }
 
 template<class Key, class EntryT, class MergeValueFn>
-constexpr auto replace_entry(EntryT&& entry, MergeValueFn&& merge_value_fn)
+constexpr auto ReplaceEntry(EntryT&& entry, MergeValueFn&& merge_value_fn)
 {
    using E = std::remove_cvref_t<EntryT>;
 
@@ -150,17 +150,17 @@ constexpr auto replace_entry(EntryT&& entry, MergeValueFn&& merge_value_fn)
 }
 
 template<class Key, class... Entries, class MergeValueFn>
-constexpr auto replace(StaticMap<Entries...> map, MergeValueFn&& merge_value_fn)
+constexpr auto MapReplace(StaticMap<Entries...> map, MergeValueFn&& merge_value_fn)
 {
    static_assert(
-      StaticMap<Entries...>::template contains<Key>(),
+      StaticMap<Entries...>::template Contains<Key>(),
       "StaticMap: key not present in MapReplace.");
 
    return std::apply(
       [&](auto&&... es)
       {
-         return make_map(
-            replace_entry<Key>(
+         return MakeStaticMap(
+            ReplaceEntry<Key>(
                std::forward<decltype(es)>(es),
                merge_value_fn)...);
       },
@@ -169,7 +169,7 @@ constexpr auto replace(StaticMap<Entries...> map, MergeValueFn&& merge_value_fn)
 }
 
 template<class Key, class... Entries, class Value, class MergeFn>
-constexpr auto map_insert_or_merge(
+constexpr auto MapInsertOrMerge(
    StaticMap<Entries...> map,
    Value&& value,
    MergeFn&& merge_fn)
@@ -177,9 +177,9 @@ constexpr auto map_insert_or_merge(
    using Map = StaticMap<Entries...>;
    auto value_copy = std::forward<Value>(value);
 
-   if constexpr (Map::template contains<Key>())
+   if constexpr (Map::template Contains<Key>())
    {
-      return replace<Key>(
+      return MapReplace<Key>(
          std::move(map),
          [&](auto&& old_value)
          {
@@ -190,14 +190,14 @@ constexpr auto map_insert_or_merge(
    }
    else
    {
-      return append(
+      return MapAppend(
          std::move(map),
-         make_entry<Key>(std::move(value_copy)));
+         MakeEntry<Key>(std::move(value_copy)));
    }
 }
 
 template<class Acc, class Fn, class... Entries>
-constexpr auto fold(Acc acc, const StaticMap<Entries...>& map, Fn&& fn)
+constexpr auto MapFold(Acc acc, const StaticMap<Entries...>& map, Fn&& fn)
 {
    return std::apply(
       [&](const auto&... es)

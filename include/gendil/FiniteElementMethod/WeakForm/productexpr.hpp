@@ -87,7 +87,16 @@ struct ProductExpr : FieldBase
       // ScalarTimes, MatVec, and MatMat all use operator* on evaluated values
       auto lhs_q = lhs(std::forward<Args>(args)...);
       auto rhs_q = rhs(std::forward<Args>(args)...);
-      return lhs_q * rhs_q;
+      if constexpr (product_kind == ProductKind::ScalarTimes && !ScalarExpr<LHS>)
+      {
+         // Fixed-size vector storage exposes scalar-times-vector. Normalize
+         // the commutative scalar product without changing evaluation order.
+         return rhs_q * lhs_q;
+      }
+      else
+      {
+         return lhs_q * rhs_q;
+      }
    }
 };
 

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/add.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/mult.hpp"
@@ -50,7 +51,7 @@ struct GradientExpr< TrialSpace<Name, Shape> > : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      auto grad_q = ReadQuadratureLocalGradients(kernel_context, quad_pt_context.quad_index, fields.template get<NameTag<Name>>().gradients);
+      auto grad_q = ReadQuadratureLocalGradients(kernel_context, quad_pt_context.quad_index, fields.template Get<NameTag<Name>>().gradients);
       ApplyMapping(quad_pt_context.inv_J_mesh, grad_q);
       return grad_q;
    }
@@ -75,16 +76,15 @@ struct GradientExpr< TestSpace<Name, Shape> > : FieldBase
       typename Fields >
    GENDIL_HOST_DEVICE
    auto operator()(
-      const KernelContext & kernel_context,
-      const WeakFormContext & weak_form_context,
-      const OperatorContext & operator_context,
-      const ElementContext & element_context,
-      const QuadPtContext & quad_pt_context,
-      const Fields & fields ) const
+      const KernelContext &,
+      const WeakFormContext &,
+      const OperatorContext &,
+      const ElementContext &,
+      const QuadPtContext &,
+      const Fields & ) const
    {
-      static_assert( dependent_false_v<expr_type>,
-         "Gradient of test space functions is not supported. Test function gradients are not stored at quadrature points." );
-      return std::array{quad_pt_context.inv_J_mesh};
+      static_assert(dependent_false_v<KernelContext>,
+         "Test-space gradients must be lowered through pullback before numerical evaluation.");
    }
 };
 

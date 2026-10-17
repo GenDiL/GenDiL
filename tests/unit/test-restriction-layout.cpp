@@ -673,6 +673,56 @@ bool TestVectorTensorProductFactory()
    return success;
 }
 
+// Scalar, indirect, vector and product restrictions share coordinate lookup.
+bool TestCoordinateLookupComposition()
+{
+   using namespace gendil;
+   using DofShape = std::index_sequence<2>;
+   using L2Restriction = ContiguousL2Restriction<DofShape>;
+
+   const L2Restriction scalar_l2{0, 2, 2};
+
+   const int map[2]{1, 0};
+   HostDevicePointer<const int> map_pointer;
+   map_pointer.host_pointer = map;
+   const IndirectH1Restriction<DofShape> scalar_h1{
+      map_pointer,
+      0,
+      2,
+      2,
+      2};
+
+   using Vector = VectorL2Restriction<L2Restriction, L2Restriction>;
+   const Vector vector_l2{
+      std::tuple{
+         L2Restriction{0, 2, 4},
+         L2Restriction{2, 2, 4}},
+      4,
+      4,
+      4};
+
+   const TensorProductRestriction<L2Restriction> tensor_product{
+      std::tuple{scalar_l2},
+      std::array<GlobalIndex, 1>{1},
+      std::array<GlobalIndex, 1>{1},
+      2,
+      2,
+      2};
+
+   static_assert(TensorElementDoFRestriction<L2Restriction>);
+   static_assert(TensorElementDoFRestriction<decltype(scalar_h1)>);
+   static_assert(VectorElementDoFRestriction<Vector>);
+   static_assert(TensorElementDoFRestriction<decltype(tensor_product)>);
+
+   const std::array<GlobalIndex, 1> local_dof{1};
+   const LocalComponentDoFIndex<1, 1> component_dof{local_dof};
+
+   return
+      GetGlobalDofIndex(scalar_l2, 0, local_dof) == 1 &&
+      GetGlobalDofIndex(scalar_h1, 0, local_dof) == 0 &&
+      GetGlobalDofIndex(vector_l2, 0, component_dof) == 3 &&
+      GetGlobalDofIndex(tensor_product, 0, local_dof) == 1;
+}
 bool TestThirdPartyLayout()
 {
    const ThirdPartyRestriction restriction{ 3 };
@@ -702,5 +752,7 @@ int main()
    success = TestThirdPartyTensorProductFactor() && success;
    success = TestVectorTensorProductFactory() && success;
    success = TestThirdPartyLayout() && success;
+   success = Check(TestCoordinateLookupComposition(),
+      "Basic scalar/vector/product coordinate lookup changed.") && success;
    return success ? 0 : 1;
 }

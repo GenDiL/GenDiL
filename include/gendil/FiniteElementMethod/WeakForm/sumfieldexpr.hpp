@@ -5,11 +5,11 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/neg.hpp"
 
-// This file assumes make_map / make_entry / map_insert_or_merge are visible
+// This file assumes MakeStaticMap / MakeEntry / MapInsertOrMerge are visible
 // from the surrounding includes as in your current setup.
 
 namespace gendil

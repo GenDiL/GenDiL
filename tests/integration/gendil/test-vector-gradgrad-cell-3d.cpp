@@ -145,7 +145,9 @@ int TestVectorGradGrad()
          integration_rule);
 
    // Scalar weak form: inner(grad(us), grad(vs)) (same as dot for scalar)
-   auto scalar_weak_form = integrate(domain, inner(grad(u), grad(v)));
+   TrialSpace<"u"> u_scalar;
+   TestSpace<"u"> v_scalar;
+   auto scalar_weak_form = integrate(domain, inner(grad(u_scalar), grad(v_scalar)));
 
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
@@ -353,7 +355,9 @@ int TestVectorGradGrad_vdim2()
          integration_rule);
 
    // Create scalar operator
-   auto scalar_weak_form = integrate(domain, inner(grad(u), grad(v)));
+   TrialSpace<"u"> u_scalar;
+   TestSpace<"u"> v_scalar;
+   auto scalar_weak_form = integrate(domain, inner(grad(u_scalar), grad(v_scalar)));
    auto scalar_weak_form_context = MakeWeakFormContext(
       MakeTrialField<"u">(scalar_fe_space),
       MakeIntegrationDomain<"mesh1">(mesh));

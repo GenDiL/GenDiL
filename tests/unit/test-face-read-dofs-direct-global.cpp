@@ -13,6 +13,32 @@
 
 using namespace gendil;
 
+namespace face_policy_contracts {
+
+struct DefaultConfiguration
+{
+};
+
+struct SharedConfiguration
+{
+   using face_read_dofs_policy = gendil::FullSharedFaceReadDofsPolicy;
+   using face_write_dofs_policy = gendil::FullSharedFaceWriteDofsPolicy;
+};
+
+static_assert( std::is_same_v<
+   gendil::face_read_dofs_policy_t< DefaultConfiguration >,
+   gendil::DirectGlobalFaceReadDofsPolicy > );
+static_assert( std::is_same_v<
+   gendil::face_write_dofs_policy_t< DefaultConfiguration >,
+   gendil::DirectGlobalFaceWriteDofsPolicy > );
+static_assert( std::is_same_v<
+   gendil::face_read_dofs_policy_t< const SharedConfiguration & >,
+   gendil::FullSharedFaceReadDofsPolicy > );
+static_assert( std::is_same_v<
+   gendil::face_write_dofs_policy_t< const SharedConfiguration & >,
+   gendil::FullSharedFaceWriteDofsPolicy > );
+
+} // namespace
 namespace
 {
 

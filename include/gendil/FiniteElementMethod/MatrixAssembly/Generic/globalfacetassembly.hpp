@@ -5,13 +5,15 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/localinsertion.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/COO/rawcoolayout.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/localfacetassembly.hpp"
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/requiredsharedmemory.hpp"
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/sparseassemblyvalidation.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/domainiteration.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainiteration.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/GlobalFacetOperator/globalinteriorfacet.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/LocalFacetOperator/localboundaryfacet.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/BoundaryFacetOperator/boundaryfacet.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/requiredsharedmemory.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrationdomain.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"
@@ -25,22 +27,18 @@ namespace gendil {
 
 template<
    class KernelContext,
-   class WeakFormContext,
+   class ExecutionContext,
    class OperatorContext,
    class FaceDomain,
-   class TrialSpace,
-   class TestSpace,
    class FaceInfo,
    class WeakForm,
    class Target>
 GENDIL_HOST_DEVICE
 void AssembleGlobalBoundaryFaceSparseMatrix(
    KernelContext& kernel,
-   const WeakFormContext& wf_ctx,
-   const OperatorContext& op_ctx,
+   const ExecutionContext& execution_context,
+   const OperatorContext& operator_context,
    const FaceDomain& face_domain,
-   const TrialSpace& trial_space,
-   const TestSpace& test_space,
    const FaceInfo& face_info,
    const WeakForm& weak_form,
    const GlobalIndex face_index,
@@ -53,17 +51,22 @@ void AssembleGlobalBoundaryFaceSparseMatrix(
       element_index,
       face_domain.GetCellMesh().GetCell(element_index)};
 
+   constexpr auto TrialName = weak_form_traits::only_trial_field_name_v<WeakForm>;
+   constexpr auto TestName = weak_form_traits::only_test_field_name_v<WeakForm>;
+   const auto& trial_space = execution_context.template GetSpace<TrialName>().GetMinusFiniteElementSpace();
+   const auto& test_space = execution_context.template GetSpace<TestName>().GetMinusFiniteElementSpace();
+   auto apply = [&](const auto& input, auto& output) {
+      auto local = BindElementDofs(weak_form, execution_context, operator_context,
+         ReadLocal<TrialName>(input), AddLocal<TestName>(output));
+      std::apply( [&]( const auto &... integrand )
+      {
+         ( BoundaryFacetIntegrandOperator( kernel, local, operator_context,
+            element_context, face_info, integrand ), ... );
+      }, weak_form );
+   };
    auto x_zero = MakeZeroElementVector(kernel, trial_space);
    auto y_rhs = MakeZeroElementVector(kernel, test_space);
-   LocalBoundaryFacetIntegrandOperator(
-      kernel,
-      wf_ctx,
-      op_ctx,
-      element_context,
-      face_info,
-      weak_form,
-      x_zero,
-      y_rhs);
+   apply(x_zero, y_rhs);
 
    ForEachLocalTrialDof(
       kernel,
@@ -77,15 +80,7 @@ void AssembleGlobalBoundaryFaceSparseMatrix(
             reference_trial_dof,
             Real{1});
          auto y = MakeZeroElementVector(kernel, test_space);
-         LocalBoundaryFacetIntegrandOperator(
-            kernel,
-            wf_ctx,
-            op_ctx,
-            element_context,
-            face_info,
-            weak_form,
-            x,
-            y);
+         apply(x, y);
          SubtractLocalDofVector(
             kernel,
             test_space,
@@ -109,26 +104,18 @@ void AssembleGlobalBoundaryFaceSparseMatrix(
 
 template<
    class KernelContext,
-   class WeakFormContext,
+   class ExecutionContext,
    class OperatorContext,
    class FaceDomain,
-   class TrialMinusSpace,
-   class TrialPlusSpace,
-   class TestMinusSpace,
-   class TestPlusSpace,
    class FaceInfo,
    class WeakForm,
    class Targets>
 GENDIL_HOST_DEVICE
 void AssembleGlobalInteriorFaceSparseMatrix(
    KernelContext& kernel,
-   const WeakFormContext& wf_ctx,
-   const OperatorContext& op_ctx,
+   const ExecutionContext& execution_context,
+   const OperatorContext& operator_context,
    const FaceDomain& face_domain,
-   const TrialMinusSpace& trial_minus_space,
-   const TrialPlusSpace& trial_plus_space,
-   const TestMinusSpace& test_minus_space,
-   const TestPlusSpace& test_plus_space,
    const FaceInfo& face_info,
    const WeakForm& weak_form,
    const GlobalIndex face_index,
@@ -142,6 +129,34 @@ void AssembleGlobalInteriorFaceSparseMatrix(
       face_info.MinusSide().GetOrientation();
    const auto& plus_orientation =
       face_info.PlusSide().GetOrientation();
+   constexpr auto TrialName = weak_form_traits::only_trial_field_name_v<WeakForm>;
+   constexpr auto TestName = weak_form_traits::only_test_field_name_v<WeakForm>;
+   const auto& trial_binding = execution_context.template GetSpace<TrialName>();
+   const auto& test_binding = execution_context.template GetSpace<TestName>();
+   const auto& trial_minus_space = trial_binding.GetMinusFiniteElementSpace();
+   const auto& trial_plus_space = trial_binding.GetPlusFiniteElementSpace();
+   const auto& test_minus_space = test_binding.GetMinusFiniteElementSpace();
+   const auto& test_plus_space = test_binding.GetPlusFiniteElementSpace();
+
+   ValidateNonconformingGlobalInteriorFacetTransformSupport<
+      FaceDomain,
+      std::remove_cvref_t<decltype(trial_minus_space)>,
+      std::remove_cvref_t<decltype(trial_plus_space)>,
+      std::remove_cvref_t<decltype(test_minus_space)>,
+      std::remove_cvref_t<decltype(test_plus_space)>>();
+
+   auto apply = [&](const auto& x_minus, const auto& x_plus, auto& y_minus, auto& y_plus)
+   {
+      auto minus = BindElementDofs<SemanticSide::Minus>(weak_form,
+         execution_context, operator_context, ReadLocal<TrialName>(x_minus), AddLocal<TestName>(y_minus));
+      auto plus = BindElementDofs<SemanticSide::Plus>(weak_form,
+         execution_context, operator_context, ReadLocal<TrialName>(x_plus), AddLocal<TestName>(y_plus));
+      std::apply( [&]( const auto &... integrand )
+      {
+         ( GlobalInteriorFacetIntegrandOperator( kernel, minus, plus, operator_context,
+            face_domain, face_info, integrand ), ... );
+      }, weak_form );
+   };
    ForEachLocalTrialDof(
       kernel,
       trial_minus_space,
@@ -157,21 +172,7 @@ void AssembleGlobalInteriorFaceSparseMatrix(
          auto y_minus = MakeZeroElementVector(kernel, test_minus_space);
          auto y_plus = MakeZeroElementVector(kernel, test_plus_space);
 
-         GenericCanonicalGlobalInteriorChannelAction(
-            kernel,
-            wf_ctx,
-            op_ctx,
-            face_domain,
-            trial_minus_space,
-            trial_plus_space,
-            test_minus_space,
-            test_plus_space,
-            face_info,
-            weak_form,
-            x_minus,
-            x_plus,
-            y_minus,
-            y_plus);
+         apply(x_minus, x_plus, y_minus, y_plus);
 
          AddOrientedRawCOOEntityBlockEntries(
             kernel,
@@ -214,21 +215,7 @@ void AssembleGlobalInteriorFaceSparseMatrix(
          auto y_minus = MakeZeroElementVector(kernel, test_minus_space);
          auto y_plus = MakeZeroElementVector(kernel, test_plus_space);
 
-         GenericCanonicalGlobalInteriorChannelAction(
-            kernel,
-            wf_ctx,
-            op_ctx,
-            face_domain,
-            trial_minus_space,
-            trial_plus_space,
-            test_minus_space,
-            test_plus_space,
-            face_info,
-            weak_form,
-            x_minus,
-            x_plus,
-            y_minus,
-            y_plus);
+         apply(x_minus, x_plus, y_minus, y_plus);
 
          AddOrientedRawCOOEntityBlockEntries(
             kernel,
@@ -262,34 +249,22 @@ namespace details {
 template<
    class KernelPolicy,
    class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule,
+   class ExecutionContext,
+   class OperatorContext,
    class SelectedDomain,
    class CellTargets>
 void AssemblePartitionCellRawCOODomain(
    const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
+   const ExecutionContext& execution_context,
+   const OperatorContext& operator_context,
    const SelectedDomain& selected_domain,
    CellTargets& cell_targets)
 {
-   constexpr auto DomainName =
-      local_facet_assembly_domain_name_v<WeakForm>;
    using Domain = std::remove_cvref_t<SelectedDomain>;
    constexpr size_t Part = Domain::cell_batch_index;
-   constexpr size_t required_shared_mem =
-      generic_operator_integrand_required_shared_memory_v<
-         KernelPolicy,
-         IntegrationRule>;
+   constexpr size_t required_shared_mem = SparseAssemblyRequiredSharedMemory<KernelPolicy, WeakForm,
+      ExecutionContext, OperatorContext>();
    using Context = KernelContext<KernelPolicy, required_shared_mem>;
-
-   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
-      wf_ctx,
-      Cells<DomainName>{},
-      selected_domain);
-   auto op_ctx = MakeOperatorContext(
-      restricted_ctx,
-      integration_rule);
    const auto& domain_mesh = selected_domain.GetCellMesh();
    auto part_target = std::get<Part>(cell_targets);
 
@@ -302,8 +277,8 @@ void AssemblePartitionCellRawCOODomain(
          Context kernel(_shared_mem);
          AssembleElementSparseMatrix(
             kernel,
-            restricted_ctx,
-            op_ctx,
+            execution_context,
+            operator_context,
             domain_mesh,
             element_index,
             weak_form,
@@ -314,43 +289,22 @@ void AssemblePartitionCellRawCOODomain(
 template<
    class KernelPolicy,
    class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule,
+   class ExecutionContext,
+   class OperatorContext,
    class SelectedDomain,
    class BoundaryTargets>
 void AssemblePartitionBoundaryRawCOODomain(
    const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
+   const ExecutionContext& execution_context,
+   const OperatorContext& operator_context,
    const SelectedDomain& selected_domain,
    BoundaryTargets& boundary_targets)
 {
-   constexpr auto DomainName =
-      local_facet_assembly_domain_name_v<WeakForm>;
    using Domain = std::remove_cvref_t<SelectedDomain>;
    constexpr size_t Part = Domain::face_batch_index;
-   constexpr size_t required_shared_mem =
-      generic_operator_integrand_required_shared_memory_v<
-         KernelPolicy,
-         IntegrationRule>;
+   constexpr size_t required_shared_mem = SparseAssemblyRequiredSharedMemory<KernelPolicy, WeakForm,
+      ExecutionContext, OperatorContext>();
    using Context = KernelContext<KernelPolicy, required_shared_mem>;
-
-   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
-      wf_ctx,
-      BoundaryFacets<DomainName>{},
-      selected_domain);
-   auto op_ctx = MakeFacetOperatorContext(
-      restricted_ctx,
-      integration_rule,
-      selected_domain);
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   const auto& trial_space = restricted_ctx
-      .template fe_field<TrialName>().space
-      .GetMinusFiniteElementSpace();
-   const auto& test_space = restricted_ctx
-      .template fe_field<TestName>().space
-      .GetMinusFiniteElementSpace();
    const auto& face_mesh = selected_domain.GetFaceMesh();
    auto part_target = std::get<Part>(boundary_targets);
 
@@ -365,11 +319,9 @@ void AssemblePartitionBoundaryRawCOODomain(
             face_mesh.GetGlobalFaceInfo(face_index);
          AssembleGlobalBoundaryFaceSparseMatrix(
             kernel,
-            restricted_ctx,
-            op_ctx,
+            execution_context,
+            operator_context,
             selected_domain,
-            trial_space,
-            test_space,
             face_info,
             weak_form,
             face_index,
@@ -380,57 +332,22 @@ void AssemblePartitionBoundaryRawCOODomain(
 template<
    class KernelPolicy,
    class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule,
+   class ExecutionContext,
+   class OperatorContext,
    class SelectedDomain,
    class InteriorTargets>
 void AssemblePartitionInteriorRawCOODomain(
    const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
+   const ExecutionContext& execution_context,
+   const OperatorContext& operator_context,
    const SelectedDomain& selected_domain,
    InteriorTargets& interior_targets)
 {
-   constexpr auto DomainName =
-      local_facet_assembly_domain_name_v<WeakForm>;
    using Domain = std::remove_cvref_t<SelectedDomain>;
    constexpr size_t Part = Domain::face_batch_index;
-   constexpr size_t required_shared_mem =
-      generic_operator_integrand_required_shared_memory_v<
-         KernelPolicy,
-         IntegrationRule>;
+   constexpr size_t required_shared_mem = SparseAssemblyRequiredSharedMemory<KernelPolicy, WeakForm,
+      ExecutionContext, OperatorContext>();
    using Context = KernelContext<KernelPolicy, required_shared_mem>;
-
-   auto restricted_ctx = MakeRestrictedWeakFormContext<WeakForm>(
-      wf_ctx,
-      InteriorFacets<DomainName>{},
-      selected_domain);
-   auto op_ctx = MakeFacetOperatorContext(
-      restricted_ctx,
-      integration_rule,
-      selected_domain);
-   constexpr auto TrialName = requirements<WeakForm>::trial_name;
-   constexpr auto TestName = requirements<WeakForm>::test_name;
-   const auto& trial_binding =
-      restricted_ctx.template fe_field<TrialName>().space;
-   const auto& test_binding =
-      restricted_ctx.template fe_field<TestName>().space;
-   const auto& trial_minus_space =
-      trial_binding.GetMinusFiniteElementSpace();
-   const auto& trial_plus_space =
-      trial_binding.GetPlusFiniteElementSpace();
-   const auto& test_minus_space =
-      test_binding.GetMinusFiniteElementSpace();
-   const auto& test_plus_space =
-      test_binding.GetPlusFiniteElementSpace();
-
-   ValidateNonconformingGlobalInteriorFacetTransformSupport<
-      Domain,
-      std::remove_cvref_t<decltype(trial_minus_space)>,
-      std::remove_cvref_t<decltype(trial_plus_space)>,
-      std::remove_cvref_t<decltype(test_minus_space)>,
-      std::remove_cvref_t<decltype(test_plus_space)>>();
-
    const auto& face_mesh = selected_domain.GetFaceMesh();
    auto part_targets = std::get<Part>(interior_targets);
    mesh::GlobalFaceIterator<KernelPolicy>(
@@ -444,13 +361,9 @@ void AssemblePartitionInteriorRawCOODomain(
             face_mesh.GetGlobalFaceInfo(face_index);
          AssembleGlobalInteriorFaceSparseMatrix(
             kernel,
-            restricted_ctx,
-            op_ctx,
+            execution_context,
+            operator_context,
             selected_domain,
-            trial_minus_space,
-            trial_plus_space,
-            test_minus_space,
-            test_plus_space,
             face_info,
             weak_form,
             face_index,
@@ -458,145 +371,155 @@ void AssemblePartitionInteriorRawCOODomain(
       });
 }
 
-} // namespace details
-
-template<
+template <
    class KernelPolicy,
+   SparseAssemblyMode Mode = SparseAssemblyMode::Full,
    class WeakForm,
    class WeakFormContext,
    class IntegrationRule,
    class CellTargets,
    class BoundaryTargets,
-   class InteriorTargets>
-void GenericPartitionRawCOOIntegrandAssembly(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
+   class InteriorTargets >
+void AssemblePartitionSparseTarget(
+   const WeakForm & weak_form,
+   const WeakFormContext & weak_form_context,
+   const IntegrationRule & integration_rule,
    PartitionRawCOOAssemblyTargets<
       CellTargets,
       BoundaryTargets,
-      InteriorTargets>& targets)
+      InteriorTargets > & targets )
 {
-   constexpr auto DomainName =
-      local_facet_assembly_domain_name_v<WeakForm>;
+   ValidateSparseAssemblyDomainSupport<
+      MatrixAssemblyType::RawCOO,
+      Mode,
+      WeakForm,
+      WeakFormContext >();
 
-   if constexpr (has_cell_contributions_v<WeakForm>)
+   if constexpr ( Mode == SparseAssemblyMode::Full && !is_zero< WeakForm > )
    {
-      ForEachCellExecutionDomain(
-         wf_ctx,
-         Cells<DomainName>{},
-         [&] (const auto& selected_domain)
-         {
-            details::AssemblePartitionCellRawCOODomain<KernelPolicy>(
-               weak_form,
-               wf_ctx,
-               integration_rule,
-               selected_domain,
-               targets.cells);
-         });
-   }
-
-   if constexpr (has_boundary_facet_contributions_v<WeakForm>)
-   {
-      ForEachBoundaryFaceExecutionDomain(
-         wf_ctx,
-         BoundaryFacets<DomainName>{},
-         [&] (const auto& selected_domain)
-         {
-            details::AssemblePartitionBoundaryRawCOODomain<KernelPolicy>(
-               weak_form,
-               wf_ctx,
-               integration_rule,
-               selected_domain,
-               targets.boundaries);
-         });
-   }
-
-   if constexpr (has_interior_facet_contributions_v<WeakForm>)
-   {
-      ForEachInteriorFaceExecutionDomain(
-         wf_ctx,
-         InteriorFacets<DomainName>{},
-         [&] (const auto& selected_domain)
-         {
-            details::AssemblePartitionInteriorRawCOODomain<KernelPolicy>(
-               weak_form,
-               wf_ctx,
-               integration_rule,
-               selected_domain,
-               targets.interiors);
-         });
-   }
-}
-
-template<
-   class KernelPolicy,
-   class Integrand,
-   class WeakFormContext,
-   class IntegrationRule,
-   class CellTargets,
-   class BoundaryTargets,
-   class InteriorTargets>
-void GenericGlobalFacetAssembly(
-   const Integrand& integrand,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
-   PartitionRawCOOAssemblyTargets<
-      CellTargets,
-      BoundaryTargets,
-      InteriorTargets>& targets)
-{
-   GenericPartitionRawCOOIntegrandAssembly<KernelPolicy>(
-      integrand,
-      wf_ctx,
-      integration_rule,
-      targets);
-}
-
-template<
-   class KernelPolicy,
-   class Map,
-   class WeakFormContext,
-   class IntegrationRule,
-   class CellTargets,
-   class BoundaryTargets,
-   class InteriorTargets>
-void GenericGlobalFacetAssembly(
-   const SumFormExpr<Map>& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
-   PartitionRawCOOAssemblyTargets<
-      CellTargets,
-      BoundaryTargets,
-      InteriorTargets>& targets)
-{
-   std::apply(
-      [&] (const auto&... entries)
+      using FormSignature = form_signature_t< WeakForm >;
+      constexpr auto DomainName = local_facet_assembly_domain_name_v< WeakForm >;
+      auto assemble_phase = [&]< SemanticEntity Entity >()
       {
-         (GenericPartitionRawCOOIntegrandAssembly<KernelPolicy>(
-             entries.value,
-             wf_ctx,
-             integration_rule,
-             targets), ...);
-      },
-      weak_form.map.entries);
+         if constexpr ( has_nonzero_integrands< WeakForm, DomainName, Entity > )
+         {
+            using Signatures = typename weak_form_traits::domain_signatures<
+               typename FormSignature::integrands, DomainName, Entity >::type;
+            auto integrands = weak_form_execution_detail::SelectIntegrands< DomainName, Entity >( weak_form );
+            using Requirements = typename weak_form_execution_detail::signature_requirements< Signatures >::type;
+            auto assemble_batch = [&]( const auto & batch )
+            {
+               auto selected_context = MakeRestrictedWeakFormContext< Requirements >(
+                  weak_form_context,
+                  batch );
+               auto operator_context = [&]
+               {
+                  if constexpr ( Entity == SemanticEntity::Cell )
+                  {
+                     return MakeOperatorContext< FormSignature >(
+                        integrands,
+                        selected_context,
+                        integration_rule );
+                  }
+                  else
+                  {
+                     return MakeFacetOperatorContext< FormSignature >(
+                        integrands,
+                        selected_context,
+                        integration_rule,
+                        batch );
+                  }
+               }();
+               auto execution_context = execution_context_detail::BindExecutionContext<
+                  bound_only_requirements_t< Requirements >,
+                  KernelPolicy >( selected_context );
+
+               if constexpr ( Entity == SemanticEntity::Cell )
+               {
+                  AssemblePartitionCellRawCOODomain< KernelPolicy >(
+                     integrands,
+                     execution_context,
+                     operator_context,
+                     batch,
+                     targets.cells );
+               }
+               else if constexpr ( Entity == SemanticEntity::BoundaryFacet )
+               {
+                  AssemblePartitionBoundaryRawCOODomain< KernelPolicy >(
+                     integrands,
+                     execution_context,
+                     operator_context,
+                     batch,
+                     targets.boundaries );
+               }
+               else
+               {
+                  AssemblePartitionInteriorRawCOODomain< KernelPolicy >(
+                     integrands,
+                     execution_context,
+                     operator_context,
+                     batch,
+                     targets.interiors );
+               }
+            };
+
+            if constexpr ( Entity == SemanticEntity::Cell )
+            {
+               ForEachCellExecutionDomain(
+                  weak_form_context,
+                  Cells< DomainName >{},
+                  assemble_batch );
+            }
+            else if constexpr ( Entity == SemanticEntity::BoundaryFacet )
+            {
+               ForEachBoundaryFaceExecutionDomain(
+                  weak_form_context,
+                  BoundaryFacets< DomainName >{},
+                  assemble_batch );
+            }
+            else
+            {
+               ForEachInteriorFaceExecutionDomain(
+                  weak_form_context,
+                  InteriorFacets< DomainName >{},
+                  assemble_batch );
+            }
+         }
+      };
+      // Match local assembly: entity phases, then source order within each phase.
+      assemble_phase.template operator()< SemanticEntity::Cell >();
+      assemble_phase.template operator()< SemanticEntity::InteriorFacet >();
+      assemble_phase.template operator()< SemanticEntity::BoundaryFacet >();
+   }
 }
 
-template<
+template <
    class KernelPolicy,
+   SparseAssemblyMode Mode = SparseAssemblyMode::Full,
    class WeakForm,
    class WeakFormContext,
    class IntegrationRule,
-   class SparseMatrixType>
-void GenericGlobalFacetAssembly(
-   const WeakForm&,
-   const WeakFormContext&,
-   const IntegrationRule&,
-   SparseMatrixType&)
+   class SparseMatrixType >
+void AssemblePartitionSparseTarget(
+   const WeakForm &,
+   const WeakFormContext &,
+   const IntegrationRule &,
+   SparseMatrixType & )
 {
-   static_assert(
-      dependent_false_v<SparseMatrixType>,
-      "Partition sparse assembly requires a PartitionRawCOOAssemblyTargets payload.");
+   ValidateSparseAssemblyDomainSupport<
+      MatrixAssemblyType::RawCOO,
+      Mode,
+      WeakForm,
+      WeakFormContext >();
+
+   if constexpr ( Mode == SparseAssemblyMode::Full )
+   {
+      static_assert(
+         dependent_false_v< SparseMatrixType >,
+         "Partition sparse assembly requires a PartitionRawCOOAssemblyTargets payload." );
+   }
 }
+
+} // namespace details
 
 } // namespace gendil

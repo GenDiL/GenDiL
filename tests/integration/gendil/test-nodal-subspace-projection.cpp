@@ -123,10 +123,20 @@ bool RunProjectionCase( const char * label )
    projection( input, output );
    GENDIL_DEVICE_SYNC;
 
+   auto serial_projection = MakeNodalSubspaceProjection(
+      trial_space, test_space, trial_rule, test_rule );
+   Vector serial_output( test_space.GetNumberOfFiniteElementDofs() );
+   serial_output = 0.0;
+   serial_projection( input, serial_output );
+
    const auto output_view =
       MakeReadOnlyElementTensorView< SerialKernelConfiguration >(
          test_space,
          output );
+   const auto serial_output_view =
+      MakeReadOnlyElementTensorView< SerialKernelConfiguration >(
+         test_space,
+         serial_output );
    constexpr Real tolerance = 1e-12;
    bool success = true;
    for ( LocalIndex retained = 0; retained < num_points; ++retained )
@@ -136,11 +146,15 @@ bool RunProjectionCase( const char * label )
          integrated_interval_length * integrated_reference_factor *
          ( 2.0 + xi + xi * xi );
       const Real actual = output_view( retained, 0 );
-      if ( std::abs( actual - expected ) > tolerance )
+      const Real serial_actual = serial_output_view( retained, 0 );
+      if ( !std::isfinite( actual ) || !std::isfinite( serial_actual ) ||
+           std::abs( actual - expected ) > tolerance ||
+           std::abs( serial_actual - expected ) > tolerance )
       {
          std::cerr
             << label << " node " << retained << ": expected " << expected
-            << ", got " << actual << '\n';
+            << ", explicit policy " << actual
+            << ", serial convenience " << serial_actual << '\n';
          success = false;
       }
    }
