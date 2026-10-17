@@ -984,6 +984,13 @@ consteval bool WrappersPreserveShape()
 
 using ScalarTestGradient = GradientExpr<TestSpace<"q">>;
 using VectorTestGradient = GradientExpr<VectorTestSpace<"q_vector">>;
+static_assert(field_shape_v<TestSpace<"q">> == FieldShape::Scalar);
+static_assert(field_shape_v<VectorTestSpace<"q_vector">> == FieldShape::Vector);
+static_assert(field_shape_v<ScalarTestGradient> == FieldShape::Vector);
+static_assert(field_shape_v<VectorTestGradient> == FieldShape::Matrix);
+static_assert(field_shape_v<GradientExpr<TrialSpace<"p">>> == FieldShape::Vector);
+static_assert(field_shape_v<GradientExpr<VectorTrialSpace<"p_vector">>> == FieldShape::Matrix);
+static_assert(field_shape_v<gendil::Normal> == FieldShape::Vector);
 static_assert(WrappersPreserveShape<TestSpace<"q">, FieldShape::Scalar>());
 static_assert(WrappersPreserveShape<VectorTestSpace<"q_vector">, FieldShape::Vector>());
 static_assert(WrappersPreserveShape<ScalarTestGradient, FieldShape::Vector>());
@@ -994,6 +1001,15 @@ static_assert(is_valid_dot_expr_v<PlusTraceExpr<ScalarTestGradient>, gendil::Nor
 static_assert(is_valid_dot_expr_v<gendil::Normal, MinusTraceExpr<ScalarTestGradient>>);
 static_assert(!is_valid_dot_expr_v<PlusTraceExpr<TestSpace<"q">>, gendil::Normal>);
 static_assert(!is_valid_dot_expr_v<PlusTraceExpr<VectorTestGradient>, gendil::Normal>);
+
+// Shape metadata composes through products, sums, and nested trace wrappers.
+using GradientSum = SumExpr<PlusTraceExpr<ScalarTestGradient>, gendil::Normal>;
+static_assert(field_shape_v<GradientSum> == FieldShape::Vector);
+static_assert(field_shape_v<ProductExpr<ScaleExpr, GradientSum>> == FieldShape::Vector);
+static_assert(field_shape_v<TransposeExpr<VectorTestGradient>> == FieldShape::Matrix);
+static_assert(field_shape_v<BoundaryUpwindExpr<
+   gendil::Normal, ScalarTestGradient, gendil::Normal>> == FieldShape::Vector);
+static_assert(WrappersPreserveShape<AverageExpr<GradientSum>, FieldShape::Vector>());
 
 // Name-only bound fields retain an unresolved shape through every wrapper.
 using UnshapedField = FiniteElementField<"bound">;

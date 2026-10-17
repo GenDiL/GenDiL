@@ -127,7 +127,7 @@ inline constexpr FieldShape product_field_shape_v =
 // Note: ProductExpr is forward-declared in dslbase.hpp with FieldExpr constraints
 
 // ProductExpr result shape is determined by product_field_shape_v
-template<FieldExpr LHS, FieldExpr RHS>
+template<typename LHS, typename RHS>
 struct field_shape_impl<ProductExpr<LHS, RHS>>
 {
    static constexpr FieldShape value = product_field_shape_v<LHS, RHS>;

@@ -55,6 +55,8 @@ inline constexpr bool is_vector_field_reference_v = is_vector_field_reference<st
 
 // Unknown shapes have no value; wrappers can forward that absence unchanged.
 // Do NOT use field_shape_v<T> in generic boolean expressions
+// Expression templates already constrain their operands. Do not repeat those
+// concepts on shape specializations: NVCC can fail to match the specialization.
 template<typename T>
 struct field_shape_impl {};
 
@@ -92,7 +94,7 @@ inline constexpr bool has_field_shape_v = has_field_shape<std::remove_cvref_t<T>
 // Coefficient shape specializations
 // =============================================================================
 
-template<StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs>
+template<StaticString Name, FieldShape Shape, typename Fn, typename... Inputs>
 struct field_shape_impl<Coefficient<Name, Shape, Fn, Inputs...>> {
    static constexpr FieldShape value = Shape;
 };
@@ -148,15 +150,15 @@ struct field_shape_impl<GradientExpr<TestSpace<Name, FieldShape::Vector>>> {
  *
  * Negating a scalar/vector/matrix expression does not change its shape.
  */
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<NegExpr<Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<MinusTraceExpr<Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<PlusTraceExpr<Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
@@ -166,7 +168,7 @@ struct field_shape_impl<PlusTraceExpr<Expr>>
  * Averaging a scalar/vector/matrix expression does not change its shape.
  * Facet semantics (averaging across facet) are lowering concerns, not shape.
  */
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<AverageExpr<Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
@@ -176,7 +178,7 @@ struct field_shape_impl<AverageExpr<Expr>>
  * Taking a jump of a scalar/vector/matrix expression does not change its shape.
  * Facet semantics (jump across facet) are lowering concerns, not shape.
  */
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<JumpExpr<Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
@@ -187,7 +189,7 @@ struct field_shape_impl<JumpExpr<Expr>>
  * Facet semantics (upwind across facet) are lowering concerns, not shape.
  *
  */
-template<FieldExpr AdvExpr, FieldExpr Expr>
+template<typename AdvExpr, typename Expr>
 struct field_shape_impl<UpwindExpr<AdvExpr, Expr>>
    : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
@@ -199,7 +201,7 @@ struct field_shape_impl<weak_form_detail::BoundaryUpwindZero<Shape>>
 
 // Boundary upwinding selects between states with the same shape. An affine
 // split retains the rank of an omitted state without retaining its expression.
-template<FieldExpr Adv, typename Interior, typename Exterior>
+template<typename Adv, typename Interior, typename Exterior>
    requires (has_field_shape_v<Interior> || has_field_shape_v<Exterior>)
 struct field_shape_impl<BoundaryUpwindExpr<Adv, Interior, Exterior>>
 {
@@ -255,7 +257,7 @@ struct field_shape_impl<DotExpr<LHS, RHS>> {
  *   v + grad(v)         → Scalar + Vector (incompatible shapes)
  *   beta + A            → Vector + Matrix (incompatible shapes)
  */
-template<FieldExpr Head, FieldExpr... Tail>
+template<typename Head, typename... Tail>
    requires (has_field_shape_v<Head> && (has_field_shape_v<Tail> && ...))
 struct field_shape_impl<SumExpr<Head, Tail...>>
 {

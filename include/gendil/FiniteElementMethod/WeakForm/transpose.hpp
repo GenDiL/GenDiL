@@ -79,7 +79,7 @@ struct TransposeExpr : FieldBase
    }
 };
 
-template<FieldExpr Expr>
+template<typename Expr>
 struct field_shape_impl<TransposeExpr<Expr>>
 {
    static constexpr FieldShape operand_shape =
