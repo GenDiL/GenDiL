@@ -163,6 +163,45 @@ consteval void ValidateNonconformingGlobalInteriorFacetTransformSupport()
    }
 }
 
+namespace generic_operator_detail {
+
+template<SemanticSide Side, class Context, class Field>
+consteval bool SupportsNonconformingFacetFieldTransform()
+{
+   using Binding = std::remove_cvref_t<decltype(
+      std::declval<const Context&>().template GetFiniteElementField<Field::name>().space)>;
+   if constexpr (Side == SemanticSide::Minus)
+   {
+      using Space = std::remove_cvref_t<decltype(
+         GetMinusFacetFieldVolumeSpace(std::declval<const Binding&>()))>;
+      return SupportsComponentwiseNonconformingFacetTransform<Space>();
+   }
+   else
+   {
+      using Space = std::remove_cvref_t<decltype(
+         GetPlusFacetFieldVolumeSpace(std::declval<const Binding&>()))>;
+      return SupportsComponentwiseNonconformingFacetTransform<Space>();
+   }
+}
+
+// Keep the pack expansion outside nested lambdas: ROCm 6.3.1's Clang can crash
+// while instantiating that pattern during nonconforming-facet validation.
+template<SemanticSide Side, class FaceSide, class Context, class... Fields>
+consteval void ValidateNonconformingFacetSideTransforms(type_list<Fields...>)
+{
+   if constexpr (!FaceSide::is_conforming)
+   {
+      static_assert(
+         (SupportsNonconformingFacetFieldTransform<Side, Context, Fields>() && ...),
+         "Nonconforming global interior GenericOperator currently supports "
+         "scalar and componentwise-vector value/gradient facet semantics on "
+         "compatible tensor finite-element restrictions. Piola, H(div), "
+         "H(curl), and de Rham-style nonconforming facet transforms require "
+         "separate support and tests.");
+   }
+}
+
+} // namespace generic_operator_detail
 
 // Check only fields actually evaluated on each nonconforming side. No singular
 // trial/test pair is needed for loads or coupled residuals.
@@ -170,36 +209,16 @@ template<class FaceDomain, class Signature, class Context>
 constexpr void ValidateNonconformingGlobalInteriorFacetTransformSupport()
 {
    using FaceInfo = typename FaceDomain::face_mesh_type::face_info_type;
-   auto validate = [&]<SemanticSide Side, class... Fields>(type_list<Fields...>) {
-      constexpr bool Conforming = Side == SemanticSide::Minus
-         ? FaceInfo::minus_side_type::is_conforming : FaceInfo::plus_side_type::is_conforming;
-      if constexpr (!Conforming)
-      {
-         ([&] {
-            using Binding = std::remove_cvref_t<decltype(
-               std::declval<const Context&>().template GetFiniteElementField<Fields::name>().space)>;
-            using Space = std::remove_cvref_t<decltype([](const Binding& binding) -> decltype(auto) {
-               if constexpr (Side == SemanticSide::Minus)
-                  return GetMinusFacetFieldVolumeSpace(binding);
-               else return GetPlusFacetFieldVolumeSpace(binding);
-            }(std::declval<const Binding&>()))>;
-            static_assert(SupportsComponentwiseNonconformingFacetTransform<Space>(),
-               "Nonconforming global interior GenericOperator currently supports "
-               "scalar and componentwise-vector value/gradient facet semantics on "
-               "compatible tensor finite-element restrictions. Piola, H(div), "
-               "H(curl), and de Rham-style nonconforming facet transforms require "
-               "separate support and tests.");
-         }(), ...);
-      }
-   };
    using Minus = concat_many_t<typename Signature::template active_inputs_on<SemanticSide::Minus>,
       typename Signature::template bound_inputs_on<SemanticSide::Minus>,
       typename Signature::template test_outputs_on<SemanticSide::Minus>>;
    using Plus = concat_many_t<typename Signature::template active_inputs_on<SemanticSide::Plus>,
       typename Signature::template bound_inputs_on<SemanticSide::Plus>,
       typename Signature::template test_outputs_on<SemanticSide::Plus>>;
-   validate.template operator()<SemanticSide::Minus>(Minus{});
-   validate.template operator()<SemanticSide::Plus>(Plus{});
+   generic_operator_detail::ValidateNonconformingFacetSideTransforms<
+      SemanticSide::Minus, typename FaceInfo::minus_side_type, Context>(Minus{});
+   generic_operator_detail::ValidateNonconformingFacetSideTransforms<
+      SemanticSide::Plus, typename FaceInfo::plus_side_type, Context>(Plus{});
 }
 
 } // namespace gendil
