@@ -33,6 +33,20 @@ namespace gendil {
 
 namespace nodal_interpolation_detail {
 
+template<size_t Component, class Function>
+struct ComponentFunction
+{
+   Function function;
+
+   template<class Coordinates>
+   GENDIL_HOST_DEVICE
+   Real operator()(const Coordinates& coordinates)
+   {
+      const auto value = function(coordinates);
+      return static_cast<Real>(vector_access(value, Component));
+   }
+};
+
 template<class FiniteElement, class Indices>
 struct NodalIntegrationRule;
 
@@ -101,7 +115,7 @@ void ForEachLocalNodalRow(
             GetRestriction(cell_space),
             element,
             local_dof,
-            [&] GENDIL_HOST_DEVICE (
+            [&] (
                const GlobalIndex global,
                const auto& weight)
             {
@@ -219,7 +233,7 @@ void InterpolateNonsharingCellSpace(
             GetRestriction(cell_space_copy),
             element,
             local_dof,
-            [&] GENDIL_HOST_DEVICE (
+            [&] (
                const GlobalIndex global,
                const auto& weight)
             {
@@ -354,12 +368,9 @@ void InterpolateNodalField(
             std::integral_constant<size_t, Component>,
             const auto& component_space)
          {
-            auto scalar_function = [function] GENDIL_HOST_DEVICE (
-               const auto& coordinates) mutable
-            {
-               const auto value = function(coordinates);
-               return static_cast<Real>(vector_access(value, Component));
-            };
+            auto scalar_function =
+               nodal_interpolation_detail::ComponentFunction<Component, Function>{
+                  function};
             nodal_interpolation_detail::InterpolateScalar<KernelPolicy>(
                component_space,
                scalar_function,

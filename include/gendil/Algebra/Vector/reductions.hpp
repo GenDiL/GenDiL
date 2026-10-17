@@ -387,7 +387,6 @@ template<class KernelPolicy, class Basis, class Input, class Coefficients>
 void ProjectEuclidean(const EuclideanDot<KernelPolicy>& dot, Basis&& basis,
    const Integer count, const Input& input, Coefficients& coefficients)
 {
-   GENDIL_VERIFY(count >= 0, "Projection requires a nonnegative basis count.");
    if (count == 0) { return; }
    const size_t size = GetVectorSize(input);
    if (size == 0)
@@ -515,7 +514,6 @@ template<bool OnDevice, class Basis, class Coefficients, class Output>
 void HostDrivenFusedCombine(Basis&& basis, const Integer count,
    const Coefficients& coefficients, const Real alpha, Output& output)
 {
-   GENDIL_VERIFY(count >= 0, "Combination requires a nonnegative basis count.");
    const size_t size = GetVectorSize(output);
    if (count == 0 || size == 0) { return; }
    vector_reduction_detail::ValidateContiguousBasis(basis, static_cast<size_t>(count), size);
@@ -552,7 +550,6 @@ void HostDrivenFusedCombine(Basis&& basis, const Integer count,
    const Coefficients& coefficients, const Real alpha, Output& output,
    Vector& coefficient_scratch)
 {
-   GENDIL_VERIFY(count >= 0, "Combination requires a nonnegative basis count.");
    const size_t size = GetVectorSize(output);
    if (count == 0 || size == 0) { return; }
    const size_t columns = static_cast<size_t>(count);

@@ -209,17 +209,17 @@ GENDIL_HOST_DEVICE auto GMRES(Context &context, const A &system, const Rhs &rhs,
                               X &solution, Dot &&dot, const GMRESOptions &options,
                               B &buffers, OrthogonalizationMethod orth = {})
 {
-   auto norm = [&] GENDIL_HOST_DEVICE(const auto &v)
+   // Local callbacks inherit the enclosing host/device execution space.
+   auto norm = [&](const auto &v)
    {
       return NormFromDot(dot, v);
    };
-   auto project = [&context, &dot] GENDIL_HOST_DEVICE(
-                      auto &basis, Integer count, const auto &input, auto &coefficients)
+   auto project = [&context, &dot](auto &basis, Integer count, const auto &input,
+                                   auto &coefficients)
    {
       LocalProject(context, dot, basis, count, input, coefficients);
    };
-   auto combine = [&] GENDIL_HOST_DEVICE(auto &basis, Integer count, const auto &c,
-                                         Real alpha, auto &out)
+   auto combine = [&](auto &basis, Integer count, const auto &c, Real alpha, auto &out)
    {
       LocalCombine(context, basis, count, c, alpha, out);
    };
@@ -244,17 +244,17 @@ GENDIL_HOST_DEVICE auto GMRES(Context &context, const A &system, P &&preconditio
                               const GMRESOptions &options, B &buffers,
                               OrthogonalizationMethod orth = {})
 {
-   auto norm = [&] GENDIL_HOST_DEVICE(const auto &v)
+   // Local callbacks inherit the enclosing host/device execution space.
+   auto norm = [&](const auto &v)
    {
       return NormFromDot(dot, v);
    };
-   auto project = [&context, &dot] GENDIL_HOST_DEVICE(
-                      auto &basis, Integer count, const auto &input, auto &coefficients)
+   auto project = [&context, &dot](auto &basis, Integer count, const auto &input,
+                                   auto &coefficients)
    {
       LocalProject(context, dot, basis, count, input, coefficients);
    };
-   auto combine = [&] GENDIL_HOST_DEVICE(auto &basis, Integer count, const auto &c,
-                                         Real alpha, auto &out)
+   auto combine = [&](auto &basis, Integer count, const auto &c, Real alpha, auto &out)
    {
       LocalCombine(context, basis, count, c, alpha, out);
    };
@@ -278,17 +278,17 @@ GENDIL_HOST_DEVICE auto FGMRES(Context &context, const A &system, P &&preconditi
                                const GMRESOptions &options, B &buffers,
                                OrthogonalizationMethod orth = {})
 {
-   auto norm = [&] GENDIL_HOST_DEVICE(const auto &v)
+   // Local callbacks inherit the enclosing host/device execution space.
+   auto norm = [&](const auto &v)
    {
       return NormFromDot(dot, v);
    };
-   auto project = [&context, &dot] GENDIL_HOST_DEVICE(
-                      auto &basis, Integer count, const auto &input, auto &coefficients)
+   auto project = [&context, &dot](auto &basis, Integer count, const auto &input,
+                                   auto &coefficients)
    {
       LocalProject(context, dot, basis, count, input, coefficients);
    };
-   auto combine = [&] GENDIL_HOST_DEVICE(auto &basis, Integer count, const auto &c,
-                                         Real alpha, auto &out)
+   auto combine = [&](auto &basis, Integer count, const auto &c, Real alpha, auto &out)
    {
       LocalCombine(context, basis, count, c, alpha, out);
    };

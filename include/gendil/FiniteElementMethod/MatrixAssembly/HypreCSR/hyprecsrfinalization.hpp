@@ -238,7 +238,7 @@ bool DeviceHyprePointerCountCanProcess( const IndexType num_rows )
 }
 
 template < typename ValueType, typename IndexType, typename Backend >
-auto FinalizeRawCOOToHypreCSRDevice(
+HypreCSRMatrix< Backend > FinalizeRawCOOToHypreCSRDevice(
    const RawCOOTripletBuffer< ValueType, IndexType > & raw,
    Backend backend )
 {

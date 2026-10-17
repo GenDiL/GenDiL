@@ -78,7 +78,7 @@ void ApplyTerm(Kernel& kernel, Context& context, const NeighborContext& neighbor
 template<class Policy, SemanticEntity EntityKind = SemanticEntity::Unspecified,
          class Form, class Selected, class Batch, class Rule, class Execution>
 void GenericCellBatchOperator(const Form& form, const Selected& selected,
-   const Batch& batch, const Rule& rule, const Execution& execution_context)
+   const Batch& batch, const Rule& rule, Execution& execution_context)
 {
    constexpr auto Name = Batch::domain_name;
    using Signature = form_signature_t<Form>;
@@ -92,9 +92,12 @@ void GenericCellBatchOperator(const Form& form, const Selected& selected,
       decltype(terms), Execution, decltype(operator_context), Entity>();
    using Kernel = KernelContext<Policy, slots>;
    mesh::CellIterator<Policy>(mesh,
-      [terms = std::move(terms), operator_context = std::move(operator_context),
-       execution_context = execution_context, mesh]
+      [terms, operator_context, execution_context, mesh]
       GENDIL_HOST_DEVICE (GlobalIndex index) mutable {
+         // NVCC needs unconditional uses for captures used only in if constexpr.
+         (void)terms;
+         (void)operator_context;
+         (void)execution_context;
          GENDIL_SHARED Real scratch[Kernel::shared_memory_block_size];
          Kernel kernel(scratch);
          ElementContext element{index, mesh.GetCell(index)};

@@ -367,15 +367,12 @@ void AssembleLocalSparseTarget(
          KernelPolicy >( selected_context );
 
       using weak_form_execution_detail::SelectIntegrands;
-      using CellIntegrands = decltype( SelectIntegrands< DomainName, SemanticEntity::Cell >( weak_form ) );
-      using InteriorIntegrands = decltype( SelectIntegrands< DomainName, SemanticEntity::InteriorFacet >( weak_form ) );
-      using BoundaryIntegrands = decltype( SelectIntegrands< DomainName, SemanticEntity::BoundaryFacet >( weak_form ) );
-      constexpr bool HasCellIntegrands =
-         has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::Cell >;
-      constexpr bool HasInteriorIntegrands =
-         has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::InteriorFacet >;
-      constexpr bool HasBoundaryIntegrands =
-         has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::BoundaryFacet >;
+      auto cell_integrands = SelectIntegrands< DomainName, SemanticEntity::Cell >( weak_form );
+      auto interior_integrands = SelectIntegrands< DomainName, SemanticEntity::InteriorFacet >( weak_form );
+      auto boundary_integrands = SelectIntegrands< DomainName, SemanticEntity::BoundaryFacet >( weak_form );
+      using CellIntegrands = decltype( cell_integrands );
+      using InteriorIntegrands = decltype( interior_integrands );
+      using BoundaryIntegrands = decltype( boundary_integrands );
 
       using ExecutionContext = decltype( execution_context );
       using OperatorContext = decltype( operator_context );
@@ -386,10 +383,7 @@ void AssembleLocalSparseTarget(
       using Kernel = KernelContext< KernelPolicy, shared_slots >;
       mesh::CellIterator< KernelPolicy >(
          domain_mesh,
-         [=,
-          cell_integrands = SelectIntegrands< DomainName, SemanticEntity::Cell >( weak_form ),
-          interior_integrands = SelectIntegrands< DomainName, SemanticEntity::InteriorFacet >( weak_form ),
-          boundary_integrands = SelectIntegrands< DomainName, SemanticEntity::BoundaryFacet >( weak_form )]
+         [=]
          GENDIL_HOST_DEVICE ( GlobalIndex element_index ) mutable
          {
             // NVCC needs unconditional uses to infer captures referenced only
@@ -398,9 +392,19 @@ void AssembleLocalSparseTarget(
             (void)operator_context;
             (void)sparse_matrix;
             (void)domain_mesh;
+            (void)cell_integrands;
+            (void)interior_integrands;
+            (void)boundary_integrands;
 
             GENDIL_SHARED Real shared[ Kernel::shared_memory_block_size ];
             Kernel kernel( shared );
+            constexpr auto DomainName = local_facet_assembly_domain_name_v< WeakForm >;
+            constexpr bool HasCellIntegrands =
+               has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::Cell >;
+            constexpr bool HasInteriorIntegrands =
+               has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::InteriorFacet >;
+            constexpr bool HasBoundaryIntegrands =
+               has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::BoundaryFacet >;
             // Share traversal and probes, evaluating each explicit integrand separately.
             if constexpr ( HasCellIntegrands )
             {

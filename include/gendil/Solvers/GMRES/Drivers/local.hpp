@@ -55,31 +55,33 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
                      ValidBuffers<mode>(buffers, n, options.restart),
                  "Invalid local solve operands.");
 #endif
+   // Local callbacks inherit this function's host/device execution space.
+   // Explicit annotations would trigger NVCC extended-lambda capture restrictions.
    // Vector operations.
-   auto apply_system = [&] GENDIL_HOST_DEVICE(const auto &input, auto &output)
+   auto apply_system = [&](const auto &input, auto &output)
    {
       using gendil::Apply;
       Apply(system, input, output);
    };
-   auto copy_vector = [&] GENDIL_HOST_DEVICE(const auto &input, auto &output)
+   auto copy_vector = [&](const auto &input, auto &output)
    {
       LocalCopy(context, input, output);
    };
-   auto axpy = [&] GENDIL_HOST_DEVICE(Real alpha, const auto &input, auto &output)
+   auto axpy = [&](Real alpha, const auto &input, auto &output)
    {
       gendil::Axpy(context, alpha, input, output);
    };
-   auto divide_vector = [&] GENDIL_HOST_DEVICE(auto &output, Real length)
+   auto divide_vector = [&](auto &output, Real length)
    {
       LocalDivide(context, output, length);
    };
    // Reduced-system operations.
-   auto store_coefficient = [&] GENDIL_HOST_DEVICE(auto &c, Integer i, Real value)
+   auto store_coefficient = [&](auto &c, Integer i, Real value)
    {
       StoreCoefficient(context, c, i, value);
    };
    auto accumulate_coefficients =
-       [&] GENDIL_HOST_DEVICE(auto &destination, const auto &source, Integer count)
+       [&](auto &destination, const auto &source, Integer count)
    {
       auto x = gendil::MakeView(gendil::ReferenceContainer{source},
                                 gendil::VectorLayout{count});
@@ -87,25 +89,25 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
                                 gendil::VectorLayout{count});
       gendil::Axpy(context, Real(1), x, y);
    };
-   auto initialize_reduced_problem = [&] GENDIL_HOST_DEVICE(Real beta)
+   auto initialize_reduced_problem = [&](Real beta)
    {
       InitializeReducedLeastSquares(context, buffers.cosines, buffers.sines,
                                     buffers.reduced_rhs, buffers.coefficients,
                                     options.restart, beta);
    };
-   auto update_reduced_qr = [&] GENDIL_HOST_DEVICE(Integer j, Real next)
+   auto update_reduced_qr = [&](Integer j, Real next)
    {
       return UpdateReducedQR(context, buffers.hessenberg, buffers.cosines, buffers.sines,
                              buffers.reduced_rhs, j, next);
    };
-   auto solve_reduced_system = [&] GENDIL_HOST_DEVICE(Integer count)
+   auto solve_reduced_system = [&](Integer count)
    {
       return BackSubstitute(context, buffers.hessenberg, buffers.reduced_rhs,
                             buffers.coefficients, count);
    };
 
    // Expansion, correction, and orthogonalization.
-   auto expand_search_direction = [&] GENDIL_HOST_DEVICE(Integer column)
+   auto expand_search_direction = [&](Integer column)
    {
       auto &&basis_vector = buffers.basis(column);
       if constexpr (mode == PreconditioningMode::None)
@@ -121,7 +123,7 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
          apply_system(direction, buffers.work);
       }
    };
-   auto apply_correction = [&] GENDIL_HOST_DEVICE(Integer count)
+   auto apply_correction = [&](Integer count)
    {
       if constexpr (mode == PreconditioningMode::None)
       {
@@ -140,7 +142,7 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
          combine(buffers.directions, count, buffers.coefficients, Real(1), solution);
       }
    };
-   auto orthogonalize = [&] GENDIL_HOST_DEVICE(Integer column)
+   auto orthogonalize = [&](Integer column)
    {
       auto hessenberg_column = MakeHessenbergColumnView(buffers.hessenberg, column);
       if constexpr (std::is_same_v<OrthogonalizationMethod, ModifiedGramSchmidt>)
@@ -154,12 +156,12 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
    };
    // Bind the phases consumed by the generic restart loop.
    auto &&residual_vector = buffers.basis(0);
-   auto compute_true_residual_norm = [&] GENDIL_HOST_DEVICE()
+   auto compute_true_residual_norm = [&]()
    {
       return ComputeTrueResidualNorm(apply_system, rhs, solution, residual_vector,
                                      buffers.work, copy_vector, axpy, norm);
    };
-   auto build_arnoldi_column = [&] GENDIL_HOST_DEVICE(Integer j)
+   auto build_arnoldi_column = [&](Integer j)
    {
       return BuildArnoldiColumn(buffers.work, j, expand_search_direction, orthogonalize,
                                 norm);

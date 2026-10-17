@@ -108,7 +108,7 @@ void GenericGlobalFacetDomainOperator(
    const SelectedContext & selected_context,
    const Batch & batch,
    const IntegrationRule & integration_rule,
-   const ExecutionContext & execution_context )
+   ExecutionContext & execution_context )
 {
    constexpr auto DomainName = Batch::domain_name;
    constexpr auto Entity = is_selected_interior_face_execution_domain_v< Batch >
@@ -133,9 +133,7 @@ void GenericGlobalFacetDomainOperator(
 
    mesh::GlobalFaceIterator< KernelPolicy >(
       batch.GetFaceMesh(),
-      [integrands = std::move( integrands ),
-       operator_context = std::move( operator_context ),
-       execution_context = execution_context]
+      [integrands, operator_context, execution_context]
       GENDIL_HOST_DEVICE ( GlobalIndex face_index ) mutable
       {
          (void)integrands;
