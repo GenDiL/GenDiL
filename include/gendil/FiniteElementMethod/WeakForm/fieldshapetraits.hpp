@@ -53,10 +53,10 @@ struct is_vector_field_reference<TestSpace<Name, FieldShape::Vector>> : std::tru
 template<typename T>
 inline constexpr bool is_vector_field_reference_v = is_vector_field_reference<std::remove_cvref_t<T>>::value;
 
-// Extract field shape (only use when T is known to be a field reference)
+// Unknown shapes have no value; wrappers can forward that absence unchanged.
 // Do NOT use field_shape_v<T> in generic boolean expressions
 template<typename T>
-struct field_shape_impl;
+struct field_shape_impl {};
 
 template<StaticString Name, FieldShape Shape>
 struct field_shape_impl<TrialSpace<Name, Shape>> {
@@ -149,25 +149,16 @@ struct field_shape_impl<GradientExpr<TestSpace<Name, FieldShape::Vector>>> {
  * Negating a scalar/vector/matrix expression does not change its shape.
  */
 template<FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<NegExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 template<FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<MinusTraceExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 template<FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<PlusTraceExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief AverageExpr preserves the field shape of its operand.
@@ -176,11 +167,8 @@ struct field_shape_impl<PlusTraceExpr<Expr>>
  * Facet semantics (averaging across facet) are lowering concerns, not shape.
  */
 template<FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<AverageExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief JumpExpr preserves the field shape of its operand.
@@ -189,11 +177,8 @@ struct field_shape_impl<AverageExpr<Expr>>
  * Facet semantics (jump across facet) are lowering concerns, not shape.
  */
 template<FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<JumpExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief UpwindExpr preserves the field shape of its operand.
@@ -203,11 +188,8 @@ struct field_shape_impl<JumpExpr<Expr>>
  *
  */
 template<FieldExpr AdvExpr, FieldExpr Expr>
-   requires has_field_shape_v<Expr>
 struct field_shape_impl<UpwindExpr<AdvExpr, Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 template<FieldShape Shape>
 struct field_shape_impl<weak_form_detail::BoundaryUpwindZero<Shape>>

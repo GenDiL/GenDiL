@@ -63,7 +63,7 @@ template<class Parent>
 GENDIL_HOST_DEVICE
 auto MakeVectorSlices(Parent&& parent, const size_t extent, const size_t count)
 {
-   const size_t limit = std::numeric_limits<size_t>::max();
+   [[maybe_unused]] const size_t limit = std::numeric_limits<size_t>::max();
    GENDIL_VERIFY(extent == 0 || count <= limit / extent,
       "Vector collection size overflow.");
    GENDIL_VERIFY(extent * count <= GetVectorSize(parent),

@@ -101,7 +101,7 @@ namespace gmres_detail {
 GENDIL_HOST_DEVICE
 inline size_t GMRESDenseSize(const size_t capacity, const size_t leading_dimension)
 {
-   const size_t limit = std::numeric_limits<size_t>::max();
+   [[maybe_unused]] const size_t limit = std::numeric_limits<size_t>::max();
    GENDIL_VERIFY(capacity <= (limit - 1) / 4,
       "GMRES dense workspace size overflow.");
    GENDIL_VERIFY(leading_dimension >= capacity + 1,

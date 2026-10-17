@@ -63,7 +63,7 @@ auto LegacySolve(const Map &map, const RHS &rhs, Dot &dot, Integer max_iters,
 {
    static_assert(IsGMRESOrthogonalization<Orthogonalization>);
    const bool iterate = max_iters != 0 && restart != 0;
-   const size_t limit = std::numeric_limits<size_t>::max();
+   [[maybe_unused]] const size_t limit = std::numeric_limits<size_t>::max();
    GENDIL_VERIFY(restart < limit && (restart == 0 || restart + 1 <= limit / restart),
                  "Legacy GMRES dense size overflow.");
    const size_t rows = restart + 1;

@@ -970,6 +970,42 @@ bool TestSignatureFilteredFacetPreparation()
    return true;
 }
 
+// Keep wrapper-shape coverage in a target that is also compiled by NVCC.
+template<class Expr, FieldShape Shape>
+consteval bool WrappersPreserveShape()
+{
+   return field_shape_v<NegExpr<Expr>> == Shape &&
+      field_shape_v<MinusTraceExpr<Expr>> == Shape &&
+      field_shape_v<PlusTraceExpr<Expr>> == Shape &&
+      field_shape_v<AverageExpr<Expr>> == Shape &&
+      field_shape_v<JumpExpr<Expr>> == Shape &&
+      field_shape_v<UpwindExpr<gendil::Normal, Expr>> == Shape;
+}
+
+using ScalarTestGradient = GradientExpr<TestSpace<"q">>;
+using VectorTestGradient = GradientExpr<VectorTestSpace<"q_vector">>;
+static_assert(WrappersPreserveShape<TestSpace<"q">, FieldShape::Scalar>());
+static_assert(WrappersPreserveShape<VectorTestSpace<"q_vector">, FieldShape::Vector>());
+static_assert(WrappersPreserveShape<ScalarTestGradient, FieldShape::Vector>());
+static_assert(WrappersPreserveShape<VectorTestGradient, FieldShape::Matrix>());
+static_assert(WrappersPreserveShape<GradientExpr<TrialSpace<"p">>, FieldShape::Vector>());
+static_assert(WrappersPreserveShape<GradientExpr<VectorTrialSpace<"p_vector">>, FieldShape::Matrix>());
+static_assert(is_valid_dot_expr_v<PlusTraceExpr<ScalarTestGradient>, gendil::Normal>);
+static_assert(is_valid_dot_expr_v<gendil::Normal, MinusTraceExpr<ScalarTestGradient>>);
+static_assert(!is_valid_dot_expr_v<PlusTraceExpr<TestSpace<"q">>, gendil::Normal>);
+static_assert(!is_valid_dot_expr_v<PlusTraceExpr<VectorTestGradient>, gendil::Normal>);
+
+// Name-only bound fields retain an unresolved shape through every wrapper.
+using UnshapedField = FiniteElementField<"bound">;
+static_assert(!has_field_shape_v<NegExpr<UnshapedField>>);
+static_assert(!has_field_shape_v<MinusTraceExpr<UnshapedField>>);
+static_assert(!has_field_shape_v<PlusTraceExpr<UnshapedField>>);
+static_assert(!has_field_shape_v<AverageExpr<UnshapedField>>);
+static_assert(!has_field_shape_v<JumpExpr<UnshapedField>>);
+static_assert(!has_field_shape_v<UpwindExpr<gendil::Normal, UnshapedField>>);
+static_assert(!has_field_shape_v<AverageExpr<JumpExpr<PlusTraceExpr<UnshapedField>>>>);
+static_assert(!is_valid_dot_expr_v<PlusTraceExpr<UnshapedField>, gendil::Normal>);
+
 } // namespace
 
 int main()

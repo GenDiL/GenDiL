@@ -110,7 +110,7 @@ inline void PrepareGMRESAlgorithmWorkspace(GMRESWorkspace& workspace,
    const size_t next_directions =
       new_extent || workspace.direction_capacity < direction_count
          ? direction_count : workspace.direction_capacity;
-   const size_t limit = std::numeric_limits<size_t>::max();
+   [[maybe_unused]] const size_t limit = std::numeric_limits<size_t>::max();
    GENDIL_VERIFY(next_restart < limit, "GMRES restart capacity overflow.");
    const size_t leading_dimension = next_restart + 1;
    GENDIL_VERIFY(vector_size == 0 || leading_dimension <= limit / vector_size,
@@ -165,7 +165,7 @@ inline auto MakeGMRESWorkspaceView(GMRESWorkspace& workspace)
 {
    GENDIL_VERIFY(workspace.restart_capacity > 0,
       "Prepare GMRES workspace capacity before borrowing a view.");
-   const size_t limit = std::numeric_limits<size_t>::max();
+   [[maybe_unused]] const size_t limit = std::numeric_limits<size_t>::max();
    GENDIL_VERIFY(workspace.restart_capacity < limit,
       "GMRES restart capacity overflow.");
    const size_t leading_dimension = workspace.restart_capacity + 1;
