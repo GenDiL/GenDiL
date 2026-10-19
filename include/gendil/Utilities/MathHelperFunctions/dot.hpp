@@ -12,6 +12,10 @@
 #include "gendil/Utilities/View/threadedview.hpp"
 #include "gendil/Algebra/Vector/vector.hpp"
 #include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
+#include <array>
+#include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -64,6 +68,42 @@ Real Dot( const ElementDoF< FiniteElementSpace > & u, const ElementDoF< FiniteEl
       }
    );
    return res;
+}
+
+// Contract equally sized vectors without converting their storage. This lets
+// matrix-vector fluxes (recursive arrays) pair directly with facet normals
+// (standard arrays). Arithmetic entries exclude nested matrix/tensor operands;
+// the multiplication result type determines the accumulation precision.
+template<typename L, typename R, size_t N>
+   requires (std::is_arithmetic_v<L> && std::is_arithmetic_v<R>)
+GENDIL_HOST_DEVICE
+auto Dot(const SerialRecursiveArray<L, N>& lhs, const std::array<R, N>& rhs)
+   -> std::remove_cvref_t<decltype(std::declval<const L&>() * std::declval<const R&>())>
+{
+   using Result = std::remove_cvref_t<decltype(
+      std::declval<const L&>() * std::declval<const R&>())>;
+   Result result{0};
+   for (size_t i = 0; i < N; ++i)
+   {
+      result += lhs(i) * rhs[i];
+   }
+   return result;
+}
+
+template<typename L, typename R, size_t N>
+   requires (std::is_arithmetic_v<L> && std::is_arithmetic_v<R>)
+GENDIL_HOST_DEVICE
+auto Dot(const std::array<L, N>& lhs, const SerialRecursiveArray<R, N>& rhs)
+   -> std::remove_cvref_t<decltype(std::declval<const L&>() * std::declval<const R&>())>
+{
+   using Result = std::remove_cvref_t<decltype(
+      std::declval<const L&>() * std::declval<const R&>())>;
+   Result result{0};
+   for (size_t i = 0; i < N; ++i)
+   {
+      result += lhs[i] * rhs(i);
+   }
+   return result;
 }
 
 template < typename T, Integer ... Dims >
