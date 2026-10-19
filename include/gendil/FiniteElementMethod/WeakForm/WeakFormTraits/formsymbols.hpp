@@ -85,6 +85,7 @@ template<> struct symbols_of<Normal> : symbol_summary<true> {};
 #define GENDIL_SYMBOL_UNARY(Node) \
 template<FieldExpr E> struct symbols_of<Node<E>> : symbols_of<E> {};
 GENDIL_SYMBOL_UNARY(GradientExpr)
+GENDIL_SYMBOL_UNARY(DivergenceExpr)
 GENDIL_SYMBOL_UNARY(NegExpr)
 GENDIL_SYMBOL_UNARY(MinusTraceExpr)
 GENDIL_SYMBOL_UNARY(PlusTraceExpr)

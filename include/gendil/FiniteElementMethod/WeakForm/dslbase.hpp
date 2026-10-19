@@ -40,6 +40,7 @@ concept CoefficientInput = std::derived_from<std::remove_cvref_t<T>, Coefficient
 template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct TrialSpace;
 template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct TestSpace;
 template < FieldExpr Expr > struct GradientExpr;
+template < FieldExpr Expr > struct DivergenceExpr;
 template < FieldExpr Expr > struct NegExpr;
 template < FieldExpr Expr > struct MinusTraceExpr;
 template < FieldExpr Expr > struct PlusTraceExpr;

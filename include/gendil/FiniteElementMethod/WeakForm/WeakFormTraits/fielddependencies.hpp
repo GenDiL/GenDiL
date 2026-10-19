@@ -129,6 +129,10 @@ struct raw_named_field_requirements<GradientExpr<Expr>>
    using type = typename raw_named_field_requirements<Expr>::type;
 };
 
+template<FieldExpr Expr>
+struct raw_named_field_requirements<DivergenceExpr<Expr>>
+   : raw_named_field_requirements<GradientExpr<Expr>> {};
+
 template<FieldExpr AdvExpr, FieldExpr Expr>
 struct raw_named_field_requirements<UpwindExpr<AdvExpr, Expr>>
 {
@@ -329,6 +333,10 @@ struct unqualified_side_dependent_named_field_requirements<GradientExpr<Expr>>
       typename unqualified_side_dependent_named_field_requirements<Expr>::type;
 };
 
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<DivergenceExpr<Expr>>
+   : unqualified_side_dependent_named_field_requirements<GradientExpr<Expr>> {};
+
 template<FieldExpr AdvExpr, FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<
    UpwindExpr<AdvExpr, Expr>>
@@ -458,6 +466,10 @@ struct has_unqualified_interior_test_trace<NegExpr<Expr>>
 
 template<FieldExpr Expr>
 struct has_unqualified_interior_test_trace<GradientExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<DivergenceExpr<Expr>>
    : has_unqualified_interior_test_trace<Expr> {};
 
 template<FieldExpr Expr>
@@ -613,6 +625,10 @@ struct plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext>
    static constexpr bool value =
       plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
 };
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<DivergenceExpr<Expr>, InPlusSideContext>
+   : plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext> {};
 
 template<FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<AverageExpr<Expr>, InPlusSideContext>

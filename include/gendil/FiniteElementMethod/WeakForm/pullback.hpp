@@ -9,6 +9,7 @@
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/divergence.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dot.hpp"
@@ -269,7 +270,49 @@ struct ScalarMultiplierSeed : FieldBase
    }
 };
 
+// The adjoint of trace(grad(v)) is a physical diagonal matrix. Only the
+// coordinate type supplies its extent; no coordinate values are evaluated.
+template<class Seed>
+struct DivergenceSeed : FieldBase
+{
+   Seed seed;
+
+   GENDIL_HOST_DEVICE
+   explicit DivergenceSeed(const Seed& value) : seed(value) {}
+
+   template<class KernelContext, class WeakFormContext, class OperatorContext,
+            class ElementContext, class QuadPtContext, class Fields>
+   GENDIL_HOST_DEVICE
+   auto operator()(const KernelContext& kernel_context, const WeakFormContext& weak_form_context,
+                   const OperatorContext& operator_context, const ElementContext& element_context,
+                   const QuadPtContext& quad_pt_context, const Fields& fields) const
+   {
+      constexpr auto Dim = std::tuple_size_v<std::remove_cvref_t<decltype(quad_pt_context.X)>>;
+      const auto value = seed(kernel_context, weak_form_context, operator_context,
+                              element_context, quad_pt_context, fields);
+      static_assert(std::is_convertible_v<decltype(value), Real>,
+         "Divergence pullback requires a scalar seed.");
+      SerialRecursiveArray<Real, Dim, Dim> result{};
+      for (size_t d = 0; d < Dim; ++d) { result(d, d) = value; }
+      return result;
+   }
+};
+
 } // namespace pullback_detail
+
+template<class Seed>
+struct field_shape_impl<pullback_detail::DivergenceSeed<Seed>>
+{
+   static constexpr auto value = FieldShape::Matrix;
+};
+
+template<class Seed>
+struct test_linearity<pullback_detail::DivergenceSeed<Seed>>
+{
+   static_assert(is_test_free_v<Seed>);
+   static constexpr auto value = TestLinearity::TestFree;
+   static constexpr auto test_name = StaticString{""};
+};
 
 template<class Seed, class Multiplier>
 struct field_shape_impl<pullback_detail::ScalarMultiplierSeed<Seed, Multiplier>>
@@ -335,6 +378,16 @@ auto pullback(const GradientExpr<TestSpace<Name, Shape>>& /*grad_v*/, const Seed
       "pullback(expr, seed) requires seed to have the same FieldShape as expr.");
 
    return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(seed))};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const DivergenceExpr<TestSpace<Name, FieldShape::Vector>>&, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<DivergenceExpr<VectorTestSpace<Name>>, Seed>,
+      "Divergence pullback requires a scalar seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(
+      pullback_detail::DivergenceSeed<Seed>{seed}))};
 }
 
 template<FieldExpr E, class Seed>
@@ -938,7 +991,7 @@ auto pullback(const AverageExpr<E>&, const Seed&)
 // Trial functions (not implemented here):
 //    jump(u) = u_minus - u_plus  (handled by JumpExpr::operator())
 //
-// NARROW SCOPE: Only handles JumpExpr<TestSpace<Name, Shape>>
+// The same current-side rule applies to any supported test-linear expression.
 //
 
 /**
@@ -965,19 +1018,28 @@ auto pullback(const JumpExpr<TestSpace<Name, Shape>>& jump_expr, const Seed& see
 }
 
 /**
- * @brief Placeholder for general JumpExpr pullback (not yet implemented).
+ * @brief Pull back a jump of a test-linear expression on the current side.
  *
- * This overload catches JumpExpr of non-TestSpace expressions.
- * For trial functions, jump evaluation handles minus/plus automatically.
- * The specific TestSpace overload above will be preferred for test functions.
+ * Each local facet visit contributes only its current test row. Thus jump(E)
+ * has the same pullback as E, including gradients and div(v). The opposite
+ * row is handled by the neighboring visit, with its own trial jump.
  */
 template<FieldExpr E, class Seed>
+   requires (is_test_linear_v<E>)
 GENDIL_HOST_DEVICE
-auto pullback(const JumpExpr<E>& /*expr*/, const Seed& /*seed*/)
+auto pullback(const JumpExpr<E>& expr, const Seed& seed)
 {
-   // If this is called, it means E is not TestSpace
+   return pullback(expr.expr, seed);
+}
+
+template<FieldExpr E, class Seed>
+   requires (!is_test_linear_v<E>)
+GENDIL_HOST_DEVICE
+auto pullback(const JumpExpr<E>&, const Seed&)
+{
    static_assert(dependent_false_v<E, Seed>,
-      "JumpExpr pullback only implemented for TestSpace. Trial functions handled by JumpExpr::operator().");
+      "JumpExpr pullback requires a test-linear expression. Trial-only/test-free "
+      "jumps must be evaluated as coefficients, not pulled back.");
    return PullbackResult<>{};
 }
 
@@ -1375,6 +1437,30 @@ auto pullback_global_interior(
    return PullbackResult{MakeStaticMap(MakeEntry<GradientPlusChannel>(seed))};
 }
 
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const MinusTraceExpr<DivergenceExpr<TestSpace<Name, FieldShape::Vector>>>&,
+   const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<DivergenceExpr<VectorTestSpace<Name>>, Seed>,
+      "Divergence pullback requires a scalar seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientMinusChannel>(
+      pullback_detail::DivergenceSeed<Seed>{seed}))};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const PlusTraceExpr<DivergenceExpr<TestSpace<Name, FieldShape::Vector>>>&,
+   const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<DivergenceExpr<VectorTestSpace<Name>>, Seed>,
+      "Divergence pullback requires a scalar seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientPlusChannel>(
+      pullback_detail::DivergenceSeed<Seed>{seed}))};
+}
+
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback_global_interior(
@@ -1433,6 +1519,18 @@ auto pullback_global_interior(
       "Unqualified grad(v) on canonical global interior facets is ambiguous. "
       "Use minus(grad(v)), plus(grad(v)), jump(grad(v)), or "
       "average(grad(v)).");
+   return PullbackResult<>{};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const DivergenceExpr<TestSpace<Name, FieldShape::Vector>>&,
+   const Seed&)
+{
+   static_assert(dependent_false_v<Seed>,
+      "Unqualified div(v) on canonical global interior facets is ambiguous. "
+      "Use minus(div(v)), plus(div(v)), jump(div(v)), or average(div(v)).");
    return PullbackResult<>{};
 }
 

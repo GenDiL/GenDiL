@@ -68,6 +68,9 @@ template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<GradientExpr<E>, Context, Side, Signature>
 { static constexpr auto value = weak_form_traits::gradient_shape(bound_shape<E, Context, Side, Signature>::value); };
 template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_shape<DivergenceExpr<E>, Context, Side, Signature>
+{ static constexpr auto value = SemanticShape::Scalar; };
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<NegExpr<E>, Context, Side, Signature> : bound_shape<E, Context, Side, Signature> {};
 template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<TransposeExpr<E>, Context, Side, Signature>
@@ -145,6 +148,27 @@ template<ShapeOperation Op, class L, class R, class Context, SemanticSide Side, 
 struct shape_obligation<ShapeObligation<Op, L, R>, Context, Side, Signature>
 { static constexpr bool value = weak_form_traits::combined_shape(Op,
    bound_shape<L, Context, Side, Signature>::value, bound_shape<R, Context, Side, Signature>::value) != SemanticShape::Unsupported; };
+
+// A divergence occurrence constrains only its selected side. A value-only read
+// of the same field on the other side must not acquire this extent obligation.
+template<StaticString Name, SemanticSide OccurrenceSide, class Context,
+         SemanticSide Side, class Signature>
+struct shape_obligation<ShapeObligation<ShapeOperation::Divergence, NameTag<Name>,
+   std::integral_constant<SemanticSide, OccurrenceSide>>, Context, Side, Signature>
+{
+   using Bound = bound_shape<FiniteElementField<Name>, Context,
+      OccurrenceSide == SemanticSide::Unqualified ? Side : OccurrenceSide,
+      std::conditional_t<OccurrenceSide == SemanticSide::Unqualified, Signature, void>>;
+   using Space = typename Bound::Space;
+   using Coordinates = typename Space::mesh_type::cell_type::physical_coordinates;
+   static constexpr bool vector = is_vector_finite_element_space_v<Space>;
+   static constexpr bool matching_dimension = num_comp_v<Space> == std::tuple_size_v<Coordinates>;
+   static_assert(vector, "div requires a vector finite-element space.");
+   static_assert(!vector || matching_dimension,
+      "div requires one vector component per physical dimension.");
+   static constexpr bool value = vector && matching_dimension;
+};
+
 template<class Context, SemanticSide Side = SemanticSide::Unqualified, class Signature = void, class... Obligations>
 consteval void ValidateShapes(type_list<Obligations...>)
 {

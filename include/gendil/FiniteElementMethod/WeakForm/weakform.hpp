@@ -83,6 +83,9 @@
 // Request spatial gradients of supported field expressions.
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
 
+// Form physical divergence of named vector trial, test, or prescribed fields.
+#include "gendil/FiniteElementMethod/WeakForm/divergence.hpp"
+
 // Transpose field expressions, including vector-to-row-matrix conversion.
 #include "gendil/FiniteElementMethod/WeakForm/transpose.hpp"
 

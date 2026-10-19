@@ -245,6 +245,25 @@ struct analyze<GradientExpr<FiniteElementField<N>>, Symbols, Side>
    using shape_obligations = type_list<ShapeObligation<ShapeOperation::Gradient, NameTag<N>>>;
 };
 
+// The result rank is known before binding, but vector component counts must
+// match the physical dimension of each selected finite-element space.
+template<StaticString N, ReadRole Role, NamedFieldProvenance Provenance, SemanticSide Side>
+struct divergence_semantics
+ : field_semantics<N, SemanticShape::Scalar, Role, OperatorMask::Gradients, Provenance, Side>
+{
+   using shape_obligations = type_list<ShapeObligation<ShapeOperation::Divergence,
+      NameTag<N>, std::integral_constant<SemanticSide, Side>>>;
+};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<DivergenceExpr<TrialSpace<N, FieldShape::Vector>>, Symbols, Side>
+ : divergence_semantics<N, ReadRole::Active, NamedFieldProvenance::ActiveTrial, Side> {};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<DivergenceExpr<TestSpace<N, FieldShape::Vector>>, Symbols, Side>
+ : divergence_semantics<N, ReadRole::Test, NamedFieldProvenance::ActiveTest, Side> {};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<DivergenceExpr<FiniteElementField<N>>, Symbols, Side>
+ : divergence_semantics<N, ReadRole::Bound, NamedFieldProvenance::FiniteElementExpression, Side> {};
+
 template<class Symbols, SemanticSide Side>
 struct analyze<ScaleExpr, Symbols, Side> : empty_semantics {};
 template<class Symbols, SemanticSide Side>

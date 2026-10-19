@@ -139,6 +139,12 @@ struct field_shape_impl<GradientExpr<TestSpace<Name, FieldShape::Vector>>> {
    static constexpr FieldShape value = FieldShape::Matrix;
 };
 
+// Divergence contracts a vector field's physical gradient to a scalar.
+template<FieldExpr Expr>
+struct field_shape_impl<DivergenceExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Scalar;
+};
+
 // =============================================================================
 // FieldShape propagation for shape-preserving wrapper expressions
 // =============================================================================
