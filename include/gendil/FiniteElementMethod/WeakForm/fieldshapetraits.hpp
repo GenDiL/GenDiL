@@ -145,6 +145,12 @@ struct field_shape_impl<DivergenceExpr<Expr>> {
    static constexpr FieldShape value = FieldShape::Scalar;
 };
 
+// Three-dimensional curl preserves vector rank.
+template<FieldExpr Expr>
+struct field_shape_impl<CurlExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
 // =============================================================================
 // FieldShape propagation for shape-preserving wrapper expressions
 // =============================================================================

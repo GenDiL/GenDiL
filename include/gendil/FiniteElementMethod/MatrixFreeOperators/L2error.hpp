@@ -7,7 +7,8 @@
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Algebra/Vector/vector.hpp"
 #include "gendil/Algebra/accessors.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
+#include "gendil/Utilities/Loop/constexprloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
@@ -82,8 +83,8 @@ void L2ErrorElementOperatorSerial(
             ConstexprLoop<static_extent_v<decltype(Bu_q)>>([&](auto component)
             {
                const Real diff =
-                  vector_access(Bu_q, component) -
-                  vector_access(analytical_sol, component);
+                  GetValue(Bu_q, component) -
+                  GetValue(analytical_sol, component);
                result += diff * diff;
             });
             return result;
@@ -167,8 +168,8 @@ void L2ErrorElementOperatorThreaded(
             ConstexprLoop<static_extent_v<decltype(Bu_q)>>([&](auto component)
             {
                const Real diff =
-                  vector_access(Bu_q, component) -
-                  vector_access(analytical_sol, component);
+                  GetValue(Bu_q, component) -
+                  GetValue(analytical_sol, component);
                result += diff * diff;
             });
             return result;

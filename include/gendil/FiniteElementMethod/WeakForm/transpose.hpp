@@ -5,7 +5,7 @@
 #pragma once
 
 #include "gendil/Algebra/accessors.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
 #include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
@@ -45,12 +45,12 @@ struct TransposeExpr : FieldBase
 
          using EntryType =
             typename vector_element_type<
-               std::remove_cvref_t<decltype(vector_access(value, 0))>>::type;
+               std::remove_cvref_t<decltype(GetValue(value, 0))>>::type;
 
          SerialRecursiveArray<EntryType, 1, size> result;
          for (Integer i = 0; i < size; ++i)
          {
-            result(0, i) = vector_access(value, i);
+            result(0, i) = GetValue(value, i);
          }
          return result;
       }
@@ -64,14 +64,14 @@ struct TransposeExpr : FieldBase
 
          using EntryType =
             typename vector_element_type<
-               std::remove_cvref_t<decltype(matrix_access(value, 0, 0))>>::type;
+               std::remove_cvref_t<decltype(GetValue(value, 0, 0))>>::type;
 
          SerialRecursiveArray<EntryType, cols, rows> result;
          for (Integer i = 0; i < rows; ++i)
          {
             for (Integer j = 0; j < cols; ++j)
             {
-               result(j, i) = matrix_access(value, i, j);
+               result(j, i) = GetValue(value, i, j);
             }
          }
          return result;

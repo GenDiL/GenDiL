@@ -5,9 +5,9 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/negation.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
-#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
 
 namespace gendil
 {
@@ -38,7 +38,9 @@ struct NegExpr : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      return -expr( kernel_context, weak_form_context, operator_context, element_context, quad_pt_context, fields );
+      return gendil::NegateValue(expr(
+         kernel_context, weak_form_context, operator_context,
+         element_context, quad_pt_context, fields));
    }
 };
 

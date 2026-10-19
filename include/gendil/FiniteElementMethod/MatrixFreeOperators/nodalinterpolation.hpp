@@ -43,7 +43,7 @@ struct ComponentFunction
    Real operator()(const Coordinates& coordinates)
    {
       const auto value = function(coordinates);
-      return static_cast<Real>(vector_access(value, Component));
+      return static_cast<Real>(GetValue(value, Component));
    }
 };
 

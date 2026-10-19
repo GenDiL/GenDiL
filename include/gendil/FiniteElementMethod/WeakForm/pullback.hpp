@@ -9,6 +9,7 @@
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/curl.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/divergence.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
@@ -298,7 +299,49 @@ struct DivergenceSeed : FieldBase
    }
 };
 
+// Curl's adjoint acts on the physical gradient. The channel writer applies
+// the selected cell/side mapping afterwards, exactly as for grad and div.
+template<class Seed>
+struct CurlSeed : FieldBase
+{
+   Seed seed;
+
+   GENDIL_HOST_DEVICE
+   explicit CurlSeed(const Seed& value) : seed(value) {}
+
+   template<class... Args>
+   GENDIL_HOST_DEVICE
+   auto operator()(const Args&... args) const
+   {
+      const auto value = seed(args...);
+      static_assert(static_extent_v<decltype(value)> == 3,
+         "Curl pullback requires a three-component seed.");
+      const Real x = GetValue(value, 0);
+      const Real y = GetValue(value, 1);
+      const Real z = GetValue(value, 2);
+      SerialRecursiveArray<Real, 3, 3> result{};
+      result(0, 1) = -z; result(0, 2) = y;
+      result(1, 0) = z;  result(1, 2) = -x;
+      result(2, 0) = -y; result(2, 1) = x;
+      return result;
+   }
+};
+
 } // namespace pullback_detail
+
+template<class Seed>
+struct field_shape_impl<pullback_detail::CurlSeed<Seed>>
+{
+   static constexpr auto value = FieldShape::Matrix;
+};
+
+template<class Seed>
+struct test_linearity<pullback_detail::CurlSeed<Seed>>
+{
+   static_assert(is_test_free_v<Seed>);
+   static constexpr auto value = TestLinearity::TestFree;
+   static constexpr auto test_name = StaticString{""};
+};
 
 template<class Seed>
 struct field_shape_impl<pullback_detail::DivergenceSeed<Seed>>
@@ -388,6 +431,16 @@ auto pullback(const DivergenceExpr<TestSpace<Name, FieldShape::Vector>>&, const 
       "Divergence pullback requires a scalar seed.");
    return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(
       pullback_detail::DivergenceSeed<Seed>{seed}))};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const CurlExpr<TestSpace<Name, FieldShape::Vector>>&, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<CurlExpr<VectorTestSpace<Name>>, Seed>,
+      "Curl pullback requires a vector seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(
+      pullback_detail::CurlSeed<Seed>{seed}))};
 }
 
 template<FieldExpr E, class Seed>
@@ -1461,6 +1514,30 @@ auto pullback_global_interior(
       pullback_detail::DivergenceSeed<Seed>{seed}))};
 }
 
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const MinusTraceExpr<CurlExpr<TestSpace<Name, FieldShape::Vector>>>&,
+   const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<CurlExpr<VectorTestSpace<Name>>, Seed>,
+      "Curl pullback requires a vector seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientMinusChannel>(
+      pullback_detail::CurlSeed<Seed>{seed}))};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const PlusTraceExpr<CurlExpr<TestSpace<Name, FieldShape::Vector>>>&,
+   const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<CurlExpr<VectorTestSpace<Name>>, Seed>,
+      "Curl pullback requires a vector seed.");
+   return PullbackResult{MakeStaticMap(MakeEntry<GradientPlusChannel>(
+      pullback_detail::CurlSeed<Seed>{seed}))};
+}
+
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback_global_interior(
@@ -1531,6 +1608,18 @@ auto pullback_global_interior(
    static_assert(dependent_false_v<Seed>,
       "Unqualified div(v) on canonical global interior facets is ambiguous. "
       "Use minus(div(v)), plus(div(v)), jump(div(v)), or average(div(v)).");
+   return PullbackResult<>{};
+}
+
+template<StaticString Name, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(
+   const CurlExpr<TestSpace<Name, FieldShape::Vector>>&,
+   const Seed&)
+{
+   static_assert(dependent_false_v<Seed>,
+      "Unqualified curl(v) on canonical global interior facets is ambiguous. "
+      "Use minus(curl(v)), plus(curl(v)), jump(curl(v)), or average(curl(v)).");
    return PullbackResult<>{};
 }
 

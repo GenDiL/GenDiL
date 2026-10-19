@@ -94,6 +94,8 @@ GENDIL_SYMBOL_UNARY(JumpExpr)
 GENDIL_SYMBOL_UNARY(TransposeExpr)
 #undef GENDIL_SYMBOL_UNARY
 
+template<FieldExpr E>
+struct symbols_of<CurlExpr<E>> : symbols_of<E> {};
 #define GENDIL_SYMBOL_BINARY(Node) \
 template<FieldExpr L, FieldExpr R> \
 struct symbols_of<Node<L, R>> : merge_symbols<symbols_of<L>, symbols_of<R>> {};

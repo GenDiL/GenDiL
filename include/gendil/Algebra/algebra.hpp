@@ -5,14 +5,20 @@
 // Componentwise addition of fixed-size arrays and mixed array storage.
 #include "gendil/Algebra/arrayaddition.hpp"
 
-// A concept for statically sized vectors.
-#include "gendil/Algebra/staticvector.hpp"
+// Readable fixed-size vector and matrix contracts.
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
+
+// Arithmetic on fixed-size vector values.
+#include "gendil/Algebra/staticvectorops.hpp"
 
 // Accessor helpers for vector and matrix indexing.
 #include "gendil/Algebra/accessors.hpp"
 
 // Matrix-vector multiplication operations.
 #include "gendil/Algebra/matrixvectorops.hpp"
+
+// Native and componentwise negation of scalar, vector, and matrix values.
+#include "gendil/Algebra/negation.hpp"
 
 // A simple vector type.
 #include "gendil/Algebra/Vector/vector.hpp"

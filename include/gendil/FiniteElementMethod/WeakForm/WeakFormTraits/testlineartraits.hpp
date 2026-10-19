@@ -112,6 +112,9 @@ template<FieldExpr E>
 struct test_linearity<DivergenceExpr<E>> : test_linearity<E> {};
 
 template<FieldExpr E>
+struct test_linearity<CurlExpr<E>> : test_linearity<E> {};
+
+template<FieldExpr E>
 struct test_linearity<JumpExpr<E>> {
    static constexpr TestLinearity value = test_linearity<E>::value;
    static constexpr auto test_name = test_linearity<E>::test_name;

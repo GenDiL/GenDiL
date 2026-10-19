@@ -474,8 +474,10 @@ SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dim
 }
 
 // Generic scalar multiplication with compatible scalar types (0.5, coefficients, etc.)
+// Require the element assignment used below so vector/matrix operands do not
+// compete with algebraic products as apparent scalar multipliers.
 template< typename Scalar, typename T, size_t... Dims >
-requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+requires requires(const Scalar& s, const T& x, T& out) { out = s * x; } && (!std::same_as<Scalar, T>)
 GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > operator*( const Scalar & scalar, const SerialRecursiveArray< T, Dims... > & arr )
 {
@@ -488,7 +490,7 @@ SerialRecursiveArray< T, Dims... > operator*( const Scalar & scalar, const Seria
 }
 
 template< typename Scalar, typename T, size_t... Dims >
-requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+requires requires(const Scalar& s, const T& x, T& out) { out = s * x; } && (!std::same_as<Scalar, T>)
 GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dims... > & arr, const Scalar & scalar )
 {

@@ -264,6 +264,24 @@ template<StaticString N, class Symbols, SemanticSide Side>
 struct analyze<DivergenceExpr<FiniteElementField<N>>, Symbols, Side>
  : divergence_semantics<N, ReadRole::Bound, NamedFieldProvenance::FiniteElementExpression, Side> {};
 
+template<StaticString N, ReadRole Role, NamedFieldProvenance Provenance,
+         SemanticSide Side>
+struct curl_semantics
+ : field_semantics<N, SemanticShape::Vector, Role, OperatorMask::Gradients, Provenance, Side>
+{
+   using shape_obligations = type_list<ShapeObligation<ShapeOperation::Curl,
+      NameTag<N>, std::integral_constant<SemanticSide, Side>>>;
+};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<CurlExpr<TrialSpace<N, FieldShape::Vector>>, Symbols, Side>
+ : curl_semantics<N, ReadRole::Active, NamedFieldProvenance::ActiveTrial, Side> {};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<CurlExpr<TestSpace<N, FieldShape::Vector>>, Symbols, Side>
+ : curl_semantics<N, ReadRole::Test, NamedFieldProvenance::ActiveTest, Side> {};
+template<StaticString N, class Symbols, SemanticSide Side>
+struct analyze<CurlExpr<FiniteElementField<N>>, Symbols, Side>
+ : curl_semantics<N, ReadRole::Bound, NamedFieldProvenance::FiniteElementExpression, Side> {};
+
 template<class Symbols, SemanticSide Side>
 struct analyze<ScaleExpr, Symbols, Side> : empty_semantics {};
 template<class Symbols, SemanticSide Side>

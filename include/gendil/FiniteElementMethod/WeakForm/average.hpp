@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"

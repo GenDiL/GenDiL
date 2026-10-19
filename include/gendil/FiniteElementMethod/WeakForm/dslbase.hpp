@@ -41,6 +41,7 @@ template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct Tri
 template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct TestSpace;
 template < FieldExpr Expr > struct GradientExpr;
 template < FieldExpr Expr > struct DivergenceExpr;
+template < FieldExpr Expr > struct CurlExpr;
 template < FieldExpr Expr > struct NegExpr;
 template < FieldExpr Expr > struct MinusTraceExpr;
 template < FieldExpr Expr > struct PlusTraceExpr;

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include <utility>
 
 namespace gendil
 {
@@ -13,31 +14,33 @@ namespace gendil
 template<class T>
 struct always_false : std::false_type {};
 
-// Vector access: v(i) or v[i]
+// Read or write a vector entry with GetValue(v, i), preferring v(i) to v[i].
+// Preserve references/proxies and reject unsupported access in requires expressions.
 template<class V, class I>
+   requires (requires(V&& v, I i) { std::forward<V>(v)(i); } ||
+             requires(V&& v, I i) { std::forward<V>(v)[i]; })
 GENDIL_HOST_DEVICE GENDIL_INLINE
-decltype(auto) vector_access(V&& v, I i)
+constexpr decltype(auto) GetValue(V&& v, I i)
 {
    if constexpr (requires { std::forward<V>(v)(i); }) {
       return std::forward<V>(v)(i);
-   } else if constexpr (requires { std::forward<V>(v)[i]; }) {
-      return std::forward<V>(v)[i];
    } else {
-      static_assert(always_false<V>::value, "vector_access: unsupported accessor");
+      return std::forward<V>(v)[i];
    }
 }
 
-// Matrix access: A(i,j) or A[i][j]
+// Read or write a matrix entry with GetValue(A, i, j), preferring A(i,j) to A[i][j].
+// Preserve references/proxies, including writable entries for mutable inputs.
 template<class M, class I, class J>
+   requires (requires(M&& A, I i, J j) { std::forward<M>(A)(i, j); } ||
+             requires(M&& A, I i, J j) { std::forward<M>(A)[i][j]; })
 GENDIL_HOST_DEVICE GENDIL_INLINE
-decltype(auto) matrix_access(M&& A, I i, J j)
+constexpr decltype(auto) GetValue(M&& A, I i, J j)
 {
    if constexpr (requires { std::forward<M>(A)(i, j); }) {
       return std::forward<M>(A)(i, j);
-   } else if constexpr (requires { std::forward<M>(A)[i][j]; }) {
-      return std::forward<M>(A)[i][j];
    } else {
-      static_assert(always_false<M>::value, "matrix_access: unsupported accessor");
+      return std::forward<M>(A)[i][j];
    }
 }
 

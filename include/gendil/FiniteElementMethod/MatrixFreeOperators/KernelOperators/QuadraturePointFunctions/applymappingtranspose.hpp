@@ -7,101 +7,116 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 #include "getoffset.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "mappingconcepts.hpp"
 #include "gendil/Algebra/accessors.hpp"
+#include <utility>
 
 namespace gendil {
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const Real & inv_J, VecType & Gu )
 {
-   Gu[offset] = inv_J * Gu[offset];
+   const Real value = GetValue(std::as_const(Gu), offset);
+   GetValue(Gu, offset) = inv_J * value;
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const Real (& inv_J)[1][1], VecType & Gu )
 {
-   Gu[offset] = inv_J[0][0] * Gu[offset];
+   const Real value = GetValue(std::as_const(Gu), offset);
+   GetValue(Gu, offset) = inv_J[0][0] * value;
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const Real (& inv_J)[2][2], VecType & Gu )
 {
-   const Real x = inv_J[0][0] * Gu[offset+0] + inv_J[1][0] * Gu[offset+1];
-   const Real y = inv_J[0][1] * Gu[offset+0] + inv_J[1][1] * Gu[offset+1];
-   Gu[offset+0] = x;
-   Gu[offset+1] = y;
+   const Real g0 = GetValue(std::as_const(Gu), offset+0);
+   const Real g1 = GetValue(std::as_const(Gu), offset+1);
+   const Real x = inv_J[0][0] * g0 + inv_J[1][0] * g1;
+   const Real y = inv_J[0][1] * g0 + inv_J[1][1] * g1;
+   GetValue(Gu, offset+0) = x;
+   GetValue(Gu, offset+1) = y;
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const Real (& inv_J)[3][3], VecType & Gu )
 {
-   const Real x = inv_J[0][0] * Gu[offset+0] + inv_J[1][0] * Gu[offset+1] + inv_J[2][0] * Gu[offset+2];
-   const Real y = inv_J[0][1] * Gu[offset+0] + inv_J[1][1] * Gu[offset+1] + inv_J[2][1] * Gu[offset+2];
-   const Real z = inv_J[0][2] * Gu[offset+0] + inv_J[1][2] * Gu[offset+1] + inv_J[2][2] * Gu[offset+2];
-   Gu[offset+0] = x;
-   Gu[offset+1] = y;
-   Gu[offset+2] = z;
+   const Real g0 = GetValue(std::as_const(Gu), offset+0);
+   const Real g1 = GetValue(std::as_const(Gu), offset+1);
+   const Real g2 = GetValue(std::as_const(Gu), offset+2);
+   const Real x = inv_J[0][0] * g0 + inv_J[1][0] * g1 + inv_J[2][0] * g2;
+   const Real y = inv_J[0][1] * g0 + inv_J[1][1] * g1 + inv_J[2][1] * g2;
+   const Real z = inv_J[0][2] * g0 + inv_J[1][2] * g1 + inv_J[2][2] * g2;
+   GetValue(Gu, offset+0) = x;
+   GetValue(Gu, offset+1) = y;
+   GetValue(Gu, offset+2) = z;
 }
 
-template < size_t Dim, static_vector<Real> VecType >
+template < size_t Dim, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const Real (& inv_J)[Dim][Dim], VecType & Gu )
 {
    ApplyMappingTranspose<0>( inv_J, Gu );
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::array< std::array< Real, 1 >, 1 > & inv_J, VecType & Gu )
 {
-   Gu[offset] = inv_J[0][0] * Gu[offset];
+   const Real value = GetValue(std::as_const(Gu), offset);
+   GetValue(Gu, offset) = inv_J[0][0] * value;
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::array< std::array< Real, 2 >, 2 > & inv_J, VecType & Gu )
 {
-   const Real x = inv_J[0][0] * Gu[offset+0] + inv_J[1][0] * Gu[offset+1];
-   const Real y = inv_J[0][1] * Gu[offset+0] + inv_J[1][1] * Gu[offset+1];
-   Gu[offset+0] = x;
-   Gu[offset+1] = y;
+   const Real g0 = GetValue(std::as_const(Gu), offset+0);
+   const Real g1 = GetValue(std::as_const(Gu), offset+1);
+   const Real x = inv_J[0][0] * g0 + inv_J[1][0] * g1;
+   const Real y = inv_J[0][1] * g0 + inv_J[1][1] * g1;
+   GetValue(Gu, offset+0) = x;
+   GetValue(Gu, offset+1) = y;
 }
 
-template < size_t offset, static_vector<Real> VecType >
+template < size_t offset, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::array< std::array< Real, 3 >, 3 > & inv_J, VecType & Gu )
 {
-   const Real x = inv_J[0][0] * Gu[offset+0] + inv_J[1][0] * Gu[offset+1] + inv_J[2][0] * Gu[offset+2];
-   const Real y = inv_J[0][1] * Gu[offset+0] + inv_J[1][1] * Gu[offset+1] + inv_J[2][1] * Gu[offset+2];
-   const Real z = inv_J[0][2] * Gu[offset+0] + inv_J[1][2] * Gu[offset+1] + inv_J[2][2] * Gu[offset+2];
-   Gu[offset+0] = x;
-   Gu[offset+1] = y;
-   Gu[offset+2] = z;
+   const Real g0 = GetValue(std::as_const(Gu), offset+0);
+   const Real g1 = GetValue(std::as_const(Gu), offset+1);
+   const Real g2 = GetValue(std::as_const(Gu), offset+2);
+   const Real x = inv_J[0][0] * g0 + inv_J[1][0] * g1 + inv_J[2][0] * g2;
+   const Real y = inv_J[0][1] * g0 + inv_J[1][1] * g1 + inv_J[2][1] * g2;
+   const Real z = inv_J[0][2] * g0 + inv_J[1][2] * g1 + inv_J[2][2] * g2;
+   GetValue(Gu, offset+0) = x;
+   GetValue(Gu, offset+1) = y;
+   GetValue(Gu, offset+2) = z;
 }
 
-template < size_t Dim, static_vector<Real> VecType >
+template < size_t Dim, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::array< std::array< Real, Dim >, Dim > & inv_J, VecType & Gu )
 {
    ApplyMappingTranspose<0>( inv_J, Gu );
 }
 
-template < size_t offset = 0, size_t DimJ, static_vector<Real> VecType >
+template < size_t offset = 0, size_t DimJ, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::array< Real, DimJ > & inv_J, VecType & Gu )
 {
    ConstexprLoop< DimJ >( [&] ( auto i )
    {
-      Gu[offset+i] = inv_J[i] * Gu[offset+i];
+      const Real value = GetValue(std::as_const(Gu), offset+i);
+      GetValue(Gu, offset+i) = inv_J[i] * value;
    });
 }
 
-template < size_t offset = 0, typename... MatrixTypes, static_vector<Real> VecType >
+template < size_t offset = 0, typename... MatrixTypes, mapping_detail::MappingVector VecType >
 GENDIL_HOST_DEVICE
 void ApplyMappingTranspose( const std::tuple< MatrixTypes... > & inv_J,
                             VecType & Gu )

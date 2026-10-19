@@ -7,13 +7,10 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/domain.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
 
 namespace gendil
 {
-
-template <typename T, static_vector<T> VecType>
-constexpr auto operator*(const T& scalar, const VecType& vec);
 
 template < DomainExpr Domain, FieldExpr Expr >
 struct Integrand : FormBase

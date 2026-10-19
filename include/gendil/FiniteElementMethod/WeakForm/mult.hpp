@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productkind.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
 

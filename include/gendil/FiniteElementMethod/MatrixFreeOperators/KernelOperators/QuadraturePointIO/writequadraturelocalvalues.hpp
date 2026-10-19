@@ -6,11 +6,12 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
+#include "gendil/Algebra/accessors.hpp"
 
 namespace gendil {
 
-// template < Integer Dim, typename QuadraturePointTensor, static_vector<Real> VecType, typename GradType >
+// template < Integer Dim, typename QuadraturePointTensor, StaticVector<Real> VecType, typename GradType >
 // GENDIL_HOST_DEVICE
 // void WriteQuadratureLocalValues(
 //    const TensorIndex< Dim > & quad_index,
@@ -74,7 +75,7 @@ void WriteQuadratureLocalValues(
    WriteQuadratureLocalValues( quad_index, field_q, field, RegisterDimensions{} );
 }
 
-template < Integer Dim, typename IntegrationRule, static_vector<Real> VecType, size_t... Is >
+template < Integer Dim, typename IntegrationRule, StaticVector<Real> VecType, size_t... Is >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    TensorIndex< Dim > quad_index,
@@ -84,11 +85,12 @@ void WriteQuadratureLocalValues(
 {
    for (LocalIndex comp = 0; comp < static_extent_v<VecType>; comp++)
    {
-      field( quad_index[Is]..., comp ) = field_q[comp];
+      const Real value = GetValue(field_q, comp);
+      field( quad_index[Is]..., comp ) = value;
    }
 }
 
-template < Integer Dim, typename IntegrationRule, static_vector<Real> VecType >
+template < Integer Dim, typename IntegrationRule, StaticVector<Real> VecType >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    TensorIndex< Dim > quad_index,
@@ -99,7 +101,7 @@ void WriteQuadratureLocalValues(
    WriteQuadratureLocalValues( quad_index, field_q, field, std::make_index_sequence< Dim >{} );
 }
 
-// template < Integer Dim, typename Tensor, static_vector<Real> VecType, size_t... I >
+// template < Integer Dim, typename Tensor, StaticVector<Real> VecType, size_t... I >
 // GENDIL_HOST_DEVICE
 // void WriteQuadratureLocalValues(
 //    const TensorIndex< Dim > & quad_index,
@@ -109,11 +111,11 @@ void WriteQuadratureLocalValues(
 // {
 //    for ( LocalIndex comp = 0; comp < static_extent_v<VecType>; ++comp )
 //    {
-//       field( quad_index[I]..., comp ) = field_q[ comp ];
+//       field( quad_index[I]..., comp ) = GetValue(field_q, comp);
 //    }
 // }
 
-template < typename KernelContext, Integer Dim, typename Tensor, static_vector<Real> VecType >
+template < typename KernelContext, Integer Dim, typename Tensor, StaticVector<Real> VecType >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    const KernelContext & thread,
@@ -125,7 +127,7 @@ void WriteQuadratureLocalValues(
    WriteQuadratureLocalValues( quad_index, field_q, field, RegisterDimensions{} );
 }
 
-template < typename KernelContext, Integer Dim, static_vector<Real> VecType, typename ... Tensors >
+template < typename KernelContext, Integer Dim, StaticVector<Real> VecType, typename ... Tensors >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    const KernelContext & thread,
@@ -139,7 +141,8 @@ void WriteQuadratureLocalValues(
       "Quadrature value component count must match the output field component count.");
    ConstexprLoop< vdim >( [&]( auto i )
    {
-      WriteQuadratureLocalValues( quad_index, field_q[i], std::get< i >( field ), RegisterDimensions{} );
+      const Real value = GetValue(field_q, i);
+      WriteQuadratureLocalValues( quad_index, value, std::get< i >( field ), RegisterDimensions{} );
    });
 }
 
@@ -223,7 +226,7 @@ void WriteQuadratureLocalValues(
    WriteQuadratureLocalValues( quad_index, field_q, field, std::make_index_sequence< Dim >{} );
 }
 
-template < Integer Dim, typename QuadraturePointTensor, static_vector<Real> VecType, size_t... Is >
+template < Integer Dim, typename QuadraturePointTensor, StaticVector<Real> VecType, size_t... Is >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    const TensorIndex< Dim > & quad_index,
@@ -234,12 +237,13 @@ void WriteQuadratureLocalValues(
    ConstexprLoop< static_extent_v<VecType> >(
       [&] ( auto comp )
       {
-         field( quad_index[ Is ]..., comp ) = field_q[ comp ];
+         const Real value = GetValue(field_q, comp);
+         field( quad_index[ Is ]..., comp ) = value;
       }
    );
 }
 
-template < Integer Dim, typename QuadraturePointTensor, static_vector<Real> VecType >
+template < Integer Dim, typename QuadraturePointTensor, StaticVector<Real> VecType >
 GENDIL_HOST_DEVICE
 void WriteQuadratureLocalValues(
    const TensorIndex< Dim > & quad_index,

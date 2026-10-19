@@ -7,7 +7,7 @@
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/Loop/loops.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
 #include "gendil/Algebra/accessors.hpp"
 
 namespace gendil {
@@ -121,7 +121,7 @@ auto ReadQuadratureLocalGradients(
 
       ConstexprLoop< Dim >( [&]( auto d )
       {
-         result(c, d) = vector_access(grad_c, d);
+         result(c, d) = GetValue(grad_c, d);
       });
    });
 
@@ -164,7 +164,7 @@ SerialRecursiveArray<Real, NumComp, GradDim> ReadTupleScalarGradients(
 
       ConstexprLoop< GradDim >( [&]( auto d )
       {
-         result(c, d) = vector_access(grad_c, d);
+         result(c, d) = GetValue(grad_c, d);
       });
    });
 
@@ -203,7 +203,7 @@ auto ReadQuadratureLocalValues( const KernelContext & thread, const TensorIndex<
    else
    {
       static_assert(always_false<Comp0Type>::value,
-         "ReadQuadratureLocalValues(tuple): Component must be Real or static_vector.");
+         "ReadQuadratureLocalValues(tuple): Component must be Real or StaticVector.");
    }
 }
 

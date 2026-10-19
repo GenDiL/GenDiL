@@ -43,7 +43,7 @@ constexpr bool has_geometry(GeometryRequirement requirements, GeometryRequiremen
 
 // A binding validator must discharge these obligations before execution. They
 // describe symbolic operations without pretending a bound field is scalar.
-enum class ShapeOperation { BoundField, Gradient, Divergence, Sum, Product, Dot, Inner, Outer, Transpose, ScalarIntegrand, UpwindSelector };
+enum class ShapeOperation { BoundField, Gradient, Divergence, Curl, Sum, Product, Dot, Inner, Outer, Transpose, ScalarIntegrand, UpwindSelector };
 template<ShapeOperation Operation, class... Operands>
 struct ShapeObligation {};
 

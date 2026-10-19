@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/accessors.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
 #include "gendil/Utilities/MathHelperFunctions/dot.hpp"
 #include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
@@ -125,10 +125,10 @@ consteval auto BoundaryUpwindScalarType()
    if constexpr (static_num_rows_v<T> != std::dynamic_extent &&
                  static_num_cols_v<T> != std::dynamic_extent)
       return std::type_identity<typename vector_element_type<
-         std::remove_cvref_t<decltype(matrix_access(std::declval<const T&>(), 0, 0))>>::type>{};
+         std::remove_cvref_t<decltype(GetValue(std::declval<const T&>(), 0, 0))>>::type>{};
    else if constexpr (static_extent_v<T> != std::dynamic_extent)
       return std::type_identity<typename vector_element_type<
-         std::remove_cvref_t<decltype(vector_access(std::declval<const T&>(), 0))>>::type>{};
+         std::remove_cvref_t<decltype(GetValue(std::declval<const T&>(), 0))>>::type>{};
    else
       return std::type_identity<typename vector_element_type<T>::type>{};
 }
@@ -185,14 +185,14 @@ GENDIL_HOST_DEVICE Result ScaleBoundaryUpwindState(const Speed& speed, const Val
       Result result;
       for (Integer i = 0; i < static_num_rows_v<Result>; ++i)
          for (Integer j = 0; j < static_num_cols_v<Result>; ++j)
-            result(i, j) = speed * matrix_access(value, i, j);
+            result(i, j) = speed * GetValue(value, i, j);
       return result;
    }
    else if constexpr (static_extent_v<Result> != std::dynamic_extent)
    {
       Result result;
       for (Integer i = 0; i < static_extent_v<Result>; ++i)
-         result(i) = speed * vector_access(value, i);
+         result(i) = speed * GetValue(value, i);
       return result;
    }
    else
@@ -266,7 +266,7 @@ struct BoundaryUpwindExpr : FieldBase
          Real normal_speed = 0;
          for (Integer d = 0; d < Dim; ++d)
          {
-            normal_speed += vector_access(velocity, d) * vector_access(normal, d);
+            normal_speed += GetValue(velocity, d) * GetValue(normal, d);
          }
 
          // Result storage is shared by both branches, including vector states
