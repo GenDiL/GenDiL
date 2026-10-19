@@ -54,6 +54,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/scale.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productexpr.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/symmetry.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"
 
 namespace gendil
@@ -114,7 +115,7 @@ struct affine_node<SumExpr<Head, Tail...>>
    }
 };
 
-// Negation, transpose, and supported traces preserve the split of their operand.
+// Linear unary operations and supported traces preserve the operand's split.
 template<template<class> class Node, class E>
 struct affine_unary
 {
@@ -130,6 +131,8 @@ struct affine_unary
 template<FieldExpr E> struct affine_node<Node<E>> : affine_unary<Node, E> {};
 GENDIL_AFFINE_UNARY(NegExpr)
 GENDIL_AFFINE_UNARY(TransposeExpr)
+GENDIL_AFFINE_UNARY(SymExpr)
+GENDIL_AFFINE_UNARY(SkewExpr)
 GENDIL_AFFINE_UNARY(MinusTraceExpr)
 GENDIL_AFFINE_UNARY(PlusTraceExpr)
 GENDIL_AFFINE_UNARY(AverageExpr)

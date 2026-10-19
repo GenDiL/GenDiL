@@ -628,4 +628,10 @@ struct test_linearity<TransposeExpr<Expr>>
    static constexpr auto test_name = test_linearity<Expr>::test_name;
 };
 
+template<FieldExpr Expr>
+struct test_linearity<SymExpr<Expr>> : test_linearity<Expr> {};
+
+template<FieldExpr Expr>
+struct test_linearity<SkewExpr<Expr>> : test_linearity<Expr> {};
+
 } // namespace gendil

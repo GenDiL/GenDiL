@@ -202,6 +202,14 @@ struct raw_named_field_requirements<TransposeExpr<Expr>>
    using type = typename raw_named_field_requirements<Expr>::type;
 };
 
+template<FieldExpr Expr>
+struct raw_named_field_requirements<SymExpr<Expr>>
+   : raw_named_field_requirements<Expr> {};
+
+template<FieldExpr Expr>
+struct raw_named_field_requirements<SkewExpr<Expr>>
+   : raw_named_field_requirements<Expr> {};
+
 template<DomainExpr Domain, FieldExpr Expr>
 struct raw_named_field_requirements<Integrand<Domain, Expr>>
 {
@@ -426,6 +434,14 @@ struct unqualified_side_dependent_named_field_requirements<
       typename unqualified_side_dependent_named_field_requirements<Expr>::type;
 };
 
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<SymExpr<Expr>>
+   : unqualified_side_dependent_named_field_requirements<Expr> {};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<SkewExpr<Expr>>
+   : unqualified_side_dependent_named_field_requirements<Expr> {};
+
 template<DomainExpr Domain, FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<
    Integrand<Domain, Expr>>
@@ -551,6 +567,14 @@ struct has_unqualified_interior_test_trace<OuterExpr<LHS, RHS>>
 
 template<FieldExpr Expr>
 struct has_unqualified_interior_test_trace<TransposeExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<SymExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<SkewExpr<Expr>>
    : has_unqualified_interior_test_trace<Expr> {};
 
 template<DomainExpr Domain, FieldExpr Expr>
@@ -740,6 +764,14 @@ struct plus_side_jacobian_requirement<
    static constexpr bool value =
       plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
 };
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<SymExpr<Expr>, InPlusSideContext>
+   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<SkewExpr<Expr>, InPlusSideContext>
+   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
 
 template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<

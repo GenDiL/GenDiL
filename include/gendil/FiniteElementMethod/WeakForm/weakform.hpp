@@ -86,6 +86,9 @@
 // Differentiate scalar or vector trial/test fields along the facet normal.
 #include "gendil/FiniteElementMethod/WeakForm/normalderivative.hpp"
 
+// Split square matrix expressions and vector gradients into symmetric and skew parts.
+#include "gendil/FiniteElementMethod/WeakForm/symmetry.hpp"
+
 // Form physical divergence of named vector trial, test, or prescribed fields.
 #include "gendil/FiniteElementMethod/WeakForm/divergence.hpp"
 

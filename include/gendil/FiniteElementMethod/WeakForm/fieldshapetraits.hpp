@@ -151,6 +151,19 @@ struct field_shape_impl<CurlExpr<Expr>> {
    static constexpr FieldShape value = FieldShape::Vector;
 };
 
+// Symmetric and skew-symmetric parts preserve matrix rank.
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Matrix)
+struct field_shape_impl<SymExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Matrix;
+};
+
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Matrix)
+struct field_shape_impl<SkewExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Matrix;
+};
+
 // =============================================================================
 // FieldShape propagation for shape-preserving wrapper expressions
 // =============================================================================

@@ -358,6 +358,25 @@ struct analyze<TransposeExpr<E>, Symbols, Side> : analyze<E, Symbols, Side>
       typename child::shape_obligations>;
 };
 
+template<FieldExpr E, class Symbols, SemanticSide Side>
+struct square_matrix_semantics : analyze<E, Symbols, Side>
+{
+   using child = analyze<E, Symbols, Side>;
+   static constexpr unsigned possible_shapes = child::possible_shapes & shape_options(SemanticShape::Matrix);
+   static constexpr auto symbolic_shape = summarize_shape(possible_shapes);
+   // Matrix rank alone does not prove equal extents. Validate each occurrence
+   // in its evaluation-side context, including statically known matrix ranks.
+   using shape_obligations = concat_t<typename child::shape_obligations,
+      type_list<ShapeObligation<ShapeOperation::SquareMatrix, E,
+         std::integral_constant<SemanticSide, Side>>>>;
+};
+
+template<FieldExpr E, class Symbols, SemanticSide Side>
+struct analyze<SymExpr<E>, Symbols, Side> : square_matrix_semantics<E, Symbols, Side> {};
+
+template<FieldExpr E, class Symbols, SemanticSide Side>
+struct analyze<SkewExpr<E>, Symbols, Side> : square_matrix_semantics<E, Symbols, Side> {};
+
 template<class A, class B, ShapeOperation Operation, class L, class R>
 struct binary_semantics : merge_information<A, B>
 {

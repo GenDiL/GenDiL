@@ -18,6 +18,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/mult.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumfieldexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/transpose.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/symmetry.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/outer.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/neg.hpp"
@@ -682,6 +683,26 @@ auto pullback(const NegExpr<Expr>& expr, const Seed& seed)
    return pullback(expr.expr, -seed);
 }
 
+// Symmetric and skew-symmetric projection are self-adjoint under the real
+// Frobenius pairing. Their adjoints keep the existing physical matrix seed.
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const SymExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<SymExpr<Expr>, Seed>,
+      "Symmetric projection pullback requires a matrix seed.");
+   return pullback(expr.expr, sym(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const SkewExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<SkewExpr<Expr>, Seed>,
+      "Skew-symmetric projection pullback requires a matrix seed.");
+   return pullback(expr.expr, skew(seed));
+}
+
 // =============================================================================
 // Channel Merge Utilities
 // =============================================================================
@@ -1131,6 +1152,8 @@ template<FieldExpr E> struct lower<Node<E>> { \
 };
 GENDIL_BOUNDARY_UNARY(NegExpr)
 GENDIL_BOUNDARY_UNARY(TransposeExpr)
+GENDIL_BOUNDARY_UNARY(SymExpr)
+GENDIL_BOUNDARY_UNARY(SkewExpr)
 #undef GENDIL_BOUNDARY_UNARY
 #define GENDIL_BOUNDARY_BINARY(Node) \
 template<FieldExpr L, FieldExpr R> struct lower<Node<L, R>> { \
@@ -1424,6 +1447,34 @@ auto TraceToPlusSide(const AverageExpr<Expr>& expr)
    return 0.5 * TraceToPlusSide(expr.expr);
 }
 
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const SymExpr<Expr>& expr)
+{
+   return sym(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const SymExpr<Expr>& expr)
+{
+   return sym(TraceToPlusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const SkewExpr<Expr>& expr)
+{
+   return skew(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const SkewExpr<Expr>& expr)
+{
+   return skew(TraceToPlusSide(expr.expr));
+}
+
 } // namespace details
 
 template<StaticString Name, FieldShape Shape, class Seed>
@@ -1657,6 +1708,24 @@ auto pullback_global_interior(
    const Seed& seed)
 {
    return pullback_global_interior(expr.expr, -seed);
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(const SymExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<SymExpr<Expr>, Seed>,
+      "Symmetric projection pullback requires a matrix seed.");
+   return pullback_global_interior(expr.expr, sym(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(const SkewExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<SkewExpr<Expr>, Seed>,
+      "Skew-symmetric projection pullback requires a matrix seed.");
+   return pullback_global_interior(expr.expr, skew(seed));
 }
 
 template<FieldExpr Head, FieldExpr... Tail, class Seed>

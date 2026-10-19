@@ -80,6 +80,12 @@ template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<TransposeExpr<E>, Context, Side, Signature>
 { static constexpr auto value = bound_shape<E, Context, Side, Signature>::value == SemanticShape::Matrix
    ? SemanticShape::Matrix : SemanticShape::Unsupported; };
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_shape<SymExpr<E>, Context, Side, Signature>
+   : bound_shape<TransposeExpr<E>, Context, Side, Signature> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_shape<SkewExpr<E>, Context, Side, Signature>
+   : bound_shape<TransposeExpr<E>, Context, Side, Signature> {};
 #define GENDIL_BOUND_BINARY_SHAPE(Node, Operation) \
 template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature> \
 struct bound_shape<Node<L, R>, Context, Side, Signature> { \
@@ -134,6 +140,107 @@ struct bound_shape<BoundaryUpwindExpr<Adv, Interior, Exterior>, Context, Side, S
             bound_shape<Exterior, Context, Side, Signature>::value);
    }();
 };
+
+// Square-matrix obligations use only extents available from selected spaces
+// and expression structure. Unknown callback result extents remain unknown;
+// the numerical matrix operation validates their concrete values separately.
+template<size_t Rows = std::dynamic_extent, size_t Columns = std::dynamic_extent,
+         bool Compatible = true>
+struct known_extents
+{
+   static constexpr size_t rows = Rows, columns = Columns;
+   static constexpr bool compatible = Compatible;
+};
+constexpr bool CompatibleExtent(size_t a, size_t b)
+{ return a == std::dynamic_extent || b == std::dynamic_extent || a == b; }
+
+template<class A, class B>
+struct merged_extents : known_extents<
+   A::rows == std::dynamic_extent ? B::rows : A::rows,
+   A::columns == std::dynamic_extent ? B::columns : A::columns,
+   A::compatible && B::compatible && CompatibleExtent(A::rows, B::rows) &&
+      CompatibleExtent(A::columns, B::columns)> {};
+
+template<class E, class Context, SemanticSide Side, class Signature>
+struct bound_extents : known_extents<> {};
+template<StaticString Name, class Context, SemanticSide Side, class Signature>
+struct bound_extents<FiniteElementField<Name>, Context, Side, Signature>
+   : known_extents<num_comp_v<typename bound_shape<FiniteElementField<Name>, Context, Side, Signature>::Space>, 1> {};
+#define GENDIL_NAMED_EXTENTS(Node) \
+template<StaticString Name, FieldShape Shape, class Context, SemanticSide Side, class Signature> \
+struct bound_extents<Node<Name, Shape>, Context, Side, Signature> \
+   : bound_extents<FiniteElementField<Name>, Context, Side, Signature> {};
+GENDIL_NAMED_EXTENTS(TrialSpace)
+GENDIL_NAMED_EXTENTS(TestSpace)
+#undef GENDIL_NAMED_EXTENTS
+
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+   requires requires { E::name; }
+struct bound_extents<GradientExpr<E>, Context, Side, Signature>
+{
+   using Space = typename bound_shape<FiniteElementField<E::name>, Context, Side, Signature>::Space;
+   using Coordinates = typename Space::mesh_type::cell_type::physical_coordinates;
+   static constexpr size_t dimension = std::tuple_size_v<Coordinates>;
+   static constexpr size_t rows = is_vector_finite_element_space_v<Space> ? num_comp_v<Space> : dimension;
+   static constexpr size_t columns = is_vector_finite_element_space_v<Space> ? dimension : 1;
+   static constexpr bool compatible = true;
+};
+#define GENDIL_PRESERVE_EXTENTS(Node) \
+template<FieldExpr E, class Context, SemanticSide Side, class Signature> \
+struct bound_extents<Node<E>, Context, Side, Signature> : bound_extents<E, Context, Side, Signature> {};
+GENDIL_PRESERVE_EXTENTS(NegExpr)
+GENDIL_PRESERVE_EXTENTS(SymExpr)
+GENDIL_PRESERVE_EXTENTS(SkewExpr)
+#undef GENDIL_PRESERVE_EXTENTS
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<TransposeExpr<E>, Context, Side, Signature>
+   : known_extents<bound_extents<E, Context, Side, Signature>::columns,
+                   bound_extents<E, Context, Side, Signature>::rows,
+                   bound_extents<E, Context, Side, Signature>::compatible> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<MinusTraceExpr<E>, Context, Side, Signature>
+   : bound_extents<E, Context, SemanticSide::Minus, void> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<PlusTraceExpr<E>, Context, Side, Signature>
+   : bound_extents<E, Context, SemanticSide::Plus, void> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<JumpExpr<E>, Context, Side, Signature>
+   : merged_extents<bound_extents<E, Context, SemanticSide::Minus, void>,
+                    bound_extents<E, Context, SemanticSide::Plus, void>> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<AverageExpr<E>, Context, Side, Signature>
+   : bound_extents<JumpExpr<E>, Context, Side, Signature> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_extents<SumExpr<E>, Context, Side, Signature> : bound_extents<E, Context, Side, Signature> {};
+template<FieldExpr E, FieldExpr F, FieldExpr... Rest, class Context, SemanticSide Side, class Signature>
+struct bound_extents<SumExpr<E, F, Rest...>, Context, Side, Signature>
+   : merged_extents<bound_extents<E, Context, Side, Signature>,
+                    bound_extents<SumExpr<F, Rest...>, Context, Side, Signature>> {};
+
+template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature>
+struct product_extents
+{
+   using A = bound_extents<L, Context, Side, Signature>;
+   using B = bound_extents<R, Context, Side, Signature>;
+   static constexpr bool scalar_left = bound_shape<L, Context, Side, Signature>::value == SemanticShape::Scalar;
+   static constexpr bool scalar_right = bound_shape<R, Context, Side, Signature>::value == SemanticShape::Scalar;
+   static constexpr size_t rows = scalar_left ? B::rows : A::rows;
+   static constexpr size_t columns = scalar_right ? A::columns : B::columns;
+   static constexpr bool compatible = A::compatible && B::compatible &&
+      (scalar_left || scalar_right || CompatibleExtent(A::columns, B::rows));
+};
+template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature>
+struct bound_extents<ProductExpr<L, R>, Context, Side, Signature>
+   : product_extents<L, R, Context, Side, Signature> {};
+template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature>
+struct bound_extents<MultFieldExpr<L, R>, Context, Side, Signature>
+   : product_extents<L, R, Context, Side, Signature> {};
+template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature>
+struct bound_extents<OuterExpr<L, R>, Context, Side, Signature>
+   : known_extents<bound_extents<L, Context, Side, Signature>::rows,
+                   bound_extents<R, Context, Side, Signature>::rows,
+                   bound_extents<L, Context, Side, Signature>::compatible &&
+                      bound_extents<R, Context, Side, Signature>::compatible> {};
 
 template<class Obligation, class Context, SemanticSide Side = SemanticSide::Unqualified, class Signature = void>
 struct shape_obligation;
@@ -191,6 +298,21 @@ struct shape_obligation<ShapeObligation<ShapeOperation::Curl, NameTag<Name>,
    static_assert(dimension, "curl requires a three-dimensional physical domain.");
    static_assert(!vector || components, "curl requires exactly three vector components.");
    static constexpr bool value = vector && dimension && components;
+};
+
+template<class E, SemanticSide OccurrenceSide, class Context,
+         SemanticSide Side, class Signature>
+struct shape_obligation<ShapeObligation<ShapeOperation::SquareMatrix, E,
+   std::integral_constant<SemanticSide, OccurrenceSide>>, Context, Side, Signature>
+{
+   static constexpr auto selected_side = OccurrenceSide == SemanticSide::Unqualified ? Side : OccurrenceSide;
+   using SelectedSignature = std::conditional_t<OccurrenceSide == SemanticSide::Unqualified, Signature, void>;
+   using Extents = bound_extents<E, Context, selected_side, SelectedSignature>;
+   static constexpr bool matrix = bound_shape<E, Context, selected_side, SelectedSignature>::value == SemanticShape::Matrix;
+   static constexpr bool square = Extents::compatible && CompatibleExtent(Extents::rows, Extents::columns);
+   static_assert(matrix && square,
+      "sym and skew require a square matrix; vector gradients require one component per physical dimension.");
+   static constexpr bool value = matrix && square;
 };
 
 template<class Context, SemanticSide Side = SemanticSide::Unqualified, class Signature = void, class... Obligations>
