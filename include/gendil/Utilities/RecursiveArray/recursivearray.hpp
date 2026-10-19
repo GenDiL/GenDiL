@@ -6,6 +6,8 @@
 
 #include <array>
 #include <memory>
+#include <type_traits>
+#include <utility>
 
 #include "gendil/Utilities/gettensorsize.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/indexsequencehelperfunctions.hpp"
@@ -391,6 +393,26 @@ SerialRecursiveArray< T, Dims... > operator+(
       res( indices... ) = x( indices... ) + y( indices... );
    });
    return res;
+}
+
+// Mixed entry types follow scalar addition's promotion rules. Keep the
+// same-type overload above so existing result types remain unchanged.
+template<typename L, typename R, size_t... Dims>
+   requires (!std::is_same_v<L, R>)
+GENDIL_HOST_DEVICE
+auto operator+(const SerialRecursiveArray<L, Dims...>& lhs,
+               const SerialRecursiveArray<R, Dims...>& rhs)
+   -> SerialRecursiveArray<std::remove_cvref_t<decltype(
+      std::declval<const L&>() + std::declval<const R&>())>, Dims...>
+{
+   using Value = std::remove_cvref_t<decltype(
+      std::declval<const L&>() + std::declval<const R&>())>;
+   SerialRecursiveArray<Value, Dims...> result;
+   UnitLoop<Dims...>([&](auto... indices)
+   {
+      result(indices...) = lhs(indices...) + rhs(indices...);
+   });
+   return result;
 }
 
 template< typename T, size_t... Dims, typename Other >

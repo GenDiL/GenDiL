@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/arrayaddition.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/neg.hpp"

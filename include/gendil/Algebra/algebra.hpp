@@ -2,6 +2,9 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+// Componentwise addition of fixed-size arrays and mixed array storage.
+#include "gendil/Algebra/arrayaddition.hpp"
+
 // A concept for statically sized vectors.
 #include "gendil/Algebra/staticvector.hpp"
 
