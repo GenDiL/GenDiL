@@ -83,6 +83,9 @@
 // Request spatial gradients of supported field expressions.
 #include "gendil/FiniteElementMethod/WeakForm/gradient.hpp"
 
+// Differentiate scalar or vector trial/test fields along the facet normal.
+#include "gendil/FiniteElementMethod/WeakForm/normalderivative.hpp"
+
 // Form physical divergence of named vector trial, test, or prescribed fields.
 #include "gendil/FiniteElementMethod/WeakForm/divergence.hpp"
 
