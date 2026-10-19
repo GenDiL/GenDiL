@@ -44,6 +44,9 @@
 // Use the physical normal in facet expressions.
 #include "gendil/FiniteElementMethod/WeakForm/normal.hpp"
 
+// Project vector expressions onto the normal or tangent space of a facet.
+#include "gendil/FiniteElementMethod/WeakForm/facetprojection.hpp"
+
 // Negate a field expression.
 #include "gendil/FiniteElementMethod/WeakForm/neg.hpp"
 

@@ -23,6 +23,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/outer.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/neg.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/normal.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/facetprojection.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/scale.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/jump.hpp"
@@ -703,6 +704,26 @@ auto pullback(const SkewExpr<Expr>& expr, const Seed& seed)
    return pullback(expr.expr, skew(seed));
 }
 
+// Orthogonal facet projections are self-adjoint. Project the incoming seed
+// without changing the side selections of any fields it already contains.
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const NormalProjectionExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<NormalProjectionExpr<Expr>, Seed>,
+      "Normal projection pullback requires a vector seed.");
+   return pullback(expr.expr, normal_projection(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const TangentialProjectionExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<TangentialProjectionExpr<Expr>, Seed>,
+      "Tangential projection pullback requires a vector seed.");
+   return pullback(expr.expr, tangential_projection(seed));
+}
+
 // =============================================================================
 // Channel Merge Utilities
 // =============================================================================
@@ -1154,6 +1175,8 @@ GENDIL_BOUNDARY_UNARY(NegExpr)
 GENDIL_BOUNDARY_UNARY(TransposeExpr)
 GENDIL_BOUNDARY_UNARY(SymExpr)
 GENDIL_BOUNDARY_UNARY(SkewExpr)
+GENDIL_BOUNDARY_UNARY(NormalProjectionExpr)
+GENDIL_BOUNDARY_UNARY(TangentialProjectionExpr)
 #undef GENDIL_BOUNDARY_UNARY
 #define GENDIL_BOUNDARY_BINARY(Node) \
 template<FieldExpr L, FieldExpr R> struct lower<Node<L, R>> { \
@@ -1475,6 +1498,34 @@ auto TraceToPlusSide(const SkewExpr<Expr>& expr)
    return skew(TraceToPlusSide(expr.expr));
 }
 
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const NormalProjectionExpr<Expr>& expr)
+{
+   return normal_projection(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const NormalProjectionExpr<Expr>& expr)
+{
+   return normal_projection(TraceToPlusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const TangentialProjectionExpr<Expr>& expr)
+{
+   return tangential_projection(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const TangentialProjectionExpr<Expr>& expr)
+{
+   return tangential_projection(TraceToPlusSide(expr.expr));
+}
+
 } // namespace details
 
 template<StaticString Name, FieldShape Shape, class Seed>
@@ -1726,6 +1777,24 @@ auto pullback_global_interior(const SkewExpr<Expr>& expr, const Seed& seed)
    static_assert(is_seed_shape_compatible_v<SkewExpr<Expr>, Seed>,
       "Skew-symmetric projection pullback requires a matrix seed.");
    return pullback_global_interior(expr.expr, skew(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(const NormalProjectionExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<NormalProjectionExpr<Expr>, Seed>,
+      "Normal projection pullback requires a vector seed.");
+   return pullback_global_interior(expr.expr, normal_projection(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(const TangentialProjectionExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(is_seed_shape_compatible_v<TangentialProjectionExpr<Expr>, Seed>,
+      "Tangential projection pullback requires a vector seed.");
+   return pullback_global_interior(expr.expr, tangential_projection(seed));
 }
 
 template<FieldExpr Head, FieldExpr... Tail, class Seed>

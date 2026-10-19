@@ -164,6 +164,19 @@ struct field_shape_impl<SkewExpr<Expr>> {
    static constexpr FieldShape value = FieldShape::Matrix;
 };
 
+// Normal and tangential projections preserve vector rank.
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Vector)
+struct field_shape_impl<NormalProjectionExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Vector)
+struct field_shape_impl<TangentialProjectionExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
 // =============================================================================
 // FieldShape propagation for shape-preserving wrapper expressions
 // =============================================================================

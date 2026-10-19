@@ -94,6 +94,8 @@ GENDIL_SYMBOL_UNARY(JumpExpr)
 GENDIL_SYMBOL_UNARY(TransposeExpr)
 GENDIL_SYMBOL_UNARY(SymExpr)
 GENDIL_SYMBOL_UNARY(SkewExpr)
+GENDIL_SYMBOL_UNARY(NormalProjectionExpr)
+GENDIL_SYMBOL_UNARY(TangentialProjectionExpr)
 #undef GENDIL_SYMBOL_UNARY
 
 template<FieldExpr E>

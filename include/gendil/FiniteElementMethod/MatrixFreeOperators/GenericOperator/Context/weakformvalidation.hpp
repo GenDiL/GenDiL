@@ -86,6 +86,13 @@ struct bound_shape<SymExpr<E>, Context, Side, Signature>
 template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<SkewExpr<E>, Context, Side, Signature>
    : bound_shape<TransposeExpr<E>, Context, Side, Signature> {};
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_shape<NormalProjectionExpr<E>, Context, Side, Signature>
+{ static constexpr auto value = bound_shape<E, Context, Side, Signature>::value == SemanticShape::Vector
+   ? SemanticShape::Vector : SemanticShape::Unsupported; };
+template<FieldExpr E, class Context, SemanticSide Side, class Signature>
+struct bound_shape<TangentialProjectionExpr<E>, Context, Side, Signature>
+   : bound_shape<NormalProjectionExpr<E>, Context, Side, Signature> {};
 #define GENDIL_BOUND_BINARY_SHAPE(Node, Operation) \
 template<FieldExpr L, FieldExpr R, class Context, SemanticSide Side, class Signature> \
 struct bound_shape<Node<L, R>, Context, Side, Signature> { \
@@ -191,6 +198,8 @@ struct bound_extents<Node<E>, Context, Side, Signature> : bound_extents<E, Conte
 GENDIL_PRESERVE_EXTENTS(NegExpr)
 GENDIL_PRESERVE_EXTENTS(SymExpr)
 GENDIL_PRESERVE_EXTENTS(SkewExpr)
+GENDIL_PRESERVE_EXTENTS(NormalProjectionExpr)
+GENDIL_PRESERVE_EXTENTS(TangentialProjectionExpr)
 #undef GENDIL_PRESERVE_EXTENTS
 template<FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_extents<TransposeExpr<E>, Context, Side, Signature>
@@ -313,6 +322,28 @@ struct shape_obligation<ShapeObligation<ShapeOperation::SquareMatrix, E,
    static_assert(matrix && square,
       "sym and skew require a square matrix; vector gradients require one component per physical dimension.");
    static constexpr bool value = matrix && square;
+};
+
+template<class E, SemanticSide OccurrenceSide, class Context,
+         SemanticSide Side, class Signature>
+struct shape_obligation<ShapeObligation<ShapeOperation::FacetProjection, E,
+   std::integral_constant<SemanticSide, OccurrenceSide>>, Context, Side, Signature>
+{
+   static constexpr auto selected_side = OccurrenceSide == SemanticSide::Unqualified ? Side : OccurrenceSide;
+   using SelectedSignature = std::conditional_t<OccurrenceSide == SemanticSide::Unqualified, Signature, void>;
+   using Extents = bound_extents<E, Context, selected_side, SelectedSignature>;
+   // Geometry belongs to the selected integration domain, independently of
+   // which field or expression supplies the vector being projected.
+   using Domain = typename Signature::domain_type;
+   using Mesh = std::remove_cvref_t<decltype(GetCellIntegrationDomainMesh(
+      std::declval<const Context&>().template GetDomain<Domain::name>()))>;
+   using Coordinates = typename Mesh::cell_type::physical_coordinates;
+   static constexpr bool vector = bound_shape<E, Context, selected_side, SelectedSignature>::value == SemanticShape::Vector;
+   static constexpr bool matching_dimension = Extents::compatible &&
+      CompatibleExtent(Extents::rows, std::tuple_size_v<Coordinates>);
+   static_assert(vector && matching_dimension,
+      "normal_projection and tangential_projection require a vector with one entry per physical dimension.");
+   static constexpr bool value = vector && matching_dimension;
 };
 
 template<class Context, SemanticSide Side = SemanticSide::Unqualified, class Signature = void, class... Obligations>

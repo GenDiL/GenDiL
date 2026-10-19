@@ -634,4 +634,10 @@ struct test_linearity<SymExpr<Expr>> : test_linearity<Expr> {};
 template<FieldExpr Expr>
 struct test_linearity<SkewExpr<Expr>> : test_linearity<Expr> {};
 
+template<FieldExpr Expr>
+struct test_linearity<NormalProjectionExpr<Expr>> : test_linearity<Expr> {};
+
+template<FieldExpr Expr>
+struct test_linearity<TangentialProjectionExpr<Expr>> : test_linearity<Expr> {};
+
 } // namespace gendil

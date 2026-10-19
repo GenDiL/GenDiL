@@ -210,6 +210,14 @@ template<FieldExpr Expr>
 struct raw_named_field_requirements<SkewExpr<Expr>>
    : raw_named_field_requirements<Expr> {};
 
+template<FieldExpr Expr>
+struct raw_named_field_requirements<NormalProjectionExpr<Expr>>
+   : raw_named_field_requirements<Expr> {};
+
+template<FieldExpr Expr>
+struct raw_named_field_requirements<TangentialProjectionExpr<Expr>>
+   : raw_named_field_requirements<Expr> {};
+
 template<DomainExpr Domain, FieldExpr Expr>
 struct raw_named_field_requirements<Integrand<Domain, Expr>>
 {
@@ -442,6 +450,14 @@ template<FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<SkewExpr<Expr>>
    : unqualified_side_dependent_named_field_requirements<Expr> {};
 
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<NormalProjectionExpr<Expr>>
+   : unqualified_side_dependent_named_field_requirements<Expr> {};
+
+template<FieldExpr Expr>
+struct unqualified_side_dependent_named_field_requirements<TangentialProjectionExpr<Expr>>
+   : unqualified_side_dependent_named_field_requirements<Expr> {};
+
 template<DomainExpr Domain, FieldExpr Expr>
 struct unqualified_side_dependent_named_field_requirements<
    Integrand<Domain, Expr>>
@@ -575,6 +591,14 @@ struct has_unqualified_interior_test_trace<SymExpr<Expr>>
 
 template<FieldExpr Expr>
 struct has_unqualified_interior_test_trace<SkewExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<NormalProjectionExpr<Expr>>
+   : has_unqualified_interior_test_trace<Expr> {};
+
+template<FieldExpr Expr>
+struct has_unqualified_interior_test_trace<TangentialProjectionExpr<Expr>>
    : has_unqualified_interior_test_trace<Expr> {};
 
 template<DomainExpr Domain, FieldExpr Expr>
@@ -771,6 +795,14 @@ struct plus_side_jacobian_requirement<SymExpr<Expr>, InPlusSideContext>
 
 template<FieldExpr Expr, bool InPlusSideContext>
 struct plus_side_jacobian_requirement<SkewExpr<Expr>, InPlusSideContext>
+   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<NormalProjectionExpr<Expr>, InPlusSideContext>
+   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+
+template<FieldExpr Expr, bool InPlusSideContext>
+struct plus_side_jacobian_requirement<TangentialProjectionExpr<Expr>, InPlusSideContext>
    : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
 
 template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext>

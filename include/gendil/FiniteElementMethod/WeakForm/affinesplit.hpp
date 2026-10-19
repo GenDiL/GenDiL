@@ -55,6 +55,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/productexpr.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/symmetry.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/facetprojection.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"
 
 namespace gendil
@@ -133,6 +134,8 @@ GENDIL_AFFINE_UNARY(NegExpr)
 GENDIL_AFFINE_UNARY(TransposeExpr)
 GENDIL_AFFINE_UNARY(SymExpr)
 GENDIL_AFFINE_UNARY(SkewExpr)
+GENDIL_AFFINE_UNARY(NormalProjectionExpr)
+GENDIL_AFFINE_UNARY(TangentialProjectionExpr)
 GENDIL_AFFINE_UNARY(MinusTraceExpr)
 GENDIL_AFFINE_UNARY(PlusTraceExpr)
 GENDIL_AFFINE_UNARY(AverageExpr)

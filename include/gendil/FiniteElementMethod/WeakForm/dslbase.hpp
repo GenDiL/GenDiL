@@ -57,6 +57,8 @@ template < FieldExpr LHS, FieldExpr RHS > struct ProductExpr;
 template < FieldExpr Expr > struct TransposeExpr;
 template < FieldExpr Expr > struct SymExpr;
 template < FieldExpr Expr > struct SkewExpr;
+template < FieldExpr Expr > struct NormalProjectionExpr;
+template < FieldExpr Expr > struct TangentialProjectionExpr;
 template < FieldExpr Head, FieldExpr... Tail > struct SumExpr;
 template < DomainExpr Domain, FieldExpr Expr > struct Integrand;
 template < typename TermsTuple, typename Declarations = void > struct SumFormExpr;
