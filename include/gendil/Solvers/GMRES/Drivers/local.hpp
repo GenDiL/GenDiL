@@ -16,6 +16,7 @@
 #include "gendil/Solvers/GMRES/arnoldi.hpp"
 #include "gendil/Solvers/GMRES/leastsquares.hpp"
 #include "gendil/Solvers/GMRES/restartedgmres.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include <type_traits>
 
@@ -158,8 +159,9 @@ LocalSolve(Context &context, const A &system, P &preconditioner, const Rhs &rhs,
    auto &&residual_vector = buffers.basis(0);
    auto compute_true_residual_norm = [&]()
    {
-      return ComputeTrueResidualNorm(apply_system, rhs, solution, residual_vector,
-                                     buffers.work, copy_vector, axpy, norm);
+      solver_detail::ComputeTrueResidual(apply_system, rhs, solution, residual_vector,
+                                        buffers.work, copy_vector, axpy);
+      return norm(residual_vector);
    };
    auto build_arnoldi_column = [&](Integer j)
    {

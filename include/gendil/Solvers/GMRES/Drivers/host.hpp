@@ -18,6 +18,7 @@
 #include "gendil/Solvers/GMRES/arnoldi.hpp"
 #include "gendil/Solvers/GMRES/leastsquares.hpp"
 #include "gendil/Solvers/GMRES/restartedgmres.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
 #include "gendil/Utilities/KernelContext/kernelconfiguration.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include <algorithm>
@@ -143,8 +144,9 @@ auto HostSolvePrepared(const A &system, P &preconditioner, const Rhs &rhs, X &so
    auto &&residual_vector = buffers.basis(0);
    auto compute_true_residual_norm = [&]
    {
-      return ComputeTrueResidualNorm(apply_system, rhs, solution, residual_vector,
-                                     buffers.work, copy_vector, axpy, norm);
+      solver_detail::ComputeTrueResidual(apply_system, rhs, solution, residual_vector,
+                                        buffers.work, copy_vector, axpy);
+      return norm(residual_vector);
    };
    auto build_arnoldi_column = [&](Integer j)
    {

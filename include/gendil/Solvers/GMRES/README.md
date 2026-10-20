@@ -221,6 +221,12 @@ host preparation/application, local execution, and legacy adaptation. Admission
 predicates and column-view utilities are separate from those compositions.
 General vector arithmetic remains in Algebra, without solver dependencies.
 
+[Shared solver utilities](../iterativesolverutilities.hpp) provide norm checks,
+relative/absolute convergence tests, result formatting, and true-residual
+formation for both CG and GMRES. The drivers select the norm after forming the
+residual, so sharing adds no reductions or synchronization. Each solver retains
+its own tolerance translation, iteration counting, and workspace handling.
+
 The legacy `GMRES_no_alloc` entry point uses the same restarted algorithm with
 split arrays and its historical arithmetic conventions. Non-View assignment
 must copy entries into existing storage, without rebinding, resizing, or

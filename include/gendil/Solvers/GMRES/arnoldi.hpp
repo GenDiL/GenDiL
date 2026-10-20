@@ -19,6 +19,7 @@
  * the responsibility of the supplied store or accumulation operation.
  */
 #include "gendil/Solvers/GMRES/options.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
 #include "gendil/Utilities/MathHelperFunctions/isfinite.hpp"
 
 namespace gendil
@@ -33,12 +34,6 @@ struct ClassicalGramSchmidtTwoPass
 };
 namespace gmres_detail
 {
-/// Accept a finite, nonnegative result from a supplied norm operation.
-GENDIL_HOST_DEVICE inline bool ValidNorm(Real x)
-{
-   return IsFinite(x) && x >= 0;
-}
-
 /** Remove count orthonormal basis components from work and store them in h.
  * Each projection uses the updated remainder. Neither the basis nor its
  * vectors are copied. Returns false on a nonfinite coefficient; earlier
@@ -127,10 +122,10 @@ GENDIL_HOST_DEVICE ArnoldiColumnResult BuildArnoldiColumn(Work &work, Integer co
 {
    expand(column);
    const Real norm_before_orthogonalization = norm(work);
-   if (!ValidNorm(norm_before_orthogonalization) || !orthogonalize(column))
+   if (!solver_detail::ValidNorm(norm_before_orthogonalization) || !orthogonalize(column))
       return {false, norm_before_orthogonalization, 0};
    const Real orthogonal_remainder_norm = norm(work);
-   return {ValidNorm(orthogonal_remainder_norm), norm_before_orthogonalization,
+   return {solver_detail::ValidNorm(orthogonal_remainder_norm), norm_before_orthogonalization,
            orthogonal_remainder_norm};
 }
 

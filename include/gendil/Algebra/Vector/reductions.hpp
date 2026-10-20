@@ -18,6 +18,7 @@
 #include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include "gendil/Utilities/MathHelperFunctions/isfinite.hpp"
+#include "gendil/Utilities/MathHelperFunctions/checkedsqrt.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 
 #include <algorithm>
@@ -278,9 +279,7 @@ struct EuclideanDot
 template<class DotFunction, class Input>
 GENDIL_HOST_DEVICE Real NormFromDot(DotFunction&& dot, const Input& input)
 {
-   const Real square = dot(input, input);
-   return IsFinite(square) && square >= 0.0
-      ? std::sqrt(square) : std::numeric_limits<Real>::quiet_NaN();
+   return CheckedSqrt(dot(input, input));
 }
 
 /**

@@ -11,8 +11,8 @@
  */
 
 #include "gendil/Algebra/Vector/localoperations.hpp"
-#include "gendil/Solvers/GMRES/arnoldi.hpp"
 #include "gendil/Solvers/GMRES/options.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
 #include "gendil/Solvers/GMRES/preconditioning.hpp"
 #include "gendil/Utilities/View/Containers/referencecontainer.hpp"
 #include "gendil/Utilities/View/Layouts/offsetlayout.hpp"
@@ -88,8 +88,8 @@ GENDIL_HOST_DEVICE bool ValidBuffers(B &buffers, size_t n, Integer m)
 /// Require a positive restart and finite, nonnegative tolerances; a zero budget is valid.
 inline bool ValidOptions(const GMRESOptions &options)
 {
-   return options.restart > 0 && ValidNorm(options.relative_tolerance) &&
-          ValidNorm(options.absolute_tolerance);
+   return options.restart > 0 && solver_detail::ValidNorm(options.relative_tolerance) &&
+          solver_detail::ValidNorm(options.absolute_tolerance);
 }
 
 } // namespace gendil::gmres_detail

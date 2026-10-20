@@ -150,6 +150,27 @@ ElementDoF< FiniteElementSpace >& operator-=( ElementDoF< FiniteElementSpace >& 
    return lhs_dofs;
 }
 
+/// Scale every element degree of freedom in place.
+template < typename FiniteElementSpace >
+GENDIL_HOST_DEVICE
+ElementDoF< FiniteElementSpace >& operator*=(
+   ElementDoF< FiniteElementSpace >& dofs, const Real alpha )
+{
+   dofs.data *= alpha;
+   return dofs;
+}
+
+/// Accumulate y += alpha*x without temporary storage; x and y may be the same object.
+template < typename FiniteElementSpace >
+GENDIL_HOST_DEVICE
+void Axpy(
+   const Real alpha,
+   const ElementDoF< FiniteElementSpace >& x,
+   ElementDoF< FiniteElementSpace >& y )
+{
+   Axpy( alpha, x.data, y.data );
+}
+
 template < typename FiniteElementSpace >
 GENDIL_HOST_DEVICE
 ElementDoF< FiniteElementSpace > operator+( ElementDoF< FiniteElementSpace >& lhs_dofs, const ElementDoF< FiniteElementSpace >& rhs_dofs )

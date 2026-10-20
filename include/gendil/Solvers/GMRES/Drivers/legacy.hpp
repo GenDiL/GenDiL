@@ -16,6 +16,7 @@
 #include "gendil/Solvers/GMRES/arnoldi.hpp"
 #include "gendil/Solvers/GMRES/leastsquares.hpp"
 #include "gendil/Solvers/GMRES/restartedgmres.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
 #include "gendil/Utilities/KernelContext/kernelconfiguration.hpp"
 #include <iterator>
 #include <limits>
@@ -203,8 +204,9 @@ auto LegacySolve(const Map &map, const RHS &rhs, Dot &dot, Integer max_iters,
    auto &&residual = vectors(0);
    auto compute_true_residual_norm = [&]
    {
-      return ComputeTrueResidualNorm(apply_system, rhs, solution, residual, work,
-                                     copy_vector, axpy, norm);
+      solver_detail::ComputeTrueResidual(apply_system, rhs, solution, residual, work,
+                                        copy_vector, axpy);
+      return norm(residual);
    };
 
    // Reduced least-squares operations.
