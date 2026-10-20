@@ -143,8 +143,9 @@ $$
 $$
 
 the conductivity $k$ can be represented by a spatially varying finite-element
-field. The SIPDG operator captures the cell, interior-facet, and
-boundary-facet contributions:
+field. The symmetric interior penalty DG (SIPDG) bilinear form combines cell,
+interior-facet, and boundary-facet contributions, with Dirichlet conditions
+imposed weakly on the boundary:
 
 ```cpp
 TrialSpace<"u"> u;
@@ -166,17 +167,18 @@ auto sipdg_form =
    + integrate(
         interior_facets,
         -average(k * dot(grad(u), Normal{})) * jump(v)
-        + jump(u) * average(k * dot(grad(v), Normal{}))
+        - jump(u) * average(k * dot(grad(v), Normal{}))
         + tau * average(k) * jump(u) * jump(v))
    + integrate(
         boundary_facets,
         -k * dot(grad(u), Normal{}) * v
-        + u * k * dot(grad(v), Normal{})
+        - u * k * dot(grad(v), Normal{})
         + tau * k * u * v);
 ```
 
-The `FieldValue<"conductivity">` input evaluates the conductivity field
-registered in the weak-form context.
+The `FieldValue<"conductivity">` input evaluates the conductivity
+field registered in the weak-form context. Nonzero Dirichlet data require the
+corresponding boundary load terms in addition to this bilinear form.
 
 The SIPDG weak form can create a matrix-free operator or an assembled sparse
 matrix. Here `mesh` is the integration mesh, `fe_space` is the trial and test
