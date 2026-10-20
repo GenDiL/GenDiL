@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <array>
 #include <ostream>
 
 #include "gendil/Utilities/types.hpp"
@@ -28,7 +29,24 @@ struct Point
 
    constexpr Point() : coordinates{} { }
 
+   /// Copy a full coordinate array, including implicit conversion in geometry APIs.
+   // Deduce N so brace-only coordinate lists keep their existing overloads.
+   template < size_t N >
+      requires ( N == Dim )
+   constexpr Point( const std::array< Real, N > & values ) : coordinates{}
+   {
+      for ( size_t i = 0; i < Dim; ++i )
+      {
+         coordinates[i] = values[i];
+      }
+   }
+
+   // Automatically cast a Real into a one-dimensional Point.
+   constexpr Point( Real arg ) requires ( Dim == 1 ) : coordinates{ arg }
+   { }
+
    template < typename... Args >
+      requires ( Dim != 1 )
    constexpr Point( Args... args ) : coordinates{ args... }
    {
       static_assert(
@@ -37,6 +55,12 @@ struct Point
       );
    }
 
+   // Automatically cast a one-dimensional Point into a Real.
+   constexpr operator Real() const requires ( Dim == 1 )
+   {
+      return coordinates[ 0 ];
+   }
+
    constexpr Real operator[]( size_t index ) const
    {
       // TODO: Add debug assertion?
@@ -47,42 +71,6 @@ struct Point
    {
       // TODO: Add debug assertion?
       return coordinates[ index ];
-   }
-};
-
-// Specialize the scalar case
-template <>
-struct Point<1>
-{
-   static constexpr size_t space_dim = 1;
-   static constexpr size_t geometry_dim = 0;
-   static constexpr size_t num_nodes = 1;
-   static constexpr size_t num_faces = 0;
-
-   Real coordinates [ space_dim ];
-
-   constexpr Point() : coordinates{} { }
-
-   // Automatically cast a Real into a Point<1>.
-   constexpr Point( Real arg ) : coordinates{ arg }
-   { }
-
-   // Automatically cast a Point<1> into a Real.
-   constexpr operator Real() const
-   {
-      return coordinates[ 0 ];
-   }
-
-   constexpr Real operator[]( size_t index ) const
-   {
-      // TODO: Add debug assertion?
-      return coordinates[ 0 ];
-   }
-
-   constexpr Real& operator[]( size_t index )
-   {
-      // TODO: Add debug assertion?
-      return coordinates[ 0 ];
    }
 };
 
