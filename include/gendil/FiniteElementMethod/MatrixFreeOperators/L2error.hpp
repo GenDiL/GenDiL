@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -370,8 +371,11 @@ Real ComputeL2Error(
 }
 
 /**
- * @brief Source-compatible scalar entry point forwarding to the generalized
- * field-wide error implementation.
+ * @brief Compute a scalar or component-vector L2 error with a named or temporary
+ * exact-solution callable.
+ *
+ * Forwards to ComputeL2Error, which owns the callable by value and copies it
+ * into the execution kernels.
  */
 template<typename KernelPolicy,
          typename IntegrationRule,
@@ -381,13 +385,13 @@ template<typename KernelPolicy,
 Real L2Error(
    const FiniteElementSpace& finite_element_space,
    const IntegrationRule& integration_rule,
-   Sigma& exact,
+   Sigma&& exact,
    const DofsVector& dofs)
 {
    return ComputeL2Error<KernelPolicy>(
       finite_element_space,
       integration_rule,
-      exact,
+      std::forward<Sigma>(exact),
       dofs);
 }
 
