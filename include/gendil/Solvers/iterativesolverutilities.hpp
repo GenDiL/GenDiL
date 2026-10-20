@@ -4,11 +4,11 @@
 
 /** @file @brief Shared residual checks and reporting for iterative solvers.
  *
- * CG and GMRES use these internal helpers to form the true residual, test its
- * norm, and report the resulting error consistently. Each solver supplies its
- * own tolerances, norm operation, and iteration count. Residual formation is
- * separate from measurement so a solver can retain a squared norm without an
- * extra reduction or a square-root/square round trip.
+ * CG, GMRES, and BiCGSTAB use these internal helpers to form the true residual,
+ * test its norm, and report the resulting error consistently. Each solver
+ * supplies its own tolerances, norm operation, and iteration count. Residual
+ * formation is separate from measurement so a solver can retain a squared norm
+ * without an extra reduction or a square-root/square round trip.
  */
 #include "gendil/Solvers/iterativesolverresult.hpp"
 #include "gendil/Utilities/MathHelperFunctions/isfinite.hpp"
