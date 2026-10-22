@@ -294,9 +294,12 @@ Real ComputeHomogeneousL2Error(
 
    HostDevicePointer< Real > sum_ptr;
    AllocateHostPointer< Real >( 1, sum_ptr );
-   AllocateDevicePointer< Real >( 1, sum_ptr );
    *sum_ptr = 0.0;
-   ToDevice( 1, sum_ptr );
+   if constexpr ( is_device_configuration_v< KernelConfiguration > )
+   {
+      AllocateDevicePointer< Real >( 1, sum_ptr );
+      ToDevice( 1, sum_ptr );
+   }
 
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
@@ -327,10 +330,14 @@ Real ComputeHomogeneousL2Error(
       }
    );
 
-   ToHost( 1, sum_ptr );
+   // Host policies already accumulated into the host copy, even in GPU builds.
+   if constexpr ( is_device_configuration_v< KernelConfiguration > )
+   {
+      ToHost( 1, sum_ptr );
+      FreeDevicePointer( sum_ptr );
+   }
    Real sum = Sqrt( *sum_ptr );
    FreeHostPointer( sum_ptr );
-   FreeDevicePointer( sum_ptr );
    return sum;
 }
 
