@@ -70,7 +70,7 @@ bool CheckSelectedStateEvaluation()
    return ok;
 }
 
-template<class Policy>
+template<class Policy, class BSRPolicy = Policy>
 bool CheckScalarFluxAndAffineSplit()
 {
    constexpr Real hx = .5, hy = .75, ox = .25, oy = -.5;
@@ -164,7 +164,9 @@ bool CheckScalarFluxAndAffineSplit()
       assembled[rows[i]] += entries[i]*values[columns[i]];
    }
    ok = Check(result, linear_expected, "boundary upwind affine RawCOO") && ok;
-   const auto matrix = GenericAssembly<MatrixAssemblyType::BSR, Policy>(lhs(form), lhs_context, rule);
+   // BSR requires unbatched device execution; residual and RawCOO coverage
+   // above retain the supplied, potentially batched policy.
+   const auto matrix = GenericAssembly<MatrixAssemblyType::BSR, BSRPolicy>(lhs(form), lhs_context, rule);
    Vector matrix_result(8);
    matrix(x, matrix_result);
    return Check(matrix_result, linear_expected, "boundary upwind lhs BSR") && ok;
@@ -369,7 +371,8 @@ int main()
 #ifdef GENDIL_USE_DEVICE
    using Policy = DeviceKernelConfiguration<ThreadBlockLayout<4, 4>, 2, 4>;
    using Policy1D = DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 4>;
-   ok = CheckScalarFluxAndAffineSplit<Policy>() && CheckCoupledStates<Policy>() &&
+   using BSRPolicy = DeviceKernelConfiguration<ThreadBlockLayout<4, 4>, 2, 1>;
+   ok = CheckScalarFluxAndAffineSplit<Policy, BSRPolicy>() && CheckCoupledStates<Policy>() &&
       CheckVectorStates<Policy>() && CheckPartitionBoundary<Policy1D>() && ok;
 #endif
    return ok ? 0 : 1;
