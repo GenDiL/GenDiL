@@ -352,6 +352,14 @@ void AssembleLocalSparseTarget(
       using Signature = form_signature_t< WeakForm >;
       using Requirements = lower_signature_requirements_t< Signature >;
       constexpr auto DomainName = local_facet_assembly_domain_name_v< WeakForm >;
+      if constexpr (
+         has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::InteriorFacet > ||
+         has_nonzero_integrands< WeakForm, DomainName, SemanticEntity::BoundaryFacet > )
+      {
+         // Per-cell face branches cannot share a block-wide interpolation barrier.
+         static_assert(is_unbatched_operator_configuration_allowed_v<KernelPolicy>,
+            "Local facet traversal requires BatchSize == 1 because synchronization spans the GPU block.");
+      }
       const auto & domain_mesh = GetCellIntegrationDomainMesh( weak_form, weak_form_context );
       using DomainMesh = std::remove_cvref_t< decltype( domain_mesh ) >;
       auto selected_domain = SelectedCellExecutionDomain< DomainName, 0, DomainMesh, false >{ domain_mesh };

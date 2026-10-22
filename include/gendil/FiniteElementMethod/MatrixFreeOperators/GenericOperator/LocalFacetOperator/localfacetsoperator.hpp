@@ -85,6 +85,14 @@ void GenericCellBatchOperator(const Form& form, const Selected& selected,
    using Signatures = typename weak_form_traits::domain_signatures<typename Signature::integrands, Name, EntityKind>::type;
    using Requirements = weak_form_execution_detail::signature_requirements<Signatures>;
    auto terms = weak_form_execution_detail::SelectIntegrands<Name, EntityKind>(form);
+   if constexpr (has_interior_facet_contributions_v<decltype(terms)> ||
+                 has_boundary_facet_contributions_v<decltype(terms)>)
+   {
+      // Cells can skip different faces, but threaded interpolation synchronizes
+      // the entire physical block. Each block must therefore own one cell.
+      static_assert(is_unbatched_operator_configuration_allowed_v<Policy>,
+         "Local facet traversal requires BatchSize == 1 because synchronization spans the GPU block.");
+   }
    auto operator_context = MakeOperatorContext(form, selected, rule);
    const auto mesh = batch.GetCellMesh();
    using Entity = ElementContext<std::remove_cvref_t<decltype(mesh.GetCell(GlobalIndex{}))>>;

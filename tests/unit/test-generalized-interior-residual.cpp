@@ -280,7 +280,8 @@ int main()
              CheckActiveUpwindSelector<SerialKernelConfiguration,true>() &&
              CheckWeightedInteriorEndpoints<SerialKernelConfiguration>();
 #ifdef GENDIL_USE_DEVICE
-   using Policy = DeviceKernelConfiguration<ThreadBlockLayout<4,4>,2,4>;
+   // Local facet traversal requires one cell per device block.
+   using Policy = DeviceKernelConfiguration<ThreadBlockLayout<4,4>,2,1>;
    ok = CheckCoupledMesh<Policy>() && CheckCachedCurrentAndNeighbor<Policy>() &&
       CheckActiveUpwindSelector<Policy>() &&
       CheckActiveUpwindSelector<Policy,true>() &&
