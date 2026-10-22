@@ -621,23 +621,19 @@ bool TestQ1Q2Case()
       false,
       "Q1-Q2 average sparse action disagrees with matrix-free." ) && success;
 
-   const std::size_t allocations_before =
-      allocation_count.load( std::memory_order_relaxed );
    Vector hot_output( 10 );
-   const std::size_t allocations_after_output =
+   const std::size_t allocations_before =
       allocation_count.load( std::memory_order_relaxed );
    for ( int repetition = 0; repetition < 8; ++repetition )
    {
       Apply( matrix_free, input, hot_output );
-      Apply( csr, input, hot_output );
+      Apply( HostCSRBackend<>{}, csr, input, hot_output );
       Apply( sgbsr_minus, input, hot_output );
       ApplyAdd( sgbsr_plus, input, hot_output );
    }
    success = Check(
-      allocations_after_output == allocations_before + 1 &&
-         allocation_count.load( std::memory_order_relaxed ) ==
-            allocations_after_output,
-      "Fixed-stencil operator application allocated in the hot path." ) &&
+      allocation_count.load( std::memory_order_relaxed ) == allocations_before,
+      "Fixed-stencil host operator application allocated in the hot path." ) &&
       success;
    return success;
 }
