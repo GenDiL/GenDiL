@@ -178,17 +178,17 @@ bool CheckDivergenceChannels()
 
    const VectorTrialSpace<"u"> u;
    const FiniteElementField<"w"> w;
-   const auto minus_fields = MakeStaticMap(
+   const auto minus_field_values = MakeStaticMap(
       MakeEntry<NameTag<"u">>(Field(Matrix{{{1, 2}, {3, 4}}})),
       MakeEntry<NameTag<"w">>(Field(Matrix{{{-2, 5}, {7, -3}}})));
-   const auto plus_fields = MakeStaticMap(
+   const auto plus_field_values = MakeStaticMap(
       MakeEntry<NameTag<"u">>(Field(Matrix{{{-1, 3}, {2, -4}}})),
       MakeEntry<NameTag<"w">>(Field(Matrix{{{4, -2}, {-3, 6}}})));
    struct FacetFields
    {
-      decltype(minus_fields) minus_fields;
-      decltype(plus_fields) plus_fields;
-   } fields{minus_fields, plus_fields};
+      decltype(minus_field_values) minus_fields;
+      decltype(plus_field_values) plus_fields;
+   } fields{minus_field_values, plus_field_values};
    auto evaluate = [&](const auto& expression, const auto& point, const auto& field_values)
    {
       return expression(TestKernel{}, Empty{}, Empty{}, Empty{}, point, field_values);
@@ -196,9 +196,9 @@ bool CheckDivergenceChannels()
    // Explicit physical partials: minus u = (8,43), plus u = (28,-42);
    // minus w = (11,14), plus w = (18,63). Taking the reference trace,
    // transposing the gradient, or reusing the minus Jacobian gives other values.
-   ok = Close(evaluate(div(u), cell, minus_fields), 51, "trial physical divergence") && ok;
-   ok = Close(evaluate(div(w), cell, minus_fields), 25, "bound physical divergence") && ok;
-   ok = Close(evaluate(div(w), boundary, minus_fields), 25, "bound boundary divergence") && ok;
+   ok = Close(evaluate(div(u), cell, minus_field_values), 51, "trial physical divergence") && ok;
+   ok = Close(evaluate(div(w), cell, minus_field_values), 25, "bound physical divergence") && ok;
+   ok = Close(evaluate(div(w), boundary, minus_field_values), 25, "bound boundary divergence") && ok;
    ok = Close(evaluate(minus(div(u)), interior, fields), 51, "minus trial divergence") && ok;
    ok = Close(evaluate(plus(div(u)), interior, fields), -14, "plus trial divergence") && ok;
    ok = Close(evaluate(average(div(u)), interior, fields), 18.5, "average trial divergence") && ok;
