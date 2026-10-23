@@ -16,13 +16,7 @@
 
 namespace gendil {
 
-template<class Key, class T>
-struct Entry;
-
-template<class... Entries>
-struct StaticMap;
-
-template<class Map>
+template<class Terms, class Symbols>
 struct SumFormExpr;
 
 /**
@@ -176,7 +170,7 @@ constexpr decltype(auto) GetCellIntegrationDomainMesh(
    using I = std::remove_cvref_t<Integrand>;
    constexpr auto DomainName = I::domain_type::name;
    return GetCellIntegrationDomainMesh(
-      wf_ctx.template domain<DomainName>());
+      wf_ctx.template GetDomain<DomainName>());
 }
 
 template<class WeakForm>
@@ -194,30 +188,20 @@ struct LocalFacetAssemblyDomain<WeakForm>
    static constexpr auto name = Form::domain_type::name;
 };
 
-template<class Key, class Form>
-struct LocalFacetAssemblyDomain<Entry<Key, Form>>
-   : LocalFacetAssemblyDomain<Form> {};
-
-template<class FirstEntry, class... RestEntries>
-struct LocalFacetAssemblyDomain<
-   StaticMap<FirstEntry, RestEntries...>>
+template<class First, class... Rest>
+struct LocalFacetAssemblyDomain<std::tuple<First, Rest...>>
 {
-   static constexpr auto name =
-      LocalFacetAssemblyDomain<FirstEntry>::name;
+   static constexpr auto name = LocalFacetAssemblyDomain<std::remove_cvref_t<First>>::name;
    static constexpr bool all_names_match =
-      (
-         (name == LocalFacetAssemblyDomain<RestEntries>::name) &&
-         ...);
-
-   static_assert(
-      all_names_match,
-      "GenericLocalFacetAssembly requires all integrands to use the same "
+      ((name == LocalFacetAssemblyDomain<std::remove_cvref_t<Rest>>::name) && ...);
+   static_assert(all_names_match,
+      "Sparse assembly requires all integrands to use the same "
       "integration domain name.");
 };
 
-template<class Map>
-struct LocalFacetAssemblyDomain<SumFormExpr<Map>>
-   : LocalFacetAssemblyDomain<Map> {};
+template<class Terms, class Symbols>
+struct LocalFacetAssemblyDomain<SumFormExpr<Terms, Symbols>>
+   : LocalFacetAssemblyDomain<Terms> {};
 
 template<class WeakForm>
 inline constexpr auto local_facet_assembly_domain_name_v =
@@ -236,7 +220,7 @@ constexpr decltype(auto) GetCellIntegrationDomainMesh(
    constexpr auto DomainName =
       local_facet_assembly_domain_name_v<WeakForm>;
    const auto& traversal_domain =
-      wf_ctx.template domain<DomainName>();
+      wf_ctx.template GetDomain<DomainName>();
    using IntegrationDomain =
       std::remove_cvref_t<decltype(traversal_domain.domain)>;
    static_assert(

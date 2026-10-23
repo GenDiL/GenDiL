@@ -53,10 +53,10 @@ struct is_vector_field_reference<TestSpace<Name, FieldShape::Vector>> : std::tru
 template<typename T>
 inline constexpr bool is_vector_field_reference_v = is_vector_field_reference<std::remove_cvref_t<T>>::value;
 
-// Extract field shape (only use when T is known to be a field reference)
+// Unknown shapes have no value; wrappers can forward that absence unchanged.
 // Do NOT use field_shape_v<T> in generic boolean expressions
 template<typename T>
-struct field_shape_impl;
+struct field_shape_impl {};
 
 template<StaticString Name, FieldShape Shape>
 struct field_shape_impl<TrialSpace<Name, Shape>> {
@@ -70,6 +70,23 @@ struct field_shape_impl<TestSpace<Name, Shape>> {
 
 template<typename T>
 inline constexpr FieldShape field_shape_v = field_shape_impl<std::remove_cvref_t<T>>::value;
+
+// =============================================================================
+// SFINAE-safe has_field_shape trait
+// =============================================================================
+
+// Detects whether an expression type T has a field_shape_v specialization.
+// This uses SFINAE to avoid hard errors on types without field_shape_impl.
+template<class T, class = void>
+struct has_field_shape : std::false_type {};
+
+template<class T>
+struct has_field_shape<T, std::void_t<
+   decltype(field_shape_impl<std::remove_cvref_t<T>>::value)
+>> : std::true_type {};
+
+template<class T>
+inline constexpr bool has_field_shape_v = has_field_shape<std::remove_cvref_t<T>>::value;
 
 // =============================================================================
 // Coefficient shape specializations
@@ -122,6 +139,44 @@ struct field_shape_impl<GradientExpr<TestSpace<Name, FieldShape::Vector>>> {
    static constexpr FieldShape value = FieldShape::Matrix;
 };
 
+// Divergence contracts a vector field's physical gradient to a scalar.
+template<FieldExpr Expr>
+struct field_shape_impl<DivergenceExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Scalar;
+};
+
+// Three-dimensional curl preserves vector rank.
+template<FieldExpr Expr>
+struct field_shape_impl<CurlExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
+// Symmetric and skew-symmetric parts preserve matrix rank.
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Matrix)
+struct field_shape_impl<SymExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Matrix;
+};
+
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Matrix)
+struct field_shape_impl<SkewExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Matrix;
+};
+
+// Normal and tangential projections preserve vector rank.
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Vector)
+struct field_shape_impl<NormalProjectionExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
+template<FieldExpr Expr>
+   requires (has_field_shape_v<Expr> && field_shape_v<Expr> == FieldShape::Vector)
+struct field_shape_impl<TangentialProjectionExpr<Expr>> {
+   static constexpr FieldShape value = FieldShape::Vector;
+};
+
 // =============================================================================
 // FieldShape propagation for shape-preserving wrapper expressions
 // =============================================================================
@@ -133,21 +188,15 @@ struct field_shape_impl<GradientExpr<TestSpace<Name, FieldShape::Vector>>> {
  */
 template<FieldExpr Expr>
 struct field_shape_impl<NegExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 template<FieldExpr Expr>
 struct field_shape_impl<MinusTraceExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 template<FieldExpr Expr>
 struct field_shape_impl<PlusTraceExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief AverageExpr preserves the field shape of its operand.
@@ -157,9 +206,7 @@ struct field_shape_impl<PlusTraceExpr<Expr>>
  */
 template<FieldExpr Expr>
 struct field_shape_impl<AverageExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief JumpExpr preserves the field shape of its operand.
@@ -169,9 +216,7 @@ struct field_shape_impl<AverageExpr<Expr>>
  */
 template<FieldExpr Expr>
 struct field_shape_impl<JumpExpr<Expr>>
-{
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
-};
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
 
 /**
  * @brief UpwindExpr preserves the field shape of its operand.
@@ -182,8 +227,31 @@ struct field_shape_impl<JumpExpr<Expr>>
  */
 template<FieldExpr AdvExpr, FieldExpr Expr>
 struct field_shape_impl<UpwindExpr<AdvExpr, Expr>>
+   : field_shape_impl<std::remove_cvref_t<Expr>> {};
+
+template<FieldShape Shape>
+struct field_shape_impl<weak_form_detail::BoundaryUpwindZero<Shape>>
 {
-   static constexpr FieldShape value = field_shape_v<std::remove_cvref_t<Expr>>;
+   static constexpr FieldShape value = Shape;
+};
+
+// Boundary upwinding selects between states with the same shape. An affine
+// split retains the rank of an omitted state without retaining its expression.
+template<FieldExpr Adv, typename Interior, typename Exterior>
+   requires (has_field_shape_v<Interior> || has_field_shape_v<Exterior>)
+struct field_shape_impl<BoundaryUpwindExpr<Adv, Interior, Exterior>>
+{
+   static constexpr FieldShape value = []
+   {
+      if constexpr (has_field_shape_v<Interior> && has_field_shape_v<Exterior>)
+      {
+         static_assert(field_shape_v<Interior> == field_shape_v<Exterior>,
+            "Boundary upwind states must have the same field shape.");
+         return field_shape_v<Interior>;
+      }
+      else if constexpr (has_field_shape_v<Interior>) return field_shape_v<Interior>;
+      else return field_shape_v<Exterior>;
+   }();
 };
 
 // =============================================================================
@@ -226,6 +294,7 @@ struct field_shape_impl<DotExpr<LHS, RHS>> {
  *   beta + A            → Vector + Matrix (incompatible shapes)
  */
 template<FieldExpr Head, FieldExpr... Tail>
+   requires (has_field_shape_v<Head> && (has_field_shape_v<Tail> && ...))
 struct field_shape_impl<SumExpr<Head, Tail...>>
 {
    static constexpr FieldShape head_shape =
@@ -237,23 +306,6 @@ struct field_shape_impl<SumExpr<Head, Tail...>>
 
    static constexpr FieldShape value = head_shape;
 };
-
-// =============================================================================
-// SFINAE-safe has_field_shape trait
-// =============================================================================
-
-// Detects whether an expression type T has a field_shape_v specialization.
-// This uses SFINAE to avoid hard errors on types without field_shape_impl.
-template<class T, class = void>
-struct has_field_shape : std::false_type {};
-
-template<class T>
-struct has_field_shape<T, std::void_t<
-   decltype(field_shape_impl<std::remove_cvref_t<T>>::value)
->> : std::true_type {};
-
-template<class T>
-inline constexpr bool has_field_shape_v = has_field_shape<std::remove_cvref_t<T>>::value;
 
 // =============================================================================
 // InnerExpr operand validation

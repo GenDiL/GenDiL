@@ -5,95 +5,209 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/weakformvalidation.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/LocalFacetOperator/localfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/GlobalFacetOperator/globalfacetsoperator.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
+#include "gendil/Algebra/vectormapconcept.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
+#include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 
 namespace gendil {
 
-template<
-   class KernelPolicy,
-   class WeakForm,
-   class WeakFormContext,
-   class IntegrationRule,
-   class DofsInVector,
-   class DofsOutVector>
-void GenericExplicitOperator(
-   const WeakForm& weak_form,
-   const WeakFormContext& wf_ctx,
-   const IntegrationRule& integration_rule,
-   const DofsInVector& dofs_vector_in,
-   DofsOutVector& dofs_vector_out)
+namespace generic_operator_detail {
+
+template<class Form>
+inline constexpr bool has_callable_input_v =
+   !is_empty_type_list_v<typename form_signature_t<Form>::callable_inputs>;
+
+// Clear the already acquired view, keeping one owner access per invocation.
+template<bool OnDevice, class Access>
+void ClearOutputAccess(Access access, size_t size)
 {
-   using namespace generic_operator_detail;
-
-   constexpr auto DomainKind =
-      generic_operator_domain_kind_v<WeakForm, WeakFormContext>;
-
-   if constexpr (DomainKind == GenericOperatorDomainKind::Invalid)
+   KernelLoop<OnDevice>(size, [access] GENDIL_HOST_DEVICE (size_t i) mutable
    {
-      static_assert(
-         DomainKind != GenericOperatorDomainKind::Invalid,
-         "Weak form integrand requires an integration domain registered "
-         "under its domain name.");
-   }
-   else if constexpr (DomainKind == GenericOperatorDomainKind::Mixed)
-   {
-      static_assert(
-         DomainKind != GenericOperatorDomainKind::Mixed,
-         "GenericOperator does not support mixing MeshIntegrationDomain and "
-         "PartitionIntegrationDomain entries in one weak form.");
-   }
-   else
-   {
-      constexpr auto TrialName = requirements<WeakForm>::trial_name;
-      constexpr auto TestName  = requirements<WeakForm>::test_name;
+      access[i] = Real{0};
+   });
+}
 
-      static_assert(
-         TrialName != StaticString{"Error"},
-         "GenericExplicitOperator: missing TrialSpace in weak_form.");
-      static_assert(
-         TestName != StaticString{"Error"},
-         "GenericExplicitOperator: missing TestSpace in weak_form.");
-
-      if constexpr (DomainKind == GenericOperatorDomainKind::Mesh)
+template<class Context, class... Fields>
+size_t GetMaximumAlgebraicDofExtent(const Context& context, type_list<Fields...>)
+{
+   size_t extent = 0;
+   auto add = [&]<class Field>() {
+      static_assert(Context::template HasFiniteElementField<Field::name>(),
+         "Weak-form execution requires a registered finite-element space.");
+      if constexpr (Context::template HasFiniteElementField<Field::name>())
       {
-         GenericLocalDomainOperator<KernelPolicy>(
-            weak_form,
-            wf_ctx,
-            integration_rule,
-            dofs_vector_in,
-            dofs_vector_out);
+         const auto field_extent = static_cast<size_t>(
+            GetAlgebraicDofExtent(context.template GetSpace<Field::name>()));
+         if (field_extent > extent) { extent = field_extent; }
       }
-      else
+   };
+   (add.template operator()<Fields>(), ...);
+   return extent;
+}
+
+// Storage access is acquired once by the caller, independently of traversal.
+template<class Policy, class Form, class Context, class Rule, class... Access>
+void ApplyOnDomains(const Form& form, const Context& context, const Rule& rule,
+                const Access&... access)
+{
+   if constexpr (is_zero<Form>)
+      return;
+   else if constexpr (generic_operator_domain_kind_v<Form, Context> == GenericOperatorDomainKind::Mesh)
+      GenericLocalFacetDomainOperator<Policy>(form, context, rule, access...);
+   else
+      GenericGlobalFacetDomainOperator<Policy>(form, context, rule, access...);
+}
+
+// Callable dimensions remain required even when an affine transform removes reads.
+template <
+   typename WeakForm,
+   typename WeakFormContext,
+   typename Output,
+   typename... Input >
+GENDIL_INLINE
+void ValidateVectorSizes(
+   const WeakFormContext & weak_form_context,
+   Output & output,
+   const Input &... input )
+{
+   using Signature = form_signature_t< WeakForm >;
+   GENDIL_VERIFY(
+      GetVectorSize( output ) >= GetMaximumAlgebraicDofExtent(
+         weak_form_context,
+         typename Signature::logical_outputs{} ),
+      "Weak-form output vector is smaller than its required algebraic extent." );
+   auto validate_input = [&] ( const auto & input_vector )
+   {
+      GENDIL_VERIFY(
+         GetVectorSize( input_vector ) >= GetMaximumAlgebraicDofExtent(
+            weak_form_context,
+            typename Signature::callable_inputs{} ),
+         "Weak-form input vector is smaller than its required algebraic extent." );
+   };
+   ( validate_input( input ), ... );
+}
+
+// The caller validates first. Acquire each required vector once, clear only for
+// replacement, and borrow the input only for this invocation.
+template <
+   bool Add,
+   typename KernelPolicy,
+   typename WeakForm,
+   typename WeakFormContext,
+   typename IntegrationRule,
+   typename Output,
+   typename... Input >
+GENDIL_INLINE
+void ApplyToVectors(
+   const WeakForm & weak_form,
+   const WeakFormContext & weak_form_context,
+   const IntegrationRule & integration_rule,
+   Output & output,
+   const Input &... input )
+{
+   if constexpr ( !( Add && is_zero< WeakForm > ) )
+   {
+      constexpr bool OnDevice = is_device_configuration_v< KernelPolicy >;
+      auto output_data = [&]
       {
-         static_assert(
-            DomainKind == GenericOperatorDomainKind::Partition);
-         GenericGlobalDomainOperator<KernelPolicy>(
-            weak_form,
-            wf_ctx,
-            integration_rule,
-            dofs_vector_in,
-            dofs_vector_out);
+         if constexpr ( Add )
+         {
+            return ReadWriteKernelVector< OnDevice >( output );
+         }
+         else
+         {
+            return WriteKernelVector< OnDevice >( output );
+         }
+      }();
+
+      if constexpr ( !Add )
+      {
+         ClearOutputAccess< OnDevice >( output_data, GetVectorSize( output ) );
+      }
+
+      if constexpr ( !is_zero< WeakForm > )
+      {
+         using Signature = form_signature_t< WeakForm >;
+         if constexpr ( !is_empty_type_list_v< typename Signature::active_inputs > )
+         {
+            auto input_data = ReadKernelVector< OnDevice >( std::get< 0 >( std::tie( input... ) ) );
+            ApplyOnDomains< KernelPolicy >(
+               weak_form, weak_form_context, integration_rule, input_data, output_data );
+         }
+         else
+         {
+            ApplyOnDomains< KernelPolicy >(
+               weak_form, weak_form_context, integration_rule, output_data );
+         }
       }
    }
 }
 
-// ============================================================================
-// Pullback GenericOperator class
-// ============================================================================
+template <
+   bool Add,
+   typename KernelPolicy,
+   typename WeakForm,
+   typename WeakFormContext,
+   typename IntegrationRule,
+   typename Output,
+   typename... Input >
+void Apply(
+   const WeakForm & weak_form,
+   const WeakFormContext & weak_form_context,
+   const IntegrationRule & integration_rule,
+   Output & output,
+   const Input &... input )
+{
+   ValidateWeakFormContext( weak_form, weak_form_context );
+
+   // Keep invalid domains and invocation arities out of numerical instantiation.
+   constexpr auto DomainKind = generic_operator_domain_kind_v< WeakForm, WeakFormContext >;
+   if constexpr ( DomainKind != GenericOperatorDomainKind::Invalid &&
+                  DomainKind != GenericOperatorDomainKind::Mixed )
+   {
+      constexpr bool ArityMatches = sizeof...( Input ) == ( has_callable_input_v< WeakForm > ? 1 : 0 );
+      static_assert( ArityMatches,
+         "Input-free residuals require the output-only GenericExplicitOperator overload." );
+      if constexpr ( ArityMatches )
+      {
+         generic_operator_detail::ValidateVectorSizes< WeakForm >( weak_form_context, output, input... );
+         generic_operator_detail::ApplyToVectors< Add, KernelPolicy >(
+            weak_form, weak_form_context, integration_rule, output, input... );
+      }
+   }
+}
+
+} // namespace generic_operator_detail
+
+// Direct numerical invocation is additive, like ApplyAdd on the public operator.
+template<class KernelPolicy, class WeakForm, class WeakFormContext,
+         class IntegrationRule, class Input, class Output>
+void GenericExplicitOperator(const WeakForm& form, const WeakFormContext& context,
+   const IntegrationRule& rule, const Input& input, Output& output)
+{
+   generic_operator_detail::Apply<true, KernelPolicy>(form, context, rule, output, input);
+}
+
+template<class KernelPolicy, class WeakForm, class WeakFormContext,
+         class IntegrationRule, class Output>
+   requires (!generic_operator_detail::has_callable_input_v<WeakForm>)
+void GenericExplicitOperator(const WeakForm& form, const WeakFormContext& context,
+   const IntegrationRule& rule, Output& output)
+{
+   generic_operator_detail::Apply<true, KernelPolicy>(form, context, rule, output);
+}
 
 /**
- * @brief Pullback-based generic operator.
- *
- * High-level operator wrapper that uses pullback channels for cell integrands.
+ * Evaluate named residual fields on cells and facets using a common input and
+ * output vector, or an output vector alone for input-free forms. Replacement
+ * clears the complete output; ApplyAdd preserves its existing values.
  */
-template<
-   class KernelPolicy,
-   class IntegrationRule,
-   class WeakForm,
-   class WeakFormContext>
+template<class KernelPolicy, class IntegrationRule, class WeakForm, class WeakFormContext>
 class PullbackGenericOperator
 {
    WeakForm weak_form;
@@ -101,104 +215,79 @@ class PullbackGenericOperator
    IntegrationRule ir;
 
 public:
-   PullbackGenericOperator(WeakForm wf,
-                           WeakFormContext ctx,
-                           IntegrationRule ir_)
-      : weak_form(std::move(wf))
-      , wf_ctx(std::move(ctx))
-      , ir(std::move(ir_))
-   {}
-
-   template<class input, class output>
-   void operator()(const input& dofs_vector_in, output& dofs_vector_out) const
+   PullbackGenericOperator(WeakForm form, WeakFormContext context, IntegrationRule rule)
+      : weak_form(std::move(form)), wf_ctx(std::move(context)), ir(std::move(rule))
    {
-      // Prepare the output exactly once. Recursive term and domain-batch
-      // dispatch contributes additively into this vector.
-      dofs_vector_out = 0.0;
+      ValidateWeakFormContext(weak_form, wf_ctx);
+   }
 
-      GenericExplicitOperator<KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         ir,
-         dofs_vector_in,
-         dofs_vector_out);
+   size_t InputSize() const
+   {
+      return generic_operator_detail::GetMaximumAlgebraicDofExtent(
+         wf_ctx, typename form_signature_t<WeakForm>::callable_inputs{});
+   }
+
+   size_t OutputSize() const
+   {
+      return generic_operator_detail::GetMaximumAlgebraicDofExtent(
+         wf_ctx, typename form_signature_t<WeakForm>::logical_outputs{});
+   }
+
+   template<class Input, class Output>
+      requires generic_operator_detail::has_callable_input_v<WeakForm> &&
+         KernelReadableVector<is_device_configuration_v<KernelPolicy>, Input> &&
+         KernelWritableVector<is_device_configuration_v<KernelPolicy>, Output>
+   void operator()(const Input& input, Output& output) const
+   {
+      generic_operator_detail::Apply<false, KernelPolicy>(weak_form, wf_ctx, ir, output, input);
+   }
+
+   template<class Input, class Output>
+      requires generic_operator_detail::has_callable_input_v<WeakForm> &&
+         KernelReadableVector<is_device_configuration_v<KernelPolicy>, Input> &&
+         KernelWritableVector<is_device_configuration_v<KernelPolicy>, Output>
+   void ApplyAdd(const Input& input, Output& output) const
+   {
+      generic_operator_detail::Apply<true, KernelPolicy>(weak_form, wf_ctx, ir, output, input);
+   }
+
+   template<class Output>
+      requires (!generic_operator_detail::has_callable_input_v<WeakForm>) &&
+         KernelWritableVector<is_device_configuration_v<KernelPolicy>, Output>
+   void operator()(Output& output) const
+   {
+      generic_operator_detail::Apply<false, KernelPolicy>(weak_form, wf_ctx, ir, output);
+   }
+
+   template<class Output>
+      requires (!generic_operator_detail::has_callable_input_v<WeakForm>) &&
+         KernelWritableVector<is_device_configuration_v<KernelPolicy>, Output>
+   void ApplyAdd(Output& output) const
+   {
+      generic_operator_detail::Apply<true, KernelPolicy>(weak_form, wf_ctx, ir, output);
    }
 };
 
-/**
- * @brief Factory for pullback-based GenericOperator
- *
- * **Usage:**
- * ```cpp
- * auto pb_op = MakePullbackGenericOperator<KernelPolicy>(
- *    weak_form, wf_ctx, integration_rule);
- * pb_op(input_vector, output_vector);
- * ```
- */
-template<
-  class KernelPolicy,
-  class IntegrationRule,
-  class WeakFormTuple,
-  class WeakFormContext>
-auto MakePullbackGenericOperator(
-   WeakFormTuple weak_form,
-   WeakFormContext wf_ctx,
-   IntegrationRule ir)
+/** Construct a residual operator; preparation and bindings are obtained per call. */
+template<class KernelPolicy, class IntegrationRule, class WeakForm, class WeakFormContext>
+auto MakePullbackGenericOperator(WeakForm form, WeakFormContext context, IntegrationRule rule)
 {
-   ValidateWeakFormContext(weak_form, wf_ctx);
-   return PullbackGenericOperator<
-      KernelPolicy,
-      IntegrationRule,
-      WeakFormTuple,
-      WeakFormContext>(
-      std::move(weak_form),
-      std::move(wf_ctx),
-      std::move(ir)
-   );
+   return PullbackGenericOperator<KernelPolicy, IntegrationRule, WeakForm, WeakFormContext>(
+      std::move(form), std::move(context), std::move(rule));
 }
 
-template<
-  class KernelPolicy,
-  class IntegrationRule,
-  class WeakFormTuple,
-  class WeakFormContext>
-auto MakeGenericOperator(
-   WeakFormTuple weak_form,
-   WeakFormContext wf_ctx,
-   IntegrationRule ir)
+template<class KernelPolicy, class IntegrationRule, class WeakForm, class WeakFormContext>
+auto MakeGenericOperator(WeakForm form, WeakFormContext context, IntegrationRule rule)
 {
-   ValidateWeakFormContext(weak_form, wf_ctx);
-   return PullbackGenericOperator<
-      KernelPolicy,
-      IntegrationRule,
-      WeakFormTuple,
-      WeakFormContext>(
-      std::move(weak_form),
-      std::move(wf_ctx),
-      std::move(ir)
-   );
+   return MakePullbackGenericOperator<KernelPolicy>(
+      std::move(form), std::move(context), std::move(rule));
 }
 
-template<
-  class KernelPolicy,
-  class IntegrationRule,
-  class WeakFormTuple,
-  class WeakFormContext>
-auto MakeWeakFormResidualOperator(
-   WeakFormTuple weak_form,
-   WeakFormContext wf_ctx,
-   IntegrationRule ir)
+template<class KernelPolicy, class IntegrationRule, class WeakForm, class WeakFormContext>
+auto MakeWeakFormResidualOperator(WeakForm form, WeakFormContext context, IntegrationRule rule)
 {
-   ValidateWeakFormContext(weak_form, wf_ctx);
-   return PullbackGenericOperator<
-      KernelPolicy,
-      IntegrationRule,
-      WeakFormTuple,
-      WeakFormContext>(
-      std::move(weak_form),
-      std::move(wf_ctx),
-      std::move(ir)
-   );
+   return MakePullbackGenericOperator<KernelPolicy>(
+      std::move(form), std::move(context), std::move(rule));
 }
 
 } // namespace gendil

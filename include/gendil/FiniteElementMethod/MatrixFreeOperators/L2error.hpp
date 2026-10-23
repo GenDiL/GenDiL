@@ -5,9 +5,16 @@
 #pragma once
 
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/accessors.hpp"
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
+#include "gendil/Utilities/Loop/constexprloop.hpp"
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
+
+#include <cmath>
+#include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -52,16 +59,39 @@ void L2ErrorElementOperatorSerial(
       PhysicalCoordinates X;
       Jacobian J_mesh;
 
-      const Real Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
+      const auto Bu_q = ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
 
       cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
 
       const Real detJ = Determinant( J_mesh );
       const Real weight = GetWeight( quad_index, element_quad_data );
-      const Real analytical_sol = sigma( X );
+      const auto analytical_sol = sigma( X );
 
-      const Real diff = Bu_q - analytical_sol;
-      const Real Du_q = weight * detJ * diff * diff;
+      const Real squared_difference = [&]
+      {
+         if constexpr (std::is_arithmetic_v<std::remove_cvref_t<decltype(Bu_q)>>)
+         {
+            const Real diff = Bu_q - analytical_sol;
+            return diff * diff;
+         }
+         else
+         {
+            static_assert(
+               static_extent_v<decltype(Bu_q)> ==
+                  static_extent_v<decltype(analytical_sol)>,
+               "Vector L2 exact values must match the field component count." );
+            Real result = 0.0;
+            ConstexprLoop<static_extent_v<decltype(Bu_q)>>([&](auto component)
+            {
+               const Real diff =
+                  GetValue(Bu_q, component) -
+                  GetValue(analytical_sol, component);
+               result += diff * diff;
+            });
+            return result;
+         }
+      }();
+      const Real Du_q = weight * detJ * squared_difference;
 
       error += Du_q;
    } );
@@ -113,17 +143,40 @@ void L2ErrorElementOperatorThreaded(
       PhysicalCoordinates X;
       Jacobian J_mesh;
 
-      const Real Bu_q =
+      const auto Bu_q =
          ReadQuadratureLocalValues( kernel_conf, quad_index, Bu );
 
       cell.GetValuesAndJacobian( quad_index, mesh_quad_data, X, J_mesh );
 
       const Real detJ = Determinant( J_mesh );
       const Real weight = GetWeight( quad_index, element_quad_data );
-      const Real analytical_sol = sigma( X );
+      const auto analytical_sol = sigma( X );
 
-      const Real diff = Bu_q - analytical_sol;
-      const Real Du_q = weight * detJ * diff * diff;
+      const Real squared_difference = [&]
+      {
+         if constexpr (std::is_arithmetic_v<std::remove_cvref_t<decltype(Bu_q)>>)
+         {
+            const Real diff = Bu_q - analytical_sol;
+            return diff * diff;
+         }
+         else
+         {
+            static_assert(
+               static_extent_v<decltype(Bu_q)> ==
+                  static_extent_v<decltype(analytical_sol)>,
+               "Vector L2 exact values must match the field component count." );
+            Real result = 0.0;
+            ConstexprLoop<static_extent_v<decltype(Bu_q)>>([&](auto component)
+            {
+               const Real diff =
+                  GetValue(Bu_q, component) -
+                  GetValue(analytical_sol, component);
+               result += diff * diff;
+            });
+            return result;
+         }
+      }();
+      const Real Du_q = weight * detJ * squared_difference;
 
       AtomicAddInPlace( *error, Du_q );
    } );
@@ -206,7 +259,7 @@ void L2ErrorElementOperator(
 }
 
 /**
- * @brief L2Error operator.
+ * @brief Homogeneous-space L2-error implementation used by public wrappers.
  * 
  * @tparam KernelConfiguration The execution policy for the hardware.
  * @tparam IntegrationRule The type of the integration rule used by the element operator.
@@ -221,13 +274,14 @@ template <
    typename KernelConfiguration,
    typename IntegrationRule,
    typename FiniteElementSpace,
-   typename Sigma
+   typename Sigma,
+   typename DofsVector
    >
-Real L2Error(
+Real ComputeHomogeneousL2Error(
    const FiniteElementSpace & fe_space,
    const IntegrationRule & int_rule,
    Sigma & sigma,
-   const Vector & dofs_vector_in )
+   const DofsVector & dofs_vector_in )
 {
    using finite_element_type = typename FiniteElementSpace::finite_element_type;
    using shape_functions = typename finite_element_type::shape_functions;
@@ -240,9 +294,12 @@ Real L2Error(
 
    HostDevicePointer< Real > sum_ptr;
    AllocateHostPointer< Real >( 1, sum_ptr );
-   AllocateDevicePointer< Real >( 1, sum_ptr );
    *sum_ptr = 0.0;
-   ToDevice( 1, sum_ptr );
+   if constexpr ( is_device_configuration_v< KernelConfiguration > )
+   {
+      AllocateDevicePointer< Real >( 1, sum_ptr );
+      ToDevice( 1, sum_ptr );
+   }
 
    mesh::CellIterator< KernelConfiguration >(
       fe_space,
@@ -273,11 +330,76 @@ Real L2Error(
       }
    );
 
-   ToHost( 1, sum_ptr );
+   // Host policies already accumulated into the host copy, even in GPU builds.
+   if constexpr ( is_device_configuration_v< KernelConfiguration > )
+   {
+      ToHost( 1, sum_ptr );
+      FreeDevicePointer( sum_ptr );
+   }
    Real sum = Sqrt( *sum_ptr );
    FreeHostPointer( sum_ptr );
-   FreeDevicePointer( sum_ptr );
    return sum;
+}
+
+/**
+ * @brief Compute a scalar or component-vector L2 error over one field space.
+ *
+ * Mixed spaces accumulate the squared child errors and take one final square
+ * root. Child restrictions read directly from the common algebraic vector.
+ */
+template<class KernelPolicy,
+         class Space,
+         class IntegrationRule,
+         class ExactFunction,
+         class DofsVector>
+Real ComputeL2Error(
+   const Space& space,
+   const IntegrationRule& integration_rule,
+   ExactFunction exact,
+   const DofsVector& dofs)
+{
+   GENDIL_VERIFY(
+      GetVectorSize(dofs) ==
+         static_cast<size_t>(GetAlgebraicDofExtent(space)),
+      "L2-error vector extent does not match the finite-element space." );
+   Real squared_error = 0.0;
+   ForEachHomogeneousSpace(
+      space,
+      [&](const auto& cell_space)
+      {
+         const Real child_error = ComputeHomogeneousL2Error<KernelPolicy>(
+            cell_space,
+            integration_rule,
+            exact,
+            dofs);
+         squared_error += child_error * child_error;
+      });
+   return std::sqrt(squared_error);
+}
+
+/**
+ * @brief Compute a scalar or component-vector L2 error with a named or temporary
+ * exact-solution callable.
+ *
+ * Forwards to ComputeL2Error, which owns the callable by value and copies it
+ * into the execution kernels.
+ */
+template<typename KernelPolicy,
+         typename IntegrationRule,
+         typename FiniteElementSpace,
+         typename Sigma,
+         typename DofsVector>
+Real L2Error(
+   const FiniteElementSpace& finite_element_space,
+   const IntegrationRule& integration_rule,
+   Sigma&& exact,
+   const DofsVector& dofs)
+{
+   return ComputeL2Error<KernelPolicy>(
+      finite_element_space,
+      integration_rule,
+      std::forward<Sigma>(exact),
+      dofs);
 }
 
 }

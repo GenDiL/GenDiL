@@ -25,5 +25,8 @@
 // Default tensor-leaf view layout backed by semantic restriction lookup.
 #include "gendil/FiniteElementMethod/Restrictions/restrictionlayout.hpp"
 
+// Element views with weighted gather/scatter access to local DoFs.
+#include "gendil/FiniteElementMethod/Restrictions/weightedrestrictionview.hpp"
+
 // Built-in scalar, vector, and tensor-product restriction representations.
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictiontypes.hpp"

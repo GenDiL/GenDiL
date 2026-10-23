@@ -2,13 +2,46 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
+/**
+ * @file
+ * @brief Interpolate the named fields read by one integrand at quadrature points.
+ *
+ * InterpolateFields connects invocation storage to weak-form evaluation. For each
+ * requested field, it reads the element DOFs and applies that field's basis to
+ * compute the requested values, reference-coordinate gradients, or both. Active
+ * inputs and persistent coefficient fields use the same named read accessors.
+ *
+ * A cell integrand obtains its fields with:
+ * @code
+ * auto fields = InterpolateFields(
+ *    kernel_context, execution_context, operator_context,
+ *    element_context, integrand);
+ * @endcode
+ * The returned StaticMap contains InterpolatedField entries keyed by NameTag.
+ * Boundary interpolation adds a face argument and also returns one map. Interior
+ * interpolation returns FaceFields with separate minus and plus maps; their side
+ * ordering follows the supplied face, whether current/neighbor or canonical.
+ *
+ * The operator context supplies reusable basis data and the integrand's signature,
+ * already resolved against the complete form. Only the named reads and operators
+ * required by that signature are interpolated. Geometry is supplied separately
+ * by quadrature-point contexts, which also provide the mapping used to convert
+ * reference gradients to physical gradients during expression evaluation.
+ *
+ * Each field's gather and interpolation finish before the next field begins.
+ * Returned fields own their quadrature tensors; temporary gather and contraction
+ * storage may reuse the kernel's shared scratch. Callers must provide a validated
+ * execution context, matching operator context, and sufficient kernel scratch.
+ */
+
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/executioncontext.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
@@ -17,394 +50,310 @@ namespace gendil
 {
 
 /**
- * @file interpolatefields.hpp
- * @brief Utilities to interpolate trial and named finite-element fields
- *        at quadrature points for cell and facet integrals.
+ * @brief Named quadrature fields on the two sides of an interior facet.
  *
- * This file provides the interpolation layer that transforms:
- *
- * - element-local trial degrees of freedom, and
- * - named finite-element fields stored in the weak-form context,
- *
- * into map-like structures containing interpolated values and/or gradients at
- * quadrature points.
- *
- * Two integration situations are handled:
- *
- * - **cell integration**
- *   returns one flat map containing the trial field and all referenced
- *   named finite-element fields required by explicit field expressions or
- *   coefficient input tags;
- *
- * - **interior-facet integration**
- *   returns a `FaceFields` object containing side-specific named-field maps for
- *   the minus and plus sides.
- *
- * The facet path intentionally preserves the current face-aware interpolation
- * model:
- *
- * - the face interpolation call site selects one coherent side binding:
- *   FaceView side, side volume finite element space, and side qdata,
- * - boundary facets use the minus-side binding by convention,
- * - selection of the local-face entry and conforming / non-conforming handling
- *   are delegated to the existing overloads of `InterpolateValues` and
- *   `InterpolateGradient`.
- *
- * Only named finite-element data backed by the active trial field or by fields
- * in the weak-form context is interpolated through this layer. Other coefficient
- * inputs are read from the quadrature-point context.
- *
- * @note This file assumes the existence of:
- * - `requirements<Integrand>`
- * - `interpolation_named_field_requirements_t<Expr>`
- * - `type_list<...>`
- * - `Entry<Key, Value>`
- * - `NameTag<Name>`
- * - `make_map(...)`
- * - `ReadDofs(...)`
- * - `InterpolateValues(...)`
- * - `InterpolateGradient(...)`
- * - `Empty`
+ * Local traversal supplies current/neighbor fields; canonical traversal supplies
+ * fixed minus/plus fields. The two maps may contain different names and operators.
  */
-
-
-/* -------------------------------------------------------------------------- */
-/*                              Field containers                              */
-/* -------------------------------------------------------------------------- */
-
-// /**
-//  * @brief Container holding interpolated data associated with one field.
-//  *
-//  * @tparam ValuesType    Type storing interpolated field values.
-//  * @tparam GradientType  Type storing interpolated field gradients.
-//  *
-//  * Either member may be `Empty` when the corresponding quantity is not needed.
-//  */
-// template<typename ValuesType, typename GradientType>
-// struct InterpolatedField
-// {
-//    /// Interpolated field values, or `Empty`.
-//    ValuesType values;
-
-//    /// Interpolated field gradients, or `Empty`.
-//    GradientType gradients;
-// };
-
-/**
- * @brief Container grouping the fields required on a facet.
- *
- * @tparam MinusFields  Map-like type storing minus-side named fields.
- * @tparam PlusFields   Map-like type storing plus-side named fields.
- */
-template<class MinusFields, class PlusFields>
+template < typename MinusFields, typename PlusFields >
 struct FaceFields
 {
-   /// Minus-side named fields.
    MinusFields minus_fields;
-
-   /// Plus-side named fields.
    PlusFields plus_fields;
 
-   /// Current-side access for forms that have passed interior-facet validation.
-   template<class Key>
+   /// Unqualified access uses the current (minus) side after facet validation.
+   template < typename Key >
    GENDIL_HOST_DEVICE
-   constexpr decltype(auto) get() const
+   constexpr decltype(auto) Get() const
    {
-      return minus_fields.template get<Key>();
+      return minus_fields.template Get<Key>();
    }
 };
-
-
-/* -------------------------------------------------------------------------- */
-/*                          Internal lazy helper API                          */
-/* -------------------------------------------------------------------------- */
 
 namespace details
 {
 
-template<bool Need, class KernelContext, class QuadData, class ElementDofsIn>
+// Unrequested operators produce Empty without instantiating their contractions.
+template <
+   bool Need,
+   typename KernelContext,
+   typename QuadData,
+   typename ElementDofsIn >
 GENDIL_HOST_DEVICE
 auto InterpolateValuesIfNeeded(
-   KernelContext& k,
-   const QuadData& qd,
-   const ElementDofsIn& dofs_in)
+   KernelContext & kernel_context,
+   const QuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
 {
-   if constexpr (Need) return InterpolateValues(k, qd, dofs_in);
-   else                return Empty{};
+   if constexpr (Need)
+   {
+      return InterpolateValues(kernel_context, finite_element_quad_data, element_dofs);
+   }
+   else
+   {
+      return Empty{};
+   }
 }
 
-template<bool Need, class KernelContext, class QuadData, class ElementDofsIn>
+template <
+   bool Need,
+   typename KernelContext,
+   typename QuadData,
+   typename ElementDofsIn >
 GENDIL_HOST_DEVICE
 auto InterpolateGradientIfNeeded(
-   KernelContext& k,
-   const QuadData& qd,
-   const ElementDofsIn& dofs_in)
+   KernelContext & kernel_context,
+   const QuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
 {
-   if constexpr (Need) return InterpolateGradient(k, qd, dofs_in);
-   else                return Empty{};
+   if constexpr (Need)
+   {
+      return InterpolateGradient(kernel_context, finite_element_quad_data, element_dofs);
+   }
+   else
+   {
+      return Empty{};
+   }
 }
 
-template<bool Need, class KernelContext, class FaceSide, class FaceQuadData, class ElementDofsIn>
+template <
+   bool Need,
+   typename KernelContext,
+   typename FaceSide,
+   typename FaceQuadData,
+   typename ElementDofsIn >
 GENDIL_HOST_DEVICE
 auto InterpolateFacetValuesIfNeeded(
-   KernelContext& k,
-   const FaceSide& side,
-   const FaceQuadData& face_qd,
-   const ElementDofsIn& dofs_in)
+   KernelContext & kernel_context,
+   const FaceSide & side,
+   const FaceQuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
 {
-   if constexpr (Need) return InterpolateValues(k, side, face_qd, dofs_in);
-   else                return Empty{};
+   if constexpr (Need)
+   {
+      return InterpolateValues(
+         kernel_context,
+         side,
+         finite_element_quad_data,
+         element_dofs);
+   }
+   else
+   {
+      return Empty{};
+   }
 }
 
-template<bool Need, class KernelContext, class FaceSide, class FaceQuadData, class ElementDofsIn>
+template <
+   bool Need,
+   typename KernelContext,
+   typename FaceSide,
+   typename FaceQuadData,
+   typename ElementDofsIn >
 GENDIL_HOST_DEVICE
 auto InterpolateFacetGradientIfNeeded(
-   KernelContext& k,
-   const FaceSide& side,
-   const FaceQuadData& face_qd,
-   const ElementDofsIn& dofs_in)
+   KernelContext & kernel_context,
+   const FaceSide & side,
+   const FaceQuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
 {
-   if constexpr (Need) return InterpolateGradient(k, side, face_qd, dofs_in);
-   else                return Empty{};
+   if constexpr (Need)
+   {
+      return InterpolateGradient(
+         kernel_context,
+         side,
+         finite_element_quad_data,
+         element_dofs);
+   }
+   else
+   {
+      return Empty{};
+   }
 }
 
 } // namespace details
 
-
-/* -------------------------------------------------------------------------- */
-/*                    Low-level cell interpolation helpers                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Build the interpolated entry associated with the trial field for a
- *        cell integration context.
- *
- * This helper constructs
- * @code
- * Entry<NameTag<TrialName>, InterpolatedField<ValuesT, GradsT>>
- * @endcode
- * where values and/or gradients are computed according to `Mask`.
- *
- * @tparam TrialName      Compile-time trial-field name.
- * @tparam Mask           Operator mask describing which quantities are needed.
- * @tparam KernelContext  Kernel execution-context type.
- * @tparam QuadData       Cell quadrature-data type.
- * @tparam ElementDofsIn  Element-local trial-DOF container type.
- *
- * @param[in] k        Kernel execution context.
- * @param[in] qd       Cell quadrature data for the trial field.
- * @param[in] dofs_in  Element-local trial degrees of freedom.
- *
- * @return An `Entry<NameTag<TrialName>, InterpolatedField<...>>`.
- */
-template<
-   StaticString TrialName,
-   OperatorMask Mask,
-   class KernelContext,
-   class QuadData,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakeTrialInterpolatedEntryFromQD(
-   KernelContext& k,
-   const QuadData& qd,
-   const ElementDofsIn& dofs_in)
-{
-   constexpr bool need_vals  = need_values(Mask);
-   constexpr bool need_grads = need_gradients(Mask);
-
-   using ValuesT = std::remove_cvref_t<
-      decltype(details::InterpolateValuesIfNeeded<need_vals>(k, qd, dofs_in))>;
-
-   using GradsT = std::remove_cvref_t<
-      decltype(details::InterpolateGradientIfNeeded<need_grads>(k, qd, dofs_in))>;
-
-   using IF = InterpolatedField<ValuesT, GradsT>;
-
-   return Entry<NameTag<TrialName>, IF>{
-      IF{
-         details::InterpolateValuesIfNeeded<need_vals>(k, qd, dofs_in),
-         details::InterpolateGradientIfNeeded<need_grads>(k, qd, dofs_in)
-      }
-   };
-}
-
-/**
- * @brief Build the interpolated entry associated with a supplied named
- *        finite-element field for a cell integration context.
- *
- * The field is read from the weak-form context on the specified element and
- * interpolated according to the requested value/gradient mask.
- *
- * @tparam Name            Compile-time named-field name.
- * @tparam KernelContext   Kernel execution-context type.
- * @tparam WeakFormContext Weak-form-context type.
- * @tparam QuadData        Cell quadrature-data type.
- *
- * @param[in] k              Kernel execution context.
- * @param[in] wf             Weak-form context containing the named field.
- * @param[in] qd             Cell quadrature data for the named field.
- * @param[in] element_index  Element index from which coefficient DOFs are read.
- *
- * @return An `Entry<NameTag<Name>, InterpolatedField<ValuesT, Empty>>`.
- */
-template<
+/// Apply the requested cell contractions and package one named quadrature field.
+template <
    StaticString Name,
    OperatorMask Mask,
-   class KernelContext,
-   class WeakFormContext,
-   class QuadData>
+   typename KernelContext,
+   typename QuadData,
+   typename ElementDofsIn >
 GENDIL_HOST_DEVICE
-auto MakeCoeffInterpolatedEntryFromQD(
-   KernelContext& k,
-   const WeakFormContext& wf,
-   const QuadData& qd,
-   const GlobalIndex element_index)
+auto MakeCellInterpolatedEntry(
+   KernelContext & kernel_context,
+   const QuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
 {
-   constexpr bool need_vals  = need_values(Mask);
-   constexpr bool need_grads = need_gradients(Mask);
+   constexpr bool needs_values = need_values(Mask);
+   constexpr bool needs_gradients = need_gradients(Mask);
 
-   const auto& fev = wf.template fe_field<Name>();
-   auto elem_dofs  = ReadDofs(k, fev.space, element_index, fev.dofs);
+   using Values = std::remove_cvref_t<decltype(
+      details::InterpolateValuesIfNeeded<needs_values>(
+         kernel_context, finite_element_quad_data, element_dofs))>;
+   using Gradients = std::remove_cvref_t<decltype(
+      details::InterpolateGradientIfNeeded<needs_gradients>(
+         kernel_context, finite_element_quad_data, element_dofs))>;
+   using Field = InterpolatedField<Values, Gradients>;
 
-   using ValuesT = std::remove_cvref_t<
-      decltype(details::InterpolateValuesIfNeeded<need_vals>(k, qd, elem_dofs))>;
-
-   using GradsT = std::remove_cvref_t<
-      decltype(details::InterpolateGradientIfNeeded<need_grads>(k, qd, elem_dofs))>;
-
-   using IF      = InterpolatedField<ValuesT, GradsT>;
-
-   return Entry<NameTag<Name>, IF>{
-      IF{
-         details::InterpolateValuesIfNeeded<need_vals>(k, qd, elem_dofs),
-         details::InterpolateGradientIfNeeded<need_grads>(k, qd, elem_dofs)
+   return Entry<NameTag<Name>, Field>{
+      Field{
+         details::InterpolateValuesIfNeeded<needs_values>(
+            kernel_context, finite_element_quad_data, element_dofs),
+         details::InterpolateGradientIfNeeded<needs_gradients>(
+            kernel_context, finite_element_quad_data, element_dofs)
       }
    };
 }
 
+// Read one named input, whether active or persistent, through its bound endpoint.
+template <
+   typename Requirement,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity >
+GENDIL_HOST_DEVICE
+auto InterpolateBoundField(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity )
+{
+   const auto & source = execution_context.template GetReadField<Requirement::name>();
+   const auto & finite_element_quad_data =
+      operator_context.template GetFiniteElementQuadData<Requirement::name>();
 
-/* -------------------------------------------------------------------------- */
-/*                    Low-level facet interpolation helpers                    */
-/* -------------------------------------------------------------------------- */
+   // Preserve the borrowed row when the source is a local element overlay.
+   decltype(auto) element_dofs = ReadFieldDofs(kernel_context, source, entity);
+
+   return MakeCellInterpolatedEntry<Requirement::name, Requirement::mask>(
+      kernel_context,
+      finite_element_quad_data,
+      element_dofs);
+}
+
+template <
+   typename... Fields,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity >
+GENDIL_HOST_DEVICE
+auto InterpolateBoundFields(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity,
+   type_list<Fields...> )
+{
+   // Braced initialization completes each field before gathering the next one.
+   // An empty requirement list naturally produces an empty map.
+   return StaticMap<decltype(InterpolateBoundField<Fields>(
+      kernel_context, execution_context, operator_context, entity))...>{
+      {
+         InterpolateBoundField<Fields>(
+            kernel_context, execution_context, operator_context, entity)...
+      }
+   };
+}
 
 /**
- * @brief Build the interpolated entry associated with the trial field for one
- *        side of a facet.
+ * @brief Interpolate the named reads of a cell integrand on the current element.
  *
- * This helper forwards the facet-side object and the full facet quadrature-data
- * container to the existing face-aware interpolation routines:
- * @code
- * InterpolateValues(k, side, face_qd, dofs_in)
- * InterpolateGradient(k, side, face_qd, dofs_in)
- * @endcode
- *
- * This preserves local-face selection and conforming / non-conforming handling
- * already implemented elsewhere.
- *
- * @tparam TrialName      Compile-time trial-field name.
- * @tparam Mask           Operator mask describing which quantities are needed.
- * @tparam KernelContext  Kernel execution-context type.
- * @tparam FaceSide       Facet-side type.
- * @tparam FaceQuadData   Facet quadrature-data container type.
- * @tparam ElementDofsIn  Element-local trial-DOF container type.
- *
- * @param[in] k        Kernel execution context.
- * @param[in] side     Facet side.
- * @param[in] face_qd  Full facet quadrature-data container.
- * @param[in] dofs_in  Trial degrees of freedom on this side.
- *
- * @return An `Entry<NameTag<TrialName>, InterpolatedField<...>>`.
+ * The stored signature merges active and persistent reads by name and operator
+ * mask. Each field uses its own space and basis; a term without field reads
+ * returns an empty map. The integrand is inspected only through its type here.
  */
-template<
-   StaticString TrialName,
-   OperatorMask Mask,
-   class KernelContext,
-   class FaceSide,
-   class FaceQuadData,
-   class ElementDofsIn>
+template <
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity,
+   typename Integrand >
+   requires CellIntegrand<Integrand>
 GENDIL_HOST_DEVICE
-auto MakeFacetTrialInterpolatedEntry(
-   KernelContext& k,
-   const FaceSide& side,
-   const FaceQuadData& face_qd,
-   const ElementDofsIn& dofs_in)
+auto InterpolateFields(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity,
+   const Integrand & )
 {
-   constexpr bool need_vals  = need_values(Mask);
-   constexpr bool need_grads = need_gradients(Mask);
+   using Signature = typename OperatorContext::template signature_for<Integrand>;
+   using Reads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::active_inputs,
+      typename Signature::bound_inputs>>;
 
-   using ValuesT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, dofs_in))>;
+   return InterpolateBoundFields(
+      kernel_context,
+      execution_context,
+      operator_context,
+      entity,
+      Reads{});
+}
 
-   using GradsT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, dofs_in))>;
+/// Apply the requested facet contractions using the selected side's basis data.
+// The input row is already oriented; interpolation selects conforming or
+// nonconforming basis data.
+template <
+   StaticString Name,
+   OperatorMask Mask,
+   typename KernelContext,
+   typename FaceSide,
+   typename FaceQuadData,
+   typename ElementDofsIn >
+GENDIL_HOST_DEVICE
+auto MakeFacetInterpolatedEntry(
+   KernelContext & kernel_context,
+   const FaceSide & side,
+   const FaceQuadData & finite_element_quad_data,
+   const ElementDofsIn & element_dofs )
+{
+   constexpr bool needs_values = need_values(Mask);
+   constexpr bool needs_gradients = need_gradients(Mask);
 
-   using IF = InterpolatedField<ValuesT, GradsT>;
+   using Values = std::remove_cvref_t<decltype(
+      details::InterpolateFacetValuesIfNeeded<needs_values>(
+         kernel_context, side, finite_element_quad_data, element_dofs))>;
+   using Gradients = std::remove_cvref_t<decltype(
+      details::InterpolateFacetGradientIfNeeded<needs_gradients>(
+         kernel_context, side, finite_element_quad_data, element_dofs))>;
+   using Field = InterpolatedField<Values, Gradients>;
 
-   return Entry<NameTag<TrialName>, IF>{
-      IF{
-         details::InterpolateFacetValuesIfNeeded<need_vals>(k, side, face_qd, dofs_in),
-         details::InterpolateFacetGradientIfNeeded<need_grads>(k, side, face_qd, dofs_in)
+   return Entry<NameTag<Name>, Field>{
+      Field{
+         details::InterpolateFacetValuesIfNeeded<needs_values>(
+            kernel_context, side, finite_element_quad_data, element_dofs),
+         details::InterpolateFacetGradientIfNeeded<needs_gradients>(
+            kernel_context, side, finite_element_quad_data, element_dofs)
       }
    };
 }
 
-template<class FaceSide, class VolumeSpace, class FaceQuadData>
+/**
+ * @brief Select a field's volume space and quadrature data on one facet side.
+ *
+ * The side descriptor is copied; the space and quadrature data are borrowed and
+ * must outlive this binding. No field storage is acquired or copied here.
+ */
+template < typename FaceSide, typename VolumeSpace, typename FaceQuadData >
 struct FacetFieldSideBinding
 {
    FaceSide side;
-   const VolumeSpace& volume_space;
-   const FaceQuadData& qdata;
+   const VolumeSpace & volume_space;
+   const FaceQuadData & qdata;
 };
 
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetMinusFacetFieldVolumeSpace(const Space& space)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-
-   if constexpr (is_face_field_binding_v<SpaceType>)
-   {
-      return space.GetMinusFiniteElementSpace();
-   }
-   else
-   {
-      return (space);
-   }
-}
-
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetPlusFacetFieldVolumeSpace(const Space& space)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   static_assert(
-      !is_boundary_face_field_binding_v<SpaceType>,
-      "Plus-side finite element field interpolation is not defined for "
-      "boundary face field bindings.");
-
-   if constexpr (is_face_field_binding_v<SpaceType>)
-   {
-      static_assert(
-         is_interior_face_field_binding_v<SpaceType>,
-         "Plus-side finite element field interpolation requires an interior "
-         "face field binding or a homogeneous volume finite element space.");
-      return space.GetPlusFiniteElementSpace();
-   }
-   else
-   {
-      return (space);
-   }
-}
-
-template<class FaceContext, class FieldSpace, class QDataWrapper>
+/// Select the minus side (the adjacent cell for a physical boundary).
+template < typename FaceContext, typename FieldSpace, typename QDataWrapper >
 GENDIL_HOST_DEVICE
 constexpr auto MakeMinusFacetFieldBinding(
-   const FaceContext& face_info,
-   const FieldSpace& field_space,
-   const QDataWrapper& qdata_wrapper)
+   const FaceContext & face_info,
+   const FieldSpace & field_space,
+   const QDataWrapper & qdata_wrapper )
 {
-   decltype(auto) volume_space =
-      GetMinusFacetFieldVolumeSpace(field_space);
+   decltype(auto) volume_space = GetMinusFacetFieldVolumeSpace(field_space);
    decltype(auto) qdata = qdata_wrapper.MinusSide();
 
    using FaceSide = std::remove_cvref_t<decltype(face_info.MinusSide())>;
@@ -418,15 +367,15 @@ constexpr auto MakeMinusFacetFieldBinding(
    };
 }
 
-template<class FaceContext, class FieldSpace, class QDataWrapper>
+/// Select the plus side using the same ordering as the supplied interior face.
+template < typename FaceContext, typename FieldSpace, typename QDataWrapper >
 GENDIL_HOST_DEVICE
 constexpr auto MakePlusFacetFieldBinding(
-   const FaceContext& face_info,
-   const FieldSpace& field_space,
-   const QDataWrapper& qdata_wrapper)
+   const FaceContext & face_info,
+   const FieldSpace & field_space,
+   const QDataWrapper & qdata_wrapper )
 {
-   decltype(auto) volume_space =
-      GetPlusFacetFieldVolumeSpace(field_space);
+   decltype(auto) volume_space = GetPlusFacetFieldVolumeSpace(field_space);
    decltype(auto) qdata = qdata_wrapper.PlusSide();
 
    using FaceSide = std::remove_cvref_t<decltype(face_info.PlusSide())>;
@@ -441,673 +390,285 @@ constexpr auto MakePlusFacetFieldBinding(
 }
 
 /**
- * @brief Build a masked interpolated entry associated with a supplied named
- *        finite-element field on one side of a facet.
+ * @brief Read a named field using the restriction of the selected facet side.
  *
- * This is used by boundary facets and by the side-specific interior-facet
- * maps. Coefficient input tags and explicit finite-element field expressions
- * share the same named-field requirement model as cell integration.
+ * Restricted storage uses the existing orientation-aware gather. Local overlays
+ * instead return a const reference to their original row: it already has the
+ * numerical routine's expected layout. Keep decltype(auto) at the call site to
+ * preserve that reference rather than copy the tensor.
  */
-template<
-   StaticString Name,
-   OperatorMask Mask,
-   class KernelContext,
-   class WeakFormContext,
-   class Binding>
+template <
+   typename KernelContext,
+   typename Source,
+   typename Side,
+   typename Space,
+   typename QData >
 GENDIL_HOST_DEVICE
-auto MakeFacetCoeffInterpolatedEntryWithMask(
-   KernelContext& k,
-   const WeakFormContext& wf,
-   const Binding& binding)
+decltype(auto) ReadFieldDofs(
+   KernelContext & kernel_context,
+   const Source & source,
+   const FacetFieldSideBinding<Side, Space, QData> & binding )
 {
-   constexpr bool need_vals  = need_values(Mask);
-   constexpr bool need_grads = need_gradients(Mask);
+   if constexpr (Source::is_local)
+   {
+      return static_cast<const std::remove_reference_t<decltype(source.dofs)> &>(source.dofs);
+   }
+   else if constexpr (is_face_field_binding_v<decltype(source.space)> &&
+                      !execution_context_detail::IsPreboundElementStorage<
+                         std::remove_cvref_t<decltype(source.dofs)>>())
+   {
+      auto view = MakeElementTensorView(binding.volume_space, source.dofs);
+      return ReadDofs(kernel_context, binding.volume_space, binding.side, view);
+   }
+   else
+   {
+      return ReadDofs(kernel_context, binding.volume_space, binding.side, source.dofs);
+   }
+}
 
-   const auto& fev = wf.template fe_field<Name>();
-   auto elem_dofs  =
-      ReadDofs(k, binding.volume_space, binding.side.GetCellIndex(), fev.dofs);
+// Select the side after resolving the field by name; storage stays name-only.
+template <
+   bool Plus,
+   typename Requirement,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Face >
+GENDIL_HOST_DEVICE
+auto InterpolateFacetBoundField(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Face & face )
+{
+   const auto & source = execution_context.template GetReadField<Requirement::name>();
+   const auto & finite_element_quad_data =
+      operator_context.template GetFiniteElementFacetQuadData<Requirement::name>();
 
-   using ValuesT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetValuesIfNeeded<need_vals>(
-         k,
-         binding.side,
-         binding.qdata,
-         elem_dofs))>;
+   const auto binding = [&]()
+   {
+      if constexpr (Plus)
+      {
+         return MakePlusFacetFieldBinding(face, source.space, finite_element_quad_data);
+      }
+      else
+      {
+         return MakeMinusFacetFieldBinding(face, source.space, finite_element_quad_data);
+      }
+   }();
 
-   using GradsT = std::remove_cvref_t<
-      decltype(details::InterpolateFacetGradientIfNeeded<need_grads>(
-         k,
-         binding.side,
-         binding.qdata,
-         elem_dofs))>;
+   decltype(auto) element_dofs = ReadFieldDofs(kernel_context, source, binding);
 
-   using IF = InterpolatedField<ValuesT, GradsT>;
+   return MakeFacetInterpolatedEntry<Requirement::name, Requirement::mask>(
+      kernel_context,
+      binding.side,
+      binding.qdata,
+      element_dofs);
+}
 
-   return Entry<NameTag<Name>, IF>{
-      IF{
-         details::InterpolateFacetValuesIfNeeded<need_vals>(
-            k,
-            binding.side,
-            binding.qdata,
-            elem_dofs),
-         details::InterpolateFacetGradientIfNeeded<need_grads>(
-            k,
-            binding.side,
-            binding.qdata,
-            elem_dofs)
+template <
+   bool Plus,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Face,
+   typename... Fields >
+GENDIL_HOST_DEVICE
+auto InterpolateFacetBoundFields(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Face & face,
+   type_list<Fields...> )
+{
+   // Complete each gather/interpolation before beginning the next field, and
+   // construct the final named map directly without intermediate tuples.
+   return StaticMap<decltype(InterpolateFacetBoundField<Plus, Fields>(
+      kernel_context, execution_context, operator_context, face))...>{
+      {
+         InterpolateFacetBoundField<Plus, Fields>(
+            kernel_context, execution_context, operator_context, face)...
       }
    };
 }
 
 /**
- * @brief Build one named-field entry on one side of a facet.
+ * @brief Interpolate an interior integrand's reads separately on each side.
  *
- * Active-trial requirements are interpolated from the side-specific trial DOF
- * container. Supplied finite-element fields are read from the weak-form context
- * on the side's cell and interpolated with the same value/gradient mask.
+ * Each map uses its side's required names and masks. Distinct contexts allow
+ * cached current rows with restricted neighbor reads, or two local assembly
+ * buffers sharing the same field names. Minus interpolation finishes before
+ * plus interpolation begins, so their temporary staging can reuse scratch.
  */
-template<
-   StaticString TrialName,
-   class Req,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakeMinusFacetNamedFieldInterpolatedEntry(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in)
-{
-   constexpr auto Name = Req::name;
-   constexpr auto Mask = Req::mask;
-
-   if constexpr (Name == TrialName)
-   {
-      static_assert(
-         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
-         "InterpolateFields(facet): active trial field name conflicts with a "
-         "FiniteElementField expression name.");
-
-      const auto& fev = wf.template fe_field<TrialName>();
-      const auto& qd_wrapper =
-         op.template finite_element_facet_quad_data<TrialName>();
-      const auto binding =
-         MakeMinusFacetFieldBinding(face_info, fev.space, qd_wrapper);
-
-      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
-         k,
-         binding.side,
-         binding.qdata,
-         dofs_in);
-   }
-   else
-   {
-      const auto& fev = wf.template fe_field<Name>();
-      const auto& qd_wrapper =
-         op.template finite_element_facet_quad_data<Name>();
-      const auto binding =
-         MakeMinusFacetFieldBinding(face_info, fev.space, qd_wrapper);
-
-      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
-         k,
-         wf,
-         binding);
-   }
-}
-
-template<
-   StaticString TrialName,
-   class Req,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakePlusFacetNamedFieldInterpolatedEntry(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in)
-{
-   constexpr auto Name = Req::name;
-   constexpr auto Mask = Req::mask;
-
-   if constexpr (Name == TrialName)
-   {
-      static_assert(
-         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
-         "InterpolateFields(facet): active trial field name conflicts with a "
-         "FiniteElementField expression name.");
-
-      const auto& fev = wf.template fe_field<TrialName>();
-      const auto& qd_wrapper =
-         op.template finite_element_facet_quad_data<TrialName>();
-      const auto binding =
-         MakePlusFacetFieldBinding(face_info, fev.space, qd_wrapper);
-
-      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
-         k,
-         binding.side,
-         binding.qdata,
-         dofs_in);
-   }
-   else
-   {
-      const auto& fev = wf.template fe_field<Name>();
-      const auto& qd_wrapper =
-         op.template finite_element_facet_quad_data<Name>();
-      const auto binding =
-         MakePlusFacetFieldBinding(face_info, fev.space, qd_wrapper);
-
-      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
-         k,
-         wf,
-         binding);
-   }
-}
-
-
-/* -------------------------------------------------------------------------- */
-/*                         Internal facet-map builders                         */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Build the one-entry map containing the trial field on one side of a
- *        facet.
- *
- * @tparam KernelContext  Kernel execution-context type.
- * @tparam Integrand      Integrand type.
- * @tparam FaceSide       Facet-side type.
- * @tparam FaceQuadData   Facet quadrature-data container type.
- * @tparam ElementDofsIn  Trial-DOF container type on this side.
- *
- * @param[in] k         Kernel execution context.
- * @param[in] side      Facet side.
- * @param[in] face_qd   Full facet quadrature-data container for the trial field.
- * @param[in] integrand Integrand instance; only its type is inspected.
- * @param[in] dofs_in   Trial degrees of freedom on this side.
- *
- * @return A map-like object containing exactly one entry for the trial field.
- */
-template<
-   class KernelContext,
-   class Integrand,
-   class FaceSide,
-   class FaceQuadData,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakeFacetTrialFieldsMap(
-   KernelContext& k,
-   const FaceSide&      side,
-   const FaceQuadData&  face_qd,
-   const Integrand&     /*integrand*/,
-   const ElementDofsIn& dofs_in)
-{
-   using I = std::remove_cvref_t<Integrand>;
-
-   constexpr auto TrialName = requirements<I>::trial_name;
-   constexpr auto TrialMask = requirements<I>::trial_mask;
-
-   static_assert(TrialName != StaticString("Error"),
-                 "MakeFacetTrialFieldsMap: trial_name == \"Error\". "
-                 "Integrand must contain a TrialSpace.");
-
-   return make_map(
-      MakeFacetTrialInterpolatedEntry<TrialName, TrialMask>(k, side, face_qd, dofs_in)
-   );
-}
-
-/* -------------------------------------------------------------------------- */
-/*                            Public cell overload                            */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Helper for InterpolateFields (cell) that is templated on TrialName/TrialMask.
- *
- * This helper avoids using TrialName as a captured variable in a generic lambda,
- * which causes template argument deduction issues when TrialName appears in
- * NameTag<TrialName>.
- */
-template<
-   StaticString TrialName,
-   class Req,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class ElementContext,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakeCellNamedFieldInterpolatedEntry(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const ElementContext&  ec,
-   const ElementDofsIn&   dofs_in)
-{
-   constexpr auto Name = Req::name;
-   constexpr auto Mask = Req::mask;
-
-   if constexpr (Name == TrialName)
-   {
-      static_assert(
-         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
-         "InterpolateFields(cell): active trial field name conflicts with a "
-         "FiniteElementField expression name.");
-
-      return MakeTrialInterpolatedEntryFromQD<TrialName, Mask>(
-         k,
-         op.template finite_element_quad_data<TrialName>(),
-         dofs_in);
-   }
-   else
-   {
-      return MakeCoeffInterpolatedEntryFromQD<Name, Mask>(
-         k,
-         wf,
-         op.template finite_element_quad_data<Name>(),
-         ec.element_index);
-   }
-}
-
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class ElementContext,
-   class ElementDofsIn,
-   class... Reqs>
-GENDIL_HOST_DEVICE
-auto InterpolateFieldsCellImpl(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const ElementContext&  ec,
-   const ElementDofsIn&   dofs_in,
-   type_list<Reqs...>)
-{
-   return make_map(
-      MakeCellNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, ec, dofs_in)...
-   );
-}
-
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn,
-   class... Reqs>
-GENDIL_HOST_DEVICE
-auto MakeMinusFacetNamedFieldsMap(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in,
-   type_list<Reqs...>)
-{
-   return make_map(
-      MakeMinusFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, face_info, dofs_in)...
-   );
-}
-
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn,
-   class... Reqs>
-GENDIL_HOST_DEVICE
-auto MakePlusFacetNamedFieldsMap(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in,
-   type_list<Reqs...>)
-{
-   return make_map(
-      MakePlusFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, face_info, dofs_in)...
-   );
-}
-
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsInMinus,
-   class ElementDofsInPlus,
-   class... Reqs>
-GENDIL_HOST_DEVICE
-auto InterpolateFieldsInteriorFacetImpl(
-   KernelContext&      k,
-   const WeakFormContext&    wf,
-   const OperatorContext&    op,
-   const FaceContext&        face_info,
-   const ElementDofsInMinus& dofs_in_minus,
-   const ElementDofsInPlus&  dofs_in_plus,
-   type_list<Reqs...> deps)
-{
-   auto minus_fields =
-      MakeMinusFacetNamedFieldsMap<TrialName>(
-         k, wf, op, face_info, dofs_in_minus, deps);
-
-   auto plus_fields =
-      MakePlusFacetNamedFieldsMap<TrialName>(
-         k, wf, op, face_info, dofs_in_plus, deps);
-
-   return FaceFields<
-      std::remove_cvref_t<decltype(minus_fields)>,
-      std::remove_cvref_t<decltype(plus_fields)>>{
-         minus_fields,
-         plus_fields
-      };
-}
-
-/**
- * @brief Interpolate all fields required by a cell integrand.
- *
- * This overload is intended for cell / element integration. It returns one flat
- * map containing:
- *
- * - the trial field required by the integrand,
- * - all named finite-element fields required by explicit field expressions or
- *   coefficient input tags.
- *
- * The interpolation mask is supplied by
- * `interpolation_named_field_requirements_t<Integrand>`, which unions active
- * trial, explicit field-expression, and coefficient-input requirements by
- * field name.
- *
- * @tparam KernelContext    Kernel execution-context type.
- * @tparam WeakFormContext  Weak-form-context type.
- * @tparam OperatorContext  Operator-context type.
- * @tparam ElementContext   Element-context type. Must provide `element_index`.
- * @tparam Integrand        Integrand type.
- * @tparam ElementDofsIn    Element-local trial-DOF container type.
- *
- * @param[in] k         Kernel execution context.
- * @param[in] wf        Weak-form context.
- * @param[in] op        Operator context.
- * @param[in] ec        Element context.
- * @param[in] integrand Integrand instance; only its type is inspected.
- * @param[in] dofs_in   Element-local trial degrees of freedom.
- *
- * @return A flat map containing the trial field and all referenced named
- * finite-element fields.
- */
-template<
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class ElementContext,
-   class Integrand,
-   class ElementDofsIn>
-   requires CellIntegrand<Integrand>
+template <
+   typename KernelContext,
+   typename MinusContext,
+   typename PlusContext,
+   typename OperatorContext,
+   typename Face,
+   typename Integrand >
+   requires InteriorFacetIntegrand<Integrand>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const ElementContext&  ec,
-   const Integrand&       /*integrand*/,
-   const ElementDofsIn&   dofs_in)
+   KernelContext & kernel_context,
+   const MinusContext & minus_execution_context,
+   const PlusContext & plus_execution_context,
+   const OperatorContext & operator_context,
+   const Face & face,
+   const Integrand & )
 {
-   using I = std::remove_cvref_t<Integrand>;
+   using Signature = typename OperatorContext::template signature_for<Integrand>;
+   using MinusReads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::template active_inputs_on<SemanticSide::Minus>,
+      typename Signature::template bound_inputs_on<SemanticSide::Minus>>>;
+   using PlusReads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::template active_inputs_on<SemanticSide::Plus>,
+      typename Signature::template bound_inputs_on<SemanticSide::Plus>>>;
 
-   static_assert(requirements<I>::trial_name != StaticString("Error"),
-                 "InterpolateFields(cell): trial_name == \"Error\". "
-                 "Integrand must contain a TrialSpace.");
+   auto minus_fields = InterpolateFacetBoundFields<false>(
+      kernel_context,
+      minus_execution_context,
+      operator_context,
+      face,
+      MinusReads{});
+   auto plus_fields = InterpolateFacetBoundFields<true>(
+      kernel_context,
+      plus_execution_context,
+      operator_context,
+      face,
+      PlusReads{});
 
-   using Deps = interpolation_named_field_requirements_t<I>;
-
-   return InterpolateFieldsCellImpl<
-      requirements<I>::trial_name>(k, wf, op, ec, dofs_in, Deps{});
+   return FaceFields{std::move(minus_fields), std::move(plus_fields)};
 }
 
-
-/* -------------------------------------------------------------------------- */
-/*                           Public facet overload                            */
-/* -------------------------------------------------------------------------- */
-
-/**
- * @brief Interpolate all fields required by a facet integrand.
- *
- * This overload is intended for facet integration. It returns a `FaceFields`
- * object separating:
- *
- * - minus-side named-field traces,
- * - plus-side named-field traces.
- *
- * More precisely:
- *
- * - `minus_fields` contains every named-field requirement interpolated with
- *   `fc.MinusSide()`;
- *
- * - `plus_fields` contains every named-field requirement interpolated with
- *   `fc.PlusSide()`.
- *
- * @tparam KernelContext      Kernel execution-context type.
- * @tparam WeakFormContext    Weak-form-context type.
- * @tparam OperatorContext    Operator-context type.
- * @tparam FaceContext        Face-context type. Must provide `MinusSide()` and
- *                            `PlusSide()`. Each side must provide
- *                            `GetCellIndex()`.
- * @tparam Integrand          Integrand type.
- * @tparam ElementDofsInMinus Type of trial DOFs on the minus side.
- * @tparam ElementDofsInPlus  Type of trial DOFs on the plus side.
- *
- * @param[in] k              Kernel execution context.
- * @param[in] wf             Weak-form context.
- * @param[in] op             Operator context.
- * @param[in] fc             Face context.
- * @param[in] integrand      Integrand instance; only its type is inspected.
- * @param[in] dofs_in_minus  Trial degrees of freedom on the minus side.
- * @param[in] dofs_in_plus   Trial degrees of freedom on the plus side.
- *
- * @return A `FaceFields<MinusFields, PlusFields>` object.
- */
-template<
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class Integrand,
-   class ElementDofsInMinus,
-   class ElementDofsInPlus>
+/// Read both interior sides from one invocation context using their restrictions.
+template <
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Face,
+   typename Integrand >
+   requires InteriorFacetIntegrand<Integrand>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   KernelContext&      k,
-   const WeakFormContext&    wf,
-   const OperatorContext&    op,
-   const FaceContext&        fc,
-   const Integrand&          /*integrand*/,
-   const ElementDofsInMinus& dofs_in_minus,
-   const ElementDofsInPlus&  dofs_in_plus)
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Face & face,
+   const Integrand & integrand )
 {
-   using I = std::remove_cvref_t<Integrand>;
+   return InterpolateFields(
+      kernel_context,
+      execution_context,
+      execution_context,
+      operator_context,
+      face,
+      integrand);
+}
 
-   constexpr auto TrialName = requirements<I>::trial_name;
+// Boundary face bindings use their adjacent side; volume fields use the parent
+// element. Both are interpolated with that field's boundary-face basis data.
+template <
+   typename Requirement,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity,
+   typename Face >
+GENDIL_HOST_DEVICE
+auto InterpolateBoundaryBoundField(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity,
+   const Face & face )
+{
+   const auto & source = execution_context.template GetReadField<Requirement::name>();
+   const auto & finite_element_quad_data =
+      operator_context.template GetFiniteElementFacetQuadData<Requirement::name>();
+   const auto binding = MakeMinusFacetFieldBinding(face, source.space, finite_element_quad_data);
 
-   static_assert(TrialName != StaticString("Error"),
-                 "InterpolateFields(facet): trial_name == \"Error\". "
-                 "Integrand must contain a TrialSpace.");
+   decltype(auto) element_dofs = [&]() -> decltype(auto)
+   {
+      if constexpr (is_face_field_binding_v<decltype(source.space)>)
+      {
+         return ReadFieldDofs(kernel_context, source, binding);
+      }
+      else
+      {
+         return ReadFieldDofs(kernel_context, source, entity);
+      }
+   }();
 
-   static_assert(
-      !has_invalid_unqualified_interior_side_dependencies_v<I, WeakFormContext, FaceContext>,
-      "Side-dependent expression appears on an interior facet without side "
-      "selection. Use minus(expr), plus(expr), average(expr), jump(expr), "
-      "or a trace-aware operator such as upwind(...).");
+   return MakeFacetInterpolatedEntry<Requirement::name, Requirement::mask>(
+      kernel_context,
+      binding.side,
+      binding.qdata,
+      element_dofs);
+}
 
-   using Deps = interpolation_named_field_requirements_t<I>;
-
-   return InterpolateFieldsInteriorFacetImpl<TrialName>(
-      k,
-      wf,
-      op,
-      fc,
-      dofs_in_minus,
-      dofs_in_plus,
-      Deps{});
+template <
+   typename... Fields,
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity,
+   typename Face >
+GENDIL_HOST_DEVICE
+auto InterpolateBoundaryBoundFields(
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity,
+   const Face & face,
+   type_list<Fields...> )
+{
+   return StaticMap<decltype(InterpolateBoundaryBoundField<Fields>(
+      kernel_context, execution_context, operator_context, entity, face))...>{
+      {
+         InterpolateBoundaryBoundField<Fields>(
+            kernel_context, execution_context, operator_context, entity, face)...
+      }
+   };
 }
 
 /**
- * @brief Helper for InterpolateFields (boundary facet) that is templated on
- *        TrialName and one named-field requirement.
+ * @brief Interpolate the named reads at a physical boundary's quadrature points.
  *
- * This helper avoids using TrialName as a captured variable in a generic lambda,
- * which causes template argument deduction issues when TrialName appears in
- * NameTag<TrialName>.
+ * The result is a single map for the adjacent cell, with no plus-side reads.
+ * Entity identifies the parent element for volume-field gathers; face selects
+ * the adjacent side and boundary interpolation data. Geometry and boundary trace
+ * identities are handled by the quadrature context and weak-form evaluation.
  */
-template<
-   StaticString TrialName,
-   class Req,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn>
-GENDIL_HOST_DEVICE
-auto MakeBoundaryFacetNamedFieldInterpolatedEntry(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in)
-{
-   constexpr auto Name = Req::name;
-   constexpr auto Mask = Req::mask;
-
-   if constexpr (Name == TrialName)
-   {
-      static_assert(
-         !has_provenance(Req::provenance, NamedFieldProvenance::FiniteElementExpression),
-         "InterpolateFields(boundary facet): active trial field name conflicts with a "
-         "FiniteElementField expression name.");
-
-      const auto& fev = wf.template fe_field<TrialName>();
-      const auto binding =
-         MakeMinusFacetFieldBinding(
-            face_info,
-            fev.space,
-            op.template finite_element_facet_quad_data<TrialName>());
-      return MakeFacetTrialInterpolatedEntry<TrialName, Mask>(
-         k,
-         binding.side,
-         binding.qdata,
-         dofs_in);
-   }
-   else
-   {
-      const auto& fev = wf.template fe_field<Name>();
-      const auto binding =
-         MakeMinusFacetFieldBinding(
-            face_info,
-            fev.space,
-            op.template finite_element_facet_quad_data<Name>());
-      return MakeFacetCoeffInterpolatedEntryWithMask<Name, Mask>(
-         k,
-         wf,
-         binding);
-   }
-}
-
-template<
-   StaticString TrialName,
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class ElementDofsIn,
-   class... Reqs>
-GENDIL_HOST_DEVICE
-auto InterpolateFieldsBoundaryFacetImpl(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     face_info,
-   const ElementDofsIn&   dofs_in,
-   type_list<Reqs...>)
-{
-   return make_map(
-      MakeBoundaryFacetNamedFieldInterpolatedEntry<TrialName, Reqs>(
-         k, wf, op, face_info, dofs_in)...
-   );
-}
-
-/**
- * @brief Interpolate all fields required by a boundary facet integrand.
- *
- * This overload is intended for boundary facet integration. It returns one flat
- * map containing:
- *
- * - the trial field required by the integrand (from interior/minus side only),
- * - all named finite-element fields required by explicit field expressions or
- *   coefficient input tags (from interior/minus side only).
- *
- * The interpolation mask is supplied by
- * `interpolation_named_field_requirements_t<Integrand>`, which unions active
- * trial, explicit field-expression, and coefficient-input requirements by
- * field name.
- *
- * @tparam KernelContext    Kernel execution-context type.
- * @tparam WeakFormContext  Weak-form-context type.
- * @tparam OperatorContext  Operator-context type.
- * @tparam FaceContext      Face-context type (GlobalFaceInfo).
- * @tparam Integrand        Integrand type.
- * @tparam ElementDofsIn    Element-local trial-DOF container type.
- *
- * @param[in] k         Kernel execution context.
- * @param[in] wf        Weak-form context.
- * @param[in] op        Operator context.
- * @param[in] fc        Face context (two-sided, but plus has boundary info).
- * @param[in] integrand Integrand instance; only its type is inspected.
- * @param[in] dofs_in   Element-local trial degrees of freedom (minus side).
- *
- * @return A flat map containing all interpolated fields.
- */
-template<
-   class KernelContext,
-   class WeakFormContext,
-   class OperatorContext,
-   class FaceContext,
-   class Integrand,
-   class ElementDofsIn>
+template <
+   typename KernelContext,
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Entity,
+   typename Face,
+   typename Integrand >
    requires BoundaryFacetIntegrand<Integrand>
 GENDIL_HOST_DEVICE
 auto InterpolateFields(
-   KernelContext&   k,
-   const WeakFormContext& wf,
-   const OperatorContext& op,
-   const FaceContext&     fc,
-   const Integrand&       /*integrand*/,
-   const ElementDofsIn&   dofs_in)
+   KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Entity & entity,
+   const Face & face,
+   const Integrand & )
 {
-   using I = std::remove_cvref_t<Integrand>;
+   using Signature = typename OperatorContext::template signature_for<Integrand>;
+   using Reads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::active_inputs,
+      typename Signature::bound_inputs>>;
 
-   static_assert(requirements<I>::trial_name != StaticString("Error"),
-                 "InterpolateFields(boundary facet): trial_name == \"Error\". "
-                 "Integrand must contain a TrialSpace.");
-
-   using Deps = interpolation_named_field_requirements_t<I>;
-
-   return InterpolateFieldsBoundaryFacetImpl<
-      requirements<I>::trial_name>(k, wf, op, fc, dofs_in, Deps{});
+   return InterpolateBoundaryBoundFields(
+      kernel_context,
+      execution_context,
+      operator_context,
+      entity,
+      face,
+      Reads{});
 }
 
 } // namespace gendil

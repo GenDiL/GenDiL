@@ -2,8 +2,14 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-// A concept for statically sized vectors.
-#include "gendil/Algebra/staticvector.hpp"
+// Componentwise addition of fixed-size arrays and mixed array storage.
+#include "gendil/Algebra/arrayaddition.hpp"
+
+// Readable fixed-size vector and matrix contracts.
+#include "gendil/Algebra/staticalgebraconcepts.hpp"
+
+// Arithmetic on fixed-size vector values.
+#include "gendil/Algebra/staticvectorops.hpp"
 
 // Accessor helpers for vector and matrix indexing.
 #include "gendil/Algebra/accessors.hpp"
@@ -11,11 +17,32 @@
 // Matrix-vector multiplication operations.
 #include "gendil/Algebra/matrixvectorops.hpp"
 
+// Native and componentwise negation of scalar, vector, and matrix values.
+#include "gendil/Algebra/negation.hpp"
+
 // A simple vector type.
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
 
 // Unified host/device access for GenDiL and external vector types.
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+
+// Borrow equally sized slices of a contiguous vector without copying entries.
+#include "gendil/Algebra/Vector/slices.hpp"
+
+// BLAS-like operations on owning vectors and generic vector views.
+#include "gendil/Algebra/Vector/operations.hpp"
+
+// Completed vector operations inside a native kernel context.
+#include "gendil/Algebra/Vector/localoperations.hpp"
+
+// Explicit Euclidean reductions, projections, and fused basis updates.
+#include "gendil/Algebra/Vector/reductions.hpp"
+
+// Callable protocol for sized maps between vectors.
+#include "gendil/Algebra/vectormapconcept.hpp"
+
+// Allocation-free heterogeneous tuple composition of rectangular vector maps.
+#include "gendil/Algebra/blockvectormap.hpp"
 
 // The supported sparse matrix types.
 #include "gendil/Algebra/SparseMatrixTypes/sparsematrixtypes.hpp"

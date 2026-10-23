@@ -14,6 +14,21 @@ namespace gendil
 template < Integer Index, typename RecursiveArrayType >
 struct GetTensorSize;
 
+template < Integer Index, typename Container, typename Layout >
+   requires (
+      has_extent_v<
+         static_cast< size_t >( Index ),
+         View< Container, Layout > > &&
+      detail::is_integral_constant_v< decltype(
+         GetExtent< static_cast< size_t >( Index ) >(
+            std::declval< const View< Container, Layout > & >() ) ) > )
+struct GetTensorSize< Index, View< Container, Layout > >
+{
+   static constexpr size_t value = static_cast< size_t >(
+      std::remove_cvref_t< decltype( GetExtent< static_cast< size_t >( Index ) >(
+         std::declval< const View< Container, Layout > & >() ) ) >::value );
+};
+
 template < typename IntegrationRule, size_t ... extra_dims >
 struct QuadraturePointValues;
 
@@ -21,20 +36,13 @@ template < Integer Index, typename IntegrationRule, size_t ... extra_dims >
 struct GetTensorSize< Index, QuadraturePointValues< IntegrationRule, extra_dims ... > >
 : GetTensorSize< Index, typename QuadraturePointValues< IntegrationRule, extra_dims ... >::Data > {};
 
-template < Integer Index, typename Container, typename Sizes, Integer ... Strides >
-struct GetTensorSize< Index, FixedStridedView< Container, Sizes, Strides ... > >
-{
-   static constexpr size_t value = seq_get_v< Index, Sizes >;
-};
-
 template < typename Sizes, typename KernelContext, typename Container >
 struct ThreadedView;
 
 template < Integer Index, typename Sizes, typename KernelContext, typename Container >
 struct GetTensorSize< Index, ThreadedView< Sizes, KernelContext, Container > >
 {
-   // !FIXME Is it really what we want?
-   static constexpr size_t value = GetTensorSize< Index, Container >::value;
+   static constexpr size_t value = seq_get_v< Index, Sizes >;
 };
 
 template < Integer Index, typename RecursiveArrayType >

@@ -9,9 +9,10 @@
  * @brief Restriction-backed element tensor views and vector storage binding.
  */
 
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/FiniteElementMethod/finiteelementspace.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictionlayout.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/weightedrestrictionview.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/vectorrestriction.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/tensorview.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
@@ -24,28 +25,43 @@
 namespace gendil {
 
 /** @brief Bind algebraic storage to one tensor-leaf restriction. */
-template < typename Restriction, typename T >
+template < typename Restriction, typename Container >
    requires (
       TensorElementDoFRestriction< Restriction > &&
+      static_restriction_entry_count_v<
+         std::remove_cvref_t< Restriction > > == 1 &&
       restriction_supports_element_reference_view_v< Restriction > )
 GENDIL_HOST_DEVICE
 auto MakeRestrictionElementView(
    const Restriction & restriction,
-   T * data )
+   const Container & data )
 {
    return MakeView( data, MakeRestrictionLayout( restriction ) );
 }
 
+/** @brief Bind algebraic storage through weighted local-DoF proxies. */
+template < typename Restriction, typename Container >
+   requires (
+      TensorElementDoFRestriction< Restriction > &&
+      !( static_restriction_entry_count_v<
+            std::remove_cvref_t< Restriction > > == 1 &&
+         restriction_supports_element_reference_view_v< Restriction > ) )
+GENDIL_HOST_DEVICE
+auto MakeRestrictionElementView(
+   const Restriction & restriction,
+   const Container & data )
+{
+   return MakeWeightedRestrictionView( restriction, data );
+}
+
 namespace details {
 
-template < typename Restriction, typename T, size_t... Component >
-   requires (
-      VectorElementDoFRestriction< Restriction > &&
-      restriction_supports_element_reference_view_v< Restriction > )
+template < typename Restriction, typename Container, size_t... Component >
+   requires VectorElementDoFRestriction< Restriction >
 GENDIL_HOST_DEVICE
 auto MakeVectorRestrictionElementView(
    const Restriction & restriction,
-   T * data,
+   const Container & data,
    std::index_sequence< Component... > )
 {
    return std::make_tuple(
@@ -57,14 +73,12 @@ auto MakeVectorRestrictionElementView(
 } // namespace details
 
 /** @brief Bind one algebraic vector to a compile-time tuple of component views. */
-template < typename Restriction, typename T >
-   requires (
-      VectorElementDoFRestriction< Restriction > &&
-      restriction_supports_element_reference_view_v< Restriction > )
+template < typename Restriction, typename Container >
+   requires VectorElementDoFRestriction< Restriction >
 GENDIL_HOST_DEVICE
 auto MakeRestrictionElementView(
    const Restriction & restriction,
-   T * data )
+   const Container & data )
 {
    using RestrictionType = std::remove_cvref_t< Restriction >;
    return details::MakeVectorRestrictionElementView(
@@ -75,13 +89,13 @@ auto MakeRestrictionElementView(
 }
 
 /** @brief Compatibility name for constructing a scalar element tensor view. */
-template < typename FiniteElementSpace, typename T >
+template < typename FiniteElementSpace, typename Container >
    requires TensorElementDoFRestriction<
       typename std::remove_cvref_t<
          FiniteElementSpace >::restriction_type >
 auto MakeScalarElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   T * data )
+   const Container & data )
 {
    return MakeRestrictionElementView(
       GetRestriction( finite_element_space ),
@@ -91,14 +105,14 @@ auto MakeScalarElementTensorView(
 /** @brief Compatibility overload selecting explicit vector components. */
 template <
    typename FiniteElementSpace,
-   typename T,
+   typename Container,
    size_t... Component >
    requires VectorElementDoFRestriction<
       typename std::remove_cvref_t<
          FiniteElementSpace >::restriction_type >
 auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   T * data,
+   const Container & data,
    std::index_sequence< Component... > components )
 {
    return details::MakeVectorRestrictionElementView(
@@ -108,13 +122,13 @@ auto MakeVectorElementTensorView(
 }
 
 /** @brief Compatibility name for constructing all vector component views. */
-template < typename FiniteElementSpace, typename T >
+template < typename FiniteElementSpace, typename Container >
    requires VectorElementDoFRestriction<
       typename std::remove_cvref_t<
          FiniteElementSpace >::restriction_type >
 auto MakeVectorElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   T * data )
+   const Container & data )
 {
    return MakeRestrictionElementView(
       GetRestriction( finite_element_space ),
@@ -122,14 +136,48 @@ auto MakeVectorElementTensorView(
 }
 
 /** @brief Construct scalar or vector element views from the stored restriction. */
-template < typename FiniteElementSpace, typename T >
+template < typename FiniteElementSpace, typename Container >
+GENDIL_HOST_DEVICE
 auto MakeElementTensorView(
    const FiniteElementSpace & finite_element_space,
-   T * data )
+   const Container & data )
 {
    return MakeRestrictionElementView(
       GetRestriction( finite_element_space ),
       data );
+}
+
+// Reuse the existing View container contract for deeply const element access.
+// A const-valued container stays const even if the returned view is copied.
+// Pointer, weighted-proxy, and inline tensor containers all implement const
+// indexed access; vector components preserve their individual layouts.
+template<class Container, class Layout>
+GENDIL_HOST_DEVICE auto MakeReadOnlyElementTensorView(const View<Container, Layout>& view)
+{
+   if constexpr (std::is_const_v<typename Container::element_type>)
+      return view;
+   else if constexpr (std::is_same_v<std::remove_cv_t<Container>,
+                                    HostDevicePointer<typename Container::element_type>>)
+   {
+      // A const HostDevicePointer<T> still returns T&. Qualify the pointed-to
+      // scalar instead, preserving both shallow memory-space handles.
+      HostDevicePointer<const typename Container::element_type> data;
+      data.host_pointer = view.data.host_pointer;
+#ifdef GENDIL_USE_DEVICE
+      data.device_pointer = view.data.device_pointer;
+#endif
+      return View<decltype(data), Layout>{data, view.layout};
+   }
+   else if constexpr (std::is_const_v<Container>) return view;
+   else return View<const Container, Layout>{view.data, view.layout};
+}
+
+template<class... Views>
+GENDIL_HOST_DEVICE auto MakeReadOnlyElementTensorView(const std::tuple<Views...>& views)
+{
+   return std::apply([](const auto&... view) {
+      return std::make_tuple(MakeReadOnlyElementTensorView(view)...);
+   }, views);
 }
 
 /** @brief Element-view type produced for a space and scalar storage type. */
@@ -144,7 +192,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelReadableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeReadOnlyElementTensorView(
@@ -157,9 +205,10 @@ auto MakeReadOnlyElementTensorView(
       "Element tensor views require a host or device kernel policy." );
    constexpr bool on_device =
       is_device_configuration_v< KernelPolicy >;
+   auto kernel_data = ReadKernelVector< on_device >( data );
    return MakeElementTensorView(
       finite_element_space,
-      ReadKernelVector< on_device >( data ) );
+      kernel_data.data );
 }
 
 /** @brief Bind write-only storage in the kernel policy's memory space. */
@@ -167,7 +216,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelWritableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeWriteOnlyElementTensorView(
@@ -180,9 +229,10 @@ auto MakeWriteOnlyElementTensorView(
       "Element tensor views require a host or device kernel policy." );
    constexpr bool on_device =
       is_device_configuration_v< KernelPolicy >;
+   auto kernel_data = WriteKernelVector< on_device >( data );
    return MakeElementTensorView(
       finite_element_space,
-      WriteKernelVector< on_device >( data ) );
+      kernel_data.data );
 }
 
 /** @brief Bind read-write storage in the kernel policy's memory space. */
@@ -190,7 +240,7 @@ template <
    typename KernelPolicy,
    typename FiniteElementSpace,
    typename VectorType >
-   requires KernelAccessibleVector<
+   requires KernelWritableVector<
       is_device_configuration_v< KernelPolicy >,
       VectorType >
 auto MakeReadWriteElementTensorView(
@@ -203,9 +253,10 @@ auto MakeReadWriteElementTensorView(
       "Element tensor views require a host or device kernel policy." );
    constexpr bool on_device =
       is_device_configuration_v< KernelPolicy >;
+   auto kernel_data = ReadWriteKernelVector< on_device >( data );
    return MakeElementTensorView(
       finite_element_space,
-      ReadWriteKernelVector< on_device >( data ) );
+      kernel_data.data );
 }
 
 } // namespace gendil

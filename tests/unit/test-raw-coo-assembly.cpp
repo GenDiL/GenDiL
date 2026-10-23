@@ -50,10 +50,13 @@ void ForEachRestrictionEntry(
       gendil::Real{ 2 } );
 }
 
-struct WeightedSpace
-{
-   using restriction_type = WeightedRestriction;
-};
+using WeightedFiniteElement = decltype(
+   gendil::MakeLegendreFiniteElement(
+      gendil::FiniteElementOrders< 0 >{} ) );
+using WeightedSpace = gendil::FiniteElementSpace<
+   gendil::Cartesian1DMesh,
+   WeightedFiniteElement,
+   WeightedRestriction >;
 
 } // namespace raw_coo_weight_test
 
@@ -71,9 +74,9 @@ static_assert(
    TensorElementDoFRestriction<
       raw_coo_weight_test::WeightedRestriction > );
 static_assert(
-   !IsRawCOOCellAssemblySpace<
+   IsRawCOOCellAssemblySpace<
       raw_coo_weight_test::WeightedSpace >::value,
-   "RawCOO coordinate insertion must reject a one-entry weighted row until weight handling is implemented." );
+   "RawCOO coordinate insertion must accept exact weighted rows." );
 
 namespace
 {

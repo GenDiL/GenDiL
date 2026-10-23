@@ -5,9 +5,36 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/localdofloop.hpp"
 
 namespace gendil {
+
+// Allocate a zero element row in the scalar or component layout of the space,
+// retaining only the coordinates stored in registers by this kernel.
+template < typename KernelContext, typename FE_Space >
+GENDIL_HOST_DEVICE
+auto MakeZeroElementVector(
+   const KernelContext& kernel_context,
+   const FE_Space& /*fe_space*/ )
+{
+   using FE = typename std::remove_cvref_t<FE_Space>::finite_element_type;
+   using ShapeFunctions = typename FE::shape_functions;
+
+   if constexpr ( is_vector_shape_functions_v< ShapeFunctions > )
+   {
+      constexpr Integer v_dim = ShapeFunctions::vector_dim;
+      using dof_shape = typename ShapeFunctions::dof_shape;
+      return MakeVectorDofs( kernel_context, dof_shape{}, std::make_index_sequence< v_dim >{} );
+   }
+   else
+   {
+      using DofShape = orders_to_num_dofs< typename ShapeFunctions::orders >;
+      using rshape = subsequence_t< DofShape, typename KernelContext::template register_dimensions< DofShape::size() > >;
+
+      return MakeSerialRecursiveArray< Real >( rshape{} );
+   }
+}
 
 template <
    typename LocalDofs,

@@ -34,9 +34,9 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         static_assert(ChannelMap::template contains<ValueChannel>(),
+         static_assert(ChannelMap::template Contains<ValueChannel>(),
             "u*v should produce ValueChannel");
-         static_assert(!ChannelMap::template contains<GradientChannel>(),
+         static_assert(!ChannelMap::template Contains<GradientChannel>(),
             "u*v should NOT produce GradientChannel");
 
          std::cout << "  [PASS] u*v → ValueChannel only\n";
@@ -49,9 +49,9 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         static_assert(!ChannelMap::template contains<ValueChannel>(),
+         static_assert(!ChannelMap::template Contains<ValueChannel>(),
             "dot(grad(u), grad(v)) should NOT produce ValueChannel");
-         static_assert(ChannelMap::template contains<GradientChannel>(),
+         static_assert(ChannelMap::template Contains<GradientChannel>(),
             "dot(grad(u), grad(v)) should produce GradientChannel");
 
          std::cout << "  [PASS] dot(grad(u), grad(v)) → GradientChannel only\n";
@@ -64,9 +64,9 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         static_assert(ChannelMap::template contains<ValueChannel>(),
+         static_assert(ChannelMap::template Contains<ValueChannel>(),
             "u*v + dot(grad(u), grad(v)) should produce ValueChannel");
-         static_assert(ChannelMap::template contains<GradientChannel>(),
+         static_assert(ChannelMap::template Contains<GradientChannel>(),
             "u*v + dot(grad(u), grad(v)) should produce GradientChannel");
 
          std::cout << "  [PASS] u*v + dot(grad(u), grad(v)) → ValueChannel + GradientChannel\n";
@@ -88,8 +88,8 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         constexpr bool has_value_channel    = ChannelMap::template contains<ValueChannel>();
-         constexpr bool has_gradient_channel = ChannelMap::template contains<GradientChannel>();
+         constexpr bool has_value_channel    = ChannelMap::template Contains<ValueChannel>();
+         constexpr bool has_gradient_channel = ChannelMap::template Contains<GradientChannel>();
 
          constexpr auto ChannelTestMask =
             (has_value_channel    ? OperatorMask::Values    : OperatorMask::None) +
@@ -108,8 +108,8 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         constexpr bool has_value_channel    = ChannelMap::template contains<ValueChannel>();
-         constexpr bool has_gradient_channel = ChannelMap::template contains<GradientChannel>();
+         constexpr bool has_value_channel    = ChannelMap::template Contains<ValueChannel>();
+         constexpr bool has_gradient_channel = ChannelMap::template Contains<GradientChannel>();
 
          constexpr auto ChannelTestMask =
             (has_value_channel    ? OperatorMask::Values    : OperatorMask::None) +
@@ -128,8 +128,8 @@ int main()
 
          using ChannelMap = std::remove_cvref_t<decltype(channels)>;
 
-         constexpr bool has_value_channel    = ChannelMap::template contains<ValueChannel>();
-         constexpr bool has_gradient_channel = ChannelMap::template contains<GradientChannel>();
+         constexpr bool has_value_channel    = ChannelMap::template Contains<ValueChannel>();
+         constexpr bool has_gradient_channel = ChannelMap::template Contains<GradientChannel>();
 
          constexpr auto ChannelTestMask =
             (has_value_channel    ? OperatorMask::Values    : OperatorMask::None) +

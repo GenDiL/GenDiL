@@ -254,6 +254,35 @@ template<class T>
 inline constexpr bool is_cell_finite_element_space_v =
    is_cell_finite_element_space<std::remove_cvref_t<T>>::value;
 
+/**
+ * @brief Visit the homogeneous cell spaces represented by a field space.
+ *
+ * Ordinary finite-element spaces invoke @p fn once. Mixed spaces invoke it
+ * once per partition cell part, in stable cell-part order. Algorithms that do
+ * not otherwise care whether a field is partitioned can use this as their
+ * common traversal boundary.
+ */
+template<class Space, class Function>
+constexpr void ForEachHomogeneousSpace(
+   const Space& space,
+   Function&& fn)
+{
+   static_assert(
+      is_cell_finite_element_space_v<Space> ||
+         is_mixed_finite_element_space_v<Space>,
+      "ForEachHomogeneousSpace requires a FiniteElementSpace or "
+      "MixedFiniteElementSpace." );
+   if constexpr (is_mixed_finite_element_space_v<Space>)
+   {
+      space.ForEachCellFiniteElementSpace(
+         std::forward<Function>(fn));
+   }
+   else
+   {
+      std::forward<Function>(fn)(space);
+   }
+}
+
 /** @internal */
 template<class T>
 inline constexpr Integer mixed_finite_element_space_classification_count_v =

@@ -110,8 +110,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void Apply(
    const HostBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
@@ -151,8 +151,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void ApplyAdd(
    const HostBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,

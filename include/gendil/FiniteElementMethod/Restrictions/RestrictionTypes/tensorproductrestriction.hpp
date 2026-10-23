@@ -13,6 +13,7 @@
 #include "gendil/FiniteElementMethod/Restrictions/globaldofindex.hpp"
 #include "gendil/Utilities/checkedarithmetic.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionunitweight.hpp"
+#include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/restrictionweight.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictiontraits.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/restrictionvalidation.hpp"
 #include "gendil/FiniteElementMethod/Restrictions/RestrictionTypes/vectorrestriction.hpp"
@@ -21,22 +22,15 @@
 #include "gendil/Utilities/multiindex.hpp"
 
 #include <array>
+#include <limits>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 
 namespace gendil {
 
-/** @brief Require a unit-entry tensor restriction usable as a product factor. */
-template < typename Restriction >
-concept TensorProductFactorRestriction =
-   TensorElementDoFRestriction< Restriction > &&
-   static_restriction_entry_count_v<
-      std::remove_cvref_t< Restriction > > == 1 &&
-   restriction_supports_element_reference_view_v< Restriction >;
-
 /**
- * @brief One-entry restriction for a Cartesian product of scalar factors.
+ * @brief Restriction for a Cartesian product of scalar factors.
  *
  * Each factor is a completed tensor restriction whose emitted coordinate is
  * already final in that factor's algebraic space. The product combines those
@@ -47,7 +41,7 @@ concept TensorProductFactorRestriction =
 template < typename... FactorRestrictions >
    requires (
       sizeof...( FactorRestrictions ) > 0 &&
-      ( TensorProductFactorRestriction< FactorRestrictions > && ... ) )
+      ( TensorElementDoFRestriction< FactorRestrictions > && ... ) )
 struct TensorProductRestriction
 {
    static constexpr size_t num_factors = sizeof...( FactorRestrictions );
@@ -94,19 +88,55 @@ constexpr GlobalIndex GetAlgebraicDofExtent(
    return restriction.algebraic_dof_extent;
 }
 
+/**
+ * @brief Uniform product-row cardinality when every factor is uniform.
+ *
+ * A dynamic factor propagates the dynamic sentinel. Exact nonuniform
+ * per-native-row cardinality is exposed separately below.
+ */
 template < typename... FactorRestrictions >
 inline constexpr size_t static_restriction_entry_count_v<
-   TensorProductRestriction< FactorRestrictions... > > = 1;
+   TensorProductRestriction< FactorRestrictions... > > = []
+{
+   if constexpr (
+      ( ( static_restriction_entry_count_v< FactorRestrictions > !=
+            dynamic_restriction_entry_count ) && ... ) )
+   {
+      return ( size_t{1} * ... *
+         static_restriction_entry_count_v< FactorRestrictions > );
+   }
+   else
+   {
+      return dynamic_restriction_entry_count;
+   }
+}();
 
+/** @brief A product may share coordinates when any factor may share them. */
 template < typename... FactorRestrictions >
 inline constexpr bool restriction_may_share_global_dofs_v<
    TensorProductRestriction< FactorRestrictions... > > =
       ( restriction_may_share_global_dofs_v<
            FactorRestrictions > || ... );
 
+/** @brief Product rows are unique when every factor row is unique. */
+template < typename... FactorRestrictions >
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   TensorProductRestriction< FactorRestrictions... > > =
+      ( restriction_rows_have_unique_coordinates_v<
+           FactorRestrictions > && ... );
+
+/**
+ * @brief Direct element references require one unit-reference entry per
+ * factor.
+ */
 template < typename... FactorRestrictions >
 struct restriction_supports_element_reference_view<
-   TensorProductRestriction< FactorRestrictions... > > : std::true_type { };
+   TensorProductRestriction< FactorRestrictions... > >
+   : std::bool_constant<
+        ( ( static_restriction_entry_count_v< FactorRestrictions > == 1 &&
+            restriction_supports_element_reference_view_v<
+               FactorRestrictions > ) && ... ) >
+{ };
 
 /** @brief Validate memory access recursively for every algebraic factor. */
 template < bool OnDevice, typename... FactorRestrictions >
@@ -165,6 +195,116 @@ inline constexpr size_t tensor_product_local_dof_rank_offset_v =
    TensorProductLocalDofRankOffset< TensorRestriction, I >(
       std::make_index_sequence< I >{} );
 
+namespace details {
+
+/**
+ * @brief Map one flattened product-native row to a factor-native row.
+ *
+ * The product local DoF index is unflattened with the concatenated product
+ * DoF shape. The axes belonging to @p Factor are then sliced and flattened
+ * with that factor's native shape. This is compile-time RawCOO planning
+ * metadata; it is not an algebraic coordinate lookup.
+ * @internal
+ */
+template <
+   typename TensorRestriction,
+   size_t Factor,
+   GlobalIndex ProductLocalDofIndex,
+   size_t... Axis >
+consteval GlobalIndex TensorProductFactorNativeRow(
+   std::index_sequence< Axis... > )
+{
+   using ProductShape = typename TensorRestriction::dof_shape_type;
+   using FactorShape =
+      tensor_product_factor_dof_shape_t< TensorRestriction, Factor >;
+   constexpr auto product_index =
+      UnflattenMultiIndex< ProductShape >( ProductLocalDofIndex );
+   constexpr size_t axis_offset =
+      tensor_product_local_dof_rank_offset_v< TensorRestriction, Factor >;
+   constexpr std::array< GlobalIndex, sizeof...( Axis ) > factor_index{
+      product_index[axis_offset + Axis]... };
+   return FlattenMultiIndex< FactorShape >( factor_index );
+}
+
+/**
+ * @brief Multiply the exact factor-entry counts for one product-native row.
+ *
+ * A zero-entry factor makes the product row empty. A dynamic factor propagates
+ * `dynamic_restriction_entry_count`; otherwise multiplication is checked for
+ * `size_t` overflow during constant evaluation.
+ * @internal
+ */
+template <
+   typename TensorRestriction,
+   GlobalIndex ProductLocalDofIndex,
+   size_t... Factor >
+consteval size_t TensorProductNativeRowEntryCount(
+   std::index_sequence< Factor... > )
+{
+   constexpr GlobalIndex product_rows =
+      Product( typename TensorRestriction::dof_shape_type{} );
+   static_assert(
+      ProductLocalDofIndex < product_rows,
+      "Tensor-product native local DoF index is out of range." );
+   constexpr std::array< size_t, sizeof...( Factor ) > counts{
+      static_restriction_entry_count_for_v<
+         tensor_product_factor_type_t< TensorRestriction, Factor >,
+         NativeRestrictionRowTag<
+            0,
+            TensorProductFactorNativeRow<
+               TensorRestriction,
+               Factor,
+               ProductLocalDofIndex >(
+                  std::make_index_sequence<
+                     tensor_product_factor_dof_rank_v<
+                        TensorRestriction,
+                        Factor > >{} ) > >... };
+
+   constexpr auto result = [counts]
+   {
+      size_t count = 1;
+      for ( const size_t factor_count : counts )
+      {
+         if ( factor_count == dynamic_restriction_entry_count )
+         {
+            return std::pair{ dynamic_restriction_entry_count, true };
+         }
+         if (
+            factor_count != 0 &&
+            count > std::numeric_limits< size_t >::max() / factor_count )
+         {
+            return std::pair{ size_t{ 0 }, false };
+         }
+         count *= factor_count;
+      }
+      return std::pair{ count, true };
+   }();
+   static_assert( result.second,
+      "Tensor-product static restriction-entry count overflows size_t." );
+   return result.first;
+}
+
+} // namespace details
+
+/**
+ * @brief Exact per-native-row product cardinality.
+ *
+ * This keeps a tensor product eligible for static RawCOO planning when one of
+ * its factors has nonuniform but exact native-row counts. Runtime orientation
+ * selects the native product row before this metadata is queried.
+ */
+template <
+   typename... FactorRestrictions,
+   size_t Component,
+   GlobalIndex ProductLocalDofIndex >
+inline constexpr size_t static_restriction_entry_count_for_v<
+   TensorProductRestriction< FactorRestrictions... >,
+   NativeRestrictionRowTag< Component, ProductLocalDofIndex > > =
+      details::TensorProductNativeRowEntryCount<
+         TensorProductRestriction< FactorRestrictions... >,
+         ProductLocalDofIndex >(
+            std::make_index_sequence< sizeof...( FactorRestrictions ) >{} );
+
 /** @brief Form first-coordinate-fastest strides for a product of counts. */
 template < size_t N >
 std::array< GlobalIndex, N > MakePrefixStrides(
@@ -205,6 +345,13 @@ void TensorProductElementIndices(
    element_indices[0] = remaining;
 }
 
+/**
+ * @brief Return one factor coordinate for the singular one-entry lookup path.
+ *
+ * This coordinate-only helper intentionally discards factor weights through
+ * `GetGlobalDofIndex`. General weighted or multi-entry traversal uses
+ * `ForEachRestrictionEntry` instead.
+ */
 template <
    typename TensorRestriction,
    size_t I,
@@ -226,6 +373,13 @@ GlobalIndex TensorProductFactorAlgebraicDof(
       factor_local_dof );
 }
 
+/**
+ * @brief Combine singular factor coordinates in first-factor-fastest order.
+ *
+ * This is the coordinate-only implementation used when the complete product
+ * row has one statically known entry. It is not the general weighted product
+ * traversal.
+ */
 template <
    typename TensorRestriction,
    size_t ... I >
@@ -257,7 +411,85 @@ GlobalIndex TensorProductElementToGlobalDofIndex(
    return global_index;
 }
 
-/** @brief Visit the single unit-weight entry of one tensor-product row. */
+namespace details {
+
+/**
+ * @brief Recursively visit the Cartesian product of factor-row entries.
+ *
+ * Each recursion level adds the selected factor coordinate using the stored
+ * first-factor-fastest algebraic stride and composes the factor weight after
+ * the weights accumulated by preceding factors. No product stencil is
+ * materialized. If any factor row is empty, recursion naturally produces no
+ * final visit.
+ * @internal
+ */
+template <
+   size_t Factor,
+   typename TensorRestriction,
+   typename Visitor,
+   typename Weight >
+GENDIL_HOST_DEVICE
+constexpr void VisitTensorProductRestrictionEntries(
+   const TensorRestriction & restriction,
+   const std::array<
+      GlobalIndex,
+      TensorRestriction::num_factors > & element_indices,
+   const std::array<
+      GlobalIndex,
+      TensorRestriction::tensor_dim > & local_dof,
+   const GlobalIndex algebraic_dof,
+   const Weight & accumulated_weight,
+   Visitor & visitor )
+{
+   if constexpr ( Factor == TensorRestriction::num_factors )
+   {
+      visitor( algebraic_dof, accumulated_weight );
+   }
+   else
+   {
+      using FactorRestriction =
+         tensor_product_factor_type_t< TensorRestriction, Factor >;
+      constexpr size_t factor_rank =
+         tensor_product_factor_dof_rank_v< TensorRestriction, Factor >;
+      constexpr size_t rank_offset =
+         tensor_product_local_dof_rank_offset_v<
+            TensorRestriction,
+            Factor >;
+      const auto factor_local_dof = [&]< size_t... Axis >(
+         std::index_sequence< Axis... > )
+      {
+         return std::array< GlobalIndex, factor_rank >{
+            local_dof[rank_offset + Axis]... };
+      }( std::make_index_sequence< factor_rank >{} );
+
+      const auto & factor =
+         std::get< Factor >( restriction.restrictions );
+      ForEachRestrictionEntry(
+         factor,
+         element_indices[Factor],
+         factor_local_dof,
+         [&] ( const GlobalIndex factor_dof, const auto & factor_weight )
+         {
+            const GlobalIndex product_dof =
+               algebraic_dof +
+               factor_dof * restriction.algebraic_dof_strides[Factor];
+            const auto product_weight = ComposeRestrictionWeights(
+               accumulated_weight,
+               factor_weight );
+            VisitTensorProductRestrictionEntries< Factor + 1 >(
+               restriction,
+               element_indices,
+               local_dof,
+               product_dof,
+               product_weight,
+               visitor );
+         } );
+   }
+}
+
+} // namespace details
+
+/** @brief Visit the Cartesian product of all factor restriction entries. */
 template < typename... FactorRestrictions, typename Visitor >
 GENDIL_HOST_DEVICE
 constexpr void ForEachRestrictionEntry(
@@ -278,18 +510,19 @@ constexpr void ForEachRestrictionEntry(
       element * local_dofs + FlattenMultiIndex< DofShape >( local_dof ) <
          restriction.num_local_dofs,
       "TensorProductRestriction element-local row is out of bounds." );
-   const GlobalIndex algebraic_dof =
-      TensorProductElementToGlobalDofIndex(
-         restriction,
-         element,
-         local_dof,
-         std::make_index_sequence< Restriction::num_factors >{} );
-   GENDIL_ASSERT(
-      algebraic_dof < restriction.algebraic_dof_extent,
-      "TensorProductRestriction global DoF is out of bounds." );
-   std::forward< Visitor >( visitor )(
-      algebraic_dof,
-      RestrictionUnitWeight{} );
+   std::array< GlobalIndex, Restriction::num_factors > element_indices{};
+   TensorProductElementIndices(
+      restriction,
+      element,
+      element_indices );
+   auto visitor_value = std::forward< Visitor >( visitor );
+   details::VisitTensorProductRestrictionEntries< 0 >(
+      restriction,
+      element_indices,
+      local_dof,
+      GlobalIndex{0},
+      RestrictionUnitWeight{},
+      visitor_value );
 }
 
 namespace details {
@@ -300,7 +533,7 @@ using tensor_product_space_restriction_t =
 
 template < typename FactorSpace >
 concept ScalarTensorProductFactorSpace =
-   TensorProductFactorRestriction<
+   TensorElementDoFRestriction<
       tensor_product_space_restriction_t< FactorSpace > >;
 
 template < typename Restriction, size_t... Component >
@@ -308,7 +541,7 @@ consteval bool VectorTensorProductComponentsAreFactors(
    std::index_sequence< Component... > )
 {
    return (
-      TensorProductFactorRestriction< std::remove_cvref_t< decltype(
+      TensorElementDoFRestriction< std::remove_cvref_t< decltype(
          GetComponentRestriction< Component >(
             std::declval< const Restriction & >() ) ) > > && ... );
 }
@@ -358,7 +591,7 @@ consteval bool TensorProductVectorComponentCountMatches()
 }
 
 template <
-   TensorProductFactorRestriction... FactorRestrictions >
+   TensorElementDoFRestriction... FactorRestrictions >
 auto MakeScalarTensorProductRestriction(
    const std::array<
       GlobalIndex,

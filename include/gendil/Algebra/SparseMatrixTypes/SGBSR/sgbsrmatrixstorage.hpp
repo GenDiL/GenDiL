@@ -4,10 +4,12 @@
 
 #pragma once
 
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
 #include "gendil/prelude.hpp"
 
 #include <concepts>
+#include <cstddef>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -141,7 +143,15 @@ struct SGBSRMatrix
    }
 
    template < typename InputVector, typename OutputVector >
-   void operator()( const InputVector & x_fe, OutputVector & y_fe ) const;
+   void operator()( const InputVector & x_fe, OutputVector & y_fe ) const
+      requires requires
+      {
+         { Apply( bsr_matrix.backend, *this, x_fe, y_fe ) }
+            -> std::same_as< void >;
+      }
+   {
+      Apply( bsr_matrix.backend, *this, x_fe, y_fe );
+   }
 
 private:
    static GlobalIndex TrialBsrSize_impl( const BSRType & matrix )
@@ -180,5 +190,21 @@ private:
       return bsr_size;
    }
 };
+
+/** Return the external finite-element input extent of an SGBSR matrix. */
+template < typename BSRType, typename TrialGather, typename TestScatter >
+std::size_t GetInputSize(
+   const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix )
+{
+   return static_cast< std::size_t >( matrix.NumCols() );
+}
+
+/** Return the external finite-element output extent of an SGBSR matrix. */
+template < typename BSRType, typename TrialGather, typename TestScatter >
+std::size_t GetOutputSize(
+   const SGBSRMatrix< BSRType, TrialGather, TestScatter > & matrix )
+{
+   return static_cast< std::size_t >( matrix.NumRows() );
+}
 
 } // namespace gendil

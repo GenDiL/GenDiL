@@ -7,9 +7,9 @@
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/pullback.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
 
 namespace gendil {
 
@@ -26,7 +26,7 @@ struct FacetContext : FaceInfo
 
 template<class Channels>
 inline constexpr bool global_interior_channels_require_plus_side_jacobian_v =
-   std::remove_cvref_t<Channels>::template contains<GradientPlusChannel>();
+   std::remove_cvref_t<Channels>::template Contains<GradientPlusChannel>();
 
 template<class Integrand>
 inline constexpr bool local_interior_context_requires_plus_side_jacobian_v =

@@ -10,19 +10,19 @@
 namespace gendil {
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & A, Real & inv_A )
+inline void ComputeInverse( const Real & A, Real & inv_A )
 {
    inv_A = 1/A;
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & det, const Real (& A)[1][1], Real (& inv_A)[1][1] )
+inline void ComputeInverse( const Real & det, const Real (& A)[1][1], Real (& inv_A)[1][1] )
 {
    inv_A[0][0] = 1/A[0][0];
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & det, const Real (& A)[2][2], Real (& inv_A)[2][2] )
+inline void ComputeInverse( const Real & det, const Real (& A)[2][2], Real (& inv_A)[2][2] )
 {
    Real det_inv = 1.0 / det;
    inv_A[0][0] = det_inv * A[1][1];
@@ -32,7 +32,7 @@ void ComputeInverse( const Real & det, const Real (& A)[2][2], Real (& inv_A)[2]
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & detA, const Real (& A)[3][3], Real (& inv_A)[3][3] )
+inline void ComputeInverse( const Real & detA, const Real (& A)[3][3], Real (& inv_A)[3][3] )
 {
    Real const detAinv = 1.0 / detA;
    inv_A[0][0] = detAinv * ( (A[1][1] * A[2][2]) - (A[1][2] * A[2][1]) );
@@ -55,13 +55,13 @@ void ComputeInverse( const Real (& A)[N][N], Real (& inv_A)[N][N] )
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & det, const std::array< std::array< Real, 1 >, 1 > & A, std::array< std::array< Real, 1 >, 1 > & inv_A )
+inline void ComputeInverse( const Real & det, const std::array< std::array< Real, 1 >, 1 > & A, std::array< std::array< Real, 1 >, 1 > & inv_A )
 {
    inv_A[0][0] = 1/A[0][0];
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & det, const std::array< std::array< Real, 2 >, 2 > & A, std::array< std::array< Real, 2 >, 2 > & inv_A )
+inline void ComputeInverse( const Real & det, const std::array< std::array< Real, 2 >, 2 > & A, std::array< std::array< Real, 2 >, 2 > & inv_A )
 {
    Real det_inv = 1.0 / det;
    inv_A[0][0] = det_inv * A[1][1];
@@ -71,7 +71,7 @@ void ComputeInverse( const Real & det, const std::array< std::array< Real, 2 >, 
 }
 
 GENDIL_HOST_DEVICE
-void ComputeInverse( const Real & det, const std::array< std::array< Real, 3 >, 3 > & A, std::array< std::array< Real, 3 >, 3 > & inv_A )
+inline void ComputeInverse( const Real & det, const std::array< std::array< Real, 3 >, 3 > & A, std::array< std::array< Real, 3 >, 3 > & inv_A )
 {
    Real const detAinv = 1.0 / det;
    inv_A[0][0] = detAinv * ( (A[1][1] * A[2][2]) - (A[1][2] * A[2][1]) );

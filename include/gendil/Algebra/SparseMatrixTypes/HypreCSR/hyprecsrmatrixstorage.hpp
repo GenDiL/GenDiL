@@ -11,6 +11,8 @@
 #include "gendil/Interfaces/Hypre/hypretypes.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 
+#include <concepts>
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 
@@ -141,7 +143,14 @@ struct HypreCSRMatrix
    }
 
    template < typename InputVector, typename OutputVector >
-   void operator()( const InputVector & x, OutputVector & y ) const;
+   void operator()( const InputVector & x, OutputVector & y ) const
+      requires requires
+      {
+         { Apply( backend, *this, x, y ) } -> std::same_as< void >;
+      }
+   {
+      Apply( backend, *this, x, y );
+   }
 
    HYPRE_ParCSRMatrix GetHostHypreParCSR() const
    {
@@ -195,6 +204,26 @@ struct HypreCSRMatrix
       return GetHypreParCSR();
    }
 };
+
+/** Return the local input-vector extent of a process-local Hypre CSR map. */
+template < typename Backend >
+std::size_t GetInputSize(const HypreCSRMatrix< Backend > & matrix)
+{
+   GENDIL_VERIFY(
+      matrix.csr.num_cols >= 0,
+      "HypreCSRMatrix input extent must be nonnegative." );
+   return static_cast< std::size_t >( matrix.csr.num_cols );
+}
+
+/** Return the local output-vector extent of a process-local Hypre CSR map. */
+template < typename Backend >
+std::size_t GetOutputSize(const HypreCSRMatrix< Backend > & matrix)
+{
+   GENDIL_VERIFY(
+      matrix.csr.num_rows >= 0,
+      "HypreCSRMatrix output extent must be nonnegative." );
+   return static_cast< std::size_t >( matrix.csr.num_rows );
+}
 
 } // namespace gendil
 

@@ -5,15 +5,12 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/Utilities/staticstring.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/domain.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
-#include "gendil/Algebra/staticvector.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
 
 namespace gendil
 {
-
-template <typename T, static_vector<T> VecType>
-constexpr auto operator*(const T& scalar, const VecType& vec);
 
 template < DomainExpr Domain, FieldExpr Expr >
 struct Integrand : FormBase
@@ -48,6 +45,10 @@ struct Integrand : FormBase
    }
 };
 
+// Each integral evaluates its own fields and contracts its own contributions.
+// Put compatible sums inside one integrate call to share that numerical work.
+// Adding integrals keeps their evaluations separate, while execution and
+// assembly can still share traversal, preparation, and local rows.
 template < DomainExpr Domain, FieldExpr Expr >
 auto integrate(const Domain & domain, const Expr & expr)
 {
@@ -60,12 +61,6 @@ std::ostream& operator<<(std::ostream& os, const Integrand<Domain, Expr>& integr
    return os << "Integral< " << integrand.domain << " >( " << integrand.expr << " )";
 }
 
-template < StaticString DomainName >
-struct Cells : DomainBase
-{
-   static constexpr auto name = DomainName;
-};
-
 template<class T>
 struct is_cell_integrand : std::false_type {};
 
@@ -75,18 +70,6 @@ struct is_cell_integrand< Integrand<Cells<DomainName>, Expr> > : std::true_type 
 template<class T>
 concept CellIntegrand =
    is_cell_integrand<std::remove_cvref_t<T>>::value;
-
-template < StaticString Name >
-std::ostream& operator<<(std::ostream& os, const Cells<Name>& domain)
-{
-   return os << "Cells_" << domain.name.view();
-}
-
-template < StaticString DomainName >
-struct InteriorFacets : DomainBase
-{
-   static constexpr auto name = DomainName;
-};
 
 template<class T>
 struct is_interior_facet_integrand : std::false_type {};
@@ -99,18 +82,6 @@ template<class T>
 concept InteriorFacetIntegrand =
    is_interior_facet_integrand<std::remove_cvref_t<T>>::value;
 
-template < StaticString Name >
-std::ostream& operator<<(std::ostream& os, const InteriorFacets<Name>& domain)
-{
-   return os << "InteriorFacets_" << domain.name.view();
-}
-
-template < StaticString DomainName >
-struct BoundaryFacets : DomainBase
-{
-   static constexpr auto name = DomainName;
-};
-
 template<class T>
 struct is_boundary_facet_integrand : std::false_type {};
 
@@ -121,24 +92,5 @@ struct is_boundary_facet_integrand< Integrand<BoundaryFacets<DomainName>, Expr> 
 template<class T>
 concept BoundaryFacetIntegrand =
    is_boundary_facet_integrand<std::remove_cvref_t<T>>::value;
-
-template < StaticString Name >
-std::ostream& operator<<(std::ostream& os, const BoundaryFacets<Name>& domain)
-{
-   return os << "BoundaryFacets_" << domain.name.view();
-}
-
-template < StaticString LHSDomainName, StaticString RHSDomainName >
-struct InterfaceFacets : DomainBase
-{
-   static constexpr auto lhs_name = LHSDomainName;
-   static constexpr auto rhs_name = RHSDomainName;
-};
-
-template < StaticString LHSDomainName, StaticString RHSDomainName >
-std::ostream& operator<<(std::ostream& os, const InterfaceFacets<LHSDomainName, RHSDomainName>& domain)
-{
-   return os << "InterfaceFacets_" << domain.lhs_name.view() << "_" << domain.rhs_name.view();
-}
 
 } // namespace gendil

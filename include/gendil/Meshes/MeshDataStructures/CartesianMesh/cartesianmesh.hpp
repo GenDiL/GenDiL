@@ -33,3 +33,6 @@
 
 // An intermesh face connectivity between two nonconforming Cartesian meshes
 #include "gendil/Meshes/MeshDataStructures/CartesianMesh/nonconformingcartesianintermeshfaceconnectivity.hpp"
+
+// Structured one-part and contiguous one-dimensional partitions.
+#include "gendil/Meshes/MeshDataStructures/CartesianMesh/cartesianpartition.hpp"

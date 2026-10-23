@@ -4,146 +4,246 @@
 
 #pragma once
 
-#include "gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/pullback.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/quadraturemeasure.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/writequadraturelocalvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymappingtranspose.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 
 namespace gendil
 {
 
-// =============================================================================
-// WriteChannelContributions: Cell channel application
-// =============================================================================
-//
-// **Purpose:**
-//    Evaluates PullbackResult channel coefficient expressions at a cell
-//    quadrature point and writes them to the existing quadrature contribution
-//    container (Du.values and/or Du.gradients).
-//
-// **Coordinate Frame Convention (CRITICAL):**
-//    GradientChannel stores physical-gradient coefficients produced by weak-form
-//    pullback. This function applies ApplyMappingTranspose to convert physical
-//    gradients to reference-frame gradients before writing to Du.gradients.
-//
-//    Transformation: grad_ref = inv_J^T * grad_phys
-//
-//    This matches the current temporary InnerExpr/DotExpr specialization behavior
-//    (see inner.hpp, dot.hpp).
-//
-//    Du.gradients expects reference-frame coefficients.
-//    ApplyGradientTestFunctions expects reference-frame inputs.
-//
-// **Channel Behavior:**
-//    If ValueChannel is present:
-//      1. Evaluate value coefficient expression at quadrature point
-//      2. Write to Du.values via WriteQuadratureLocalValues
-//
-//    If GradientChannel is present:
-//      1. Evaluate gradient coefficient expression at quadrature point (physical frame)
-//      2. Apply ApplyMappingTranspose using quad_pt_context.inv_J_mesh
-//      3. Write reference-frame coefficient to Du.gradients via WriteQuadratureLocalValues
-//
-//    Both channels can be written independently in a single call.
-//
-// **Example usage (future GenericOperator integration):**
-//    ```cpp
-//    auto channels = pullback(u * v + dot(grad(u), grad(v)), ScalarIdentity{});
-//    // channels contains: ValueChannel → u, GradientChannel → grad(u)
-//
-//    QuadraturePointLoop(kernel_context, integration_rule, [&](const auto& quad_index) {
-//       auto quad_pt_context = MakeQuadPtContext(..., quad_index);
-//       WriteChannelContributions(
-//          kernel_context, weak_form_context, operator_context,
-//          element_context, quad_pt_context, fields, channels, quad_index, Du);
-//    });
-//
-//    // Then dispatch test functions based on channel presence:
-//    if constexpr (has ValueChannel && has GradientChannel)
-//       ApplyValuesAndGradientTestFunctions<true>(..., Du.values, Du.gradients, dofs_out);
-//    else if constexpr (has ValueChannel)
-//       ApplyTestFunctions<true>(..., Du.values, dofs_out);
-//    else if constexpr (has GradientChannel)
-//       ApplyGradientTestFunctions<true>(..., Du.gradients, dofs_out);
-//    ```
-//
-// =============================================================================
+namespace pullback_detail
+{
+
+// Check the physical direction axis before mapping or writing. Rank-only DSL
+// shapes do not encode a callback's fixed vector/matrix extents.
+template<class Value, Integer Dim>
+GENDIL_HOST_DEVICE
+constexpr void ValidateGradientDimension(const Value&, const TensorIndex<Dim>&)
+{
+   if constexpr (static_num_cols_v<Value> != std::dynamic_extent)
+   {
+      static_assert(static_num_cols_v<Value> == Dim,
+         "Gradient channel direction count must match the physical domain dimension.");
+   }
+   else if constexpr (static_extent_v<Value> != std::dynamic_extent)
+   {
+      static_assert(static_extent_v<Value> == Dim,
+         "Gradient channel direction count must match the physical domain dimension.");
+   }
+}
+
+
+template<class Sink>
+inline constexpr bool has_value_sink_v = []
+{
+   if constexpr (requires(Sink& sink) { sink.values; })
+   {
+      return !std::is_same_v<
+         std::remove_cvref_t<decltype(std::declval<Sink&>().values)>, Empty>;
+   }
+   else { return false; }
+}();
+
+template<class Sink>
+inline constexpr bool has_gradient_sink_v = []
+{
+   if constexpr (requires(Sink& sink) { sink.gradients; })
+   {
+      return !std::is_same_v<
+         std::remove_cvref_t<decltype(std::declval<Sink&>().gradients)>, Empty>;
+   }
+   else { return false; }
+}();
+
+// A pullback's integration measure and gradient mapping must use geometry for
+// the same entity. A physical boundary has an explicit marker; one selected
+// side of an interior face is not a physical boundary.
+template<PullbackEntity Entity, class QuadPtContext>
+inline constexpr bool quadrature_context_compatible_v = []
+{
+   if constexpr (Entity == PullbackEntity::Cell)
+   {
+      return requires(const QuadPtContext& context)
+      {
+         context.weight;
+         context.det_J;
+         context.inv_J_mesh;
+      } && !requires(const QuadPtContext& context) { context.det_J_facet; };
+   }
+   else if constexpr (Entity == PullbackEntity::BoundaryFacet)
+   {
+      return requires(const QuadPtContext& context)
+      {
+         requires is_physical_boundary_v<QuadPtContext>;
+         context.weight;
+         context.det_J_facet;
+         context.inv_J_mesh;
+      };
+   }
+   else
+   {
+      return requires(const QuadPtContext& context)
+      {
+         context.weight;
+         context.det_J_facet;
+         context.inv_J_mesh_minus;
+         context.MinusSide();
+         context.PlusSide();
+      };
+   }
+}();
+
+} // namespace pullback_detail
+
+template<class Channels, class Sink>
+inline constexpr bool current_row_channel_sink_compatible_v =
+   pullback_channels_match_rows_v<Channels, PullbackRows::Current> &&
+   (!std::remove_cvref_t<Channels>::template Contains<ValueChannel>() ||
+      pullback_detail::has_value_sink_v<Sink>) &&
+   (!std::remove_cvref_t<Channels>::template Contains<GradientChannel>() ||
+      pullback_detail::has_gradient_sink_v<Sink>);
+
+template<class Channels, class MinusSink, class PlusSink>
+inline constexpr bool global_interior_channel_sinks_compatible_v =
+   pullback_channels_match_rows_v<Channels, PullbackRows::MinusPlus> &&
+   (!std::remove_cvref_t<Channels>::template Contains<ValueMinusChannel>() ||
+      pullback_detail::has_value_sink_v<MinusSink>) &&
+   (!std::remove_cvref_t<Channels>::template Contains<ValuePlusChannel>() ||
+      pullback_detail::has_value_sink_v<PlusSink>) &&
+   (!std::remove_cvref_t<Channels>::template Contains<GradientMinusChannel>() ||
+      pullback_detail::has_gradient_sink_v<MinusSink>) &&
+   (!std::remove_cvref_t<Channels>::template Contains<GradientPlusChannel>() ||
+      pullback_detail::has_gradient_sink_v<PlusSink>);
+
+// Allocate only the value/gradient storage requested by the current-row pullback.
+template <
+   typename KernelContext,
+   typename IntegrationRule,
+   typename TestSpace,
+   PullbackEntity Entity,
+   typename Channels >
+   requires ( Entity != PullbackEntity::GlobalInteriorFacet )
+GENDIL_HOST_DEVICE
+auto MakeQuadraturePointContainerForSpace(
+   const KernelContext & kernel_context,
+   const IntegrationRule & integration_rule,
+   const TestSpace & test_space,
+   const EntityPullbackResult<Entity, Channels> & /*pullback*/ )
+{
+   constexpr bool NeedValues = Channels::template Contains<ValueChannel>();
+   constexpr bool NeedGradients = Channels::template Contains<GradientChannel>();
+
+   if constexpr ( NeedValues || NeedGradients )
+   {
+      return MakeQuadraturePointContainerForSpace<NeedValues, NeedGradients>(
+         kernel_context,
+         integration_rule,
+         GetMinusFacetFieldVolumeSpace(test_space));
+   }
+   else
+   {
+      return InterpolatedField<Empty, Empty>{};
+   }
+}
+
+// A canonical face has distinct output rows. An unused side needs no storage
+// and does not inspect that side's finite element space.
+template <
+   SemanticSide Side,
+   typename KernelContext,
+   typename IntegrationRule,
+   typename TestSpace,
+   typename Channels >
+   requires ( Side == SemanticSide::Minus || Side == SemanticSide::Plus )
+GENDIL_HOST_DEVICE
+auto MakeQuadraturePointContainerForSpace(
+   const KernelContext & kernel_context,
+   const IntegrationRule & integration_rule,
+   const TestSpace & test_space,
+   const EntityPullbackResult<PullbackEntity::GlobalInteriorFacet, Channels> & /*pullback*/ )
+{
+   using Value = std::conditional_t<Side == SemanticSide::Minus, ValueMinusChannel, ValuePlusChannel>;
+   using Gradient = std::conditional_t<Side == SemanticSide::Minus, GradientMinusChannel, GradientPlusChannel>;
+   constexpr bool NeedValues = Channels::template Contains<Value>();
+   constexpr bool NeedGradients = Channels::template Contains<Gradient>();
+
+   if constexpr ( NeedValues || NeedGradients )
+   {
+      if constexpr ( Side == SemanticSide::Minus )
+      {
+         return MakeQuadraturePointContainerForSpace<NeedValues, NeedGradients>(
+            kernel_context,
+            integration_rule,
+            GetMinusFacetFieldVolumeSpace(test_space));
+      }
+      else
+      {
+         return MakeQuadraturePointContainerForSpace<NeedValues, NeedGradients>(
+            kernel_context,
+            integration_rule,
+            GetPlusFacetFieldVolumeSpace(test_space));
+      }
+   }
+   else
+   {
+      return InterpolatedField<Empty, Empty>{};
+   }
+}
 
 /**
- * @brief Write PullbackResult channel contributions to cell quadrature container.
+ * @brief Compute current-row contributions at one quadrature point.
  *
- * Evaluates ValueChannel and/or GradientChannel coefficient expressions at the
- * given quadrature point and writes them to Du.values and/or Du.gradients.
- *
- * CRITICAL: GradientChannel coefficients are evaluated in physical frame, then
- * mapped to reference frame via ApplyMappingTranspose before writing to Du.gradients.
- *
- * @tparam KernelContext Kernel execution context
- * @tparam WeakFormContext Weak-form context (coefficients, fields)
- * @tparam OperatorContext Operator context (integration rule)
- * @tparam ElementContext Element context (geometry, DoF mapping)
- * @tparam QuadPtContext Quadrature point context (inv_J_mesh, weights, coords)
- * @tparam Fields Interpolated trial fields
- * @tparam Channels PullbackResult type (compile-time channel map)
- * @tparam QuadIndex Quadrature point index type (TensorIndex)
- * @tparam DuType Quadrature container type (InterpolatedField)
- *
- * @param kernel_context Kernel execution context
- * @param weak_form_context Weak-form context
- * @param operator_context Operator context
- * @param element_context Element context
- * @param quad_pt_context Quadrature point context (provides inv_J_mesh for mapping)
- * @param fields Interpolated trial fields
- * @param channels PullbackResult with ValueChannel and/or GradientChannel
- * @param quad_index Current quadrature point index
- * @param Du Quadrature container with .values and/or .gradients fields
- *
- * @pre Du must be allocated with appropriate .values and/or .gradients fields
- *      matching the channels present in the PullbackResult.
- * @pre This is a cell-domain operation. Do NOT use for facet integrands without
- *      separate facet-specific channel-application design.
- *
- * @post If ValueChannel present: Du.values contains evaluated value coefficients
- * @post If GradientChannel present: Du.gradients contains reference-frame gradient coefficients
+ * Evaluates the supplied pullback and fills the requested value/gradient
+ * entries in contributions. Gradient coefficients are mapped from physical
+ * to reference coordinates for subsequent test-function contraction.
+ * Cells, physical boundaries, and local interior facets share this operation.
+ * Construct the pullback once before entering the quadrature loop.
  */
 template<
    typename KernelContext,
-   typename WeakFormContext,
+   typename ExecutionContext,
    typename OperatorContext,
    typename ElementContext,
    typename QuadPtContext,
    typename Fields,
-   typename Channels,
+   PullbackEntity Entity,
+   typename PullbackChannels,
    typename QuadIndex,
-   typename DuType>
+   typename Contributions>
 GENDIL_HOST_DEVICE
-void WriteOrdinaryChannelContributions(
+void ComputeContributions(
    const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
+   const ExecutionContext& execution_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
    const QuadPtContext& quad_pt_context,
    const Fields& fields,
-   const Channels& channels,
+   const EntityPullbackResult<Entity, PullbackChannels>& pullback,
    const QuadIndex& quad_index,
-   DuType& Du)
+   Contributions& contributions)
 {
-   using C = std::remove_cvref_t<Channels>;
-   static_assert(
-      !contains_side_qualified_interior_test_channel_v<C>,
-      "Ordinary cell/local-facet/boundary channel writers consume only "
-      "ValueChannel and GradientChannel. Canonical global interior facets "
-      "must use WriteGlobalInteriorFacetChannelContributions.");
+   using C = EntityPullbackResult<Entity, PullbackChannels>;
+   static_assert(Entity == PullbackEntity::Cell ||
+                 Entity == PullbackEntity::BoundaryFacet ||
+                 Entity == PullbackEntity::LocalInteriorFacet,
+      "Current-row contributions require a cell, boundary, or local-interior pullback.");
+   static_assert(pullback_detail::quadrature_context_compatible_v<Entity, QuadPtContext>,
+      "Pullback entity must match the quadrature point context.");
+   static_assert(current_row_channel_sink_compatible_v<C, Contributions>,
+      "Current-row pullback channels require matching value/gradient sink storage.");
 
-   // ValueChannel: evaluate coefficient expression, write to Du.values
-   if constexpr (C::template contains<ValueChannel>())
+   // ValueChannel: evaluate coefficient expression, write to contributions.values
+   if constexpr (C::template Contains<ValueChannel>())
    {
-      const auto& value_coeff_expr = channels.template get<ValueChannel>();
+      const auto& value_coeff_expr = pullback.template Get<ValueChannel>();
 
       auto value_coeff_q = value_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          quad_pt_context,
@@ -153,28 +253,25 @@ void WriteOrdinaryChannelContributions(
          kernel_context,
          quad_index,
          value_coeff_q,
-         Du.values);
+         contributions.values);
    }
 
-   // GradientChannel: evaluate (physical frame), map to reference frame, write to Du.gradients
-   if constexpr (C::template contains<GradientChannel>())
+   // GradientChannel: evaluate (physical frame), map to reference frame, write to contributions.gradients
+   if constexpr (C::template Contains<GradientChannel>())
    {
-      const auto& grad_coeff_expr = channels.template get<GradientChannel>();
+      const auto& grad_coeff_expr = pullback.template Get<GradientChannel>();
 
       auto grad_coeff_q = grad_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          quad_pt_context,
          fields);
 
-      // CRITICAL: Map physical → reference frame
-      // This transformation is required because:
-      //   - GradientChannel stores physical-gradient coefficients (from pullback)
-      //   - Du.gradients expects reference-frame coefficients
-      //   - ApplyGradientTestFunctions expects reference-frame inputs
-      // Matches current temporary InnerExpr/DotExpr specialization behavior.
+      pullback_detail::ValidateGradientDimension(grad_coeff_q, quad_index);
+
+      // Test-gradient contraction consumes reference-frame coefficients.
       if constexpr (requires { quad_pt_context.inv_J_mesh; })
       {
          ApplyMappingTranspose(quad_pt_context.inv_J_mesh, grad_coeff_q);
@@ -194,171 +291,56 @@ void WriteOrdinaryChannelContributions(
          kernel_context,
          quad_index,
          grad_coeff_q,
-         Du.gradients);
+         contributions.gradients);
    }
 }
 
+/**
+ * @brief Compute separate minus/plus contributions at an interior quadrature point.
+ *
+ * Each gradient coefficient uses its own side's inverse Jacobian. Only the
+ * value/gradient entries present in the supplied pullback are evaluated.
+ */
 template<
    typename KernelContext,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename ElementContext,
-   typename QuadPtContext,
-   typename Fields,
-   typename Channels,
-   typename QuadIndex,
-   typename DuType>
-GENDIL_HOST_DEVICE
-void WriteCellChannelContributions(
-   const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
-   const OperatorContext& operator_context,
-   const ElementContext& element_context,
-   const QuadPtContext& quad_pt_context,
-   const Fields& fields,
-   const Channels& channels,
-   const QuadIndex& quad_index,
-   DuType& Du)
-{
-   using C = std::remove_cvref_t<Channels>;
-   static_assert(
-      !contains_side_qualified_interior_test_channel_v<C>,
-      "WriteCellChannelContributions consumes ordinary ValueChannel and "
-      "GradientChannel only. Side-qualified interior facet channels belong to "
-      "WriteGlobalInteriorFacetChannelContributions.");
-
-   WriteOrdinaryChannelContributions(
-      kernel_context,
-      weak_form_context,
-      operator_context,
-      element_context,
-      quad_pt_context,
-      fields,
-      channels,
-      quad_index,
-      Du);
-}
-
-template<
-   typename KernelContext,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename ElementContext,
-   typename QuadPtContext,
-   typename Fields,
-   typename Channels,
-   typename QuadIndex,
-   typename DuType>
-GENDIL_HOST_DEVICE
-void WriteLocalFacetChannelContributions(
-   const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
-   const OperatorContext& operator_context,
-   const ElementContext& element_context,
-   const QuadPtContext& quad_pt_context,
-   const Fields& fields,
-   const Channels& channels,
-   const QuadIndex& quad_index,
-   DuType& Du)
-{
-   using C = std::remove_cvref_t<Channels>;
-   static_assert(
-      !contains_side_qualified_interior_test_channel_v<C>,
-      "WriteLocalFacetChannelContributions consumes ordinary current-row "
-      "ValueChannel and GradientChannel only. Canonical global interior "
-      "channels must stay side-qualified.");
-
-   WriteOrdinaryChannelContributions(
-      kernel_context,
-      weak_form_context,
-      operator_context,
-      element_context,
-      quad_pt_context,
-      fields,
-      channels,
-      quad_index,
-      Du);
-}
-
-template<
-   typename KernelContext,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename ElementContext,
-   typename QuadPtContext,
-   typename Fields,
-   typename Channels,
-   typename QuadIndex,
-   typename DuType>
-GENDIL_HOST_DEVICE
-void WriteGlobalBoundaryFacetChannelContributions(
-   const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
-   const OperatorContext& operator_context,
-   const ElementContext& element_context,
-   const QuadPtContext& quad_pt_context,
-   const Fields& fields,
-   const Channels& channels,
-   const QuadIndex& quad_index,
-   DuType& Du)
-{
-   using C = std::remove_cvref_t<Channels>;
-   static_assert(
-      !contains_side_qualified_interior_test_channel_v<C>,
-      "WriteGlobalBoundaryFacetChannelContributions consumes ordinary "
-      "one-sided boundary ValueChannel and GradientChannel only. Boundary "
-      "facets must not receive side-qualified interior channels.");
-
-   WriteOrdinaryChannelContributions(
-      kernel_context,
-      weak_form_context,
-      operator_context,
-      element_context,
-      quad_pt_context,
-      fields,
-      channels,
-      quad_index,
-      Du);
-}
-
-template<
-   typename KernelContext,
-   typename WeakFormContext,
+   typename ExecutionContext,
    typename OperatorContext,
    typename ElementContext,
    typename FacetQuadPtContext,
    typename Fields,
-   typename Channels,
+   PullbackEntity Entity,
+   typename PullbackChannels,
    typename QuadIndex,
-   typename DuMinusType,
-   typename DuPlusType>
+   typename MinusContributions,
+   typename PlusContributions>
 GENDIL_HOST_DEVICE
-void WriteGlobalInteriorFacetChannelContributions(
+void ComputeContributions(
    const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
+   const ExecutionContext& execution_context,
    const OperatorContext& operator_context,
    const ElementContext& element_context,
    const FacetQuadPtContext& facet_quad_pt_context,
    const Fields& fields,
-   const Channels& channels,
+   const EntityPullbackResult<Entity, PullbackChannels>& pullback,
    const QuadIndex& quad_index,
-   DuMinusType& Du_minus,
-   DuPlusType& Du_plus)
+   MinusContributions& minus_contributions,
+   PlusContributions& plus_contributions)
 {
-   using C = std::remove_cvref_t<Channels>;
-   static_assert(
-      !contains_ordinary_test_channel_v<C>,
-      "Canonical global interior facet channels must be side-qualified. "
-      "ValueChannel and GradientChannel are reserved for cells, boundary "
-      "facets, and local/current-row facet compatibility.");
+   using C = EntityPullbackResult<Entity, PullbackChannels>;
+   static_assert(Entity == PullbackEntity::GlobalInteriorFacet,
+      "Two-row contributions require a global-interior pullback.");
+   static_assert(pullback_detail::quadrature_context_compatible_v<Entity, FacetQuadPtContext>,
+      "Pullback entity must match the quadrature point context.");
+   static_assert(global_interior_channel_sinks_compatible_v<C, MinusContributions, PlusContributions>,
+      "Canonical interior pullback channels require matching minus/plus sink storage.");
 
-   if constexpr (C::template contains<ValueMinusChannel>())
+   if constexpr (C::template Contains<ValueMinusChannel>())
    {
       const auto& value_coeff_expr =
-         channels.template get<ValueMinusChannel>();
+         pullback.template Get<ValueMinusChannel>();
       auto value_coeff_q = value_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          facet_quad_pt_context,
@@ -367,16 +349,16 @@ void WriteGlobalInteriorFacetChannelContributions(
          kernel_context,
          quad_index,
          value_coeff_q,
-         Du_minus.values);
+         minus_contributions.values);
    }
 
-   if constexpr (C::template contains<ValuePlusChannel>())
+   if constexpr (C::template Contains<ValuePlusChannel>())
    {
       const auto& value_coeff_expr =
-         channels.template get<ValuePlusChannel>();
+         pullback.template Get<ValuePlusChannel>();
       auto value_coeff_q = value_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          facet_quad_pt_context,
@@ -385,20 +367,21 @@ void WriteGlobalInteriorFacetChannelContributions(
          kernel_context,
          quad_index,
          value_coeff_q,
-         Du_plus.values);
+         plus_contributions.values);
    }
 
-   if constexpr (C::template contains<GradientMinusChannel>())
+   if constexpr (C::template Contains<GradientMinusChannel>())
    {
       const auto& grad_coeff_expr =
-         channels.template get<GradientMinusChannel>();
+         pullback.template Get<GradientMinusChannel>();
       auto grad_coeff_q = grad_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          facet_quad_pt_context,
          fields);
+      pullback_detail::ValidateGradientDimension(grad_coeff_q, quad_index);
       ApplyMappingTranspose(
          facet_quad_pt_context.MinusSide().inv_J_mesh,
          grad_coeff_q);
@@ -406,20 +389,21 @@ void WriteGlobalInteriorFacetChannelContributions(
          kernel_context,
          quad_index,
          grad_coeff_q,
-         Du_minus.gradients);
+         minus_contributions.gradients);
    }
 
-   if constexpr (C::template contains<GradientPlusChannel>())
+   if constexpr (C::template Contains<GradientPlusChannel>())
    {
       const auto& grad_coeff_expr =
-         channels.template get<GradientPlusChannel>();
+         pullback.template Get<GradientPlusChannel>();
       auto grad_coeff_q = grad_coeff_expr(
          kernel_context,
-         weak_form_context,
+         execution_context,
          operator_context,
          element_context,
          facet_quad_pt_context,
          fields);
+      pullback_detail::ValidateGradientDimension(grad_coeff_q, quad_index);
       ApplyMappingTranspose(
          facet_quad_pt_context.PlusSide().inv_J_mesh,
          grad_coeff_q);
@@ -427,16 +411,16 @@ void WriteGlobalInteriorFacetChannelContributions(
          kernel_context,
          quad_index,
          grad_coeff_q,
-         Du_plus.gradients);
+         plus_contributions.gradients);
    }
 }
 
 // ============================================================================
-// Form-level lowering to pullback channels
+// Integrand pullback construction
 // ============================================================================
 
 /**
- * @brief Lower cell integrand to pullback channels (form-level lowering).
+ * @brief Construct cell test-value and test-gradient coefficient expressions.
  *
  * For cell integrands `integrate(cells, field_expr)`, this function:
  * 1. Unwraps the inner FieldExpr from the Integrand wrapper
@@ -449,22 +433,24 @@ void WriteGlobalInteriorFacetChannelContributions(
  * @tparam DomainName Cell domain name (e.g., "mesh1")
  * @tparam Expr Inner FieldExpr type
  * @param integrand Cell integrand wrapper
- * @return PullbackResult with channels including integration measure
+ * @return Cell pullback with the integration measure included; coefficient
+ * expressions are evaluated later at quadrature points.
  */
 template<StaticString DomainName, FieldExpr Expr>
 GENDIL_HOST_DEVICE
-auto LowerCellIntegrandToPullbackChannels(const Integrand<Cells<DomainName>, Expr>& integrand)
+auto MakeCellPullback(const Integrand<Cells<DomainName>, Expr>& integrand)
 {
    const auto& field_expr = integrand.expr;  // Unwrap
    QuadratureMeasureExpr measure;            // Create measure seed
-   return pullback(field_expr, measure);     // FieldExpr pullback with measure
+   return MakeEntityPullbackResult<PullbackEntity::Cell>(
+      pullback(field_expr, measure));
 }
 
 // =============================================================================
-// Boundary Facet Integrand Lowering
+// Boundary Facet Pullback Construction
 // =============================================================================
 //
-// Lower boundary facet integrand to pullback expression:
+// Construct boundary test coefficients with the facet integration measure:
 //   integrate(boundary_facets, expr) -> pullback(expr, FacetQuadratureMeasureExpr{})
 //
 // The measure expression evaluates to: weight * det_J_facet
@@ -472,19 +458,20 @@ auto LowerCellIntegrandToPullbackChannels(const Integrand<Cells<DomainName>, Exp
 //
 template<StaticString DomainName, FieldExpr Expr>
 GENDIL_HOST_DEVICE
-auto LowerBoundaryFacetIntegrandToPullbackChannels(
+auto MakeBoundaryFacetPullback(
    const Integrand<BoundaryFacets<DomainName>, Expr>& integrand)
 {
    const auto& field_expr = integrand.expr;  // Extract field expression (e.g., u * v)
    FacetQuadratureMeasureExpr measure;       // Facet measure seed
-   return pullback(field_expr, measure);
+   return MakeEntityPullbackResult<PullbackEntity::BoundaryFacet>(
+      pullback_boundary(field_expr, measure));
 }
 
 // =============================================================================
-// Interior Facet Integrand Lowering
+// Interior Facet Pullback Construction
 // =============================================================================
 //
-// Lower interior facet integrand to pullback expression:
+// Construct current-row test coefficients with the facet integration measure:
 //   integrate(interior_facets, expr) -> pullback(expr, FacetQuadratureMeasureExpr{})
 //
 // The measure expression evaluates to: weight * det_J_facet
@@ -492,7 +479,7 @@ auto LowerBoundaryFacetIntegrandToPullbackChannels(
 //
 template<StaticString DomainName, FieldExpr Expr>
 GENDIL_HOST_DEVICE
-auto LowerInteriorFacetIntegrandToPullbackChannels(
+auto MakeLocalInteriorFacetPullback(
    const Integrand<InteriorFacets<DomainName>, Expr>& integrand)
 {
    static_assert(
@@ -509,12 +496,14 @@ auto LowerInteriorFacetIntegrandToPullbackChannels(
 
    const auto& field_expr = integrand.expr;  // Extract field expression (e.g., jump(u) * jump(v))
    FacetQuadratureMeasureExpr measure;       // Facet measure seed (same as boundary)
-   return pullback(field_expr, measure);
+   return MakeEntityPullbackResult<PullbackEntity::LocalInteriorFacet>(
+      pullback(field_expr, measure));
 }
 
+// Construct separate minus/plus test coefficients for canonical facet traversal.
 template<StaticString DomainName, FieldExpr Expr>
 GENDIL_HOST_DEVICE
-auto LowerGlobalInteriorFacetIntegrandToPullbackChannels(
+auto MakeGlobalInteriorFacetPullback(
    const Integrand<InteriorFacets<DomainName>, Expr>& integrand)
 {
    static_assert(
@@ -531,76 +520,8 @@ auto LowerGlobalInteriorFacetIntegrandToPullbackChannels(
 
    const auto& field_expr = integrand.expr;
    FacetQuadratureMeasureExpr measure;
-   return pullback_global_interior(field_expr, measure);
-}
-
-template<
-   typename KernelContext,
-   typename WeakFormContext,
-   typename OperatorContext,
-   typename ElementContext,
-   typename QuadPtContext,
-   typename Fields,
-   typename Integrand,
-   typename QuadIndex,
-   typename DuType>
-GENDIL_HOST_DEVICE
-void ComputeContributions(
-   const KernelContext& kernel_context,
-   const WeakFormContext& weak_form_context,
-   const OperatorContext& operator_context,
-   const ElementContext& element_context,
-   const QuadPtContext& quad_pt_context,
-   const Fields& fields,
-   const Integrand& integrand,
-   const QuadIndex& quad_index,
-   DuType& Du)
-{
-   if constexpr ( CellIntegrand<Integrand> )
-   {
-      auto channels = LowerCellIntegrandToPullbackChannels(integrand);
-
-      WriteCellChannelContributions(
-         kernel_context,
-         weak_form_context,
-         operator_context,
-         element_context,
-         quad_pt_context,
-         fields,
-         channels,
-         quad_index,
-         Du);
-   }
-   else if constexpr( BoundaryFacetIntegrand<Integrand> )
-   {
-      auto channels = LowerBoundaryFacetIntegrandToPullbackChannels(integrand);
-
-      WriteLocalFacetChannelContributions(
-         kernel_context,
-         weak_form_context,
-         operator_context,
-         element_context,
-         quad_pt_context,
-         fields,
-         channels,
-         quad_index,
-         Du);
-   }
-   else if constexpr( InteriorFacetIntegrand<Integrand> )
-   {
-      auto channels = LowerInteriorFacetIntegrandToPullbackChannels(integrand);
-
-      WriteLocalFacetChannelContributions(
-         kernel_context,
-         weak_form_context,
-         operator_context,
-         element_context,
-         quad_pt_context,
-         fields,
-         channels,
-         quad_index,
-         Du);
-   }
+   return MakeEntityPullbackResult<PullbackEntity::GlobalInteriorFacet>(
+      pullback_global_interior(field_expr, measure));
 }
 
 } // namespace gendil

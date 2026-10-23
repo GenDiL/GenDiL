@@ -72,8 +72,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void Apply(
    const HostCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,
@@ -111,8 +111,8 @@ template <
    typename IndexType,
    typename MatrixBackend,
    typename BackendComputeType,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 void ApplyAdd(
    const HostCOOBackend< BackendComputeType > & backend,
    const COOMatrix< ValueType, IndexType, MatrixBackend > & matrix,

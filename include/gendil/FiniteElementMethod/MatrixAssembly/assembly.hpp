@@ -4,11 +4,14 @@
 
 #pragma once
 
+// Select the matrix storage format and full or element-block assembly.
+#include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
+
 // Generic algorithms to assemble finite element matrices from a weak-form expression.
 #include "gendil/FiniteElementMethod/MatrixAssembly/Generic/genericassembly.hpp"
 
-// Matrix assembly/operator factory selector.
-#include "gendil/FiniteElementMethod/MatrixAssembly/matrixassemblytype.hpp"
+// Shared scratch requirements for local sparse-assembly probes.
+#include "gendil/FiniteElementMethod/MatrixAssembly/Generic/requiredsharedmemory.hpp"
 
 // Assembly of block sparse matrices in BSR format.
 #include "gendil/FiniteElementMethod/MatrixAssembly/BSR/bsrassembly.hpp"

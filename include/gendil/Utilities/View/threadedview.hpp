@@ -7,6 +7,8 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/MemoryManagement/hostdevicepointer.hpp"
 #include "Containers/containers.hpp"
+#include "gendil/Utilities/View/extents.hpp"
+#include "gendil/Utilities/VariadicHelperFunctions/get.hpp"
 
 namespace gendil {
 
@@ -17,8 +19,13 @@ struct ThreadedView
    using element_type = typename Container::element_type;
 
    using sizes = Sizes;
+   using logical_extents_type = static_extents_from_sequence_t< sizes >;
    using thread_shape = subsequence_t< sizes, typename KernelContext::template threaded_dimensions< Sizes::size() > >;
-   using register_shape = subsequence_t< sizes, typename KernelContext::template register_dimensions< Sizes::size() > >;
+   using register_dimensions =
+      typename KernelContext::template register_dimensions< Sizes::size() >;
+   using register_shape = subsequence_t< sizes, register_dimensions >;
+   using register_extents_type =
+      static_extents_from_sequence_t< register_shape >;
    static constexpr size_t rank = thread_shape::size() + register_shape::size();
 
    // const KernelContext & context;
@@ -26,7 +33,7 @@ struct ThreadedView
 
    template < typename... Indices >
    GENDIL_HOST_DEVICE
-   auto & operator()( Indices... idx ) const
+   decltype(auto) operator()( Indices... idx ) const
    {
       if constexpr ( sizeof...(idx) == Container::rank )
       {
@@ -42,14 +49,14 @@ struct ThreadedView
             register_shape::size() == Container::rank,
             "Threaded view container must have the same rank as register shape."
          );
-         auto register_indices = get( register_shape{}, idx... );
+         auto register_indices = get( register_dimensions{}, idx... );
          return std::apply(data, register_indices );
       }
    }
 
    template < typename... Indices >
    GENDIL_HOST_DEVICE
-   auto & operator()( Indices... idx )
+   decltype(auto) operator()( Indices... idx )
    {
       if constexpr ( sizeof...(idx) == Container::rank )
       {
@@ -65,7 +72,7 @@ struct ThreadedView
             register_shape::size() == Container::rank,
             "Threaded view container must have the same rank as register shape."
          );
-         auto register_indices = get( register_shape{}, idx... );
+         auto register_indices = get( register_dimensions{}, idx... );
          return std::apply(data, register_indices );
       }
    }
@@ -116,9 +123,9 @@ auto MakeThreadedView( const KernelContext & kernel_conf, const Container & data
 
 template < typename Sizes, typename KernelContext, typename Container >
 GENDIL_HOST_DEVICE
-auto MakeThreadedView( const KernelContext & kernel_conf, const Container & data )
+auto MakeThreadedView( const KernelContext &, const Container & data )
 {
-   return ThreadedView< Sizes, KernelContext, Container >{ kernel_conf, data };
+   return ThreadedView< Sizes, KernelContext, Container >{ data };
 }
 
 template < typename Sizes, typename KernelContext, typename Container >

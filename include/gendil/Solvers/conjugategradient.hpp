@@ -4,232 +4,210 @@
 
 #pragma once
 
-#include <functional>
-#include "gendil/Utilities/types.hpp"
-#include <iostream>
-#include "gendil/Solvers/iterativesolverresult.hpp"
+/** @file @brief Solve a symmetric positive-definite system with conjugate gradients.
+ *
+ * Supply an operator A(input, output), a right-hand side, and an initial guess:
+ *
+ * @code
+ * Vector x(rhs.Size());
+ * x = 0.0;
+ * auto result = ConjugateGradient(A, rhs, 100, Real(1e-10), x);
+ * @endcode
+ *
+ * The short owning-vector overload allocates its work vectors. Repeated solves
+ * can instead supply four reusable work vectors and a dot-product callback.
+ * Fixed local storage also supports the short and KernelContext overloads.
+ * All paths share the same recurrence and verify rhs - A*x before success.
+ */
+
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Solvers/iterativesolverutilities.hpp"
+#include "gendil/Utilities/MathHelperFunctions/dot.hpp"
+#include "gendil/Utilities/MathHelperFunctions/isfinite.hpp"
+#include "gendil/Utilities/MathHelperFunctions/checkedsqrt.hpp"
+#include <type_traits>
 
 namespace gendil {
 
-// Unpreconditionned conjugate gradient algorithm
-template<
-   typename Operator,
-   typename Rhs,
-   typename Vector >
-GENDIL_HOST_DEVICE
-auto ConjugateGradient(
-   const Operator & A,
-   const Rhs & rhs,
-   const Integer & max_iters,
-   const Real & tol,
-   Vector & x )
-{
-   using TmpVector = Vector; // TODO: Make some trait
-   // TODO: Allocate all vectors here? Provide allocator? Some kind of memory space?
-   
-   Integer iters;
-   TmpVector tmp, z;
-
-   Real tol_error;
-
-   TmpVector residual = rhs;
-   A( x, tmp );
-   residual -= tmp; // initial residual
-
-   Real rhs_norm = Norml2( rhs );
-   // Treat RHS as zero if its norm is exactly zero OR below meaningful precision.
-   // Without an absolute tolerance floor, tiny RHS values (e.g., 1e-30) cause the
-   // relative tolerance check to require unachievable precision, leading to
-   // numerical instability and eventual NaN propagation in time-stepping schemes.
-   constexpr Real absolute_tolerance_floor = 1e-30;
-   if( rhs_norm == 0 || rhs_norm < absolute_tolerance_floor )
-   {
-      x = 0.0;
-      iters = 0;
-      tol_error = 0.0;
-      return IterativeSolverResult{ true, iters, tol_error };
-   }
-   Real residual_norm = Norml2( residual );
-   if ( residual_norm < tol * rhs_norm )
-   {
-      iters = 0;
-      tol_error = Sqrt( residual_norm / rhs_norm );
-      return IterativeSolverResult{ true, iters, tol_error };
-   }
-
-   TmpVector p = residual; // initial search direction
-
-   Real abs_new = Dot( residual, p );  // the square of the absolute value of r scaled by invM
-   Integer i = 0;
-   while( i < max_iters )
-   {
-      A( p, tmp );
-
-      Real alpha = abs_new / Dot( p, tmp );       // the amount we travel on dir
-      x += alpha * p;                             // update solution
-      residual -= alpha * tmp;                    // update residual
-
-      residual_norm = Norml2( residual );
-      if( residual_norm < tol * rhs_norm )
-      {
-         tol_error = Sqrt( residual_norm / rhs_norm );
-         iters = i;
-         return IterativeSolverResult{ true, iters, tol_error };
-      }
-
-      z = residual; // approximately solve for "A z = residual"
-
-      Real abs_old = abs_new;
-      abs_new = Dot( residual, z );     // update the absolute value of r
-      Real beta = abs_new / abs_old;    // calculate the Gram-Schmidt value used to create the new search direction
-      p = z + beta * p;                 // update search direction
-      i++;
-   }
-   tol_error = Sqrt( residual_norm / rhs_norm );
-   iters = i;
-   return IterativeSolverResult{ false, iters, tol_error };
-}
-
 /**
- * @brief Solve A x = rhs using the Conjugate Gradient method.
+ * @brief Solve A*x = rhs using caller-provided work vectors and reductions.
  *
- * This implementation uses pre‑allocated work vectors and an injected
- * dot‑product function, so it remains agnostic to any parallel/MPI details.
+ * A must be symmetric positive definite in the inner product supplied by dot.
+ * A(input, output) overwrites output; dot performs any required global or
+ * collective reduction. Every norm uses this same dot, including verification
+ * of the final residual. rhs need only be assignable to the work-vector type;
+ * dot is called with work vectors, never directly with rhs.
+ * Work vectors support value assignment, Axpy(alpha, input, output), in-place
+ * scalar multiplication, and in-place addition.
  *
- * @tparam Vector    Mutable vector type (e.g. `std::vector<Real>`)
+ * For a nonzero RHS norm, tol bounds ||rhs - A*x|| / ||rhs||. For a zero RHS
+ * norm, tol bounds the absolute residual norm instead. A zero tolerance requires
+ * a zero residual. Initially converged guesses and zero iteration budgets leave
+ * x unchanged. There is no cutoff that treats tiny nonzero norms as zero;
+ * representability of dot products remains the reduction's responsibility.
  *
- * @param[in]  A         Linear operator functor: tmp = A * p
- * @param[in]  rhs       Right‑hand side vector
- * @param[in]  dot       Dot‑product function (`std::function<Real(const Vector&,const Vector&)>`)
- *                       Should perform any necessary global reductions.
- * @param[in]  max_iters Maximum number of iterations
- * @param[in]  tol       Convergence tolerance (relative to ‖rhs‖)
- * @param[in,out] x      On entry: initial guess. On exit: approximate solution.
- * @param[in,out] tmp    Pre‑allocated workspace of same size as x
- * @param[in,out] z      Pre‑allocated workspace of same size as x
- * @param[in,out] residual Pre‑allocated workspace of same size as x
- * @param[in,out] p      Pre‑allocated workspace of same size as x
+ * @param[in,out] x Initial guess on entry, approximate solution on return.
+ * @param[in,out] tmp,z,residual,p Four independent, preallocated work vectors.
+ * @pre tol is finite and nonnegative. rhs, x, and all work vectors have matching
+ *      extents and do not alias. Operations complete their outputs before use.
+ *      Collective callers participate together in every operator and reduction.
  *
- * @return `std::tuple<bool, Integer, Real>`  
- *         - bool:    `true` if converged, `false` if max_iters reached  
- *         - Integer: number of iterations performed  
- *         - Real:    final relative residual `sqrt(‖r‖² / ‖rhs‖²)`
+ * @return IterativeSolverResult with success only after true-residual
+ * verification, the number of completed solution updates, and the true relative
+ * residual (absolute for a zero RHS). Nonpositive curvature or invalid arithmetic
+ * returns failure; an uncomputable error is infinity. Work buffers and completed
+ * solution updates are not rolled back on failure.
+ *
+ * Verification adds an operator application at candidate convergence and at an
+ * iteration-limit exit. Failed verification restarts the direction from the true
+ * residual within the remaining budget; verification itself is not an iteration.
  */
-template<
-   typename Operator,
-   typename RHSType,
-   typename DotType,
-   typename Vector
->
+template<class Operator, class RHSType, class DotType, class V>
 GENDIL_HOST_DEVICE
-auto ConjugateGradient(
-   const Operator & A,
-   const RHSType & rhs,
-   const DotType & dot,
-   const Integer max_iters,
-   const Real tol,
-   Vector & x,
-   // scratch memory inputs
-   Vector & tmp,
-   Vector & z,
-   Vector & residual,
-   Vector & p )
+IterativeSolverResult ConjugateGradient(
+   const Operator& A, const RHSType& rhs, const DotType& dot,
+   const Integer max_iters, const Real tol, V& x,
+   V& tmp, V& z, V& residual, V& p)
 {
-   // Helper: 2‑norm via injected dot
-   auto norm2 = [&](Vector const & v){
-      return Sqrt( dot(v, v) );
+   GENDIL_VERIFY(IsFinite(tol) && tol >= 0,
+      "CG requires a finite, nonnegative tolerance.");
+
+   residual = rhs;
+   const Real rhs_norm = CheckedSqrt(dot(residual, residual));
+   if (!solver_detail::ValidNorm(rhs_norm))
+   {
+      return solver_detail::MakeIterativeSolverResult(false, 0, 0, rhs_norm);
+   }
+
+   const auto copy = [](const RHSType& input, V& output) { output = input; };
+   const auto axpy = [](Real alpha, const V& input, V& output)
+   {
+      Axpy(alpha, input, output);
+   };
+   auto true_residual_square = [&]()
+   {
+      solver_detail::ComputeTrueResidual(A, rhs, x, residual, tmp, copy, axpy);
+      return Real(dot(residual, residual));
+   };
+   const Real absolute_tolerance = rhs_norm == 0 ? tol : 0;
+   auto converged = [&](const Real norm)
+   {
+      return solver_detail::Converged(norm, rhs_norm, tol, absolute_tolerance);
+   };
+   auto result = [&](const bool success, const Integer iterations, const Real norm)
+   {
+      return solver_detail::MakeIterativeSolverResult(success, iterations, norm, rhs_norm);
+   };
+   auto failure = [&](const Integer iterations)
+   {
+      return result(false, iterations,
+         CheckedSqrt(true_residual_square()));
    };
 
-   // 1) r = rhs - A*x
-   A(x, tmp);
-   residual = rhs;
-   residual -= tmp;
-
-   // 2) Compute ‖rhs‖ for relative tolerance
-   const Real rhs_n = norm2( residual );
-   // Treat RHS as zero if its norm is exactly zero OR below meaningful precision.
-   // Without an absolute tolerance floor, tiny RHS values (e.g., 1e-30) cause the
-   // relative tolerance check to require unachievable precision, leading to
-   // numerical instability and eventual NaN propagation in time-stepping schemes.
-   constexpr Real absolute_tolerance_floor = 1e-30;
-   if ( rhs_n == 0.0 || rhs_n < absolute_tolerance_floor ) {
-      // trivial solution if rhs is zero or negligibly small
-      x = 0.0;
-      return IterativeSolverResult{ true, 0, 0.0 };
-   }
-
-   // 3) Check initial convergence
-   Real r_n = norm2( residual );
-   if (r_n < tol * rhs_n) {
-      return IterativeSolverResult{ true, 0, Sqrt(r_n/rhs_n) };
-   }
-
-   // 4) p = r
-   // P( residual, p );
-   p = residual;
-   Real abs_new = dot( residual, p );  // (r, r)
-
-   Integer iter = 0;
-   while ( iter < max_iters )
+   Real residual_square = true_residual_square();
+   Real residual_norm = CheckedSqrt(residual_square);
+   if (!solver_detail::ValidNorm(residual_norm)) { return result(false, 0, residual_norm); }
+   if (converged(residual_norm))
    {
-      // 5) tmp = A * p
+      return result(true, 0, residual_norm);
+   }
+   if (max_iters == 0) { return result(false, 0, residual_norm); }
+
+   p = residual;
+   Integer iterations = 0;
+   while (iterations < max_iters)
+   {
       A(p, tmp);
+      const Real curvature = dot(p, tmp);
+      if (!IsFinite(curvature) || curvature <= 0) { return failure(iterations); }
+      const Real alpha = residual_square / curvature;
+      if (!IsFinite(alpha)) { return failure(iterations); }
 
-      // 6) α = (r, r) / (p, A p)
-      Real alpha = abs_new / dot( p, tmp );
-
-      // 7) x += α p;  r -= α tmp
-      Axpy( alpha, p, x);
+      Axpy(alpha, p, x);
       Axpy(-alpha, tmp, residual);
+      ++iterations;
 
-      // 8) Convergence check: ‖r‖ < tol * ‖rhs‖
-      r_n = norm2( residual );
-      if ( r_n < tol * rhs_n ) {
-         return IterativeSolverResult{ true, iter+1, Sqrt(r_n/rhs_n) };
+      const Real next_square = dot(residual, residual);
+      residual_norm = CheckedSqrt(next_square);
+      if (!solver_detail::ValidNorm(residual_norm)) { return failure(iterations); }
+      if (converged(residual_norm) || iterations == max_iters)
+      {
+         residual_square = true_residual_square();
+         residual_norm = CheckedSqrt(residual_square);
+         if (!solver_detail::ValidNorm(residual_norm))
+         {
+            return result(false, iterations, residual_norm);
+         }
+         if (converged(residual_norm))
+         {
+            return result(true, iterations, residual_norm);
+         }
+         if (iterations == max_iters) { return result(false, iterations, residual_norm); }
+         // Replacing the recursive residual invalidates the old conjugate direction.
+         p = residual;
+         continue;
       }
 
-      // 9) z = r  (for future preconditioning)
-      // P( residual, z );
+      const Real beta = next_square / residual_square;
+      if (!IsFinite(beta)) { return failure(iterations); }
       z = residual;
-
-      // 10) β = (r_new, z) / (r_old, r_old)
-      Real abs_old = abs_new;
-      abs_new = dot(residual, z);
-      Real beta  = abs_new / abs_old;
-
-      // 11) p = z + β p
       p *= beta;
       p += z;
-
-      ++iter;
+      residual_square = next_square;
    }
-
-   // 12) No convergence within max_iters
-   return IterativeSolverResult{ false, iter, Sqrt(r_n/rhs_n) };
+   return failure(iterations); // The loop normally returns on its last update.
 }
 
-template<
-   typename KernelContext,
-   typename Operator,
-   typename RHSVector,
-   typename Vector >
-GENDIL_HOST_DEVICE
-auto ConjugateGradient(
-   KernelContext & kernel_conf,
-   const Operator & A,
-   const RHSVector & rhs,
-   const Integer & max_iters,
-   const Real & tol,
-   Vector & x )
+/** @brief Solve with owning vectors, allocating four work vectors for this call.
+ * This host entry point preserves the initial guess and uses Dot for reductions.
+ * An empty system succeeds without allocation or operator evaluation.
+ */
+template<class Operator>
+IterativeSolverResult ConjugateGradient(
+   const Operator& A, const Vector& rhs, const Integer& max_iters,
+   const Real& tol, Vector& x)
 {
-   auto dot = [&]( const Vector & u, const Vector & v )
-   {
-      return Dot( kernel_conf, u, v );
-   };
-
-   Vector tmp, z, residual, p;
-
-   return ConjugateGradient( A, rhs, dot, max_iters, tol, x, tmp, z, residual, p );
+   GENDIL_VERIFY(IsFinite(tol) && tol >= 0,
+      "CG requires a finite, nonnegative tolerance.");
+   GENDIL_VERIFY(rhs.Size() == x.Size(), "CG requires matching RHS and solution sizes.");
+   if (x.Size() == 0) { return {true, 0, 0}; }
+   Vector tmp(x.Size()), z(x.Size()), residual(x.Size()), p(x.Size());
+   const auto dot = [](const Vector& a, const Vector& b) { return Dot(a, b); };
+   return ConjugateGradient(A, rhs, dot, max_iters, tol, x, tmp, z, residual, p);
 }
 
+/** @brief Solve on the host using default-constructed local work storage.
+ * Default construction of V must yield independent, fully sized writable
+ * storage, as it does for SerialRecursiveArray and ElementDoF. Borrowed handles
+ * are not owning workspaces. Supply explicit scratch for other storage types.
+ * Device callers use the Context overload or provide explicit scratch and dot.
+ */
+template<class Operator, class Rhs, class V>
+   requires (!std::is_same_v<std::remove_cvref_t<V>, Vector>)
+IterativeSolverResult ConjugateGradient(
+   const Operator& A, const Rhs& rhs, const Integer& max_iters,
+   const Real& tol, V& x)
+{
+   V tmp, z, residual, p;
+   const auto dot = [](const V& a, const V& b) { return Dot(a, b); };
+   return ConjugateGradient(A, rhs, dot, max_iters, tol, x, tmp, z, residual, p);
 }
+
+/** @brief Solve inside a kernel context with local storage and collective Dot.
+ * Default-constructed V must own full writable storage for this work item.
+ * This path allocates no dynamic vectors; ThreadedView with owning register
+ * storage is supported. All participants must call it with the same budget
+ * and tolerance and supply the shared memory required by contextual Dot.
+ */
+template<class Context, class Operator, class Rhs, class V>
+GENDIL_HOST_DEVICE
+IterativeSolverResult ConjugateGradient(
+   Context& context, const Operator& A, const Rhs& rhs,
+   const Integer& max_iters, const Real& tol, V& x)
+{
+   const auto dot = [&](const V& a, const V& b) { return Dot(context, a, b); };
+   V tmp, z, residual, p;
+   return ConjugateGradient(A, rhs, dot, max_iters, tol, x, tmp, z, residual, p);
+}
+
+} // namespace gendil

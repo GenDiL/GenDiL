@@ -15,3 +15,6 @@
 
 // An mfem::Vector wrapper to interface between gendil::Vector and mfem::Vector.
 #include "vector.hpp"
+
+// Expose GenDiL vector maps as MFEM operators for solver interoperability.
+#include "operator.hpp"

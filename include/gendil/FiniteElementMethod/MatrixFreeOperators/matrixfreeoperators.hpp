@@ -42,6 +42,9 @@
 // An operator to compute the L2 error.
 #include "L2error.hpp"
 
+// Analytic interpolation into scalar/vector tensor-product nodal fields.
+#include "nodalinterpolation.hpp"
+
 // An operator to project a high dimension field onto the first subspace using L2 norm.
 #include "L2projectionoperator.hpp"
 
@@ -53,3 +56,6 @@
 
 // A generic operator built using a weak-form
 #include "GenericOperator/genericoperator.hpp"
+
+// Customization interface for native local-operator preparation and application.
+#include "GenericOperator/localoperatorcontract.hpp"

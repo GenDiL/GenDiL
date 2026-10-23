@@ -6,6 +6,8 @@
 
 #include <array>
 #include <memory>
+#include <type_traits>
+#include <utility>
 
 #include "gendil/Utilities/gettensorsize.hpp"
 #include "gendil/Utilities/IndexSequenceHelperFunctions/indexsequencehelperfunctions.hpp"
@@ -393,6 +395,26 @@ SerialRecursiveArray< T, Dims... > operator+(
    return res;
 }
 
+// Mixed entry types follow scalar addition's promotion rules. Keep the
+// same-type overload above so existing result types remain unchanged.
+template<typename L, typename R, size_t... Dims>
+   requires (!std::is_same_v<L, R>)
+GENDIL_HOST_DEVICE
+auto operator+(const SerialRecursiveArray<L, Dims...>& lhs,
+               const SerialRecursiveArray<R, Dims...>& rhs)
+   -> SerialRecursiveArray<std::remove_cvref_t<decltype(
+      std::declval<const L&>() + std::declval<const R&>())>, Dims...>
+{
+   using Value = std::remove_cvref_t<decltype(
+      std::declval<const L&>() + std::declval<const R&>())>;
+   SerialRecursiveArray<Value, Dims...> result;
+   UnitLoop<Dims...>([&](auto... indices)
+   {
+      result(indices...) = lhs(indices...) + rhs(indices...);
+   });
+   return result;
+}
+
 template< typename T, size_t... Dims, typename Other >
 GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > & operator-=( SerialRecursiveArray< T, Dims... > & x, Other const & y )
@@ -452,8 +474,10 @@ SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dim
 }
 
 // Generic scalar multiplication with compatible scalar types (0.5, coefficients, etc.)
+// Require the element assignment used below so vector/matrix operands do not
+// compete with algebraic products as apparent scalar multipliers.
 template< typename Scalar, typename T, size_t... Dims >
-requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+requires requires(const Scalar& s, const T& x, T& out) { out = s * x; } && (!std::same_as<Scalar, T>)
 GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > operator*( const Scalar & scalar, const SerialRecursiveArray< T, Dims... > & arr )
 {
@@ -466,7 +490,7 @@ SerialRecursiveArray< T, Dims... > operator*( const Scalar & scalar, const Seria
 }
 
 template< typename Scalar, typename T, size_t... Dims >
-requires requires(Scalar s, T x) { x * s; } && (!std::same_as<Scalar, T>)
+requires requires(const Scalar& s, const T& x, T& out) { out = s * x; } && (!std::same_as<Scalar, T>)
 GENDIL_HOST_DEVICE
 SerialRecursiveArray< T, Dims... > operator*( const SerialRecursiveArray< T, Dims... > & arr, const Scalar & scalar )
 {

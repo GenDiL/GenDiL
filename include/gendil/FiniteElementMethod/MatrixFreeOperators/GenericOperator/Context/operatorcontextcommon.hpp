@@ -11,12 +11,28 @@
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/weakformcontext.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/signatures.hpp"
 
 namespace gendil
 {
 
 namespace operator_context_detail {
 
+// Lookup only: signatures were resolved against complete-form declarations
+// before any domain selection or numerical preparation.
+template<class Integrand, class Signatures> struct signature_lookup;
+template<class Integrand, class Head, class... Tail>
+struct signature_lookup<Integrand, type_list<Head, Tail...>>
+   : std::conditional_t<std::is_same_v<std::remove_cvref_t<Integrand>, typename Head::integrand_type>,
+        std::type_identity<Head>, signature_lookup<Integrand, type_list<Tail...>>> {};
+template<class Integrand>
+struct signature_lookup<Integrand, type_list<>>
+{
+   static_assert(dependent_false_v<Integrand>,
+      "The integrand is absent from the operator context's analyzed form.");
+};
+template<class FormSignature, class Integrand>
+struct signature_for : signature_lookup<Integrand, typename FormSignature::integrands> {};
 template<class IntegrationRule, class Mesh>
 consteval bool IntegrationRuleGeometryMatchesMesh()
 {
@@ -47,6 +63,36 @@ constexpr void ValidateIntegrationRuleGeometry()
 }
 
 } // namespace operator_context_detail
+
+template<class IntegrationRule, class MeshQDMap, class FEQDMap, class FormSignature>
+struct CellOnlyOperatorContext
+{
+   using integration_rule_type = IntegrationRule;
+   using form_signature = FormSignature;
+   template<class Integrand> using signature_for =
+      typename operator_context_detail::signature_for<FormSignature, Integrand>::type;
+
+   IntegrationRule int_rule;
+   MeshQDMap mesh_qd;
+   FEQDMap fe_qd;
+
+   GENDIL_HOST_DEVICE
+   const IntegrationRule& GetIntegrationRule() const { return int_rule; }
+
+   template<StaticString Name>
+   GENDIL_HOST_DEVICE
+   constexpr decltype(auto) GetMeshQuadData() const
+   {
+      return mesh_qd.template Get<DomainKey<Name>>();
+   }
+
+   template<StaticString Name>
+   GENDIL_HOST_DEVICE
+   constexpr decltype(auto) GetFiniteElementQuadData() const
+   {
+      return fe_qd.template Get<FiniteElementFieldKey<Name>>();
+   }
+};
 
 template<class IntegrationRule, class DomainView>
 constexpr auto MakeMeshQuadData(const DomainView& domain)

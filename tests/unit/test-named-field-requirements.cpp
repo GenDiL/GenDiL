@@ -4,7 +4,7 @@
 
 #include <gendil/gendil.hpp>
 #include <gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontext.hpp>
-#include <gendil/FiniteElementMethod/WeakForm/fielddependencies.hpp>
+#include <gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -48,6 +48,22 @@ bool Near(Real a, Real b, Real tol = 1e-12)
 
 } // namespace
 
+template<class Expression>
+using Semantics = expression_semantics_t<Expression, form_symbols_t<Expression>>;
+template<class Expression>
+using InputRequirements = merge_named_field_requirement_list_t<concat_t<
+   typename Semantics<Expression>::active_inputs, typename Semantics<Expression>::bound_inputs>>;
+template<class Form>
+using FormFields = merge_named_field_requirement_list_t<concat_many_t<
+   typename form_signature_t<Form>::active_inputs,
+   typename form_signature_t<Form>::bound_inputs,
+   typename form_signature_t<Form>::test_outputs>>;
+template<class... Fields>
+consteval bool HasCallbackRead(type_list<Fields...>)
+{ return (has_provenance(Fields::provenance, NamedFieldProvenance::CoefficientInput) || ...); }
+template<class Form>
+inline constexpr bool HasActiveCallback = HasCallbackRead(typename form_signature_t<Form>::active_inputs{});
+
 template<class Req, OperatorMask ExpectedMask, NamedFieldProvenance ExpectedProvenance>
 constexpr bool requirement_has()
 {
@@ -69,7 +85,7 @@ int main()
 
       using WReq = find_named_field_requirement_t<Reqs, "w">;
       static_assert(requirement_has<WReq, OperatorMask::Values, NamedFieldProvenance::CoefficientInput>());
-      static_assert(has_side_dependent_named_field_inputs_v<decltype(coeff)>);
+      static_assert(!is_empty_type_list_v<InputRequirements<decltype(coeff)>>);
 
       std::cout << "  [PASS] coefficient FieldValue requires named field values\n";
    }
@@ -83,7 +99,7 @@ int main()
 
       using WReq = find_named_field_requirement_t<Reqs, "w">;
       static_assert(requirement_has<WReq, OperatorMask::Gradients, NamedFieldProvenance::CoefficientInput>());
-      static_assert(has_side_dependent_named_field_inputs_v<decltype(coeff)>);
+      static_assert(!is_empty_type_list_v<InputRequirements<decltype(coeff)>>);
 
       std::cout << "  [PASS] coefficient FieldGradient requires named field gradients\n";
    }
@@ -113,7 +129,7 @@ int main()
          [] (const auto&) { return 1.0; });
 
       auto expr = rho * coeff;
-      using Reqs = input_named_field_requirements_t<decltype(expr)>;
+      using Reqs = InputRequirements<decltype(expr)>;
       static_assert(contains_named_field_requirement_v<Reqs, "rho">);
 
       using RhoReq = find_named_field_requirement_t<Reqs, "rho">;
@@ -153,9 +169,9 @@ int main()
       auto form = integrate(cells, coeff * u * v);
       using Form = decltype(form);
 
-      static_assert(has_active_trial_coefficient_dependency_v<Form>);
+      static_assert(HasActiveCallback<Form>);
 
-      using ActiveReqs = active_trial_named_field_requirements_t<Form>;
+      using ActiveReqs = typename form_signature_t<Form>::active_inputs;
       static_assert(contains_named_field_requirement_v<ActiveReqs, "u">);
       using UReq = find_named_field_requirement_t<ActiveReqs, "u">;
       static_assert(need_values(UReq::mask));
@@ -174,7 +190,7 @@ int main()
       auto form = integrate(cells, u * v + rho * v + eta * v);
 
       using Active =
-         active_finite_element_field_requirements_t<decltype(form)>;
+         FormFields<decltype(form)>;
       static_assert(contains_named_field_requirement_v<Active, "u">);
       static_assert(contains_named_field_requirement_v<Active, "v">);
       static_assert(contains_named_field_requirement_v<Active, "rho">);
@@ -193,7 +209,7 @@ int main()
       Cells<"mesh"> cells;
       auto test_only = integrate(cells, v);
       using TestOnly =
-         active_finite_element_field_requirements_t<decltype(test_only)>;
+         FormFields<decltype(test_only)>;
       static_assert(contains_named_field_requirement_v<TestOnly, "v">);
       static_assert(
          !contains_named_field_requirement_v<TestOnly, "u">);
@@ -204,7 +220,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto coefficient_only = integrate(cells, rho + eta);
       using CoefficientOnly =
-         active_finite_element_field_requirements_t<
+         FormFields<
             decltype(coefficient_only)>;
       static_assert(
          contains_named_field_requirement_v<CoefficientOnly, "rho">);
@@ -215,7 +231,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto geometry_only = integrate(cells, geometry);
       using GeometryOnly =
-         active_finite_element_field_requirements_t<
+         FormFields<
             decltype(geometry_only)>;
       static_assert(std::is_same_v<GeometryOnly, type_list<>>);
 
@@ -231,7 +247,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto form = integrate(cells, coeff * u * v);
 
-      static_assert(has_active_trial_coefficient_dependency_v<decltype(form)>);
+      static_assert(HasActiveCallback<decltype(form)>);
 
       std::cout << "  [PASS] active-trial FieldGradient overlap is detected\n";
    }
@@ -245,7 +261,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto form = integrate(cells, coeff * u * v);
 
-      static_assert(!has_active_trial_coefficient_dependency_v<decltype(form)>);
+      static_assert(!HasActiveCallback<decltype(form)>);
 
       std::cout << "  [PASS] lagged coefficient field avoids active-trial overlap\n";
    }
@@ -254,7 +270,7 @@ int main()
       auto geom_coeff = MakeCoefficient<"k", PhysicalCoordinates>(
          [] (const auto&) { return 1.0; });
 
-      static_assert(!has_side_dependent_named_field_inputs_v<decltype(geom_coeff)>);
+      static_assert(is_empty_type_list_v<InputRequirements<decltype(geom_coeff)>>);
       static_assert(has_test_space_dependency_v<TestSpace<"v">>);
       static_assert(!has_test_space_dependency_v<TrialSpace<"u">>);
       static_assert(is_side_evaluable_v<decltype(geom_coeff)>);
@@ -280,12 +296,8 @@ int main()
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(plus_selected)>);
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(averaged)>);
       static_assert(!has_unqualified_side_dependent_inputs_v<decltype(jumped)>);
-      static_assert(
-         has_invalid_unqualified_interior_side_dependencies_v<
-            decltype(unqualified), Empty, Empty>);
-      static_assert(
-         !has_invalid_unqualified_interior_side_dependencies_v<
-            decltype(averaged), Empty, Empty>);
+      static_assert(!form_signature_t<decltype(unqualified)>::valid);
+      static_assert(form_signature_t<decltype(averaged)>::valid);
 
       std::cout << "  [PASS] explicit traces clear unqualified side dependency for side-evaluable coefficient expressions\n";
    }
@@ -311,7 +323,7 @@ int main()
          unqualified_side_dependent_named_field_requirements_t<decltype(unqualified)>;
       using WReq = find_named_field_requirement_t<Reqs, "w">;
       static_assert(need_gradients(WReq::mask));
-      static_assert(!is_value_only_requirement_v<WReq>);
+      static_assert(need_gradients(WReq::mask));
 
       std::cout << "  [PASS] unqualified FieldGradient remains side-dependent until side-selected\n";
    }
@@ -382,7 +394,7 @@ int main()
       gradients.data[1][0][1] = 8.0;
 
       using Field = InterpolatedField<FakeValueTensor2D, FakeGradientTensor2D>;
-      auto fields = make_map(
+      auto fields = MakeStaticMap(
          Entry<NameTag<"w">, Field>{ Field{ values, gradients } }
       );
 
@@ -446,6 +458,11 @@ int main()
       static_assert(requires_plus_side_jacobian_v<decltype(averaged_gradient_coeff)>);
       static_assert(requires_plus_side_jacobian_v<decltype(jumped_gradient_coeff)>);
       static_assert(requires_plus_side_jacobian_v<decltype(average(grad(u)))>);
+      using BorrowedGradientTerms = std::tuple<const decltype(averaged_gradient_coeff)&,
+                                               const decltype(averaged_gradient_coeff)&>;
+      static_assert(requires_plus_side_jacobian_v<BorrowedGradientTerms>);
+      static_assert(contains_named_field_requirement_v<
+         raw_named_field_requirements_t<BorrowedGradientTerms>, "w">);
       static_assert(requires_plus_side_jacobian_v<decltype(jump(grad(u)))>);
 
       FiniteElementField<"rho"> rho;

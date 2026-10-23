@@ -10,7 +10,12 @@
 #include "gendil/Utilities/KernelContext/isthreadeddim.hpp"
 #include "gendil/Utilities/KernelContext/kernelplacementtraits.hpp"
 #include "gendil/Utilities/View/threadedview.hpp"
-#include "gendil/Algebra/vector.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
+#include <array>
+#include <type_traits>
+#include <utility>
 
 namespace gendil {
 
@@ -65,6 +70,42 @@ Real Dot( const ElementDoF< FiniteElementSpace > & u, const ElementDoF< FiniteEl
    return res;
 }
 
+// Contract equally sized vectors without converting their storage. This lets
+// matrix-vector fluxes (recursive arrays) pair directly with facet normals
+// (standard arrays). Arithmetic entries exclude nested matrix/tensor operands;
+// the multiplication result type determines the accumulation precision.
+template<typename L, typename R, size_t N>
+   requires (std::is_arithmetic_v<L> && std::is_arithmetic_v<R>)
+GENDIL_HOST_DEVICE
+auto Dot(const SerialRecursiveArray<L, N>& lhs, const std::array<R, N>& rhs)
+   -> std::remove_cvref_t<decltype(std::declval<const L&>() * std::declval<const R&>())>
+{
+   using Result = std::remove_cvref_t<decltype(
+      std::declval<const L&>() * std::declval<const R&>())>;
+   Result result{0};
+   for (size_t i = 0; i < N; ++i)
+   {
+      result += lhs(i) * rhs[i];
+   }
+   return result;
+}
+
+template<typename L, typename R, size_t N>
+   requires (std::is_arithmetic_v<L> && std::is_arithmetic_v<R>)
+GENDIL_HOST_DEVICE
+auto Dot(const std::array<L, N>& lhs, const SerialRecursiveArray<R, N>& rhs)
+   -> std::remove_cvref_t<decltype(std::declval<const L&>() * std::declval<const R&>())>
+{
+   using Result = std::remove_cvref_t<decltype(
+      std::declval<const L&>() * std::declval<const R&>())>;
+   Result result{0};
+   for (size_t i = 0; i < N; ++i)
+   {
+      result += lhs[i] * rhs(i);
+   }
+   return result;
+}
+
 template < typename T, Integer ... Dims >
 GENDIL_HOST_DEVICE
 T Dot( const SerialRecursiveArray< T, Dims... > & u, const SerialRecursiveArray< T, Dims... > & v )
@@ -114,7 +155,7 @@ template < typename KernelConfiguration >
 static constexpr size_t required_threaded_dot_shared_memory_v =
    is_device_configuration_v< KernelConfiguration > ? 1 : 0;
 
-Real Dot( const Vector & u, const Vector & v )
+inline Real Dot( const Vector & u, const Vector & v )
 {
    GENDIL_VERIFY(u.Size() == v.Size(), "Vector sizes do not match.");
    GENDIL_VERIFY(u.IsHostValid() || u.IsDeviceValid(), "Vector data is not valid on either host or device.");
@@ -125,6 +166,28 @@ Real Dot( const Vector & u, const Vector & v )
    Real sum = 0.0;
    #pragma omp parallel for reduction(+:sum)
    for (size_t i = 0; i < u.Size(); ++i) {
+      sum += u_ptr[i] * v_ptr[i];
+   }
+   return sum;
+}
+
+/** @brief Host Euclidean product for non-owning and external vector accessors. */
+template < HostReadableVector FirstVector,
+           HostReadableVector SecondVector >
+   requires (
+      !std::same_as< std::remove_cvref_t< FirstVector >, Vector > ||
+      !std::same_as< std::remove_cvref_t< SecondVector >, Vector > )
+Real Dot( const FirstVector & u, const SecondVector & v )
+{
+   GENDIL_VERIFY(
+      GetVectorSize( u ) == GetVectorSize( v ),
+      "Vector sizes do not match." );
+   const Real * u_ptr = ReadHostVector( u );
+   const Real * v_ptr = ReadHostVector( v );
+   Real sum = 0.0;
+   #pragma omp parallel for reduction(+:sum)
+   for ( size_t i = 0; i < GetVectorSize( u ); ++i )
+   {
       sum += u_ptr[i] * v_ptr[i];
    }
    return sum;

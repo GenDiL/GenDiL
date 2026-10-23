@@ -8,11 +8,24 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/kerneloperators.hpp"
 #include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
-#include "gendil/Algebra/vector.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
+#include "gendil/Algebra/Vector/vector.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Algebra/Vector/operations.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 
+#include <type_traits>
+#include <utility>
+
 namespace gendil {
+
+template<class KernelPolicy,
+         class Space,
+         class IntegrationRule,
+         class Function>
+Vector AssembleLinearForm(
+   const Space& space,
+   const IntegrationRule& integration_rule,
+   Function function);
 
 /**
  * @brief Implementation of the linear form operator at the element level.
@@ -55,8 +68,23 @@ void LinearFormElementOperator(
 
    const auto cell = fe_space.GetCell( element_index );
 
-   // Container to store values at all the quadrature points
-   auto DBu = MakeQuadraturePointValuesContainer( kernel_conf, integration_rule );
+   // Vector test spaces use one scalar quadrature tensor per component.
+   auto DBu = [&]
+   {
+      if constexpr (is_vector_finite_element_space_v<FiniteElementSpace>)
+      {
+         return MakeVectorValuesTuple<
+            num_comp_v<FiniteElementSpace>>(
+               kernel_conf,
+               integration_rule);
+      }
+      else
+      {
+         return MakeQuadraturePointValuesContainer(
+            kernel_conf,
+            integration_rule);
+      }
+   }();
 
    // Application of the QFunction
    QuadraturePointLoop( kernel_conf, integration_rule, [&] ( auto const & quad_index )
@@ -71,9 +99,9 @@ void LinearFormElementOperator(
 
       const Real weight = GetWeight( quad_index, element_quad_data );
 
-      const Real Du_q = lambda( X );
+      const auto Du_q = lambda( X );
 
-      const Real Du_q_w = weight * detJ * Du_q;
+      const auto Du_q_w = weight * detJ * Du_q;
 
       WriteQuadratureLocalValues( kernel_conf, quad_index, Du_q_w, DBu );
    } );
@@ -240,11 +268,10 @@ auto MakeLinearForm( const FiniteElementSpace & finite_element_space,
                      const IntegrationRule & int_rule,
                      Lambda && lambda )
 {
-   return LinearForm<
-             KernelPolicy,
-             FiniteElementSpace,
-             IntegrationRule
-          >( finite_element_space, int_rule, lambda );
+   return AssembleLinearForm<KernelPolicy>(
+      finite_element_space,
+      int_rule,
+      std::forward<Lambda>(lambda));
 }
 
 /**
@@ -265,12 +292,78 @@ auto MakeLinearForm( const FiniteElementSpace & finite_element_space,
                      Lambda && lambda )
 {
    using KernelPolicy = SerialKernelConfiguration;
+   return AssembleLinearForm<KernelPolicy>(
+      finite_element_space,
+      int_rule,
+      std::forward<Lambda>(lambda));
+}
 
-   return LinearForm<
-             KernelPolicy,
-             FiniteElementSpace,
-             IntegrationRule
-          >( finite_element_space, int_rule, lambda );
+/**
+ * @brief Assemble a field-wide linear form into caller-owned storage.
+ *
+ * Homogeneous and mixed spaces share this entry point. Mixed child spaces
+ * contribute directly into @p output using their field-wide coordinates, so
+ * no full-size child temporaries are created.
+ */
+template<class KernelPolicy,
+         class Space,
+         class IntegrationRule,
+         class Function,
+         class OutputVector>
+void AssembleLinearForm(
+   const Space& space,
+   const IntegrationRule& integration_rule,
+   Function function,
+   OutputVector& output)
+{
+   GENDIL_VERIFY(
+      GetVectorSize(output) ==
+         static_cast<size_t>(GetAlgebraicDofExtent(space)),
+      "Linear-form output extent does not match the finite-element space." );
+   constexpr bool OnDevice = is_device_configuration_v<KernelPolicy>;
+   Zero<OnDevice>(output);
+   ForEachHomogeneousSpace(
+      space,
+      [&](const auto& cell_space)
+      {
+         using CellSpace = std::remove_cvref_t<decltype(cell_space)>;
+         using FiniteElement = typename CellSpace::finite_element_type;
+         using Mesh = typename CellSpace::mesh_type;
+         using MeshQuadData =
+            typename Mesh::cell_type::template QuadData<IntegrationRule>;
+         const MeshQuadData mesh_quad_data{};
+         const auto element_quad_data = MakeDofToQuad<
+            typename FiniteElement::shape_functions,
+            IntegrationRule>();
+         auto dofs_out = MakeReadWriteElementTensorView<KernelPolicy>(
+            cell_space,
+            output);
+         LinearFormOperator<KernelPolicy, IntegrationRule>(
+            cell_space,
+            mesh_quad_data,
+            element_quad_data,
+            function,
+            dofs_out);
+      });
+}
+
+/** @brief Allocate and assemble a scalar or component-vector linear form. */
+template<class KernelPolicy,
+         class Space,
+         class IntegrationRule,
+         class Function>
+Vector AssembleLinearForm(
+   const Space& space,
+   const IntegrationRule& integration_rule,
+   Function function)
+{
+   Vector output(GetAlgebraicDofExtent(space));
+   AssembleLinearForm<KernelPolicy>(
+      space,
+      integration_rule,
+      std::move(function),
+      output);
+   return output;
 }
 
 }

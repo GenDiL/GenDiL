@@ -7,8 +7,12 @@
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrbackendconfiguration.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/matvecbackend.hpp"
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/checkedarithmetic.hpp"
 #include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
+#include <concepts>
+#include <cstddef>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -120,7 +124,71 @@ struct BSRMatrix
    ~BSRMatrix() = default;
 
    template < typename InputVector, typename OutputVector >
-   void operator()( const InputVector & x, OutputVector & y ) const;
+   void operator()( const InputVector & x, OutputVector & y ) const
+      requires requires
+      {
+         { Apply( backend, *this, x, y ) } -> std::same_as< void >;
+      }
+   {
+      Apply( backend, *this, x, y );
+   }
 };
+
+namespace details
+{
+
+template < typename IndexType >
+std::size_t CheckedBSRScalarExtent(
+   const IndexType block_count,
+   const IndexType block_size,
+   const char * message )
+{
+   if constexpr ( std::is_signed_v< IndexType > )
+   {
+      GENDIL_VERIFY(
+         block_count >= 0 && block_size >= 0,
+         message );
+   }
+   const auto count = static_cast< GlobalIndex >( block_count );
+   const auto size = static_cast< GlobalIndex >( block_size );
+   const GlobalIndex extent = CheckedMultiply( count, size, message );
+   GENDIL_VERIFY(
+      extent <= static_cast< GlobalIndex >(
+         std::numeric_limits< std::size_t >::max() ),
+      message );
+   return static_cast< std::size_t >( extent );
+}
+
+} // namespace details
+
+/** Return the scalar input-vector extent of a block sparse matrix. */
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
+std::size_t GetInputSize(
+   const BSRMatrix< ValueType, IndexType, Layout, Backend > & matrix )
+{
+   return details::CheckedBSRScalarExtent(
+      matrix.num_col_blocks,
+      matrix.block_cols,
+      "BSRMatrix input extent is invalid or overflows size_t." );
+}
+
+/** Return the scalar output-vector extent of a block sparse matrix. */
+template <
+   typename ValueType,
+   typename IndexType,
+   BlockLayout Layout,
+   typename Backend >
+std::size_t GetOutputSize(
+   const BSRMatrix< ValueType, IndexType, Layout, Backend > & matrix )
+{
+   return details::CheckedBSRScalarExtent(
+      matrix.num_row_blocks,
+      matrix.block_rows,
+      "BSRMatrix output extent is invalid or overflows size_t." );
+}
 
 } // namespace gendil

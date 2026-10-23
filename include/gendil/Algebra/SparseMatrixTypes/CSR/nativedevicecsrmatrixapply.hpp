@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/dependentfalse.hpp"
+
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixapplycommon.hpp"
 
 #include <limits>
@@ -154,8 +156,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
@@ -193,8 +195,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const NativeDeviceCSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,

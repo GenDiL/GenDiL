@@ -11,5 +11,3 @@
 
 // Apply the test functions and the gradient of the tests functions to compute element contributions from values at quadrature points.
 #include "applyvaluesandgradienttestfunctions.hpp"
-
-#include "applytestfunctionsgeneric.hpp"

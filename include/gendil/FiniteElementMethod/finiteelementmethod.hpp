@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 
-// Structs to represent a finite element.
-#include "gendil/FiniteElementMethod/finiteelement.hpp"
+// Finite-element representations and scalar, vector, and tensor composition.
+#include "gendil/FiniteElementMethod/FiniteElements/finiteelements.hpp"
 
 // Collection of shape functions.
 #include "gendil/FiniteElementMethod/ShapeFunctions/shapefunctions.hpp"
@@ -18,7 +18,11 @@
 // Lightweight aggregation of homogeneous finite element spaces.
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 
-#include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
+// Borrowed scalar component views of homogeneous and mixed vector spaces.
+#include "gendil/FiniteElementMethod/componentfiniteelementspace.hpp"
+
+// Tensor-product meshes, restrictions, and spaces built from factor spaces.
+#include "gendil/FiniteElementMethod/tensorproductfiniteelementspace.hpp"
 
 // An expression template domain specific language (DSL) to represent weak forms.
 #include "gendil/FiniteElementMethod/WeakForm/weakform.hpp"

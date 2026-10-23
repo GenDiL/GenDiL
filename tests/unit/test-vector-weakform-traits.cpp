@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/gendil.hpp>
-#include <gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp>
+#include <gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp>
 #include <gendil/FiniteElementMethod/WeakForm/productkind.hpp>
 
@@ -23,6 +23,20 @@ template<class T>
 inline constexpr bool is_product_expr_v =
    is_product_expr<std::remove_cvref_t<T>>::value;
 
+namespace
+{
+template<class... Fields>
+consteval OperatorMask RequirementMask(type_list<Fields...>)
+{ return (OperatorMask::None + ... + Fields::mask); }
+
+template<class Expression>
+using Semantics = expression_semantics_t<Expression, form_symbols_t<Expression>>;
+template<class Expression>
+inline constexpr auto InputMask = RequirementMask(typename Semantics<Expression>::active_inputs{});
+template<class Expression>
+inline constexpr auto OutputMask = RequirementMask(typename Semantics<Expression>::test_outputs{});
+}
+
 int main()
 {
    std::cout << "Testing weak-form trait requirements...\n";
@@ -34,9 +48,9 @@ int main()
       auto mass_expr = u * v;
       using MassExpr = decltype(mass_expr);
 
-      static_assert(need_test_values_v<MassExpr>,
+      static_assert(need_values(OutputMask<MassExpr>),
          "Mass expression should require test values");
-      static_assert(!need_test_grads_v<MassExpr>,
+      static_assert(!need_gradients(OutputMask<MassExpr>),
          "Mass expression should not require test gradients");
 
       std::cout << "  [PASS] u * v: test values only\n";
@@ -49,9 +63,9 @@ int main()
       auto gradgrad_expr = dot(grad(u), grad(v));
       using GradGradExpr = decltype(gradgrad_expr);
 
-      static_assert(!need_test_values_v<GradGradExpr>,
+      static_assert(!need_values(OutputMask<GradGradExpr>),
          "Grad-grad expression should not require test values");
-      static_assert(need_test_grads_v<GradGradExpr>,
+      static_assert(need_gradients(OutputMask<GradGradExpr>),
          "Grad-grad expression should require test gradients");
 
       std::cout << "  [PASS] dot(grad(u), grad(v)): test gradients only\n";
@@ -64,9 +78,9 @@ int main()
       auto jump_penalty_expr = dot(jump(u), jump(v));
       using JumpPenaltyExpr = decltype(jump_penalty_expr);
 
-      static_assert(need_test_values_v<JumpPenaltyExpr>,
+      static_assert(need_values(OutputMask<JumpPenaltyExpr>),
          "Jump penalty expression should require test values");
-      static_assert(!need_test_grads_v<JumpPenaltyExpr>,
+      static_assert(!need_gradients(OutputMask<JumpPenaltyExpr>),
          "Jump penalty expression should not require test gradients");
 
       std::cout << "  [PASS] dot(jump(u), jump(v)): test values only (vector spaces)\n";
@@ -100,9 +114,9 @@ int main()
       auto consistency_expr = average(dot(grad(u), Normal{})) * jump(v);
       using ConsistencyExpr = decltype(consistency_expr);
 
-      static_assert(need_test_values_v<ConsistencyExpr>,
+      static_assert(need_values(OutputMask<ConsistencyExpr>),
          "Consistency term should require test values");
-      static_assert(!need_test_grads_v<ConsistencyExpr>,
+      static_assert(!need_gradients(OutputMask<ConsistencyExpr>),
          "Consistency term should not require test gradients");
 
       std::cout << "  [PASS] consistency term: test values only\n";
@@ -117,9 +131,9 @@ int main()
       auto adjoint_expr = jump(u) * average(dot(grad(v), Normal{}));
       using AdjointExpr = decltype(adjoint_expr);
 
-      static_assert(!need_test_values_v<AdjointExpr>,
+      static_assert(!need_values(OutputMask<AdjointExpr>),
          "Adjoint term should not require test values");
-      static_assert(need_test_grads_v<AdjointExpr>,
+      static_assert(need_gradients(OutputMask<AdjointExpr>),
          "Adjoint term should require test gradients");
 
       std::cout << "  [PASS] adjoint term: test gradients only\n";
@@ -1266,78 +1280,77 @@ int main()
       // 1. Coefficient + test field: test-linear with no trial requirements
       static_assert(is_test_linear_v<MuV>,
          "μ × v is TestLinear");
-      static_assert(!need_trial_values_v<MuV>,
+      static_assert(!need_values(InputMask<MuV>),
          "μ × v does not require trial values");
-      static_assert(!need_trial_grads_v<MuV>,
+      static_assert(!need_gradients(InputMask<MuV>),
          "μ × v does not require trial gradients");
-      static_assert(need_test_values_v<MuV>,
+      static_assert(need_values(OutputMask<MuV>),
          "μ × v requires test values");
-      static_assert(!need_test_grads_v<MuV>,
+      static_assert(!need_gradients(OutputMask<MuV>),
          "μ × v does not require test gradients");
 
       // 2. Trial field + test field: test-linear with trial value requirements
       static_assert(is_test_linear_v<UV>,
          "u × v is TestLinear");
-      static_assert(need_trial_values_v<UV>,
+      static_assert(need_values(InputMask<UV>),
          "u × v requires trial values");
-      static_assert(!need_trial_grads_v<UV>,
+      static_assert(!need_gradients(InputMask<UV>),
          "u × v does not require trial gradients");
-      static_assert(need_test_values_v<UV>,
+      static_assert(need_values(OutputMask<UV>),
          "u × v requires test values");
-      static_assert(!need_test_grads_v<UV>,
+      static_assert(!need_gradients(OutputMask<UV>),
          "u × v does not require test gradients");
 
       // 3. Coefficient + grad(test field): test-linear with gradient requirements
       static_assert(is_test_linear_v<MuGradV>,
          "μ × grad(v) is TestLinear");
-      static_assert(!need_trial_values_v<MuGradV>,
+      static_assert(!need_values(InputMask<MuGradV>),
          "μ × grad(v) does not require trial values");
-      static_assert(!need_trial_grads_v<MuGradV>,
+      static_assert(!need_gradients(InputMask<MuGradV>),
          "μ × grad(v) does not require trial gradients");
-      static_assert(!need_test_values_v<MuGradV>,
+      static_assert(!need_values(OutputMask<MuGradV>),
          "μ × grad(v) does not require test values");
-      static_assert(need_test_grads_v<MuGradV>,
+      static_assert(need_gradients(OutputMask<MuGradV>),
          "μ × grad(v) requires test gradients");
 
       // 4. grad(vector test field) + Normal: test-linear with gradient requirements
       static_assert(is_test_linear_v<GradVVNormal>,
          "grad(vv) × Normal is TestLinear");
-      static_assert(!need_trial_values_v<GradVVNormal>,
+      static_assert(!need_values(InputMask<GradVVNormal>),
          "grad(vv) × Normal does not require trial values");
-      static_assert(!need_trial_grads_v<GradVVNormal>,
+      static_assert(!need_gradients(InputMask<GradVVNormal>),
          "grad(vv) × Normal does not require trial gradients");
-      static_assert(!need_test_values_v<GradVVNormal>,
+      static_assert(!need_values(OutputMask<GradVVNormal>),
          "grad(vv) × Normal does not require test values");
-      static_assert(need_test_grads_v<GradVVNormal>,
+      static_assert(need_gradients(OutputMask<GradVVNormal>),
          "grad(vv) × Normal requires test gradients");
 
       // 5. Matrix coefficient + vector coefficient: test-free with no requirements
       static_assert(is_test_free_v<ABeta>,
          "A × β is TestFree");
-      static_assert(!need_trial_values_v<ABeta>,
+      static_assert(!need_values(InputMask<ABeta>),
          "A × β does not require trial values");
-      static_assert(!need_trial_grads_v<ABeta>,
+      static_assert(!need_gradients(InputMask<ABeta>),
          "A × β does not require trial gradients");
-      static_assert(!need_test_values_v<ABeta>,
+      static_assert(!need_values(OutputMask<ABeta>),
          "A × β does not require test values");
-      static_assert(!need_test_grads_v<ABeta>,
+      static_assert(!need_gradients(OutputMask<ABeta>),
          "A × β does not require test gradients");
 
       // 6. grad(vector test field) + matrix coefficient: test-linear with gradient requirements
       static_assert(is_test_linear_v<GradVVA>,
          "grad(vv) × A is TestLinear");
-      static_assert(!need_trial_values_v<GradVVA>,
+      static_assert(!need_values(InputMask<GradVVA>),
          "grad(vv) × A does not require trial values");
-      static_assert(!need_trial_grads_v<GradVVA>,
+      static_assert(!need_gradients(InputMask<GradVVA>),
          "grad(vv) × A does not require trial gradients");
-      static_assert(!need_test_values_v<GradVVA>,
+      static_assert(!need_values(OutputMask<GradVVA>),
          "grad(vv) × A does not require test values");
-      static_assert(need_test_grads_v<GradVVA>,
+      static_assert(need_gradients(OutputMask<GradVVA>),
          "grad(vv) × A requires test gradients");
 
-      // Verify GetTrialOperators compiles and returns correct result for trial-dependent case
-      auto uv_ops = GetTrialOperators(ProductExpr{u, v});
-      (void)uv_ops; // Should return TrialOperator<"u", InterpolateValues>
+      using UVInputs = typename Semantics<UV>::active_inputs;
+      static_assert(find_named_field_requirement_t<UVInputs, "u">::mask == OperatorMask::Values);
 
       std::cout << "  [PASS] Coefficient + test field metadata (MuV)\n";
       std::cout << "  [PASS] Trial field + test field metadata (UV)\n";
@@ -1345,10 +1358,7 @@ int main()
       std::cout << "  [PASS] grad(vector test) + Normal metadata (GradVVNormal)\n";
       std::cout << "  [PASS] Matrix coefficient + vector coefficient metadata (ABeta)\n";
       std::cout << "  [PASS] grad(vector test) + matrix coefficient metadata (GradVVA)\n";
-      std::cout << "  [PASS] GetTrialOperators compiles for ProductExpr\n";
-      std::cout << "  [INFO] ProductExpr uses BinaryExprRequirements for weakformtraits\n";
-      std::cout << "  [INFO] ProductExpr uses concat_t for fielddependencies\n";
-      std::cout << "  [INFO] ProductExpr uses operator+ for trial operator merging\n";
+      std::cout << "  [PASS] Named semantic reads preserve ProductExpr masks\n";
    }
 
    // Test 30: ProductExpr operator() availability
@@ -1410,11 +1420,11 @@ int main()
       static_assert(is_test_free_v<MatMatProduct>);
 
       // Verify metadata requirements remain correct
-      static_assert(need_test_values_v<ScalarScalarProduct>);
-      static_assert(need_test_grads_v<ScalarVectorProduct>);
-      static_assert(need_test_grads_v<ScalarMatrixProduct>);
-      static_assert(!need_test_values_v<MatVecProduct>);
-      static_assert(!need_test_values_v<MatMatProduct>);
+      static_assert(need_values(OutputMask<ScalarScalarProduct>));
+      static_assert(need_gradients(OutputMask<ScalarVectorProduct>));
+      static_assert(need_gradients(OutputMask<ScalarMatrixProduct>));
+      static_assert(!need_values(OutputMask<MatVecProduct>));
+      static_assert(!need_values(OutputMask<MatMatProduct>));
 
       // Verify operator() exists by constructing ProductExpr instances
       // (operator() presence is confirmed at compile time)
@@ -1683,7 +1693,7 @@ int main()
       std::cout << "  [PASS] A × β → ProductExpr (MatVec, Vector, TestFree)\n";
       std::cout << "  [INFO] ProductExpr now handles all ProductKind::ScalarTimes products\n";
       std::cout << "  [INFO] Scalar-multiplier cases from Test 31 continue to work\n";
-      std::cout << "  [INFO] A × A tested as legacy in Test 32, becomes ProductExpr in Test 33\n";
+      std::cout << "  [INFO] A × A uses ProductExpr after the product classification checks\n";
    }
 
    // Test 33: MatMat operator* returns ProductExpr
@@ -1762,13 +1772,13 @@ int main()
       static_assert(decltype(A_beta)::product_kind == ProductKind::MatVec);
       static_assert(decltype(A_beta)::field_shape == FieldShape::Vector);
 
-      // 7. Vector × Matrix not ProductExpr (legacy path)
+      // 7. Vector × Matrix retains the MultFieldExpr representation
       auto beta_A = beta * A;
       static_assert(!std::is_same_v<decltype(beta_A),
          ProductExpr<decltype(beta), decltype(A)>>);
       static_assert(product_kind_v<decltype(beta), decltype(A)> == ProductKind::Unsupported);
 
-      // 8. Vector × Vector not ProductExpr (unsupported/legacy)
+      // 8. Vector × Vector has no supported ProductExpr classification
       auto beta_beta = beta * beta;
       static_assert(!std::is_same_v<decltype(beta_beta),
          ProductExpr<decltype(beta), decltype(beta)>>);
@@ -1784,8 +1794,8 @@ int main()
       std::cout << "  [PASS] grad(vᵥ) × grad(vᵥ) → ProductExpr (MatMat, Matrix, NonlinearInTest)\n";
       std::cout << "  [PASS] grad(vᵥ) × n → ProductExpr (MatVec, Vector, TestLinear)\n";
       std::cout << "  [PASS] A × β → ProductExpr (MatVec, Vector, TestFree)\n";
-      std::cout << "  [PASS] β × A not ProductExpr (Unsupported, legacy path)\n";
-      std::cout << "  [PASS] β × β not ProductExpr (Unsupported, legacy path)\n";
+      std::cout << "  [PASS] β × A has no supported ProductExpr classification\n";
+      std::cout << "  [PASS] β × β has no supported ProductExpr classification\n";
       std::cout << "  [INFO] ProductExpr now handles ScalarTimes and MatMat products\n";
       std::cout << "  [INFO] ScalarTimes cases from Tests 31-32 continue to work\n";
    }

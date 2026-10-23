@@ -10,7 +10,7 @@
 #include "gendil/Utilities/MathHelperFunctions/min.hpp"
 #include "elementdof.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/globalfacefieldbinding.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/signatures.hpp"
 
 namespace gendil {
 
@@ -347,162 +347,29 @@ auto MakeQuadraturePointContainerForSpace(
    }
 }
 
-// ============================================================================
-
-template<
+template <
    typename KernelContext,
-   typename WeakFormContext,
-   typename Integrand,
-   typename IntegrationRule >
-GENDIL_HOST_DEVICE
-auto MakeQuadraturePointContainer(
-   const KernelContext & kernel,
-   const WeakFormContext & wf_ctx,
-   const Integrand & integrand,
-   const IntegrationRule & integration_rule)
-{
-   using I  = std::remove_cvref_t<Integrand>;
-
-   constexpr auto TestName = requirements<I>::test_name;
-   constexpr auto TestMask = requirements<I>::test_mask;
-
-   static_assert(TestName != StaticString("Error"),
-      "MakeQuadraturePointContainer: test_name == \"Error\". Integrand must contain a TestSpace.");
-
-   constexpr bool need_vals  = need_values(TestMask);
-   constexpr bool need_grads = need_gradients(TestMask);
-
-   static_assert(need_vals || need_grads,
-      "MakeQuadraturePointContainer: neither test values nor test gradients are required.");
-
-   // Test space comes from wf_ctx via MakeTestField<TestName>(space)
-   const auto& test_fev   = wf_ctx.template fe_field<TestName>();
-   const auto& test_space = test_fev.space;
-
-   return MakeQuadraturePointContainerForSpace<
-      need_vals,
-      need_grads>(
-         kernel,
-         integration_rule,
-         test_space);
-}
-
-/**
- * @brief Make quadrature point container with explicit test mask
- *
- * This overload accepts an explicit OperatorMask instead of deriving it from
- * requirements<Integrand>::test_mask. This enables the pullback-based operator path
- * to allocate Du containers based on PullbackResult channel presence rather than
- * integrand requirements.
- *
- * **Use case:** GenericCellIntegrandOperatorPullback computes:
- *    auto channels = pullback(integrand, ScaleExpr{1.0});
- *    constexpr auto ChannelTestMask =
- *       (channels.contains<ValueChannel>() ? OperatorMask::Values : OperatorMask::None) +
- *       (channels.contains<GradientChannel>() ? OperatorMask::Gradients : OperatorMask::None);
- *    auto Du = MakeQuadraturePointContainerFromTestMask(
- *       kernel, wf_ctx, ChannelTestMask, TestName, integration_rule);
- *
- * This allows mixed-channel integrands like u*v + dot(grad(u), grad(v)) to allocate
- * both Du.values and Du.gradients, which the old requirements-based path rejects due
- * to mutual-exclusivity constraints.
- *
- * @tparam KernelContext Kernel execution context
- * @tparam WeakFormContext Weak-form context (provides test field via MakeTestField<TestName>)
- * @tparam IntegrationRule Integration rule type
- * @tparam TestName Test space name (StaticString)
- *
- * @param kernel Kernel execution context
- * @param wf_ctx Weak-form context
- * @param explicit_mask OperatorMask with Values/Gradients bits set explicitly
- * @param test_name Test space name (for accessing test_fev from wf_ctx)
- * @param integration_rule Integration rule
- * @return InterpolatedField with .values and/or .gradients allocated per mask
- */
-template<class Space>
-GENDIL_HOST_DEVICE
-constexpr decltype(auto) GetQuadraturePointContainerVolumeSpace(
-   const Space& space)
-{
-   using SpaceType = std::remove_cvref_t<Space>;
-   static_assert(
-      supports_one_sided_face_qdata_v<SpaceType>,
-      "GetQuadraturePointContainerVolumeSpace is a one-sided same-space/"
-      "boundary compatibility helper. Two-space interior face finite element "
-      "spaces require side-specific quadrature-point containers.");
-
-   if constexpr (is_boundary_face_field_binding_v<SpaceType>)
-   {
-      return space.GetMinusFiniteElementSpace();
-   }
-   else if constexpr (is_interior_face_field_binding_v<SpaceType>)
-   {
-      static_assert(
-         is_same_space_interior_face_field_binding_v<SpaceType> ||
-         std::is_same_v<
-            std::remove_cvref_t<decltype(space.GetMinusFiniteElementSpace())>,
-            std::remove_cvref_t<decltype(space.GetPlusFiniteElementSpace())>>,
-         "Quadrature-point containers for cross-space interior face bindings "
-         "are deferred. Selected two-space global face lowering must be "
-         "rejected before test-space container construction.");
-      return space.GetMinusFiniteElementSpace();
-   }
-   else
-   {
-      return (space);
-   }
-}
-
-template<
-   StaticString TestName,
-   OperatorMask ExplicitMask,
-   typename KernelContext,
-   typename WeakFormContext,
-   typename IntegrationRule>
-GENDIL_HOST_DEVICE
-auto MakeQuadraturePointContainerFromTestMask(
-   const KernelContext & kernel,
-   const WeakFormContext & wf_ctx,
-   const IntegrationRule & integration_rule)
-{
-   static constexpr bool need_vals  = need_values(ExplicitMask);
-   static constexpr bool need_grads = need_gradients(ExplicitMask);
-
-   static_assert(need_vals || need_grads,
-      "MakeQuadraturePointContainerFromTestMask: explicit_mask requires at least Values or Gradients.");
-
-   // Test space comes from wf_ctx via MakeTestField<TestName>(space)
-   const auto& test_fev   = wf_ctx.template fe_field<TestName>();
-   const auto& test_space =
-      GetQuadraturePointContainerVolumeSpace(test_fev.space);
-
-   return MakeQuadraturePointContainerForSpace<
-      need_vals,
-      need_grads>(
-         kernel,
-         integration_rule,
-         test_space);
-}
-
-template<
-   typename KernelContext,
-   typename WeakFormContext,
-   typename Integrand,
-   typename IntegrationRule >
+   typename ExecutionContext,
+   typename OperatorContext,
+   typename Integrand >
 GENDIL_HOST_DEVICE
 auto MakeQuadraturePointContainerFromIntegrand(
-   const KernelContext & kernel,
-   const WeakFormContext & wf_ctx,
-   const Integrand & integrand,
-   const IntegrationRule & integration_rule)
+   const KernelContext & kernel_context,
+   const ExecutionContext & execution_context,
+   const OperatorContext & operator_context,
+   const Integrand & )
 {
-   constexpr auto TestName = requirements<Integrand>::test_name;
-   constexpr auto TestMask = requirements<Integrand>::test_mask;
+   using Signature = typename OperatorContext::template signature_for<Integrand>;
+   using Output = weak_form_traits::only_field_t<typename Signature::test_outputs>;
 
-   return MakeQuadraturePointContainerFromTestMask<TestName, TestMask>(
-      kernel,
-      wf_ctx,
-      integration_rule);
+   return MakeQuadraturePointContainerForSpace<
+      need_values(Output::mask),
+      need_gradients(Output::mask)>(
+         kernel_context,
+         operator_context.GetIntegrationRule(),
+         execution_context.template GetWriteField<Output::name>().space);
 }
 
-}
+// ============================================================================
+
+} // namespace gendil

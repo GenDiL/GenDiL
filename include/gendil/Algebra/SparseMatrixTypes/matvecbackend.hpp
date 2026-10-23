@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include "gendil/Algebra/Vector/access.hpp"
+
+#include <concepts>
 #include <type_traits>
 
 namespace gendil
@@ -26,6 +29,27 @@ inline constexpr bool is_device_matvec_backend_v =
    std::is_base_of_v<
       DeviceMatVecBackend,
       std::remove_cvref_t< Backend > >;
+
+namespace details
+{
+
+/** Whether a vector can be read in the memory space selected by a backend. */
+template < typename Backend, typename VectorType >
+concept MatVecBackendReadableVector =
+   ( is_host_matvec_backend_v< Backend > &&
+     HostReadableVector< VectorType > ) ||
+   ( is_device_matvec_backend_v< Backend > &&
+     DeviceReadableVector< VectorType > );
+
+/** Whether a vector can be written in the memory space selected by a backend. */
+template < typename Backend, typename VectorType >
+concept MatVecBackendWritableVector =
+   ( is_host_matvec_backend_v< Backend > &&
+     HostWritableVector< VectorType > ) ||
+   ( is_device_matvec_backend_v< Backend > &&
+     DeviceWritableVector< VectorType > );
+
+} // namespace details
 
 /// No-op ResetState for stateless host backends.
 ///

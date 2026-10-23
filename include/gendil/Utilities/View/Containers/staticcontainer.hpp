@@ -15,16 +15,23 @@ struct StaticContainer
    T data[ Size ];
 
    GENDIL_HOST_DEVICE
-   T& operator[]( index_type const & index )
+   T& operator[]( index_type const & index ) &
    {
       return data[ index ];
    }
 
    GENDIL_HOST_DEVICE
-   const T& operator[]( index_type const & index ) const
+   const T& operator[]( index_type const & index ) const &
    {
       return data[ index ];
    }
+
+   /** References into a temporary container's inline storage would dangle. */
+   GENDIL_HOST_DEVICE
+   T& operator[]( index_type const & ) && = delete;
+
+   GENDIL_HOST_DEVICE
+   const T& operator[]( index_type const & ) const && = delete;
 };
 
 }

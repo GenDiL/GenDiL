@@ -282,7 +282,7 @@ int TestBoundaryCoefficientFieldInputs()
       integrate(boundary_facets, value_and_gradient_coeff * u * v);
 
    using ValueAndGradientReqs =
-      interpolation_named_field_requirements_t<decltype(value_and_gradient_form)>;
+      typename form_signature_t<decltype(value_and_gradient_form)>::bound_inputs;
    static_assert(contains_named_field_requirement_v<ValueAndGradientReqs, "w">);
    using WReq = find_named_field_requirement_t<ValueAndGradientReqs, "w">;
    static_assert(need_values(WReq::mask));

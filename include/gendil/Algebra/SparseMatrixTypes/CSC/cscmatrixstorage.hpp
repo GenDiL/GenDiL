@@ -9,6 +9,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/MemoryManagement/synchostdevicearray.hpp"
 
+#include <concepts>
 #include <type_traits>
 #include <utility>
 
@@ -93,7 +94,14 @@ struct CSCMatrix
    ~CSCMatrix() = default;
 
    template < typename InputVector, typename OutputVector >
-   void operator()( const InputVector & x, OutputVector & y ) const;
+   void operator()( const InputVector & x, OutputVector & y ) const
+      requires requires
+      {
+         { Apply( backend, *this, x, y ) } -> std::same_as< void >;
+      }
+   {
+      Apply( backend, *this, x, y );
+   }
 };
 
 template <

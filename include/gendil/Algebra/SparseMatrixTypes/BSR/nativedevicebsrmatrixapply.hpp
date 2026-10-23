@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/dependentfalse.hpp"
+
 #include "gendil/Algebra/SparseMatrixTypes/BSR/bsrmatrixapplycommon.hpp"
 
 #include <limits>
@@ -169,8 +171,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void Apply(
    const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,
@@ -211,8 +213,8 @@ template <
    typename MatrixBackend,
    typename BackendComputeType,
    typename BackendAccumulatorType,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 void ApplyAdd(
    const NativeDeviceBSRBackend< BackendComputeType, BackendAccumulatorType > & backend,
    const BSRMatrix<ValueType, IndexType, Layout, MatrixBackend> & matrix,

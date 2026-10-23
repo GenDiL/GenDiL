@@ -5,9 +5,12 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/weakformtraits.hpp"
-#include "gendil/FiniteElementMethod/WeakForm/testlineartraits.hpp"
+#include "gendil/Algebra/staticvectorops.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
+#include "gendil/Utilities/arraytraits.hpp"
 
 namespace gendil
 {
@@ -26,16 +29,6 @@ namespace gendil
 
 namespace details
 {
-
-// Type trait to detect std::array
-template <typename T>
-struct is_std_array : std::false_type {};
-
-template <typename T, std::size_t N>
-struct is_std_array<std::array<T, N>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_std_array_v = is_std_array<T>::value;
 
 // Scalar case: use operator+
 template <typename T>
@@ -89,10 +82,16 @@ struct AverageExpr : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      if constexpr ( is_side_evaluable_v<Expr> )
+      static_assert(is_test_free_v<Expr>,
+         "average(expr) numerical evaluation requires a test-free expression; lower test expressions through pullback.");
+      static_assert(!is_physical_boundary_v<QuadPtContext>,
+         "Boundary average(expr) must be lowered through boundary pullback before numerical evaluation.");
+
+      // Pullback consumes test averages and boundary identities. Only interior
+      // input/coefficient averages survive into quadrature-point evaluation.
+      if constexpr (is_test_free_v<Expr> &&
+                    !is_physical_boundary_v<QuadPtContext>)
       {
-         // Side-evaluable average: 0.5 * (minus + plus). This covers trial
-         // traces, coefficient expressions, and explicit FE-field expressions.
          auto minus_value = minus(expr)(
             kernel_context,
             weak_form_context,
@@ -112,18 +111,6 @@ struct AverageExpr : FieldBase
          );
 
          return details::AverageValues(minus_value, plus_value);
-      }
-      else
-      {
-         // Test-side average: 0.5 * minus (only current side)
-         return 0.5 * expr(
-            kernel_context,
-            weak_form_context,
-            operator_context,
-            element_context,
-            quad_pt_context,
-            fields.minus_fields
-         );
       }
    }
 };

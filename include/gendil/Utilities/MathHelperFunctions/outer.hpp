@@ -5,6 +5,8 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
+#include <array>
 
 namespace gendil
 {
@@ -71,6 +73,29 @@ SerialRecursiveArray<T, M, static_cast<Integer>(N)> Outer(
       }
    }
 
+   return result;
+}
+
+/**
+ * @brief Form an owning matrix from two fixed-size array vectors.
+ *
+ * Computes result(component, direction) = a[component] * b[direction].
+ * This lets array-valued coefficients supply vector test-gradient seeds,
+ * including outer(beta, Normal{}) in normal-derivative pullbacks. The vectors
+ * may have different lengths; both use the same scalar type T, which the result preserves.
+ */
+template<typename T, size_t M, size_t N>
+GENDIL_HOST_DEVICE
+SerialRecursiveArray<T, M, N> Outer(
+   const std::array<T, M>& a,
+   const std::array<T, N>& b)
+{
+   SerialRecursiveArray<T, M, N> result;
+   for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+         result(i, j) = a[i] * b[j];
+      }
+   }
    return result;
 }
 

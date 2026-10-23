@@ -31,19 +31,19 @@ auto GenericBSRElementBlockDiagonalAssembly(
    const auto can_instantiate =
       details::ValidateSparseAssemblyInputs<
          MatrixAssemblyType::BSR,
-         details::SparseAssemblyMode::ElementBlockDiagonal,
+         SparseAssemblyMode::ElementBlockDiagonal,
          KernelPolicy,
          Backend>(weak_form, wf_ctx);
 
    if constexpr (can_instantiate)
    {
-      constexpr auto TrialName = requirements<WeakForm>::trial_name;
-      constexpr auto TestName = requirements<WeakForm>::test_name;
+      constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+      constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
 
       const auto& trial_space =
-         wf_ctx.template fe_field<TrialName>().space;
+         wf_ctx.template GetFiniteElementField<TrialName>().space;
       const auto& test_space =
-         wf_ctx.template fe_field<TestName>().space;
+         wf_ctx.template GetFiniteElementField<TestName>().space;
       using TrialSpace = std::remove_cvref_t<decltype(trial_space)>;
       using TestSpace = std::remove_cvref_t<decltype(test_space)>;
       using TrialShapeFunctions =
@@ -68,16 +68,19 @@ auto GenericBSRElementBlockDiagonalAssembly(
             ntrial,
             std::move( backend ));
 
-      constexpr bool on_device =
-         is_device_configuration_v< KernelPolicy >;
-      auto matrix_view =
-         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+      if constexpr ( !is_zero< WeakForm > )
+      {
+         constexpr bool on_device =
+            is_device_configuration_v< KernelPolicy >;
+         auto matrix_view =
+            GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
-      AssembleElementBlockDiagonalSparseTarget<KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         integration_rule,
-         matrix_view);
+         AssembleSparseTarget<KernelPolicy, SparseAssemblyMode::ElementBlockDiagonal>(
+            weak_form,
+            wf_ctx,
+            integration_rule,
+            matrix_view);
+      }
 
       return bsr_matrix;
    }
@@ -98,16 +101,16 @@ auto GenericBSRAssembly(
    const auto can_instantiate =
       details::ValidateSparseAssemblyInputs<
          MatrixAssemblyType::BSR,
-         details::SparseAssemblyMode::Full,
+         SparseAssemblyMode::Full,
          KernelPolicy,
          Backend>(weak_form, wf_ctx);
 
    if constexpr (can_instantiate)
    {
-      constexpr auto TrialName = requirements<WeakForm>::trial_name;
-      constexpr auto TestName = requirements<WeakForm>::test_name;
-      const auto& trial_space = wf_ctx.template fe_field<TrialName>().space;
-      const auto& test_space = wf_ctx.template fe_field<TestName>().space;
+      constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+      constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
+      const auto& trial_space = wf_ctx.template GetFiniteElementField<TrialName>().space;
+      const auto& test_space = wf_ctx.template GetFiniteElementField<TestName>().space;
       const auto& domain_mesh =
          GetCellIntegrationDomainMesh(weak_form, wf_ctx);
       auto bsr_matrix =
@@ -117,17 +120,20 @@ auto GenericBSRAssembly(
             test_space,
             std::move( backend ) );
 
-      constexpr bool on_device =
-         is_device_configuration_v< KernelPolicy >;
-      auto matrix_view =
-         GetKernelValuesReadWriteView< on_device >( bsr_matrix );
+      if constexpr ( !is_zero< WeakForm > )
+      {
+         constexpr bool on_device =
+            is_device_configuration_v< KernelPolicy >;
+         auto matrix_view =
+            GetKernelValuesReadWriteView< on_device >( bsr_matrix );
 
-      GenericAssembly<KernelPolicy>(
-         weak_form,
-         wf_ctx,
-         integration_rule,
-         matrix_view
-      );
+         AssembleSparseTarget<KernelPolicy>(
+            weak_form,
+            wf_ctx,
+            integration_rule,
+            matrix_view
+         );
+      }
 
       return bsr_matrix;
    }
@@ -145,13 +151,13 @@ auto MakeDefaultBSRBackend(
 
    if constexpr (can_instantiate)
    {
-      constexpr auto TrialName = requirements< WeakForm >::trial_name;
-      constexpr auto TestName = requirements< WeakForm >::test_name;
+      constexpr auto TrialName = weak_form_traits::only_trial_field_name_v< WeakForm >;
+      constexpr auto TestName = weak_form_traits::only_test_field_name_v< WeakForm >;
 
       const auto & trial_space =
-         wf_ctx.template fe_field< TrialName >().space;
+         wf_ctx.template GetFiniteElementField< TrialName >().space;
       const auto & test_space =
-         wf_ctx.template fe_field< TestName >().space;
+         wf_ctx.template GetFiniteElementField< TestName >().space;
       using TrialSpace =
          std::remove_cvref_t< decltype( trial_space ) >;
       using TestSpace =

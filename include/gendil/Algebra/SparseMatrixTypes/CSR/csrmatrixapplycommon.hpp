@@ -6,9 +6,10 @@
 
 #include "gendil/Algebra/SparseMatrixTypes/CSR/csrmatrixview.hpp"
 #include "gendil/Algebra/SparseMatrixTypes/sparseapplyarithmetic.hpp"
-#include "gendil/Algebra/vectoraccess.hpp"
-#include "gendil/Utilities/dependentfalse.hpp"
+#include "gendil/Algebra/Vector/access.hpp"
+#include "gendil/Algebra/vectormapconcept.hpp"
 
+#include <concepts>
 #include <cstddef>
 
 namespace gendil
@@ -44,18 +45,6 @@ void CheckCSRApplyDimensions(
 template <
    typename ValueType,
    typename IndexType,
-   typename MatrixBackend >
-template < typename InputVector, typename OutputVector >
-void CSRMatrix< ValueType, IndexType, MatrixBackend >::operator()(
-   const InputVector & x,
-   OutputVector & y ) const
-{
-   Apply( backend, *this, x, y );
-}
-
-template <
-   typename ValueType,
-   typename IndexType,
    typename MatrixBackend,
    typename InputVector,
    typename OutputVector >
@@ -63,56 +52,12 @@ void ApplyAdd(
    const CSRMatrix< ValueType, IndexType, MatrixBackend > & matrix,
    const InputVector & x,
    OutputVector & y )
+requires requires
+{
+   { ApplyAdd( matrix.backend, matrix, x, y ) } -> std::same_as< void >;
+}
 {
    ApplyAdd( matrix.backend, matrix, x, y );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void Apply(
-   const Backend &,
-   const CSRMatrix< ValueType, IndexType, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         CSRMatrix< ValueType, IndexType, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No CSRMatrix Apply overload is available for this backend/vector "
-      "combination. Include csrmatrixapply.hpp and use a supported CSR "
-      "backend/vector type." );
-}
-
-template <
-   typename Backend,
-   typename ValueType,
-   typename IndexType,
-   typename MatrixBackend,
-   typename InputVector,
-   typename OutputVector >
-void ApplyAdd(
-   const Backend &,
-   const CSRMatrix< ValueType, IndexType, MatrixBackend > &,
-   const InputVector &,
-   OutputVector & )
-{
-   static_assert(
-      dependent_false_v<
-         Backend,
-         CSRMatrix< ValueType, IndexType, MatrixBackend >,
-         InputVector,
-         OutputVector >,
-      "No CSRMatrix ApplyAdd overload is available for this backend/vector "
-      "combination. Include csrmatrixapply.hpp and use a supported CSR "
-      "backend/vector type." );
 }
 
 } // namespace gendil

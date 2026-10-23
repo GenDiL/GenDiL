@@ -177,13 +177,10 @@ GENDIL_HOST_DEVICE GENDIL_INLINE
 constexpr bool IsValidOrientation(
    const TensorProductOrientation< Orientations... > & orientation )
 {
-   bool valid = true;
-   ConstexprLoop< sizeof...( Orientations ) >( [&] ( auto component )
+   return [&]< size_t... Component >( std::index_sequence< Component... > )
    {
-      valid = valid &&
-         IsValidOrientation( orientation.template Get< component >() );
-   } );
-   return valid;
+      return ( IsValidOrientation( orientation.template Get< Component >() ) && ... );
+   }( std::index_sequence_for< Orientations... >{} );
 }
 
 /**
@@ -217,18 +214,17 @@ namespace detail
 /** @brief Read a runtime structured axis at a global native-axis index. */
 template < size_t Offset, size_t Rank >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-LocalIndex GetRuntimeStructuredOrientationAxis(
+constexpr LocalIndex GetRuntimeStructuredOrientationAxis(
    const size_t native_axis,
    const Permutation< Rank > & orientation )
 {
    const LocalIndex local_axis = orientation( native_axis - Offset );
-   const LocalIndex offset = static_cast< LocalIndex >( Offset );
-   return local_axis > 0 ? offset + local_axis : local_axis - offset;
+   return OffsetOrientationAxis( local_axis, Offset );
 }
 
 template < size_t Offset, class... Orientations >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-LocalIndex GetRuntimeStructuredOrientationAxis(
+constexpr LocalIndex GetRuntimeStructuredOrientationAxis(
    size_t native_axis,
    const TensorProductOrientation< Orientations... > & orientation );
 
@@ -237,7 +233,7 @@ template <
    size_t Component,
    class ProductOrientation >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-LocalIndex GetTensorProductRuntimeOrientationAxis(
+constexpr LocalIndex GetTensorProductRuntimeOrientationAxis(
    const size_t native_axis,
    const ProductOrientation & orientation )
 {
@@ -280,7 +276,7 @@ LocalIndex GetTensorProductRuntimeOrientationAxis(
  */
 template < size_t Offset, class... Orientations >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-LocalIndex GetRuntimeStructuredOrientationAxis(
+constexpr LocalIndex GetRuntimeStructuredOrientationAxis(
    const size_t native_axis,
    const TensorProductOrientation< Orientations... > & orientation )
 {
@@ -291,74 +287,61 @@ LocalIndex GetRuntimeStructuredOrientationAxis(
       orientation );
 }
 
-/** @brief Read one compile-time-selected axis from a flat permutation. */
-template < size_t Axis, size_t Offset, size_t Rank >
+/** @brief Read a selected runtime axis within its tensor-product factor. */
+template < size_t Axis, size_t Offset = 0, size_t Rank >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-LocalIndex GetStructuredOrientationAxis(
+constexpr LocalIndex GetStructuredOrientationAxis(
    const Permutation< Rank > & orientation )
 {
    static_assert( Offset <= Axis && Axis < Offset + Rank );
-   const LocalIndex local_axis = orientation( Axis - Offset );
-   const LocalIndex offset = static_cast< LocalIndex >( Offset );
-   return local_axis > 0 ? offset + local_axis : local_axis - offset;
-}
-
-/** @brief Return one identity axis as a compile-time constant. */
-template < size_t Axis, size_t Offset, size_t Rank >
-GENDIL_HOST_DEVICE GENDIL_INLINE
-constexpr auto GetStructuredOrientationAxis(
-   const IdentityOrientation< Rank > & )
-{
-   static_assert( Offset <= Axis && Axis < Offset + Rank );
-   return std::integral_constant<
-      LocalIndex,
-      static_cast< LocalIndex >( Axis + 1 ) >{};
-}
-
-template <
-   size_t Axis,
-   size_t Offset,
-   size_t Component,
-   class ProductOrientation >
-GENDIL_HOST_DEVICE GENDIL_INLINE
-decltype(auto) GetTensorProductOrientationAxis(
-   const ProductOrientation & orientation )
-{
-   static_assert( Component < ProductOrientation::num_components );
-   using OrientationTuple = typename ProductOrientation::component_types;
-   using ComponentOrientation =
-      std::tuple_element_t< Component, OrientationTuple >;
-   constexpr size_t ComponentOffset = Offset +
-      orientation_component_offset_v< Component, OrientationTuple >;
-   constexpr size_t ComponentEnd = ComponentOffset +
-      orientation_dimension_v< ComponentOrientation >;
-   if constexpr ( Axis < ComponentEnd )
-   {
-      return GetStructuredOrientationAxis< Axis, ComponentOffset >(
-         orientation.template Get< Component >() );
-   }
-   else
-   {
-      return GetTensorProductOrientationAxis<
-         Axis,
-         Offset,
-         Component + 1 >( orientation );
-   }
+   return OffsetOrientationAxis( orientation( Axis - Offset ), Offset );
 }
 
 /**
- * @brief Read one compile-time-selected axis from a structured orientation.
+ * @brief Preserve a static identity axis without runtime orientation storage.
  *
- * Static identity factors return integral constants so callers can compile
- * their orientation loads, branches, and sign arithmetic away.
+ * Nonidentity static permutations are deliberately unsupported: consumers of
+ * static axes rely on identity ordering. Use `Permutation` for other mappings.
  */
+template < size_t Axis, size_t Offset = 0, size_t Rank, Permutation< Rank > Value >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto GetStructuredOrientationAxis(
+   const std::integral_constant< Permutation< Rank >, Value > & )
+{
+   static_assert( Offset <= Axis && Axis < Offset + Rank );
+   static_assert( Value == MakeReferencePermutation< Rank >(),
+      "Only static identity orientations are supported; use Permutation for signed or reordered axes." );
+   return std::integral_constant< LocalIndex, Axis + 1 >{};
+}
+
+template < size_t Axis, size_t Offset = 0, class... Orientations >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto GetStructuredOrientationAxis(
+   const TensorProductOrientation< Orientations... > & orientation );
+
+template < size_t Axis, size_t Offset, size_t Component, class Product >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr auto GetTensorProductOrientationAxis( const Product & orientation )
+{
+   static_assert( Component < Product::num_components );
+   using ComponentType = std::tuple_element_t< Component,
+                                              typename Product::component_types >;
+   constexpr size_t component_offset = Offset +
+      orientation_component_offset_v< Component, typename Product::component_types >;
+   if constexpr ( Axis < component_offset + orientation_dimension_v< ComponentType > )
+      return GetStructuredOrientationAxis< Axis, component_offset >(
+         orientation.template Get< Component >() );
+   else
+      return GetTensorProductOrientationAxis< Axis, Offset, Component + 1 >( orientation );
+}
+
+/** Read a signed axis without flattening a structured orientation. */
 template < size_t Axis, size_t Offset, class... Orientations >
 GENDIL_HOST_DEVICE GENDIL_INLINE
-decltype(auto) GetStructuredOrientationAxis(
+constexpr auto GetStructuredOrientationAxis(
    const TensorProductOrientation< Orientations... > & orientation )
 {
-   static_assert(
-      Offset <= Axis &&
+   static_assert( Offset <= Axis &&
       Axis < Offset + TensorProductOrientation< Orientations... >::Dim );
    return GetTensorProductOrientationAxis< Axis, Offset, 0 >( orientation );
 }

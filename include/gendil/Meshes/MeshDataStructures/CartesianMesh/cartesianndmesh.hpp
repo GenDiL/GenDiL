@@ -8,6 +8,8 @@
 #include "gendil/Meshes/Connectivities/computelinearindex.hpp"
 #include "gendil/Utilities/getstructuredsubindex.hpp"
 #include "gendil/Meshes/Cells/ReferenceCells/hypercubecell.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
+#include "gendil/Meshes/Geometries/canonicalvector.hpp"
 
 
 namespace gendil {

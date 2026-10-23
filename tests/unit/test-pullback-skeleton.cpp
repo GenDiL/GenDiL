@@ -24,7 +24,7 @@ inline constexpr bool is_product_expr_v =
 // This test verifies the pullback skeleton implementation:
 // - Channel-set deduction with shape-compatible seeds
 // - Compile-time channel presence queries
-// - Channel access via get<>()
+// - Channel access via Get<>()
 // - Seed shape validation
 
 int main()
@@ -62,13 +62,13 @@ int main()
       auto result_v = pullback(v, c);
 
       // Channel presence checks
-      static_assert(decltype(result_v)::contains<ValueChannel>(),
+      static_assert(decltype(result_v)::Contains<ValueChannel>(),
          "pullback(v, c) should have ValueChannel");
-      static_assert(!decltype(result_v)::contains<GradientChannel>(),
+      static_assert(!decltype(result_v)::Contains<GradientChannel>(),
          "pullback(v, c) should NOT have GradientChannel");
 
       // Channel access check
-      [[maybe_unused]] auto& value_seed = result_v.template get<ValueChannel>();
+      [[maybe_unused]] auto& value_seed = result_v.template Get<ValueChannel>();
 
       std::cout << "  [PASS] pullback(TestSpace<Scalar>, scalar_seed) → ValueChannel\n";
    }
@@ -78,13 +78,13 @@ int main()
       auto result_grad_v = pullback(grad(v), beta);
 
       // Channel presence checks
-      static_assert(decltype(result_grad_v)::contains<GradientChannel>(),
+      static_assert(decltype(result_grad_v)::Contains<GradientChannel>(),
          "pullback(grad(v), beta) should have GradientChannel");
-      static_assert(!decltype(result_grad_v)::contains<ValueChannel>(),
+      static_assert(!decltype(result_grad_v)::Contains<ValueChannel>(),
          "pullback(grad(v), beta) should NOT have ValueChannel");
 
       // Channel access check
-      [[maybe_unused]] auto& gradient_seed = result_grad_v.template get<GradientChannel>();
+      [[maybe_unused]] auto& gradient_seed = result_grad_v.template Get<GradientChannel>();
 
       std::cout << "  [PASS] pullback(grad(TestSpace<Scalar>), vector_seed) → GradientChannel\n";
    }
@@ -94,13 +94,13 @@ int main()
       auto result_vv = pullback(vv, beta);
 
       // Channel presence checks
-      static_assert(decltype(result_vv)::contains<ValueChannel>(),
+      static_assert(decltype(result_vv)::Contains<ValueChannel>(),
          "pullback(vv, beta) should have ValueChannel");
-      static_assert(!decltype(result_vv)::contains<GradientChannel>(),
+      static_assert(!decltype(result_vv)::Contains<GradientChannel>(),
          "pullback(vv, beta) should NOT have GradientChannel");
 
       // Channel access check
-      [[maybe_unused]] auto& value_seed = result_vv.template get<ValueChannel>();
+      [[maybe_unused]] auto& value_seed = result_vv.template Get<ValueChannel>();
 
       std::cout << "  [PASS] pullback(TestSpace<Vector>, vector_seed) → ValueChannel\n";
    }
@@ -110,13 +110,13 @@ int main()
       auto result_grad_vv = pullback(grad(vv), A);
 
       // Channel presence checks
-      static_assert(decltype(result_grad_vv)::contains<GradientChannel>(),
+      static_assert(decltype(result_grad_vv)::Contains<GradientChannel>(),
          "pullback(grad(vv), A) should have GradientChannel");
-      static_assert(!decltype(result_grad_vv)::contains<ValueChannel>(),
+      static_assert(!decltype(result_grad_vv)::Contains<ValueChannel>(),
          "pullback(grad(vv), A) should NOT have ValueChannel");
 
       // Channel access check
-      [[maybe_unused]] auto& gradient_seed = result_grad_vv.template get<GradientChannel>();
+      [[maybe_unused]] auto& gradient_seed = result_grad_vv.template Get<GradientChannel>();
 
       std::cout << "  [PASS] pullback(grad(TestSpace<Vector>), matrix_seed) → GradientChannel\n";
    }
@@ -129,13 +129,13 @@ int main()
 
       auto result_flux = pullback(normal_flux, beta);
 
-      static_assert(decltype(result_flux)::contains<GradientChannel>(),
+      static_assert(decltype(result_flux)::Contains<GradientChannel>(),
          "pullback(grad(VectorTestSpace) * Normal{}, vector_seed) should have GradientChannel");
-      static_assert(!decltype(result_flux)::contains<ValueChannel>(),
+      static_assert(!decltype(result_flux)::Contains<ValueChannel>(),
          "pullback(grad(VectorTestSpace) * Normal{}, vector_seed) should NOT have ValueChannel");
 
       [[maybe_unused]] auto& gradient_seed =
-         result_flux.template get<GradientChannel>();
+         result_flux.template Get<GradientChannel>();
       using GradientSeed = std::remove_cvref_t<decltype(gradient_seed)>;
       static_assert(field_shape_v<GradientSeed> == FieldShape::Matrix,
          "MatVec ProductExpr pullback should seed vector test gradients with a matrix-shaped expression.");
@@ -151,13 +151,13 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<ValueChannel>(),
+      static_assert(decltype(result)::Contains<ValueChannel>(),
          "pullback(dot(beta, vv), c) should have ValueChannel");
-      static_assert(!decltype(result)::contains<GradientChannel>(),
+      static_assert(!decltype(result)::Contains<GradientChannel>(),
          "pullback(dot(beta, vv), c) should NOT have GradientChannel");
 
       // Channel access
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       // REQUIRED: Verify channel coefficient is test-free and correctly shaped
       using ValueType = std::remove_cvref_t<decltype(value)>;
@@ -174,8 +174,8 @@ int main()
       auto expr = dot(vv, beta);
       auto result = pullback(expr, c);
 
-      static_assert(decltype(result)::contains<ValueChannel>());
-      static_assert(!decltype(result)::contains<GradientChannel>());
+      static_assert(decltype(result)::Contains<ValueChannel>());
+      static_assert(!decltype(result)::Contains<GradientChannel>());
 
       std::cout << "  [PASS] pullback(dot(vv, beta), c) → ValueChannel\n";
    }
@@ -186,13 +186,13 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<GradientChannel>(),
+      static_assert(decltype(result)::Contains<GradientChannel>(),
          "pullback(dot(grad(u), grad(v)), c) should have GradientChannel");
-      static_assert(!decltype(result)::contains<ValueChannel>(),
+      static_assert(!decltype(result)::Contains<ValueChannel>(),
          "pullback(dot(grad(u), grad(v)), c) should NOT have ValueChannel");
 
       // Channel access
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       // REQUIRED: Verify channel coefficient is test-free and correctly shaped
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
@@ -209,8 +209,8 @@ int main()
       auto expr = dot(grad(v), grad(u));
       auto result = pullback(expr, c);
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
       std::cout << "  [PASS] pullback(dot(grad(v), grad(u)), c) → GradientChannel\n";
    }
@@ -235,10 +235,10 @@ int main()
       auto expr = u * v;
       auto result = pullback(expr, c);
 
-      static_assert(decltype(result)::contains<ValueChannel>());
-      static_assert(!decltype(result)::contains<GradientChannel>());
+      static_assert(decltype(result)::Contains<ValueChannel>());
+      static_assert(!decltype(result)::Contains<GradientChannel>());
 
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       using ValueType = std::remove_cvref_t<decltype(value)>;
       static_assert(field_shape_v<ValueType> == FieldShape::Scalar,
@@ -254,10 +254,10 @@ int main()
       auto expr = v * u;
       auto result = pullback(expr, c);
 
-      static_assert(decltype(result)::contains<ValueChannel>());
-      static_assert(!decltype(result)::contains<GradientChannel>());
+      static_assert(decltype(result)::Contains<ValueChannel>());
+      static_assert(!decltype(result)::Contains<GradientChannel>());
 
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       using ValueType = std::remove_cvref_t<decltype(value)>;
       static_assert(field_shape_v<ValueType> == FieldShape::Scalar);
@@ -271,10 +271,10 @@ int main()
       auto expr = mu * grad(v);
       auto result = pullback(expr, beta);
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
       static_assert(field_shape_v<GradType> == FieldShape::Vector,
@@ -290,10 +290,10 @@ int main()
       auto expr = grad(v) * mu;
       auto result = pullback(expr, beta);
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
       static_assert(field_shape_v<GradType> == FieldShape::Vector);
@@ -307,10 +307,10 @@ int main()
       auto expr = mu * vv;
       auto result = pullback(expr, beta);
 
-      static_assert(decltype(result)::contains<ValueChannel>());
-      static_assert(!decltype(result)::contains<GradientChannel>());
+      static_assert(decltype(result)::Contains<ValueChannel>());
+      static_assert(!decltype(result)::Contains<GradientChannel>());
 
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       using ValueType = std::remove_cvref_t<decltype(value)>;
       static_assert(field_shape_v<ValueType> == FieldShape::Vector,
@@ -326,10 +326,10 @@ int main()
       auto expr = vv * mu;
       auto result = pullback(expr, beta);
 
-      static_assert(decltype(result)::contains<ValueChannel>());
-      static_assert(!decltype(result)::contains<GradientChannel>());
+      static_assert(decltype(result)::Contains<ValueChannel>());
+      static_assert(!decltype(result)::Contains<GradientChannel>());
 
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       using ValueType = std::remove_cvref_t<decltype(value)>;
       static_assert(field_shape_v<ValueType> == FieldShape::Vector);
@@ -343,10 +343,10 @@ int main()
       auto expr = mu * grad(vv);
       auto result = pullback(expr, A);
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
       static_assert(field_shape_v<GradType> == FieldShape::Matrix,
@@ -362,10 +362,10 @@ int main()
       auto expr = grad(vv) * mu;
       auto result = pullback(expr, A);
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
       static_assert(field_shape_v<GradType> == FieldShape::Matrix);
@@ -390,10 +390,10 @@ int main()
       auto expr = dot(nonsymmetric_A * grad(v), Normal{});
       auto result = pullback(expr, ScaleExpr{1.0});
 
-      static_assert(decltype(result)::contains<GradientChannel>());
-      static_assert(!decltype(result)::contains<ValueChannel>());
+      static_assert(decltype(result)::Contains<GradientChannel>());
+      static_assert(!decltype(result)::Contains<ValueChannel>());
 
-      const auto& grad_seed = result.template get<GradientChannel>();
+      const auto& grad_seed = result.template Get<GradientChannel>();
 
       struct FakeFacetQuadPointContext
       {
@@ -470,14 +470,14 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<ValueChannel>(),
+      static_assert(decltype(result)::Contains<ValueChannel>(),
          "pullback(u*v + dot(grad(u), grad(v)), c) should have ValueChannel");
-      static_assert(decltype(result)::contains<GradientChannel>(),
+      static_assert(decltype(result)::Contains<GradientChannel>(),
          "pullback(u*v + dot(grad(u), grad(v)), c) should have GradientChannel");
 
       // Channel access
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       // Verify channel coefficient shapes and test-freedom
       using ValueType = std::remove_cvref_t<decltype(value)>;
@@ -501,13 +501,13 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<ValueChannel>(),
+      static_assert(decltype(result)::Contains<ValueChannel>(),
          "pullback(u*v + mu*v, c) should have ValueChannel");
-      static_assert(!decltype(result)::contains<GradientChannel>(),
+      static_assert(!decltype(result)::Contains<GradientChannel>(),
          "pullback(u*v + mu*v, c) should NOT have GradientChannel");
 
       // Channel access
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       // Verify channel coefficient is a sum expression (merged)
       using ValueType = std::remove_cvref_t<decltype(value)>;
@@ -527,13 +527,13 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<GradientChannel>(),
+      static_assert(decltype(result)::Contains<GradientChannel>(),
          "pullback(dot(grad(u), grad(v)) + dot(beta, grad(v)), c) should have GradientChannel");
-      static_assert(!decltype(result)::contains<ValueChannel>(),
+      static_assert(!decltype(result)::Contains<ValueChannel>(),
          "pullback(dot(grad(u), grad(v)) + dot(beta, grad(v)), c) should NOT have ValueChannel");
 
       // Channel access
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       // Verify channel coefficient
       using GradType = std::remove_cvref_t<decltype(grad_value)>;
@@ -553,14 +553,14 @@ int main()
       auto result = pullback(expr, c);
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<ValueChannel>(),
+      static_assert(decltype(result)::Contains<ValueChannel>(),
          "pullback(three-term sum, c) should have ValueChannel");
-      static_assert(decltype(result)::contains<GradientChannel>(),
+      static_assert(decltype(result)::Contains<GradientChannel>(),
          "pullback(three-term sum, c) should have GradientChannel");
 
       // Channel access
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
-      [[maybe_unused]] auto& grad_value = result.template get<GradientChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
+      [[maybe_unused]] auto& grad_value = result.template Get<GradientChannel>();
 
       // Verify channel coefficients
       using ValueType = std::remove_cvref_t<decltype(value)>;
@@ -588,13 +588,13 @@ int main()
       auto result = pullback(expr, beta);  // Use vector seed since expr is Vector-shaped
 
       // Channel presence checks
-      static_assert(decltype(result)::contains<ValueChannel>(),
+      static_assert(decltype(result)::Contains<ValueChannel>(),
          "pullback(mu*vv + nu*vv, beta) should have ValueChannel");
-      static_assert(!decltype(result)::contains<GradientChannel>(),
+      static_assert(!decltype(result)::Contains<GradientChannel>(),
          "pullback(mu*vv + nu*vv, beta) should NOT have GradientChannel");
 
       // Channel access
-      [[maybe_unused]] auto& value = result.template get<ValueChannel>();
+      [[maybe_unused]] auto& value = result.template Get<ValueChannel>();
 
       // Verify channel coefficient
       using ValueType = std::remove_cvref_t<decltype(value)>;

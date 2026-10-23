@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/staticstring.hpp"
 
 namespace gendil
 {
@@ -39,26 +40,41 @@ concept CoefficientInput = std::derived_from<std::remove_cvref_t<T>, Coefficient
 template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct TrialSpace;
 template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct TestSpace;
 template < FieldExpr Expr > struct GradientExpr;
+template < FieldExpr Expr > struct DivergenceExpr;
+template < FieldExpr Expr > struct CurlExpr;
 template < FieldExpr Expr > struct NegExpr;
 template < FieldExpr Expr > struct MinusTraceExpr;
 template < FieldExpr Expr > struct PlusTraceExpr;
 template < FieldExpr Expr > struct AverageExpr;
 template < FieldExpr Expr > struct JumpExpr;
 template < FieldExpr AdvExpr, FieldExpr Expr > struct UpwindExpr;
+template < FieldExpr AdvExpr, typename InteriorExpr, typename ExteriorExpr > struct BoundaryUpwindExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct DotExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct InnerExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct OuterExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct MultFieldExpr;
 template < FieldExpr LHS, FieldExpr RHS > struct ProductExpr;
 template < FieldExpr Expr > struct TransposeExpr;
+template < FieldExpr Expr > struct SymExpr;
+template < FieldExpr Expr > struct SkewExpr;
+template < FieldExpr Expr > struct NormalProjectionExpr;
+template < FieldExpr Expr > struct TangentialProjectionExpr;
 template < FieldExpr Head, FieldExpr... Tail > struct SumExpr;
 template < DomainExpr Domain, FieldExpr Expr > struct Integrand;
-template < typename Map > struct SumFormExpr;
+template < typename TermsTuple, typename Declarations = void > struct SumFormExpr;
+template<class Declarations, class LogicalOutputSides> struct ZeroExpr;
 template < typename Key, typename T > struct Entry;
 template < typename... Entries > struct StaticMap;
 template < StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs > struct Coefficient;
 struct ScaleExpr;
 struct Normal;
 template < StaticString Name > struct FiniteElementField;
+template < StaticString Name > struct FieldValue;
+template < StaticString Name > struct FieldGradient;
+
+namespace weak_form_detail
+{
+template<FieldShape Shape> struct BoundaryUpwindZero;
+}
 
 } // namespace gendil

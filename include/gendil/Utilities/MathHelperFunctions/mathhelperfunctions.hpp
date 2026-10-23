@@ -20,6 +20,10 @@
 
 // A function to compute the square root of a value.
 #include "sqrt.hpp"
+// Square root with finite, nonnegative input validation.
+#include "checkedsqrt.hpp"
+// Overflow-resistant hypotenuse for host/device Givens rotations.
+#include "hypot.hpp"
 
 // A function to compute the dot product of two vector types.
 #include "dot.hpp"

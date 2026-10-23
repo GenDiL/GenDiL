@@ -21,20 +21,19 @@ namespace gendil {
  *
  * @tparam Rank Number of tensor axes.
  */
-// TODO: make constexpr compatible
 template < size_t Rank >
 struct Permutation
 {
    std::array< LocalIndex, Rank > dimension_indices;
 
    GENDIL_HOST_DEVICE
-   const LocalIndex & operator()( size_t i ) const
+   constexpr const LocalIndex & operator()( size_t i ) const
    {
       return dimension_indices[ i ];
    }
 
    GENDIL_HOST_DEVICE
-   LocalIndex & operator()( size_t i )
+   constexpr LocalIndex & operator()( size_t i )
    {
       return dimension_indices[ i ];
    }
@@ -49,14 +48,21 @@ struct OrientationDimension< Permutation< Rank > >
    : std::integral_constant< size_t, Rank >
 {};
 
+template < size_t Rank, Permutation< Rank > Value >
+struct OrientationDimension<
+   std::integral_constant< Permutation< Rank >, Value > >
+   : std::integral_constant< size_t, Rank >
+{};
+
 template < class Orientation >
 inline constexpr size_t orientation_dimension_v =
    OrientationDimension< std::remove_cvref_t< Orientation > >::value;
 
 template < size_t Rank >
 GENDIL_HOST_DEVICE
-bool operator==( const Permutation< Rank > & a,
-                 const Permutation< Rank > & b )
+constexpr bool operator==(
+   const Permutation< Rank > & a,
+   const Permutation< Rank > & b )
 {
    for ( size_t i = 0; i < Rank; ++i )
    {
@@ -70,8 +76,9 @@ bool operator==( const Permutation< Rank > & a,
 
 template < size_t Rank >
 GENDIL_HOST_DEVICE
-bool operator!=( const Permutation< Rank > & a,
-                 const Permutation< Rank > & b )
+constexpr bool operator!=(
+   const Permutation< Rank > & a,
+   const Permutation< Rank > & b )
 {
    return !( a == b );
 }
@@ -92,7 +99,10 @@ constexpr bool IsValidSignedPermutation(
    for ( size_t native_axis = 0; native_axis < Rank; ++native_axis )
    {
       const LocalIndex mapped_axis = orientation( native_axis );
-      if ( mapped_axis == 0 )
+      // Check the local range before taking an absolute value. In particular,
+      // negating the smallest LocalIndex must never overflow during validation.
+      if ( mapped_axis == 0 || mapped_axis > static_cast< LocalIndex >( Rank ) ||
+           mapped_axis < -static_cast< LocalIndex >( Rank ) )
       {
          return false;
       }
@@ -117,6 +127,15 @@ constexpr bool IsValidOrientation(
    return IsValidSignedPermutation( orientation );
 }
 
+/** @brief Validate the complete signed permutation encoded by a static type. */
+template < size_t Rank, Permutation< Rank > Value >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr bool IsValidOrientation(
+   const std::integral_constant< Permutation< Rank >, Value > & )
+{
+   return IsValidSignedPermutation( Value );
+}
+
 template < class Orientation >
 struct IsRuntimePermutationOrientation : std::false_type
 {};
@@ -130,10 +149,23 @@ inline constexpr bool is_runtime_permutation_orientation_v =
    IsRuntimePermutationOrientation<
       std::remove_cvref_t< Orientation > >::value;
 
+
+namespace detail {
+
+/** Add a tensor-factor offset without changing a signed axis direction. */
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr LocalIndex OffsetOrientationAxis( LocalIndex axis, size_t offset )
+{
+   const auto shift = static_cast< LocalIndex >( offset );
+   return axis > 0 ? axis + shift : axis - shift;
+}
+
+} // namespace detail
+
 /** @brief Insert a signed sub-permutation at a compile-time axis offset. */
 template < size_t Offset, size_t Size, size_t Rank >
 GENDIL_HOST_DEVICE
-void Set( Permutation< Rank > & permutation,
+constexpr void Set( Permutation< Rank > & permutation,
           const Permutation< Size > & sub_permutation )
 {
    static_assert(
@@ -141,11 +173,11 @@ void Set( Permutation< Rank > & permutation,
       "Sub-permutation exceeds the destination permutation rank." );
 
    ConstexprLoop< Size >(
-      [&](auto i) {
+      [&]( auto i )
+      {
          const LocalIndex dim_index = sub_permutation( i );
-         const LocalIndex offset = static_cast< LocalIndex >( Offset );
          permutation( Offset + i ) =
-            dim_index > 0 ? offset + dim_index : dim_index - offset;
+            detail::OffsetOrientationAxis( dim_index, Offset );
       }
    );
 }
@@ -185,6 +217,15 @@ constexpr Permutation< Rank > FlattenOrientation(
    return orientation;
 }
 
+/** @brief Materialize the signed permutation encoded by a static type. */
+template < size_t Rank, Permutation< Rank > Value >
+GENDIL_HOST_DEVICE GENDIL_INLINE
+constexpr Permutation< Rank > FlattenOrientation(
+   const std::integral_constant< Permutation< Rank >, Value > & )
+{
+   return Value;
+}
+
 /** @brief Write a flat permutation as its signed one-based axis entries. */
 template < size_t Rank >
 std::ostream & operator<<(
@@ -202,7 +243,7 @@ std::ostream & operator<<(
 /** @brief Extract a contiguous signed sub-permutation and remove its offset. */
 template < size_t SubDim, size_t Dim >
 GENDIL_HOST_DEVICE
-auto GetSubPermutation(
+constexpr auto GetSubPermutation(
    const Permutation< Dim > & orientation,
    size_t offset )
 {

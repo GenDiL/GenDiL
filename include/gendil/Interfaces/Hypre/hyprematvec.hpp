@@ -12,8 +12,8 @@ namespace gendil
 
 template <
    typename MatrixBackend,
-   HostAccessibleVector InputVector,
-   HostAccessibleVector OutputVector >
+   HostReadableVector InputVector,
+   HostWritableVector OutputVector >
 inline void HypreHostMatvec(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,
@@ -56,8 +56,8 @@ inline void HypreHostMatvec(
 
 template <
    typename MatrixBackend,
-   DeviceAccessibleVector InputVector,
-   DeviceAccessibleVector OutputVector >
+   DeviceReadableVector InputVector,
+   DeviceWritableVector OutputVector >
 inline void HypreDeviceMatvec(
    const HypreCSRMatrix< MatrixBackend > & matrix,
    const InputVector & x,

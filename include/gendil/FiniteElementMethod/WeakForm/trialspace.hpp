@@ -34,7 +34,7 @@ struct TrialSpace : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      return ReadQuadratureLocalValues( kernel_context, quad_pt_context.quad_index, fields.template get<NameTag<Name>>().values );
+      return ReadQuadratureLocalValues( kernel_context, quad_pt_context.quad_index, fields.template Get<NameTag<Name>>().values );
    }
 };
 

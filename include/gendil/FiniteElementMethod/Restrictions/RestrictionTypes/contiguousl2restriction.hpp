@@ -132,6 +132,10 @@ template < StaticDofShape DofShape >
 inline constexpr bool restriction_may_share_global_dofs_v<
    ContiguousL2Restriction< DofShape > > = false;
 
+template < StaticDofShape DofShape >
+inline constexpr bool restriction_rows_have_unique_coordinates_v<
+   ContiguousL2Restriction< DofShape > > = true;
+
 template < StaticDofShape... ComponentDofShapes >
 inline constexpr bool restriction_may_share_global_dofs_v<
    VectorRestriction<

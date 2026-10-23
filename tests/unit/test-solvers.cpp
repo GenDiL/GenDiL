@@ -103,7 +103,7 @@ void compare_solvers(const Integer n)
         {
             Vector x(ndofs); x = 0.0;
             Vector r(ndofs), r_hat(ndofs), p(ndofs), v(ndofs), s(ndofs), t(ndofs);
-            auto [ok, iters, relres] = BiCGSTAB_no_alloc(
+            auto [ok, iters, relres] = BiCGSTAB(
                 op, b_rhs, dot, max_iters, tol,
                 x, r, r_hat, p, v, s, t
             );

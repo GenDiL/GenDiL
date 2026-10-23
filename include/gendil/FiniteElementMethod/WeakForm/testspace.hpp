@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 
@@ -18,6 +19,8 @@ struct TestSpace : FieldBase
    static constexpr auto name = Name;
    static constexpr auto field_shape = Shape;
 
+   // Symbolic test fields identify output contractions; pullback supplies their
+   // coefficients. These nodes do not represent pointwise basis values.
    template <
       typename KernelContext,
       typename WeakFormContext,
@@ -27,14 +30,15 @@ struct TestSpace : FieldBase
       typename Fields >
    GENDIL_HOST_DEVICE
    auto operator()(
-      const KernelContext & kernel_context,
-      const WeakFormContext & weak_form_context,
-      const OperatorContext & operator_context,
-      const ElementContext & element_context,
-      const QuadPtContext & quad_pt_context,
-      const Fields & fields ) const
+      const KernelContext &,
+      const WeakFormContext &,
+      const OperatorContext &,
+      const ElementContext &,
+      const QuadPtContext &,
+      const Fields & ) const
    {
-      return 1.0;
+      static_assert(dependent_false_v<KernelContext>,
+         "Test-space values must be lowered through pullback before numerical evaluation.");
    }
 };
 

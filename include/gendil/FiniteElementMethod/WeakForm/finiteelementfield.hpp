@@ -37,7 +37,7 @@ struct FiniteElementField : FieldBase
       return ReadQuadratureLocalValues(
          kernel_context,
          quad_pt_context.quad_index,
-         fields.template get<NameTag<Name>>().values );
+         fields.template Get<NameTag<Name>>().values );
    }
 };
 
