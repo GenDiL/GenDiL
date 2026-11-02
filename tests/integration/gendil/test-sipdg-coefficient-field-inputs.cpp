@@ -551,7 +551,7 @@ int TestSIPDGCoefficientFieldInputs()
          });
 
    auto tau =
-      MakeCoefficient<"penalty", InverseFacetSize>(
+      MakeCoefficient<"penalty", InverseNormalCellSize>(
          [=] GENDIL_HOST_DEVICE (const Real h_inv) -> Real
          {
             return kappa * h_inv;
@@ -564,7 +564,7 @@ int TestSIPDGCoefficientFieldInputs()
          interior_facets,
          - average(mu * dot(grad(u), Normal{})) * jump(v)
          + sigma * jump(u) * average(mu * dot(grad(v), Normal{}))
-         + tau * average(mu) * jump(u) * jump(v));
+         + average(tau * mu) * jump(u) * jump(v));
    auto diffusion_form =
       integrate(cells, mu * dot(grad(u), grad(v))) + facet_form;
 

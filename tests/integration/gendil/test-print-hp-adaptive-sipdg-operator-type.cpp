@@ -132,7 +132,7 @@ int main()
       {
          return Real{1.0} + Real{0.1} * x[0];
       });
-   auto tau = MakeCoefficient<"penalty", InverseFacetSize>(
+   auto tau = MakeCoefficient<"penalty", InverseNormalCellSize>(
       [] GENDIL_HOST_DEVICE (const Real& h_inv) -> Real
       {
          return Real{16.0} * h_inv;
@@ -145,7 +145,7 @@ int main()
            interior_facets,
            -average(mu * dot(grad(u), Normal{})) * jump(v)
            + sigma * jump(u) * average(mu * dot(grad(v), Normal{}))
-           + tau * mu * jump(u) * jump(v));
+           + average(tau * mu) * jump(u) * jump(v));
 
    auto context = MakeWeakFormContext(
       MakeTrialField<"u">(hp_space),

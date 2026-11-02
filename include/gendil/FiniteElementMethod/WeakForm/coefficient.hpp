@@ -256,14 +256,8 @@ struct CoefficientInputGetter<JacobianInverse>
    }
 };
 
-/**
- * @brief Getter for InverseFacetSize coefficient input
- *
- * Accesses quad_pt_context.inverse_facet_size from FacetQuadraturePointContext.
- * For cell contexts without inverse_facet_size field, produces compile error.
- */
 template <>
-struct CoefficientInputGetter<InverseFacetSize>
+struct CoefficientInputGetter<InverseNormalCellSize>
 {
    template <
       typename KernelContext,
@@ -281,23 +275,15 @@ struct CoefficientInputGetter<InverseFacetSize>
       const QuadPtContext& quad_pt_context,
       const Fields&)
    {
-      // Check if quad_pt_context has inverse_facet_size field (FacetQuadraturePointContext)
-      if constexpr (requires { quad_pt_context.inverse_facet_size; })
+      if constexpr (requires { quad_pt_context.inverse_normal_cell_size; })
       {
-         return quad_pt_context.inverse_facet_size;
-      }
-      else if constexpr (requires { quad_pt_context.inverse_facet_size_minus; })
-      {
-         // Interior facets use the current/minus-side facet size for now.
-         return quad_pt_context.inverse_facet_size_minus;
+         return quad_pt_context.inverse_normal_cell_size;
       }
       else
       {
-         // InverseFacetSize requires FacetQuadraturePointContext
-         static_assert(requires { quad_pt_context.inverse_facet_size; },
-            "InverseFacetSize coefficient input requires FacetQuadraturePointContext with inverse_facet_size field");
-
-         // Unreachable, but needed for return type deduction
+         static_assert(requires { quad_pt_context.inverse_normal_cell_size; },
+            "InverseNormalCellSize requires a facet context; on interior facets, "
+            "select minus(...), plus(...), or average(...) of the coefficient");
          return Real{};
       }
    }
@@ -586,12 +572,9 @@ inline std::ostream& operator<<(std::ostream& os, const JacobianInverse&)
    return os << "invJ";
 }
 
-/**
- * @brief Print helper for InverseFacetSize coefficient input
- */
-inline std::ostream& operator<<(std::ostream& os, const InverseFacetSize&)
+inline std::ostream& operator<<(std::ostream& os, const InverseNormalCellSize&)
 {
-   return os << "h_inv";
+   return os << "h_normal_inv";
 }
 
 inline std::ostream& operator<<(std::ostream& os, const PhysicalCoordinates&)

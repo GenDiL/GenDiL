@@ -314,10 +314,14 @@ GENDIL_GEOMETRY_INPUT(JacobianInverse, JacobianInverse)
 #undef GENDIL_GEOMETRY_INPUT
 
 template<class Symbols, SemanticSide Side>
-struct input_semantics<InverseFacetSize, Symbols, Side> : empty_semantics
+struct input_semantics<InverseNormalCellSize, Symbols, Side> : empty_semantics
 {
-   using geometry_sides = one_side_geometry<Side, GeometryRequirement::InverseFacetSize | GeometryRequirement::JacobianInverse>;
+   using geometry_sides = one_side_geometry<Side,
+      GeometryRequirement::InverseNormalCellSize | GeometryRequirement::JacobianInverse>;
    static constexpr bool requires_facet = true;
+   static constexpr bool supported =
+      analysis_entity_v<Symbols> != SemanticEntity::InteriorFacet ||
+      Side != SemanticSide::Unqualified;
 };
 
 template<StaticString N, OperatorMask Mask, class Symbols, SemanticSide Side>

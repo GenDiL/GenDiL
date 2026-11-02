@@ -1194,7 +1194,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
    auto mu =
       MakeCoefficient<"diffusivity", PhysicalCoordinates>( diffusivity );
    auto tau =
-      MakeCoefficient<"penalty", InverseFacetSize>(
+      MakeCoefficient<"penalty", InverseNormalCellSize>(
          [=] GENDIL_HOST_DEVICE ( const Real & h_inv ) -> Real
          {
             return kappa * h_inv;
@@ -1207,7 +1207,7 @@ bool SmokeInteriorBoundary( mfem::Mesh & mesh )
            -average( mu * dot( grad( u ), Normal{} ) ) * jump( v )
            + sigma * jump( u ) *
                 average( mu * dot( grad( v ), Normal{} ) )
-           + tau * mu * jump( u ) * jump( v ) )
+           + average( tau * mu ) * jump( u ) * jump( v ) )
       + integrate(
            boundary_facets,
            -mu * dot( grad( u ), Normal{} ) * v

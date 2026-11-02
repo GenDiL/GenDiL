@@ -188,7 +188,7 @@ int TestDiffusionSIPDG()
 
    auto mu = MakeCoefficient<"diffusivity", PhysicalCoordinates>(diffusivity);
 
-   auto tau = MakeCoefficient<"penalty", InverseFacetSize>(
+   auto tau = MakeCoefficient<"penalty", InverseNormalCellSize>(
       [=] GENDIL_HOST_DEVICE (const Real& h_inv) -> Real {
          return kappa * h_inv;
       });
@@ -200,7 +200,7 @@ int TestDiffusionSIPDG()
             interior_facets,
             - average(mu * dot(grad(u), Normal{})) * jump(v)
             + sigma * jump(u) * average(mu * dot(grad(v), Normal{}))
-            + tau * mu * jump(u) * jump(v)
+            + average(tau * mu) * jump(u) * jump(v)
          );
 
    auto diffusion_wf_context = MakeWeakFormContext(

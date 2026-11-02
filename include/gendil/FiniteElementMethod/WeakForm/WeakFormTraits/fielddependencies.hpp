@@ -616,7 +616,8 @@ inline constexpr bool has_unqualified_interior_test_trace_v =
 // physical geometry. Value traces need plus-side field data and reference-side
 // evaluation, but they do not need the plus cell Jacobian. A plus-side Jacobian
 // is required only when an expression is actually evaluated
-// in the plus-side context and asks for a physical gradient or inverse Jacobian.
+// in the plus-side context and asks for a physical gradient, inverse Jacobian,
+// or normal cell size.
 // ---------------------------------------------------------------------------
 
 template<class Input>
@@ -628,6 +629,10 @@ struct coefficient_input_requires_plus_side_jacobian<FieldGradient<Name>>
 
 template<>
 struct coefficient_input_requires_plus_side_jacobian<JacobianInverse>
+   : std::true_type {};
+
+template<>
+struct coefficient_input_requires_plus_side_jacobian<InverseNormalCellSize>
    : std::true_type {};
 
 template<class Expr, bool InPlusSideContext>

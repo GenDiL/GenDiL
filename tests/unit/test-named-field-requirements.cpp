@@ -435,7 +435,7 @@ int main()
          [] (const auto&) { return 1.0; });
       auto coordinate_coeff = MakeCoefficient<"k_x", PhysicalCoordinates>(
          [] (const auto&) { return 1.0; });
-      auto inverse_size_coeff = MakeCoefficient<"k_h", InverseFacetSize>(
+      auto inverse_normal_size_coeff = MakeCoefficient<"k_n", InverseNormalCellSize>(
          [] (const auto&) { return 1.0; });
 
       auto value_jump_form = integrate(interior_facets, jump(u) * jump(v));
@@ -449,8 +449,18 @@ int main()
          integrate(interior_facets, jump(gradient_coeff) * jump(u) * jump(v));
       auto averaged_coordinate_coeff =
          integrate(interior_facets, average(coordinate_coeff) * jump(u) * jump(v));
-      auto inverse_size_form =
-         integrate(interior_facets, inverse_size_coeff * jump(u) * jump(v));
+      auto inverse_normal_size_form =
+         integrate(interior_facets, inverse_normal_size_coeff * jump(u) * jump(v));
+      auto averaged_normal_size_form =
+         integrate(interior_facets, average(inverse_normal_size_coeff) * jump(u) * jump(v));
+      auto minus_normal_size_form =
+         integrate(interior_facets, minus(inverse_normal_size_coeff) * jump(u) * jump(v));
+      auto plus_normal_size_form =
+         integrate(interior_facets, plus(inverse_normal_size_coeff) * jump(u) * jump(v));
+      auto boundary_normal_size_form =
+         integrate(BoundaryFacets<"mesh">{}, inverse_normal_size_coeff * u * v);
+      auto cell_normal_size_form =
+         integrate(Cells<"mesh">{}, inverse_normal_size_coeff * u * v);
 
       static_assert(!requires_plus_side_jacobian_v<decltype(value_jump_form)>);
       static_assert(!requires_plus_side_jacobian_v<decltype(averaged_value_coeff)>);
@@ -469,7 +479,21 @@ int main()
       static_assert(requires_plus_side_jacobian_v<decltype(average(grad(rho)))>);
 
       static_assert(!requires_plus_side_jacobian_v<decltype(averaged_coordinate_coeff)>);
-      static_assert(!requires_plus_side_jacobian_v<decltype(inverse_size_form)>);
+      static_assert(!requires_plus_side_jacobian_v<decltype(minus_normal_size_form)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(plus_normal_size_form)>);
+      static_assert(requires_plus_side_jacobian_v<decltype(averaged_normal_size_form)>);
+      static_assert(!form_signature_t<decltype(inverse_normal_size_form)>::valid);
+      static_assert(form_signature_t<decltype(averaged_normal_size_form)>::valid);
+      static_assert(form_signature_t<decltype(minus_normal_size_form)>::valid);
+      static_assert(form_signature_t<decltype(plus_normal_size_form)>::valid);
+      static_assert(form_signature_t<decltype(boundary_normal_size_form)>::valid);
+      static_assert(!form_signature_t<decltype(cell_normal_size_form)>::valid);
+
+      using NormalSizeSignature = integrand_signature_t<decltype(averaged_normal_size_form)>;
+      static_assert(has_geometry(NormalSizeSignature::template geometry_on<SemanticSide::Minus>,
+         GeometryRequirement::InverseNormalCellSize));
+      static_assert(has_geometry(NormalSizeSignature::template geometry_on<SemanticSide::Plus>,
+         GeometryRequirement::JacobianInverse));
 
       using X2D = std::array<Real, 2>;
       using Jacobian2D = std::array<std::array<Real, 2>, 2>;
