@@ -116,6 +116,7 @@ gendil_add_non_nvcc_test(test-nonconforming-global-facet-geometry test-nonconfor
 gendil_add_non_nvcc_test(test-facet-size-inputs test-facet-size-inputs.cpp)
 gendil_add_non_nvcc_test(test-facet-size-orientation-curved test-facet-size-orientation-curved.cpp)
 gendil_add_test(test-inverse-normal-cell-size-device test-inverse-normal-cell-size-device.cpp)
+gendil_add_test(test-facet-coefficient-arithmetic test-facet-coefficient-arithmetic.cpp)
 gendil_add_non_nvcc_test(test-h-adaptive-face-geometry-map test-h-adaptive-face-geometry-map.cpp)
 gendil_add_non_nvcc_test(test-generic-hp-adaptive-upwind test-generic-hp-adaptive-upwind.cpp)
 gendil_add_non_nvcc_test(test-print-hp-adaptive-sipdg-operator-type test-print-hp-adaptive-sipdg-operator-type.cpp)

@@ -40,6 +40,7 @@ foreach(mode input-replace input-add direct-input output-replace output-add
 endforeach()
 
 gendil_add_test(test-dot test-dot.cpp)
+gendil_add_test(test-array-arithmetic test-array-arithmetic.cpp)
 gendil_add_test(test-vector-l2-error test-vector-l2-error.cpp)
 gendil_add_test(test-divergence-pullback test-divergence-pullback.cpp)
 gendil_add_test(test-curl-pullback test-curl-pullback.cpp)
