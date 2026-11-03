@@ -30,7 +30,7 @@ struct TransposeExpr : FieldBase
    GENDIL_HOST_DEVICE
    auto operator()(Args&&... args) const
    {
-      auto value = expr(std::forward<Args>(args)...);
+      const auto value = expr(std::forward<Args>(args)...);
       using ValueType = std::remove_cvref_t<decltype(value)>;
 
       if constexpr (operand_shape == FieldShape::Scalar)
@@ -43,14 +43,15 @@ struct TransposeExpr : FieldBase
          static_assert(size != std::dynamic_extent,
             "transpose(vector) requires a statically sized vector value.");
 
-         using EntryType =
+         using EntryType = std::conditional_t<StaticVector<ValueType>,
+            vector_value_t<ValueType>,
             typename vector_element_type<
-               std::remove_cvref_t<decltype(GetValue(value, 0))>>::type;
+               std::remove_cvref_t<decltype(GetValue(value, 0))>>::type>;
 
          SerialRecursiveArray<EntryType, 1, size> result;
          for (Integer i = 0; i < size; ++i)
          {
-            result(0, i) = GetValue(value, i);
+            result(0, i) = static_cast<EntryType>(GetValue(value, i));
          }
          return result;
       }
@@ -62,16 +63,19 @@ struct TransposeExpr : FieldBase
                        cols != std::dynamic_extent,
             "transpose(matrix) requires a statically sized matrix value.");
 
-         using EntryType =
+         // Readable proxies describe their scalar through matrix_value_t;
+         // the owning transpose stores those scalars, not accessor proxies.
+         using EntryType = std::conditional_t<StaticMatrix<ValueType>,
+            matrix_value_t<ValueType>,
             typename vector_element_type<
-               std::remove_cvref_t<decltype(GetValue(value, 0, 0))>>::type;
+               std::remove_cvref_t<decltype(GetValue(value, 0, 0))>>::type>;
 
          SerialRecursiveArray<EntryType, cols, rows> result;
          for (Integer i = 0; i < rows; ++i)
          {
             for (Integer j = 0; j < cols; ++j)
             {
-               result(j, i) = GetValue(value, i, j);
+               result(j, i) = static_cast<EntryType>(GetValue(value, i, j));
             }
          }
          return result;

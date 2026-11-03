@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 #include <gendil/Algebra/arrayarithmetic.hpp>
+#include <gendil/Algebra/matrixvectorops.hpp>
 #include <gendil/gendil.hpp>
 
 #include <array>
@@ -20,6 +21,7 @@ struct ScalarProxy
    friend T operator-(ScalarProxy) = delete;
    friend T operator*(T, ScalarProxy) = delete;
    friend T operator*(ScalarProxy, T) = delete;
+   friend T operator*(ScalarProxy, ScalarProxy) = delete;
 };
 
 template<class T, size_t N>
@@ -111,6 +113,14 @@ static_assert(!CanSubtract<ReadOnlyMatrix<float, 2, 3>, WrongRecursiveMatrix>);
 static_assert(!CanAdd<ReadOnlyVector<float, 3>, ReadOnlyMatrix<float, 2, 3>>);
 static_assert(!CanSubtract<ReadOnlyMatrix<float, 2, 3>, ReadOnlyVector<float, 3>>);
 static_assert(!CanMultiply<ReadOnlyVector<float, 3>, ReadOnlyVector<float, 3>>);
+static_assert(!CanMultiply<ArrayMatrix, ArrayMatrix>);
+static_assert(!CanMultiply<ArrayMatrix, RecursiveMatrix>);
+static_assert(!CanMultiply<RecursiveMatrix, ArrayMatrix>);
+static_assert(!CanMultiply<RecursiveMatrix, RecursiveMatrix>);
+static_assert(!CanMultiply<ReadOnlyMatrix<float, 2, 3>, WrongArrayMatrix>);
+static_assert(!CanMultiply<ReadOnlyMatrix<float, 2, 3>, ReadOnlyMatrix<float, 2, 4>>);
+static_assert(!CanMultiply<ArrayVector, WrongArrayMatrix>);
+static_assert(CanMultiply<ArrayMatrix, std::array<std::array<short, 4>, 3>>);
 static_assert(CanAdd<float[3], ReadOnlyVector<float, 3>>);
 static_assert(CanAdd<ReadOnlyVector<float, 3>, float[3]>);
 static_assert(CanSubtract<float[3], ArrayVector>);
@@ -329,6 +339,60 @@ bool CheckMatrices()
       Equal(ra, a) && Equal(rb, b) && owned(1, 2) == 99.f && ok;
 }
 
+template<class Left, class Right>
+GENDIL_HOST_DEVICE
+bool CheckMatrixProductPair(const Left& left, const Right& right, double seed)
+{
+   const std::array<std::array<double, 2>, 2> expected{
+      {{.5*seed-12.5, 2*seed+30.}, {31., -55.}}};
+   const std::array<std::array<double, 3>, 3> reverse{
+      {{.5*seed+8., 9., -10.5}, {4*seed-12., -23., 30.},
+       {-1.5*seed+32., 43., -52.5}}};
+   static_assert(HasType<decltype(left*right), SerialRecursiveArray<double, 2, 2>>);
+   static_assert(HasType<decltype(right*left), SerialRecursiveArray<double, 3, 3>>);
+   return Equal(left*right, expected) && Equal(right*left, reverse);
+}
+
+GENDIL_HOST_DEVICE
+bool CheckMatrixProducts(float seed)
+{
+   std::array<std::array<float, 3>, 2> a{{{seed, -2.f, 3.f}, {4.f, 5.f, -6.f}}};
+   std::array<std::array<double, 2>, 3> b{{{.5, 2.}, {4., -3.}, {-1.5, 8.}}};
+   const auto ra = Recursive(a);
+   const auto rb = Recursive(b);
+   const ReadOnlyMatrix<float, 2, 3> pa(a.data());
+   const ReadOnlyMatrix<double, 3, 2> pb(b.data());
+   bool ok = CheckMatrixProductPair(a, b, seed) && CheckMatrixProductPair(a, rb, seed) &&
+      CheckMatrixProductPair(ra, b, seed) && CheckMatrixProductPair(ra, rb, seed) &&
+      CheckMatrixProductPair(pa, b, seed) && CheckMatrixProductPair(pa, rb, seed) &&
+      CheckMatrixProductPair(pa, pb, seed) && CheckMatrixProductPair(a, pb, seed) &&
+      CheckMatrixProductPair(ra, pb, seed);
+
+   // Same-entry recursive products are new algebraic contractions; scalar
+   // promotion applies even though native recursive addition retains short.
+   const std::array<std::array<short, 2>, 1> small_left{{{200, -200}}};
+   const std::array<std::array<short, 1>, 2> small_right{{{200}, {-200}}};
+   const auto narrow_left = Recursive(small_left);
+   const auto narrow_right = Recursive(small_right);
+   const auto promoted = narrow_left*narrow_right;
+   static_assert(HasType<decltype(promoted), SerialRecursiveArray<int, 1, 1>>);
+   static_assert(HasType<decltype(small_left*small_right), SerialRecursiveArray<int, 1, 1>>);
+   ok = promoted(0, 0) == 80000 && (small_left*small_right)(0, 0) == 80000 && ok;
+
+   const std::array<std::array<short, 0>, 2> empty_left{};
+   const std::array<std::array<short, 3>, 0> empty_right{};
+   const std::array<std::array<int, 3>, 2> zeros{};
+   ok = Equal(empty_left*empty_right, zeros) && ok;
+
+   const auto owned = pa*pb;
+   const std::array<std::array<double, 2>, 2> expected{
+      {{.5*seed-12.5, 2*seed+30.}, {31., -55.}}};
+   ok = Equal(ra, a) && Equal(rb, b) && ok;
+   a[0][0] = 99.f;
+   b[0][0] = -99.;
+   return Equal(owned, expected) && ok;
+}
+
 GENDIL_HOST_DEVICE
 bool CheckScaling()
 {
@@ -488,9 +552,11 @@ bool CheckNativeCompatibility()
 
 // Materialize numeric results from runtime input, so the device smoke test
 // checks transferred arithmetic values as well as the boolean contract tests.
+constexpr size_t runtime_result_size = 13;
 GENDIL_HOST_DEVICE
 void WriteRuntimeProxyResults(float seed, Real* output)
 {
+   using gendil::operator*;
    const std::array<float, 3> a{seed, -2.f, 3.f}, b{.5f, 4.f, -1.5f};
    const ReadOnlyVector<float, 3> vector(a.data());
    const auto vector_result = (vector+b)*.5;
@@ -501,13 +567,19 @@ void WriteRuntimeProxyResults(float seed, Real* output)
    for (size_t i = 0; i < 3; ++i) { output[i] = vector_result(i); }
    for (size_t i = 0; i < 2; ++i)
       for (size_t j = 0; j < 3; ++j) { output[3+3*i+j] = matrix_result(i, j); }
+   const std::array<std::array<double, 2>, 3> bmatrix{{{.5, 2.}, {4., -3.}, {-1.5, 8.}}};
+   const ReadOnlyMatrix<double, 3, 2> right(bmatrix.data());
+   const auto product = matrix*right;
+   for (size_t i = 0; i < 2; ++i)
+      for (size_t j = 0; j < 2; ++j) { output[9+2*i+j] = product(i, j); }
 }
 
 bool CheckRuntimeProxyResults(Real seed, const Real* result)
 {
-   const std::array<Real, 9> expected{
-      .5*seed+.25, 1., .75, .25-.5*seed, 3., -2.25, -1., -4., 7.};
-   for (size_t j = 0; j < 9; ++j)
+   const std::array<Real, runtime_result_size> expected{
+      .5*seed+.25, 1., .75, .25-.5*seed, 3., -2.25, -1., -4., 7.,
+      .5*seed-12.5, 2*seed+30., 31., -55.};
+   for (size_t j = 0; j < runtime_result_size; ++j)
       if (result[j] != expected[j]) { return false; }
    return true;
 }
@@ -516,7 +588,7 @@ bool CheckRuntimeProxyResults(Real seed, const Real* result)
 bool CheckDevice()
 {
    using Policy = DeviceKernelConfiguration<ThreadBlockLayout<1>, 1, 4>;
-   Vector results(8), inputs(8), numeric_results(8*9);
+   Vector results(8), inputs(8), numeric_results(8*runtime_result_size);
    auto* host_inputs = inputs.WriteHostData();
    for (size_t i = 0; i < 8; ++i) { host_inputs[i] = .25*(i+1); }
    const auto* seeds = inputs.ReadDeviceData();
@@ -533,9 +605,10 @@ bool CheckDevice()
          if (i == 3) { values[i] = CheckNegation(); }
          if (i == 4) { values[i] = CheckAverages(); }
          if (i == 5) { values[i] = CheckProxyVectors(static_cast<float>(seeds[i])); }
-         if (i == 6) { values[i] = CheckProxyMatrices(static_cast<float>(seeds[i])); }
+         if (i == 6) { values[i] = CheckProxyMatrices(static_cast<float>(seeds[i])) &&
+            CheckMatrixProducts(static_cast<float>(seeds[i])); }
          if (i == 7) { values[i] = CheckNativeCompatibility(); }
-         WriteRuntimeProxyResults(static_cast<float>(seeds[i]), numeric+9*i);
+         WriteRuntimeProxyResults(static_cast<float>(seeds[i]), numeric+runtime_result_size*i);
       }
    });
    GENDIL_DEVICE_SYNC;
@@ -545,7 +618,7 @@ bool CheckDevice()
    {
       if (result[i] != 1.) { return false; }
       const Real seed = .25*(i+1);
-      if (!CheckRuntimeProxyResults(seed, numeric_result+9*i)) { return false; }
+      if (!CheckRuntimeProxyResults(seed, numeric_result+runtime_result_size*i)) { return false; }
    }
    return true;
 }
@@ -560,7 +633,8 @@ int main()
    const bool proxies = CheckProxyVectors(1.25f) && CheckProxyVectors(-.75f) &&
       CheckProxyMatrices(1.25f) && CheckProxyMatrices(-.75f);
    const bool compatibility = CheckNativeCompatibility();
-   std::array<Real, 9> runtime_results{};
+   const bool products = CheckMatrixProducts(1.25f) && CheckMatrixProducts(-.75f);
+   std::array<Real, runtime_result_size> runtime_results{};
    WriteRuntimeProxyResults(1.25f, runtime_results.data());
    const bool runtime_values = CheckRuntimeProxyResults(1.25, runtime_results.data());
    if (!vectors) { std::cerr << "Vector array arithmetic failed.\n"; }
@@ -570,9 +644,10 @@ int main()
    if (!averages) { std::cerr << "Array average value or scalar type failed.\n"; }
    if (!proxies) { std::cerr << "Read-only proxy arithmetic failed.\n"; }
    if (!compatibility) { std::cerr << "Higher-rank or custom-scalar arithmetic failed.\n"; }
+   if (!products) { std::cerr << "Static matrix multiplication failed.\n"; }
    if (!runtime_values) { std::cerr << "Runtime proxy arithmetic values failed.\n"; }
    bool ok = vectors && matrices && scaling && negation && averages && proxies &&
-      compatibility && runtime_values;
+      compatibility && products && runtime_values;
 #ifdef GENDIL_USE_DEVICE
    const bool device = CheckDevice();
    if (!device) { std::cerr << "Device array arithmetic failed.\n"; }

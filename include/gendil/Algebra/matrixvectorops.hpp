@@ -79,4 +79,39 @@ auto operator*(const Mat& A, const Vec& v)
    return result;
 }
 
+// Matrix composition accepts any compatible const-readable static matrices.
+// Its owning result follows scalar promotion, independently of input storage.
+template<StaticMatrix Left, StaticMatrix Right>
+   requires (static_num_cols_v<Left> == static_num_rows_v<Right> &&
+             (array_arithmetic_detail::class_operand<Left> ||
+              array_arithmetic_detail::class_operand<Right>) &&
+             !std::derived_from<std::remove_cvref_t<Left>, FieldBase> &&
+             !std::derived_from<std::remove_cvref_t<Right>, FieldBase>)
+GENDIL_HOST_DEVICE
+auto operator*(const Left& left, const Right& right)
+{
+   using LeftValue = matrix_value_t<Left>;
+   using RightValue = matrix_value_t<Right>;
+   using ResultValue = decltype(std::declval<LeftValue>() * std::declval<RightValue>());
+   constexpr Integer Rows = static_num_rows_v<Left>;
+   constexpr Integer Inner = static_num_cols_v<Left>;
+   constexpr Integer Columns = static_num_cols_v<Right>;
+
+   SerialRecursiveArray<ResultValue, Rows, Columns> result;
+   ConstexprLoop<Rows, Columns>([&](auto row, auto column)
+   {
+      const auto i = static_cast<GlobalIndex>(row);
+      const auto j = static_cast<GlobalIndex>(column);
+      ResultValue sum{};
+      ConstexprLoop<Inner>([&](auto index)
+      {
+         const auto k = static_cast<GlobalIndex>(index);
+         sum += static_cast<LeftValue>(GetValue(left, i, k)) *
+                static_cast<RightValue>(GetValue(right, k, j));
+      });
+      result(i, j) = sum;
+   });
+   return result;
+}
+
 } // namespace gendil

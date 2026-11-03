@@ -485,8 +485,8 @@ auto pullback(const PlusTraceExpr<E>&, const Seed&)
 /**
  * @brief Pullback for ProductExpr (algebraic product).
  *
- * Currently implemented for ProductKind::ScalarTimes and the two linear
- * ProductKind::MatVec adjoints.
+ * Supports scalar multiplication and matrix-vector/matrix-matrix products
+ * with exactly one test-linear operand.
  *
  * ScalarTimes adjoint rule:
  *   pullback(scalar_free * test_expr, seed)
@@ -495,12 +495,11 @@ auto pullback(const PlusTraceExpr<E>&, const Seed&)
  * Valid combinations:
  *   - test-linear × test-free scalar
  *   - test-free scalar × test-linear
+ *   - MatVec or MatMat with exactly one test-linear operand
  *
  * Invalid combinations (will fail with clear static_assert):
  *   - Both test-free → no test contribution
  *   - Both test-linear → NonlinearInTest
- *   - ProductKind::MatVec → supported when exactly one operand is test-linear
- *   - ProductKind::MatMat → requires product-specific adjoint (not implemented)
  *
  * @tparam LHS Left operand type
  * @tparam RHS Right operand type
@@ -577,12 +576,31 @@ auto pullback(const ProductExpr<LHS, RHS>& expr, const Seed& seed)
             "and test-free matrix * test-linear vector.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatMat)
+   {
+      static_assert(field_shape_v<S> == FieldShape::Matrix && is_test_free_v<S>,
+         "MatMat ProductExpr pullback requires a test-free Matrix-shaped seed.");
+
+      // Frobenius adjoints: <L R, S> = <L, S R^T> = <R, L^T S>.
+      if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
+      {
+         return pullback(expr.lhs, seed * transpose(expr.rhs));
+      }
+      else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         return pullback(expr.rhs, transpose(expr.lhs) * seed);
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "MatMat ProductExpr pullback requires exactly one TestLinear operand "
+            "and one TestFree operand.");
+      }
+   }
    else
    {
       static_assert(dependent_false_v<L, R, S>,
-         "ProductExpr pullback is implemented for ProductKind::ScalarTimes and "
-         "the linear ProductKind::MatVec adjoints. "
-         "MatMat and broader product-specific adjoints are not implemented.");
+         "Unsupported ProductKind in ProductExpr pullback.");
    }
 }
 
@@ -1959,12 +1977,30 @@ auto pullback_global_interior(
             "test-linear vector.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatMat)
+   {
+      static_assert(field_shape_v<S> == FieldShape::Matrix && is_test_free_v<S>,
+         "Canonical global interior MatMat pullback requires a test-free Matrix-shaped seed.");
+
+      if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
+      {
+         return pullback_global_interior(expr.lhs, seed * transpose(expr.rhs));
+      }
+      else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         return pullback_global_interior(expr.rhs, transpose(expr.lhs) * seed);
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "Canonical global interior MatMat pullback requires exactly one "
+            "TestLinear operand and one TestFree operand.");
+      }
+   }
    else
    {
-      static_assert(
-         dependent_false_v<L, R, S>,
-         "Canonical global interior ProductExpr pullback currently supports "
-         "scalar-times products and linear MatVec products.");
+      static_assert(dependent_false_v<L, R, S>,
+         "Unsupported ProductKind in canonical global interior ProductExpr pullback.");
    }
 }
 
