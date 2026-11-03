@@ -209,6 +209,95 @@ bool CheckResults(Real seed, const Real* actual)
    return true;
 }
 
+// Traced constant factors need a side context, but no FE data for these
+// algebra-only checks. The resulting gradient seed must retain its 2x3 shape.
+struct FacetPoint
+{
+   GENDIL_HOST_DEVICE Empty MinusSide() const { return {}; }
+   GENDIL_HOST_DEVICE Empty PlusSide() const { return {}; }
+};
+struct FacetFields { Empty minus_fields, plus_fields; };
+
+template<class Channel, class Pullback>
+bool CheckTransposeSeed(const Pullback& result, const Matrix<2, 3>& expected,
+                        Real scale, const char* label)
+{
+   const auto& expression = result.template Get<Channel>();
+   static_assert(is_test_free_v<decltype(expression)>);
+   const auto value = expression(Empty{}, Empty{}, Empty{}, Empty{}, FacetPoint{}, FacetFields{});
+   static_assert(static_num_rows_v<decltype(value)> == 2);
+   static_assert(static_num_cols_v<decltype(value)> == 3);
+   for (Integer i = 0; i < 2; ++i)
+      for (Integer j = 0; j < 3; ++j)
+      {
+         const Real actual = GetValue(value, i, j), reference = scale*expected[i][j];
+         if (!std::isfinite(actual) || std::abs(actual-reference) > 1e-12*(1+std::abs(reference)))
+         {
+            std::cerr << label << " at " << i << ", " << j << ": got " << actual
+                      << ", expected " << reference << '\n';
+            return false;
+         }
+      }
+   return true;
+}
+
+bool CheckTransposePullbacks(Real seed)
+{
+   const VectorTestSpace<"v"> v;
+   const Matrix<3, 2> s{{{seed, -2}, {3, 4}, {-5, 6}}};
+   const Matrix<2, 3> expected{{{seed, 3, -5}, {-2, 4, 6}}};
+   const auto S = MatrixExprOf(s);
+   bool ok = CheckTransposeSeed<GradientChannel>(pullback(transpose(grad(v)), S),
+      expected, 1, "rectangular transpose pullback");
+   ok = CheckTransposeSeed<GradientChannel>(
+      pullback(transpose(transpose(grad(v))), MatrixExprOf(expected)),
+      expected, 1, "double transpose pullback") && ok;
+
+   auto check_sides = [&](const auto& expr, Real minus_scale, Real plus_scale, const char* label) {
+      const auto channels = pullback_global_interior(expr, S);
+      return CheckTransposeSeed<GradientMinusChannel>(channels, expected, minus_scale, label) &&
+         CheckTransposeSeed<GradientPlusChannel>(channels, expected, plus_scale, label);
+   };
+   ok = check_sides(transpose(jump(grad(v))), 1, -1, "transpose outside jump") && ok;
+   ok = check_sides(jump(transpose(grad(v))), 1, -1, "transpose inside jump") && ok;
+   ok = check_sides(transpose(average(grad(v))), .5, .5, "transpose outside average") && ok;
+   ok = check_sides(average(transpose(grad(v))), .5, .5, "transpose inside average") && ok;
+   ok = CheckTransposeSeed<GradientMinusChannel>(
+      pullback_global_interior(minus(transpose(grad(v))), S),
+      expected, 1, "explicit minus transpose") && ok;
+   ok = CheckTransposeSeed<GradientPlusChannel>(
+      pullback_global_interior(transpose(plus(grad(v))), S),
+      expected, 1, "transpose of explicit plus") && ok;
+
+   Matrix<4, 3> a{};
+   Matrix<2, 5> b{};
+   Matrix<4, 5> s_nested{};
+   Matrix<2, 3> nested_expected{};
+   for (Integer i = 0; i < 4; ++i)
+      for (Integer j = 0; j < 3; ++j) a[i][j] = seed + 2.0*i - j;
+   for (Integer i = 0; i < 2; ++i)
+      for (Integer j = 0; j < 5; ++j) b[i][j] = 1.0 + i - 2.0*j;
+   for (Integer i = 0; i < 4; ++i)
+      for (Integer j = 0; j < 5; ++j) s_nested[i][j] = .5 + i - j;
+   // Differentiate <A G^T B, S> explicitly with respect to G(i,j).
+   for (Integer i = 0; i < 2; ++i)
+      for (Integer j = 0; j < 3; ++j)
+         for (Integer p = 0; p < 4; ++p)
+            for (Integer q = 0; q < 5; ++q)
+               nested_expected[i][j] += b[i][q]*s_nested[p][q]*a[p][j];
+   const auto A = MatrixExprOf(ReadOnlyMatrix<Real, 4, 3>(a.data()));
+   const auto B = MatrixExprOf(ReadOnlyMatrix<Real, 2, 5>(b.data()));
+   const auto nested = A * transpose(grad(v)) * B;
+   const auto F = MatrixExprOf(s_nested);
+   ok = CheckTransposeSeed<GradientChannel>(pullback(nested, F),
+      nested_expected, 1, "transpose nested in matrix products") && ok;
+   const auto global = pullback_global_interior(jump(nested), F);
+   ok = CheckTransposeSeed<GradientMinusChannel>(global, nested_expected, 1,
+      "nested transpose minus channel") && ok;
+   return CheckTransposeSeed<GradientPlusChannel>(global, nested_expected, -1,
+      "nested transpose plus channel") && ok;
+}
+
 #ifdef GENDIL_USE_DEVICE
 bool CheckDevice()
 {
@@ -254,6 +343,7 @@ int main()
       std::array<Real, result_size> result{};
       WriteResults(seed, result.data());
       ok = CheckResults(seed, result.data()) && ok;
+      ok = CheckTransposePullbacks(seed) && ok;
    }
 #ifdef GENDIL_USE_DEVICE
    ok = CheckDevice() && ok;

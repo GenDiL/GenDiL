@@ -151,7 +151,7 @@ depend on trial fields or prescribed data.
 | `dot(x, y)` | Vector dot product. | At most one operand may contain a test field. |
 | `inner(x, y)`, `inner(A, B)` | Euclidean or Frobenius inner product. | Matching non-scalar shapes; at most one operand may contain a test field. |
 | `outer(x, y)` | Matrix with entries $x_i y_j$. | If a test field occurs, it must be in the first operand; test-dependent global interior-facet execution is not implemented. |
-| `transpose(A)` | Matrix transpose. | Test-free matrix operand. |
+| `transpose(A)` | Matrix transpose. | Rectangular matrices and test-linear operands are supported. |
 | `sym(A)`, `skew(A)` | $(A+A^T)/2$ and $(A-A^T)/2$. | Square matrix; test-dependent operands are supported. |
 
 There are no DSL overloads for division, powers, or transcendental functions.
@@ -194,6 +194,11 @@ auto test_product = inner(grad(U), transpose(A) * grad(V) * transpose(K));
 
 Matrix products support rectangular shapes and nested products. Products with
 two test-dependent operands remain nonlinear in the test field and are rejected.
+
+Transpose may also act on a test expression: `inner(F, transpose(grad(V)))`
+is equivalent to `inner(transpose(F), grad(V))` for a test-free matrix `F`
+of compatible dimensions. On facets, transpose can be placed inside or
+outside `jump` and `average`.
 
 See [products](productexpr.hpp), [gradients](gradient.hpp),
 [normal derivatives](normalderivative.hpp), [symmetric and skew parts](symmetry.hpp),
@@ -517,8 +522,8 @@ support, and note restrictions on supported expressions. In particular:
 
 - Scalar and componentwise vector finite-element mappings are supported.
   `div` and `curl` do not add geometric Piola, H(div), or H(curl) mappings.
-- Derivatives of arbitrary expressions, test-dependent matrix transposes,
-  and arbitrary nonlinear dependence on test fields are not supported.
+- Derivatives of arbitrary expressions and arbitrary nonlinear dependence
+  on test fields are not supported.
 - `InterfaceFacets<"left", "right">` is declared but has no generic execution
   support. Use the supported domains listed above.
 - Test-free scalar integrals are not reductions through the residual

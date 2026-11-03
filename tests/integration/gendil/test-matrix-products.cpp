@@ -231,6 +231,38 @@ bool CheckForms(const Context& context, const Rule& rule, const Vector& input)
    success = Check("split / combined matrix products", combined,
       Evaluate<Policy>(integrate(domain, trial_product) + integrate(domain, test_product),
          context, rule, input)) && success;
+
+   // Frobenius products are unchanged when both operands are transposed.
+   // Reversing A*test*B exposes transpose(test) inside nested products.
+   const auto transposed_trial_product = inner(transpose(A * trial * B), transpose(test));
+   const auto transposed_test_product = test_weight *
+      inner(transpose(trial), transpose(B) * transpose(test) * transpose(A));
+   success = Check("test transpose / independent assembly",
+      Evaluate<Policy>(integrate(domain, transposed_trial_product), context, rule, input),
+      Expected(input, Entity, Contribution::TrialProduct)) && success;
+   success = Check("nested test transpose and products / independent assembly",
+      Evaluate<Policy>(integrate(domain, transposed_test_product), context, rule, input),
+      Expected(input, Entity, Contribution::TestProduct)) && success;
+   success = Check("double test transpose / independent assembly",
+      Evaluate<Policy>(integrate(domain,
+         inner(A * trial * B, transpose(transpose(test)))), context, rule, input),
+      Expected(input, Entity, Contribution::TrialProduct)) && success;
+   const auto transposed_combined = Evaluate<Policy>(
+      integrate(domain, transposed_trial_product + transposed_test_product), context, rule, input);
+   success = Check("combined test transposes / independent assembly", transposed_combined,
+      Expected(input, Entity, Contribution::Both)) && success;
+   success = Check("split / combined test transposes", transposed_combined,
+      Evaluate<Policy>(integrate(domain, transposed_trial_product) +
+         integrate(domain, transposed_test_product), context, rule, input)) && success;
+   if constexpr (Entity == Region::Interior)
+   {
+      // Transpose also commutes with a jump; this exercises trace selection
+      // through the transpose before lowering the test gradient.
+      success = Check("transpose inside jump / independent assembly",
+         Evaluate<Policy>(integrate(domain,
+            inner(transpose(A * trial * B), jump(transpose(grad(v))))),
+            context, rule, input), Expected(input, Entity, Contribution::TrialProduct)) && success;
+   }
    if (!success)
       std::cerr << "region " << int(Entity) << ", storage " << int(Representation)
                 << ", device " << Policy::is_device_configuration << '\n';

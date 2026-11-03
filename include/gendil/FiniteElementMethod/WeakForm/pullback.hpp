@@ -702,6 +702,19 @@ auto pullback(const NegExpr<Expr>& expr, const Seed& seed)
    return pullback(expr.expr, -seed);
 }
 
+// Transposition is self-adjoint under the Frobenius pairing:
+// <E^T, S> = <E, S^T>, including rectangular matrices.
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const TransposeExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(MatrixExpr<Expr> && is_seed_shape_compatible_v<TransposeExpr<Expr>, Seed>,
+      "Matrix transpose pullback requires a matrix operand and matrix seed.");
+   static_assert(is_test_linear_v<Expr> && is_test_free_v<Seed>,
+      "Matrix transpose pullback requires a test-linear operand and a test-free seed.");
+   return pullback(expr.expr, transpose(seed));
+}
+
 // Symmetric and skew-symmetric projection are self-adjoint under the real
 // Frobenius pairing. Their adjoints keep the existing physical matrix seed.
 template<FieldExpr Expr, class Seed>
@@ -1490,6 +1503,20 @@ auto TraceToPlusSide(const AverageExpr<Expr>& expr)
 
 template<FieldExpr Expr>
 GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const TransposeExpr<Expr>& expr)
+{
+   return transpose(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const TransposeExpr<Expr>& expr)
+{
+   return transpose(TraceToPlusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const SymExpr<Expr>& expr)
 {
    return sym(TraceToMinusSide(expr.expr));
@@ -1777,6 +1804,17 @@ auto pullback_global_interior(
    const Seed& seed)
 {
    return pullback_global_interior(expr.expr, -seed);
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_global_interior(const TransposeExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(MatrixExpr<Expr> && is_seed_shape_compatible_v<TransposeExpr<Expr>, Seed>,
+      "Matrix transpose pullback requires a matrix operand and matrix seed.");
+   static_assert(is_test_linear_v<Expr> && is_test_free_v<Seed>,
+      "Matrix transpose pullback requires a test-linear operand and a test-free seed.");
+   return pullback_global_interior(expr.expr, transpose(seed));
 }
 
 template<FieldExpr Expr, class Seed>
