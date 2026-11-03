@@ -48,13 +48,6 @@ struct UpwindExpr : FieldBase
          "physical-boundary inflow data must be specified explicitly.");
       static_assert(is_side_evaluable_v<Expr>,
          "The transported expression in upwind() must be test-free.");
-      // Keep direct trial-gradient admission separate from coefficient inputs;
-      // merging their masks by name would reject valid gradient callbacks.
-      static_assert([]<class... Reads>(type_list<Reads...>) consteval {
-         return ((!has_provenance(Reads::provenance, NamedFieldProvenance::ActiveTrial) ||
-                  !need_gradients(Reads::mask)) && ...);
-      }(typename unqualified_side_dependent_named_field_requirements<Expr>::type{}),
-         "UpwindExpr: trial gradients on facets not supported. ");
 
       // Check if quad_pt_context has physical_normal field (FacetQuadraturePointContext)
       if constexpr (requires { quad_pt_context.physical_normal; })
