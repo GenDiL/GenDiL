@@ -48,7 +48,7 @@ bool Check( bool condition, const char * message )
 bool CheckNear( Real a, Real b, const char * message )
 {
    const Real error = std::abs( a - b );
-   if ( error > TestTolerance() )
+   if ( !std::isfinite(error) || error > TestTolerance() )
    {
       std::cerr << "FAILED: " << message << " got " << a << " expected "
                 << b << " error " << error << "\n";
@@ -67,7 +67,7 @@ bool CheckPointNear(
    for ( Integer d = 0; d < Dim; ++d )
    {
       const Real error = std::abs( a[ d ] - b[ d ] );
-      if ( error > TestTolerance() )
+      if ( !std::isfinite(error) || error > TestTolerance() )
       {
          std::cerr << "FAILED: " << message << " dim " << d
                    << " got " << a[ d ] << " expected " << b[ d ]
@@ -793,7 +793,7 @@ bool CheckVectorFar( const Vector & a, const Vector & b, const char * label )
    const Real rel = std::sqrt( err2 ) /
       ( std::sqrt( ref2 ) + std::numeric_limits< Real >::epsilon() );
    std::cout << label << " relative L2 error = " << rel << "\n";
-   ok = Check( rel > TestTolerance( Real(5.0e7) ), label ) && ok;
+   ok = Check( std::isfinite(rel) && rel > TestTolerance( Real(5.0e7) ), label ) && ok;
    return ok;
 }
 

@@ -14,7 +14,9 @@
 
 using namespace gendil;
 
-namespace
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace test_vector_interior_orientation_bsr_3d
 {
 
 void rotate_3d_vertices( int * v, int ref_face, int rot )
@@ -306,7 +308,7 @@ int TestVectorInteriorOrientation( int fp1, int fp2 )
              << std::endl;
 
    const Real tolerance = 1.0e-11;
-   if ( rel_error > tolerance )
+   if ( !std::isfinite(rel_error) || rel_error > tolerance )
    {
       std::cerr
          << "FAILED: vector unstructured interior orientation test<"
@@ -322,6 +324,7 @@ int TestVectorInteriorOrientation( int fp1, int fp2 )
 
 int main()
 {
+   using namespace test_vector_interior_orientation_bsr_3d;
 #if defined(GENDIL_USE_CUDA)
    const char device_config[] = "cuda";
 #elif defined(GENDIL_USE_HIP)

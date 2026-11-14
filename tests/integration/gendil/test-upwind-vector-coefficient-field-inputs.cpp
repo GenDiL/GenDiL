@@ -529,13 +529,14 @@ int TestUpwindVectorCoefficientFieldInputs()
 
    const Real tol = 1e-11;
    const Real separation_tol = 1e-3;
-   if (rel_err > tol)
+   if (!(rel_err <= tol))
    {
       std::cerr
          << "FAILED: generic upwind advection does not match oracle.\n";
       return 1;
    }
-   if (minus_only_separation < separation_tol)
+   if (!std::isfinite(minus_only_separation) ||
+       minus_only_separation < separation_tol)
    {
       std::cerr
          << "FAILED: manufactured data does not distinguish averaged beta "

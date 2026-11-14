@@ -150,7 +150,7 @@ depend on trial fields or prescribed data.
 | `A * B` | Matrix-matrix product. | The columns of `A` must match the rows of `B`; at most one operand may contain a test field. |
 | `dot(x, y)` | Vector dot product. | At most one operand may contain a test field. |
 | `inner(x, y)`, `inner(A, B)` | Euclidean or Frobenius inner product. | Matching non-scalar shapes; at most one operand may contain a test field. |
-| `outer(x, y)` | Matrix with entries $x_i y_j$. | If a test field occurs, it must be in the first operand; test-dependent global interior-facet execution is not implemented. |
+| `outer(x, y)` | Matrix with entries $x_i y_j$. | If a test field occurs, it must be in the first operand. |
 | `transpose(A)` | Matrix transpose. | Rectangular matrices and test-linear operands are supported. |
 | `sym(A)`, `skew(A)` | $(A+A^T)/2$ and $(A-A^T)/2$. | Square matrix; test-dependent operands are supported. |
 
@@ -271,13 +271,13 @@ facet means evaluation under `minus`, `plus`, or an operation such as
 
 | Input tag | Value supplied | Cells | Boundary facets | Interior facets |
 | --- | --- | --- | --- | --- |
-| `ElementIndex` | Integration element index. | Current cell | Adjacent cell | Current/minus cell, even under `plus`. |
-| `QuadraturePointIndex` | Quadrature multi-index. | Yes | Yes | Shared integration index. |
+| `ElementIndex` | Integration element index. | Current cell | Adjacent cell | Current cell locally; canonical-minus cell globally, even under `plus`. |
+| `QuadraturePointIndex` | Quadrature multi-index. | Yes | Yes | Traversal quadrature index. |
 | `PhysicalCoordinates` | Physical evaluation point. | Yes | Yes | Shared physical point. |
 | `ReferenceCoordinates` | Parent reference-cell coordinates. | Yes | Yes | Not supported as correct side/facet coordinates; see below. |
 | `Jacobian` | Parent-cell mapping Jacobian. | Yes | Yes | Not currently supplied. |
 | `JacobianDeterminant` | Parent-cell Jacobian determinant, not the facet integration measure. | Yes | Yes | Not currently supplied. |
-| `JacobianInverse` | Inverse parent-cell Jacobian. | Yes | Yes | Selected side. |
+| `JacobianInverse` | Inverse parent-cell Jacobian. | Yes | Yes | Selected side, expressed in the canonical-minus reference-axis frame. |
 | `InverseNormalCellSize` | $\lVert J_K^{-T}\widehat n\rVert$. | No | Adjacent cell | Selected side. |
 | `FieldValue<"w">` | Named field value. | Yes | Yes | Selected side. |
 | `FieldGradient<"w">` | Named field's physical gradient. | Yes | Yes | Selected side. |
@@ -296,6 +296,11 @@ The interior `ReferenceCoordinates` provider currently falls back to a
 reference integration-rule point; it does not map that point to the selected
 cell's facet. Do not use it for side-dependent reference-coordinate formulas.
 Similarly, selecting `plus` does not change the `ElementIndex` callback input.
+`ElementIndex` and `QuadraturePointIndex` describe the traversal: local and
+global visits need not supply the same indices at a physical point. Together
+with interior `ReferenceCoordinates`, they are outside the local/global
+operator-equivalence guarantee. Use physical coordinates or traced field
+values for coefficients that must be independent of traversal.
 
 Callbacks may read active trial fields through `FieldValue` or `FieldGradient`
 when those fields are declared in the form, enabling nonlinear material laws.
@@ -309,10 +314,18 @@ See [coefficient factories and providers](coefficient.hpp) and
 
 ## Facet operations
 
-On an interior facet, minus and plus denote its two adjacent cells. The
-physical unit normal `n = Normal{}` points outward from the current/minus
-cell. Both traces use that same normal orientation: `plus(Normal{})` does
-not reverse it. On a boundary, the normal points out of the domain.
+In weak-form expressions on an interior facet, `minus(e)` and `plus(e)`
+identify the same two cells regardless of which cell is being processed.
+The mesh connectivity determines this fixed side ordering.
+The physical unit normal `n = Normal{}`
+points outward from the chosen minus cell toward the plus cell. Both traces
+use that same normal: `plus(Normal{})` does not reverse it. On a boundary,
+the normal points out of the domain.
+
+Local traversal visits the facet from each cell; global traversal visits it
+once and contributes to both test rows. With compatible quadrature, these
+execution patterns give the same operator, including for one-sided
+coefficients such as `minus(k) * jump(u) * jump(v)`.
 
 | Expression | Interior facets | Boundary facets |
 | --- | --- | --- |
@@ -334,9 +347,12 @@ including standard arrays, recursive arrays, and custom readable types.
 Fractional scaling and averaging retain fractional results for integer
 entries, and averaging preserves floating-point precision.
 
-Use `jump(v)` and `average(v)` for test expressions in ordinary mesh-local
-facet forms. Explicit test traces such as `minus(v)` and `plus(v)` require
-the global interior-facet execution path. Do not nest trace selectors.
+Both local and global facet forms support `jump(v)`, `average(v)`, and
+explicit test traces such as `minus(v)` and `plus(v)`, including traced
+test gradients. Do not nest trace selectors.
+
+The [generic execution guide](../MatrixFreeOperators/GenericOperator/README.md#implementing-facet-execution)
+explains how custom connectivity and kernels implement these trace conventions.
 
 `upwind` returns the normal **flux**, including the speed, rather than just
 the selected state. Its velocity must be a test-free spatial vector and its
@@ -486,14 +502,16 @@ of your problem.
 | API | Behavior |
 | --- | --- |
 | `MakeGenericOperator<Policy>(form, context, rules)` | Construct a matrix-free residual operator. |
-| `MakeWeakFormResidualOperator<Policy>(form, context, rules)` | Equivalent residual-oriented factory name. |
-| `MakePullbackGenericOperator<Policy>(form, context, rules)` | Equivalent underlying factory. |
 | `op.InputSize()`, `op.OutputSize()` | Required algebraic vector extents. |
-| `op(x, y)` | Evaluate a form with active inputs, replacing the entire output. |
-| `op(y)` | Evaluate an input-free form such as a load, replacing the entire output. |
-| `op.ApplyAdd(x, y)`, `op.ApplyAdd(y)` | Add into an existing output vector. |
-| `GenericExplicitOperator<Policy>(form, context, rules, x, y)` | Direct additive evaluation; omit `x` for an input-free form. |
+| `op(x, y)` | Evaluate a form with active inputs, replacing the output. |
+| `op(y)` | Evaluate an input-free form such as a load, replacing the output. |
 | `GenericAssembly<Format, Policy>(form, context, rules)` | Assemble a supported linear form into a sparse matrix. |
+
+Local facet quadrature must be compatible with the mesh's face permutations
+and reflections. Matching Gauss or Gauss-Lobatto rules on exchanged axes
+satisfy this condition. Optional `ValidateOperator` checks can verify it;
+they do not run automatically. See [quadrature validation](../MatrixFreeOperators/GenericOperator/README.md#optional-quadrature-validation)
+for the policy and alternatives when a rule is incompatible.
 
 For example, the first example's linear operator can also be assembled:
 
@@ -507,8 +525,8 @@ support callbacks reading active trial fields. Extract `lhs` to separate
 loads before assembly. Available formats include BSR, SGBSR, RawCOO, COO,
 CSR, CSC, and optional HypreCSR; restrictions vary by format and domain.
 See [sparse matrix assembly](../MatrixAssembly/README.md) for those details
-and [operator evaluation](../MatrixFreeOperators/GenericOperator/genericoperator.hpp)
-for the callable interface.
+and [operator execution](../MatrixFreeOperators/GenericOperator/README.md)
+for additive evaluation, validation, and custom execution contexts.
 
 The same DSL is used with supported CPU and GPU kernel policies. Device
 execution requires a CUDA or HIP build, suitable device-accessible data, and

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <vector>
+#include <cstdint>
 #include "faceconnectivity.hpp"
 
 namespace gendil {
@@ -17,7 +18,11 @@ struct ConformingCellConnectivity
    using OrientationType = Permutation< dim >; // !FIXME: Only true for hypercube geometries?
    using normal_type = Empty;
    using BoundaryType = bool;
-   using FaceInfo = FaceView< local_face_index_type, Geometry, OrientationType, normal_type, ConformingFaceMap<dim>, BoundaryType >;
+   // Zero retains the lower-cell-index convention for manually built meshes;
+   // importers may record their own shared side ordering with explicit +/-1.
+   using normal_orientation_type = std::int8_t;
+   using FaceInfo = FaceView< local_face_index_type, Geometry, OrientationType,
+      normal_type, ConformingFaceMap<dim>, BoundaryType, normal_orientation_type >;
    FaceInfo faces[ Geometry::num_faces ];
 };
 

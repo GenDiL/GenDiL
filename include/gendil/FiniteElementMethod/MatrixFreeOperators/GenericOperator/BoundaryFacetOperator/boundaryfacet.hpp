@@ -28,7 +28,12 @@ void BoundaryFacetIntegrandOperator(Kernel& kernel, Context& context,
    const OperatorContext& operator_context, const Entity& entity, const Face& face, const Integrand& integrand)
 {
    auto fields = InterpolateFields(kernel, context, operator_context, entity, face, integrand);
-   auto rule = GetFaceIntegrationRule(face.MinusSide(), operator_context.GetFacetIntegrationRules());
+   const auto& side = [&]() -> const auto&
+   {
+      if constexpr (requires { face.CurrentSide(); }) return face.CurrentSide();
+      else return face.MinusSide();
+   }();
+   auto rule = GetFaceIntegrationRule(side, operator_context.GetFacetIntegrationRules());
    const auto& output_space = GetOutputSpace(integrand, context);
    const auto pullback = MakeBoundaryFacetPullback(integrand);
    auto contributions = MakeQuadraturePointContainerForSpace(kernel, rule, output_space, pullback);

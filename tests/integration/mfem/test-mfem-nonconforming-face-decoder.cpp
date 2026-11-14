@@ -48,7 +48,7 @@ bool CheckPoint(
    const Point< Dim > & expected,
    const std::string & message )
 {
-   if ( MaxError( got, expected ) > DecoderTolerance() )
+   if ( !(MaxError( got, expected ) <= DecoderTolerance()) )
    {
       std::cerr << "FAILED: " << message
                 << " got " << PointString( got )
@@ -67,7 +67,7 @@ bool CheckSize(
    bool ok = true;
    for ( Integer d = 0; d < Dim; ++d )
    {
-      if ( std::abs( map.size[d] - expected[d] ) > DecoderTolerance() )
+      if ( !(std::abs( map.size[d] - expected[d] ) <= DecoderTolerance()) )
       {
          std::cerr << "FAILED: " << message << " axis " << d
                    << " got " << map.size[d]
@@ -441,11 +441,9 @@ bool ValidateDecoded2D(
       ft->Loc1.Transform( ip, l1 );
       ft->Loc2.Transform( ip, l2 );
       const Real loc1_error =
-         std::max( std::abs( l1.x - fine_native[0] ),
-                   std::abs( l1.y - fine_native[1] ) );
+         MaxError(Point<2>{l1.x, l1.y}, fine_native);
       const Real loc2_error =
-         std::max( std::abs( l2.x - coarse_native[0] ),
-                   std::abs( l2.y - coarse_native[1] ) );
+         MaxError(Point<2>{l2.x, l2.y}, coarse_native);
       max_loc1_error = std::max( max_loc1_error, loc1_error );
       max_loc2_error = std::max( max_loc2_error, loc2_error );
       ok = Check(
@@ -505,13 +503,9 @@ bool ValidateDecoded3D(
       ft->Loc1.Transform( ip, l1 );
       ft->Loc2.Transform( ip, l2 );
       const Real loc1_error =
-         std::max( { std::abs( l1.x - fine_native[0] ),
-                     std::abs( l1.y - fine_native[1] ),
-                     std::abs( l1.z - fine_native[2] ) } );
+         MaxError(Point<3>{l1.x, l1.y, l1.z}, fine_native);
       const Real loc2_error =
-         std::max( { std::abs( l2.x - coarse_native[0] ),
-                     std::abs( l2.y - coarse_native[1] ),
-                     std::abs( l2.z - coarse_native[2] ) } );
+         MaxError(Point<3>{l2.x, l2.y, l2.z}, coarse_native);
       max_loc1_error = std::max( max_loc1_error, loc1_error );
       max_loc2_error = std::max( max_loc2_error, loc2_error );
       ok = Check(
@@ -1133,9 +1127,9 @@ bool TestSpecializedAdvectionCompileSpike()
    bool ok = true;
    ok = Check( connectivity.GetNumberOfFaces() == 2,
                "advection spike has two NC leaf records" ) && ok;
-   ok = Check( coarse_norm > DecoderTolerance(),
+   ok = Check( std::isfinite(coarse_norm) && coarse_norm > DecoderTolerance(),
                "advection spike accumulates repeated coarse writes" ) && ok;
-   ok = Check( fine_norm > DecoderTolerance(),
+   ok = Check( std::isfinite(fine_norm) && fine_norm > DecoderTolerance(),
                "advection spike writes fine-side residuals" ) && ok;
    return ok;
 }

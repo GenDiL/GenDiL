@@ -503,7 +503,7 @@ GENDIL_HOST_DEVICE
 GlobalIndex RawCOOLocalFaceIndex( const FaceInfo & face_info )
 {
    using LocalFaceIndex =
-      std::remove_cvref_t< decltype(face_info.MinusSide().local_face_index) >;
+      std::remove_cvref_t< decltype(face_info.CurrentSide().local_face_index) >;
    static_assert(
       requires { LocalFaceIndex::value; },
       "RawCOO face assembly requires compile-time local face indices." );
@@ -652,8 +652,8 @@ auto MakeRawCOOAssemblyLayout(
                using FaceInfo =
                   std::remove_cvref_t< decltype(face_info) >;
                static_assert(
-                  FaceInfo::minus_side_type::is_conforming &&
-                  FaceInfo::plus_side_type::is_conforming,
+                  FaceInfo::current_side_type::is_conforming &&
+                  FaceInfo::neighbor_side_type::is_conforming,
                   "RawCOO face assembly supports conforming faces only." );
 
                const GlobalIndex offset_index =
@@ -688,8 +688,8 @@ auto MakeRawCOOAssemblyLayout(
                using FaceInfo =
                   std::remove_cvref_t< decltype(face_info) >;
                static_assert(
-                  FaceInfo::minus_side_type::is_conforming &&
-                  FaceInfo::plus_side_type::is_conforming,
+                  FaceInfo::current_side_type::is_conforming &&
+                  FaceInfo::neighbor_side_type::is_conforming,
                   "RawCOO face assembly supports conforming faces only." );
 
                ActivateRawCOODiagonalBlock(
@@ -761,8 +761,8 @@ auto MakeRawCOOElementBlockDiagonalAssemblyLayout(
                using FaceInfo =
                   std::remove_cvref_t<decltype(face_info)>;
                static_assert(
-                  FaceInfo::minus_side_type::is_conforming &&
-                  FaceInfo::plus_side_type::is_conforming,
+                  FaceInfo::current_side_type::is_conforming &&
+                  FaceInfo::neighbor_side_type::is_conforming,
                   "RawCOO face assembly supports conforming faces only.");
 
                ActivateRawCOODiagonalBlock(
@@ -784,8 +784,8 @@ auto MakeRawCOOElementBlockDiagonalAssemblyLayout(
                using FaceInfo =
                   std::remove_cvref_t<decltype(face_info)>;
                static_assert(
-                  FaceInfo::minus_side_type::is_conforming &&
-                  FaceInfo::plus_side_type::is_conforming,
+                  FaceInfo::current_side_type::is_conforming &&
+                  FaceInfo::neighbor_side_type::is_conforming,
                   "RawCOO face assembly supports conforming faces only.");
 
                ActivateRawCOODiagonalBlock(

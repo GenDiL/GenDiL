@@ -12,7 +12,8 @@
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
-#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/normal.hpp"
 
 namespace gendil
 {
@@ -49,50 +50,27 @@ struct UpwindExpr : FieldBase
       static_assert(is_side_evaluable_v<Expr>,
          "The transported expression in upwind() must be test-free.");
 
-      // Check if quad_pt_context has physical_normal field (FacetQuadraturePointContext)
-      if constexpr (requires { quad_pt_context.physical_normal; })
-      {
-         auto adv_value = adv_expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields );
-         const auto & physical_normal = quad_pt_context.physical_normal;
-         
-         auto dot = Dot( adv_value, physical_normal );
+      auto adv_value = adv_expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields );
+      const auto physical_normal = GetFacetNormal(face_context, quad_pt_context);
+      auto dot = Dot( adv_value, physical_normal );
 
-         if( dot >= 0 )
-         {
-            if constexpr (requires { quad_pt_context.MinusSide(); })
-               return dot * expr(kernel_context, weak_form_context, operator_context,
-                  face_context, quad_pt_context.MinusSide(), fields.minus_fields);
-            else
-               return dot * expr(kernel_context, weak_form_context, operator_context,
-                  face_context, quad_pt_context, fields.minus_fields);
-         }
+      if( dot >= 0 )
+      {
+         if constexpr (requires { GetMinusSide(face_context, quad_pt_context); })
+            return dot * expr(kernel_context, weak_form_context, operator_context,
+               face_context, GetMinusSide(face_context, quad_pt_context), fields.minus_fields);
          else
-         {
-            if constexpr (requires { quad_pt_context.PlusSide(); })
-               return dot * expr(kernel_context, weak_form_context, operator_context,
-                  face_context, quad_pt_context.PlusSide(), fields.plus_fields);
-            else
-               return dot * expr(kernel_context, weak_form_context, operator_context,
-                  face_context, quad_pt_context, fields.plus_fields);
-         }
+            return dot * expr(kernel_context, weak_form_context, operator_context,
+               face_context, quad_pt_context, fields.minus_fields);
       }
       else
       {
-         auto adv_value = adv_expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields );
-         
-         const auto reference_normal = GetReferenceNormal( face_context );
-         const auto physical_normal = ComputePhysicalNormal( quad_pt_context.inv_J_mesh, reference_normal );
-         
-         auto dot = Dot( adv_value, physical_normal );
-
-         if( dot >= 0 )
-         {
-            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.minus_fields );
-         }
+         if constexpr (requires { GetPlusSide(face_context, quad_pt_context); })
+            return dot * expr(kernel_context, weak_form_context, operator_context,
+               face_context, GetPlusSide(face_context, quad_pt_context), fields.plus_fields);
          else
-         {
-            return dot * expr( kernel_context, weak_form_context, operator_context, face_context, quad_pt_context, fields.plus_fields );
-         }
+            return dot * expr(kernel_context, weak_form_context, operator_context,
+               face_context, quad_pt_context, fields.plus_fields);
       }
    }
 };
@@ -251,7 +229,7 @@ struct BoundaryUpwindExpr : FieldBase
          const auto velocity = adv_expr(
             kernel_context, weak_form_context, operator_context,
             face_context, quad_pt_context, fields);
-         const auto & normal = quad_pt_context.physical_normal;
+         const auto normal = GetFacetNormal(face_context, quad_pt_context);
          constexpr auto Dim = static_extent_v<std::remove_cvref_t<decltype(normal)>>;
          static_assert(Dim != std::dynamic_extent &&
                        static_extent_v<decltype(velocity)> == Dim,

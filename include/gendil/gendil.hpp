@@ -26,4 +26,7 @@
 // The different matrix-free operators
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/matrixfreeoperators.hpp"
 
+// Optional host-side checks for numerical operators
+#include "gendil/FiniteElementMethod/OperatorValidation/operatorvalidation.hpp"
+
 #include "gendil/Algebra/algebra.hpp"

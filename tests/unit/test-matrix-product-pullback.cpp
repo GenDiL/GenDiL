@@ -163,9 +163,9 @@ void WriteResults(Real seed, Real* output)
    WriteSeed<GradientChannel>(pullback(A * grad(v), L), output);
    WriteSeed<GradientChannel>(pullback(grad(v) * B, R), output + 6);
    WriteSeed<GradientChannel>(pullback(A * grad(v) * B, S), output + 12);
-   WriteSeed<GradientMinusChannel>(pullback_global_interior(A * minus(grad(v)), L), output + 18);
-   WriteSeed<GradientPlusChannel>(pullback_global_interior(plus(grad(v)) * B, R), output + 24);
-   const auto global = pullback_global_interior(A * jump(grad(v)) * B, S);
+   WriteSeed<GradientMinusChannel>(pullback_interior(A * minus(grad(v)), L), output + 18);
+   WriteSeed<GradientPlusChannel>(pullback_interior(plus(grad(v)) * B, R), output + 24);
+   const auto global = pullback_interior(A * jump(grad(v)) * B, S);
    static_assert(!decltype(global)::template Contains<ValueMinusChannel>());
    static_assert(!decltype(global)::template Contains<ValuePlusChannel>());
    WriteSeed<GradientMinusChannel>(global, output + 30);
@@ -254,7 +254,7 @@ bool CheckTransposePullbacks(Real seed)
       expected, 1, "double transpose pullback") && ok;
 
    auto check_sides = [&](const auto& expr, Real minus_scale, Real plus_scale, const char* label) {
-      const auto channels = pullback_global_interior(expr, S);
+      const auto channels = pullback_interior(expr, S);
       return CheckTransposeSeed<GradientMinusChannel>(channels, expected, minus_scale, label) &&
          CheckTransposeSeed<GradientPlusChannel>(channels, expected, plus_scale, label);
    };
@@ -263,10 +263,10 @@ bool CheckTransposePullbacks(Real seed)
    ok = check_sides(transpose(average(grad(v))), .5, .5, "transpose outside average") && ok;
    ok = check_sides(average(transpose(grad(v))), .5, .5, "transpose inside average") && ok;
    ok = CheckTransposeSeed<GradientMinusChannel>(
-      pullback_global_interior(minus(transpose(grad(v))), S),
+      pullback_interior(minus(transpose(grad(v))), S),
       expected, 1, "explicit minus transpose") && ok;
    ok = CheckTransposeSeed<GradientPlusChannel>(
-      pullback_global_interior(transpose(plus(grad(v))), S),
+      pullback_interior(transpose(plus(grad(v))), S),
       expected, 1, "transpose of explicit plus") && ok;
 
    Matrix<4, 3> a{};
@@ -291,7 +291,7 @@ bool CheckTransposePullbacks(Real seed)
    const auto F = MatrixExprOf(s_nested);
    ok = CheckTransposeSeed<GradientChannel>(pullback(nested, F),
       nested_expected, 1, "transpose nested in matrix products") && ok;
-   const auto global = pullback_global_interior(jump(nested), F);
+   const auto global = pullback_interior(jump(nested), F);
    ok = CheckTransposeSeed<GradientMinusChannel>(global, nested_expected, 1,
       "nested transpose minus channel") && ok;
    return CheckTransposeSeed<GradientPlusChannel>(global, nested_expected, -1,

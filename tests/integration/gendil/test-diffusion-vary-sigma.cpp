@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: (BSD-3-Clause)
 
 // Test diffusion operator with varying sigma parameter
-// This tests SIPDG with sigma = -1 (NIPDG), 0 (IPDG), and 1 (SIPDG)
+// Test interior penalty with sigma = -1 (SIPDG), 0 (IPDG), and 1 (NIPDG).
 // If sigma=0 passes but sigma=±1 fail, it confirms the symmetry term is the issue
 
 #include <gendil/gendil.hpp>
@@ -15,7 +15,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace diffusion_vary_sigma_test
 {
 
 template <typename VectorType>
@@ -78,7 +78,7 @@ void PrintComparison(
 template <Integer order>
 int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
 {
-   std::cout << "\n=== SIPDG diffusion test with sigma = " << sigma
+   std::cout << "\n=== Interior-penalty diffusion test with sigma = " << sigma
              << " (" << sigma_name << "), order = " << order << " ===\n";
 
    // --------------------------------------------------------------------------
@@ -163,7 +163,7 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
    diffusion_operator(u_h, v_h_legacy);
 
    // --------------------------------------------------------------------------
-   // Generic SIPDG weak form
+   // Generic interior-penalty weak form
    // --------------------------------------------------------------------------
 
    TrialSpace<"displacement"> u;
@@ -179,7 +179,7 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
          return tau_value;
       });
 
-   // SIPDG weak form with varying sigma
+   // Interior-penalty weak form with varying sigma
    auto diffusion_wf =
       integrate(cells, mu * dot(grad(u), grad(v)))
       + integrate(
@@ -243,19 +243,19 @@ int TestDiffusionVarySigma(Real sigma, const char* sigma_name)
    const Real err_legacy_vs_assembled =
       RelativeL2Error(v_h_legacy, v_h_matrix);
 
-   if (err_generic_vs_legacy > tol_generic_vs_legacy)
+   if (!(err_generic_vs_legacy <= tol_generic_vs_legacy))
    {
-      std::cerr << "FAILED: generic SIPDG diffusion does not match legacy diffusion (sigma=" << sigma << ").\n";
+      std::cerr << "FAILED: generic interior-penalty diffusion does not match legacy diffusion (sigma=" << sigma << ").\n";
       return 1;
    }
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!(err_generic_vs_assembled <= tol_generic_vs_assembled))
    {
-      std::cerr << "FAILED: generic SIPDG diffusion does not match generic assembled matrix (sigma=" << sigma << ").\n";
+      std::cerr << "FAILED: generic interior-penalty diffusion does not match generic assembled matrix (sigma=" << sigma << ").\n";
       return 1;
    }
 
-   if (err_legacy_vs_assembled > tol_legacy_vs_assembled)
+   if (!(err_legacy_vs_assembled <= tol_legacy_vs_assembled))
    {
       std::cerr << "FAILED: legacy diffusion does not match generic assembled matrix (sigma=" << sigma << ").\n";
       return 1;
@@ -276,14 +276,14 @@ int TestAllSigmaValues()
       failures++;
    }
 
-   // Test sigma = 1 (SIPDG - symmetric)
-   if (TestDiffusionVarySigma<order>(1.0, "SIPDG") != 0) {
+   // Test sigma = 1 (NIPDG - nonsymmetric)
+   if (TestDiffusionVarySigma<order>(1.0, "NIPDG") != 0) {
       std::cerr << "*** sigma=1 FAILED\n";
       failures++;
    }
 
-   // Test sigma = -1 (NIPDG - non-symmetric)
-   if (TestDiffusionVarySigma<order>(-1.0, "NIPDG") != 0) {
+   // Test sigma = -1 (SIPDG - symmetric)
+   if (TestDiffusionVarySigma<order>(-1.0, "SIPDG") != 0) {
       std::cerr << "*** sigma=-1 FAILED\n";
       failures++;
    }
@@ -291,14 +291,15 @@ int TestAllSigmaValues()
    return failures;
 }
 
-} // namespace
+} // namespace diffusion_vary_sigma_test
 
 int main()
 {
+   using namespace diffusion_vary_sigma_test;
    std::cout << "Testing diffusion operator with varying sigma parameter\n";
-   std::cout << "sigma = -1: NIPDG (non-symmetric)\n";
+   std::cout << "sigma = -1: SIPDG (symmetric)\n";
    std::cout << "sigma =  0: IPDG (incomplete, no symmetry term)\n";
-   std::cout << "sigma =  1: SIPDG (symmetric)\n\n";
+   std::cout << "sigma =  1: NIPDG (nonsymmetric)\n\n";
    std::cout << "If sigma=0 passes but sigma=±1 fail, the symmetry term is the issue.\n\n";
 
    int total_failures = 0;

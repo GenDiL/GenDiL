@@ -483,10 +483,11 @@ int TestAnisotropicDiffusionCoefficient()
              << wrong_transpose_sep << "\n";
 
    const Real tol = 1e-11;
-   if (primal_err > tol ||
-       transpose_err > tol ||
-       public_transpose_err > tol ||
-       named_err > tol ||
+   if (!(primal_err <= tol) ||
+       !(transpose_err <= tol) ||
+       !(public_transpose_err <= tol) ||
+       !(named_err <= tol) ||
+       !std::isfinite(wrong_transpose_sep) ||
        wrong_transpose_sep < Real{1e-4})
    {
       std::cerr

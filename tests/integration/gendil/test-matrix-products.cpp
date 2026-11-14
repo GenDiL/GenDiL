@@ -46,7 +46,9 @@ template<> struct static_num_cols<matrix_product_test::ReadableMatrix>
 static_assert(StaticMatrix<matrix_product_test::ReadableMatrix>);
 } // namespace gendil
 
-namespace
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace matrix_product_execution_test
 {
 using namespace gendil;
 using matrix_product_test::Matrix;
@@ -262,6 +264,34 @@ bool CheckForms(const Context& context, const Rule& rule, const Vector& input)
          Evaluate<Policy>(integrate(domain,
             inner(transpose(A * trial * B), jump(transpose(grad(v))))),
             context, rule, input), Expected(input, Entity, Contribution::TrialProduct)) && success;
+
+      // Reconstruct the test matrix from its columns. This exercises the
+      // outer-product pullback against the same independent scalar oracle.
+      const auto e0 = MakeVectorCoefficient<"e0">(
+         [] GENDIL_HOST_DEVICE () { return std::array<Real, 2>{1., 0.}; });
+      const auto e1 = MakeVectorCoefficient<"e1">(
+         [] GENDIL_HOST_DEVICE () { return std::array<Real, 2>{0., 1.}; });
+      const auto outer_test = outer(test * e0, e0) + outer(test * e1, e1);
+      const auto outer_trial_product = inner(A * trial * B, outer_test);
+      success = Check("outer test pullback / independent assembly",
+         Evaluate<Policy>(integrate(domain, outer_trial_product), context, rule, input),
+         Expected(input, Entity, Contribution::TrialProduct)) && success;
+
+      // Moving each outer product underneath the jump also tests canonical
+      // trace distribution through outer products and matrix-vector products.
+      const auto outer_inside_jump =
+         jump(outer(grad(v) * e0, e0)) + jump(outer(grad(v) * e1, e1));
+      success = Check("outer inside jump / independent assembly",
+         Evaluate<Policy>(integrate(domain, inner(A * trial * B, outer_inside_jump)),
+            context, rule, input), Expected(input, Entity, Contribution::TrialProduct)) && success;
+
+      const auto outer_combined = Evaluate<Policy>(
+         integrate(domain, outer_trial_product + test_product), context, rule, input);
+      success = Check("combined outer and matrix pullbacks / independent assembly",
+         outer_combined, Expected(input, Entity, Contribution::Both)) && success;
+      success = Check("split / combined outer and matrix pullbacks", outer_combined,
+         Evaluate<Policy>(integrate(domain, outer_trial_product) + integrate(domain, test_product),
+            context, rule, input)) && success;
    }
    if (!success)
       std::cerr << "region " << int(Entity) << ", storage " << int(Representation)
@@ -284,6 +314,7 @@ bool CheckDomains(const LocalContext& local, const GlobalContext& global,
 
 int main()
 {
+   using namespace matrix_product_execution_test;
    const CartesianMesh<2> mesh({2, 3}, {hx, hy}, {0.0, 0.0}, false);
    const auto scalar = MakeLobattoFiniteElement(FiniteElementOrders<1, 1>{});
    const auto fe = MakeVectorFiniteElement(scalar, scalar);

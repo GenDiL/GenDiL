@@ -36,7 +36,8 @@ using boundary_test::Check;
 using boundary_test::CheckLoad;
 
 // Enumerate both current-cell visits to every interior facet independently of
-// GenDiL topology and orientation helpers. Minus is the current cell here.
+// GenDiL topology and orientation helpers. Normals point out of the current
+// cell; callers assign canonical trace signs when their form requires them.
 template<class Callback>
 void InteriorPoints(size_t nx, size_t ny, Real hx, Real hy,
                     Real ox, Real oy, Callback callback)

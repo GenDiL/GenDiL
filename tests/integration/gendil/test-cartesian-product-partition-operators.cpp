@@ -14,7 +14,7 @@
 using namespace gendil;
 using namespace gendil::test;
 
-namespace
+namespace gendil_test_cartesian_product_partition_operators
 {
 
 struct StaticIdentityLineInteriorConnectivity
@@ -630,6 +630,7 @@ bool TestStaticIdentityPlusGeometrySecondFactor()
 
 int main()
 {
+   using namespace gendil_test_cartesian_product_partition_operators;
    bool success = true;
    success = TestCellDomainWeightedMass() && success;
    success = TestBoundaryDomainWeightedMass() && success;

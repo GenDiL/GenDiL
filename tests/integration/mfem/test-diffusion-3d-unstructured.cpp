@@ -127,9 +127,8 @@ mfem::Mesh mesh_3d_orientation(int face_perm_1, int face_perm_2)
 
 // -----------------------------------------------------------------------------
 // Coefficients.
-// Start with constant diffusivity. This isolates geometry, orientation,
-// facet normals, and plus-side Jacobians. Once this passes, the asymmetric
-// coefficient is useful for exposing PhysicalCoordinates mistakes.
+// Constant diffusivity isolates geometry and orientation. Positive spatial
+// diffusivity also exercises physical-coordinate evaluation on rotated cells.
 // -----------------------------------------------------------------------------
 
 template <Integer Dim>
@@ -219,8 +218,8 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
    using KernelPolicy = SerialKernelConfiguration;
 #endif
 
-   const Real sigma = Real(1.0);
-   const Real kappa = 0.0;//Real((order + 1) * (order + 1));
+   const Real sigma = Real(-1.0);
+   const Real kappa = Real(10 * (order + 1) * (order + 1));
 
    // --------------------------------------------------------------------------
    // Generic SIPDG weak form
@@ -254,6 +253,8 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
          return kappa * h_inv;
       });
 
+   // MFEM's interior penalty averages mu * rho, where rho is the inverse normal
+   // cell size.
    auto diffusion_wf =
       integrate(cells, mu * dot(grad(u), grad(v)))
       + integrate(
@@ -359,6 +360,25 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
    // Compare
    // --------------------------------------------------------------------------
 
+   const auto all_finite = [](const mfem::Vector& values)
+   {
+      const auto* data = values.HostRead();
+      for (int i = 0; i < values.Size(); ++i)
+      {
+         if (!std::isfinite(data[i])) return false;
+      }
+      return true;
+   };
+   if (!all_finite(dofs_out_generic) || !all_finite(dofs_out_bsr) ||
+       !all_finite(dofs_out_mfem))
+   {
+      std::cerr << "FAILED generic SIPDG orientation test<"
+                << fp1 << ", " << fp2 << ">"
+                << " variable_coefficient=" << UseVariableCoefficient
+                << ": nonfinite operator output.\n";
+      return 1;
+   }
+
    mfem::Vector diff_generic_mfem(dofs_out_generic);
    diff_generic_mfem -= dofs_out_mfem;
 
@@ -376,11 +396,22 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
    const Real gen_norm = dofs_out_generic.Norml2();
    const Real bsr_norm = dofs_out_bsr.Norml2();
 
+   if (!std::isfinite(ref_norm) || !std::isfinite(gen_norm) ||
+       !std::isfinite(bsr_norm) || ref_norm <= Real(0) || gen_norm <= Real(0))
+   {
+      std::cerr << "FAILED generic SIPDG orientation test<"
+                << fp1 << ", " << fp2 << ">"
+                << " variable_coefficient=" << UseVariableCoefficient
+                << ": nonfinite or zero comparison norm.\n";
+      return 1;
+   }
+
    const Real rel_error_generic_mfem = abs_error_generic_mfem / ref_norm;
    const Real rel_error_bsr_mfem = abs_error_bsr_mfem / ref_norm;
    const Real rel_error_bsr_generic = abs_error_bsr_generic / gen_norm;
 
    std::cout << "TEST<" << fp1 << ", " << fp2 << ">"
+            << " variable_coefficient=" << UseVariableCoefficient
             << " dofs/elem=" << num_elem_dofs
             << " elements=" << num_elem
             << " total_dofs=" << num_dofs
@@ -399,12 +430,19 @@ int test_generic_sipdg_orientation(int fp1, int fp2)
       UseVariableCoefficient ? Real(1e-8) : Real(1e-9);
 
    if (
+      !std::isfinite(abs_error_generic_mfem) ||
+      !std::isfinite(abs_error_bsr_mfem) ||
+      !std::isfinite(abs_error_bsr_generic) ||
+      !std::isfinite(rel_error_generic_mfem) ||
+      !std::isfinite(rel_error_bsr_mfem) ||
+      !std::isfinite(rel_error_bsr_generic) ||
       rel_error_generic_mfem > tolerance ||
       rel_error_bsr_mfem > tolerance ||
       rel_error_bsr_generic > tolerance )
    {
       std::cout << "FAILED generic SIPDG orientation test<"
                << fp1 << ", " << fp2 << ">"
+               << " variable_coefficient=" << UseVariableCoefficient
                << " with errors:"
                << " generic-mfem=" << rel_error_generic_mfem
                << " bsr-mfem=" << rel_error_bsr_mfem
@@ -466,14 +504,10 @@ int main(int argc, char *argv[])
 
    int failed = 0;
 
-   // Start with constant coefficient. This is the important geometry/orientation
-   // validation for the new plus-side Jacobian infrastructure.
-   constexpr bool use_variable_coefficient = false;
-
    // For quick debugging, replace the loops by a single nontrivial pair:
    //
    //    failed += test_generic_sipdg_orientation
-   //       <order, num_quad_1d, use_variable_coefficient>(fp1, fp2);
+   //       <order, num_quad_1d, false>(fp1, fp2);
    //
    // where fp1/fp2 are the failing orientation IDs.
 
@@ -482,7 +516,12 @@ int main(int argc, char *argv[])
       for (size_t fp1 = 0; fp1 < n_perms; ++fp1)
       {
          failed += test_generic_sipdg_orientation
-            <order, num_quad_1d, use_variable_coefficient>(
+            <order, num_quad_1d, false>(
+               static_cast<int>(fp1),
+               static_cast<int>(fp2)
+            );
+         failed += test_generic_sipdg_orientation
+            <order, num_quad_1d, true>(
                static_cast<int>(fp1),
                static_cast<int>(fp2)
             );

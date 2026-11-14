@@ -1,7 +1,9 @@
-// Minimal 1D test: 2 elements, 1 interior face
+// Minimal periodic 1D test: 2 elements, including the wrap interface.
 // Unit vector input to isolate the stencil
 
 #include <gendil/gendil.hpp>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 using namespace gendil;
@@ -74,5 +76,27 @@ int main() {
         printf("%3d | %11.6f | %12.6f | %6.3f\n", (int)i, v_h_legacy_symm[i], v_h_generic[i], ratio);
     }
 
+    // Compare all entries, including zeros, and reject nonfinite output.
+    const Real* reference = v_h_legacy_symm.ReadHostData();
+    const Real* actual = v_h_generic.ReadHostData();
+    Real max_error = 0.0;
+    Real reference_scale = 0.0;
+    for (Integer i = 0; i < num_dofs; ++i) {
+        if (!std::isfinite(reference[i]) || !std::isfinite(actual[i])) {
+            std::cerr << "Nonfinite symmetry contribution at DoF " << i << "\n";
+            return 1;
+        }
+        max_error = std::max(max_error, std::abs(actual[i] - reference[i]));
+        reference_scale = std::max(reference_scale, std::abs(reference[i]));
+    }
+    if (!(reference_scale > 1.0e-12)) {
+        std::cerr << "The fixture does not exercise a nonzero symmetry contribution.\n";
+        return 1;
+    }
+    if (!(max_error <= 1.0e-11 * std::max(Real{1.0}, reference_scale))) {
+        std::cerr << "Generic and legacy symmetry contributions differ: "
+                  << max_error << "\n";
+        return 1;
+    }
     return 0;
 }

@@ -19,6 +19,13 @@ representation; canonical COO, CSR, and CSC finalization sorts and reduces it.
 See the [sparse matrix documentation](../../Algebra/SparseMatrixTypes/README.md)
 for ownership, views, synchronization, and matrix application.
 
+For local interior facets, compatible tangential quadrature is a precondition.
+To check it explicitly before assembly, call
+`ValidateOperator(weak_form, weak_form_context, integration_rule, checks)` with
+a policy enabling `local_facet_quadrature`. Assembly does not scan connectivity
+for this optional check. See [operator validation](../MatrixFreeOperators/GenericOperator/README.md#optional-quadrature-validation)
+for the policy and host/GPU usage.
+
 ## Default backends
 
 CPU assembly defaults BSR, SGBSR, COO, CSR, and CSC matrices to host backends.

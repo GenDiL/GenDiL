@@ -348,9 +348,9 @@ int TestBoundaryCoefficientFieldInputs()
              << value_and_gradient_err << "\n";
 
    const Real tol = 1e-12;
-   if (value_err > tol ||
-       gradient_err > tol ||
-       value_and_gradient_err > tol)
+   if (!(value_err <= tol) ||
+       !(gradient_err <= tol) ||
+       !(value_and_gradient_err <= tol))
    {
       std::cerr << "FAILED: boundary coefficient field-input oracle mismatch.\n";
       return 1;

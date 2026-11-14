@@ -15,7 +15,9 @@
 
 using namespace gendil;
 
-namespace
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace test_diffusion_legacy_plus_jacobian
 {
 
 void Rotate3DVertices(int *v, int ref_face, int rot)
@@ -250,6 +252,7 @@ int TestLegacyPlusJacobian(int fp1, int fp2)
 
 int main()
 {
+   using namespace test_diffusion_legacy_plus_jacobian;
 #if defined(GENDIL_USE_CUDA)
    const char device_config[] = "cuda";
 #elif defined(GENDIL_USE_HIP)

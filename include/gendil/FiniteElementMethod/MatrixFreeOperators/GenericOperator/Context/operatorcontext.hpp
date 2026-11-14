@@ -45,6 +45,26 @@ GENDIL_HOST_DEVICE auto BindElementDofs(
    }(Terms{});
 }
 
+// Local probe tensors own a current or neighbor row, independently of the
+// canonical side of each visited facet. Interpolation selects the side's reads;
+// these bindings only expose the already-owned DOFs under their field names.
+template<bool CurrentRow, class WeakForm, class Parent, class OperatorContext, class... Handles>
+GENDIL_HOST_DEVICE auto BindLocalFacetElementDofs(
+   const WeakForm&, Parent& parent, const OperatorContext&, Handles... handles)
+{
+   using Terms = typename weak_form_traits::integrand_sequence<std::remove_cvref_t<WeakForm>>::type;
+   return [&]<class... Integrands>(type_list<Integrands...>) {
+      using Signatures = type_list<typename OperatorContext::template signature_for<
+         std::remove_cvref_t<Integrands>>...>;
+      using Reads = typename weak_form_execution_detail::signature_requirements<Signatures>::reads;
+      using Writes = std::conditional_t<CurrentRow, unique_t<concat_many_t<
+         typename weak_form_execution_detail::write_fields<typename OperatorContext::template
+            signature_for<std::remove_cvref_t<Integrands>>::test_outputs, FieldSide::Current>::type...>>,
+         type_list<>>;
+      return BindElementDofs<FieldAccessRequirements<Reads, Writes>>(parent, handles...);
+   }(Terms{});
+}
+
 // Facet probes select reads by side. Local interiors write only the current
 // row; canonical face bindings deliver the selected side's output channels.
 template<SemanticSide Side, class WeakForm, class Parent, class OperatorContext, class... Handles>

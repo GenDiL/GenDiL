@@ -11,7 +11,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace diffusion_3d_generic_test
 {
 
 template <typename VectorType>
@@ -254,7 +254,7 @@ int TestDiffusionSIPDG()
    const Real err_legacy_vs_assembled =
       RelativeL2Error(v_h_legacy, v_h_matrix);
 
-   if (err_generic_vs_legacy > tol_generic_vs_legacy)
+   if (!(err_generic_vs_legacy <= tol_generic_vs_legacy))
    {
       std::cerr << "FAILED: generic SIPDG diffusion does not match legacy diffusion.\n";
       std::cerr << "\nv_h generic: " << v_h_generic << "\n";
@@ -263,13 +263,13 @@ int TestDiffusionSIPDG()
       return 1;
    }
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!(err_generic_vs_assembled <= tol_generic_vs_assembled))
    {
       std::cerr << "FAILED: generic SIPDG diffusion does not match generic assembled matrix.\n";
       return 1;
    }
 
-   if (err_legacy_vs_assembled > tol_legacy_vs_assembled)
+   if (!(err_legacy_vs_assembled <= tol_legacy_vs_assembled))
    {
       std::cerr << "FAILED: legacy diffusion does not match generic assembled matrix.\n";
       return 1;
@@ -279,10 +279,11 @@ int TestDiffusionSIPDG()
    return 0;
 }
 
-} // namespace
+} // namespace diffusion_3d_generic_test
 
 int main()
 {
+   using namespace diffusion_3d_generic_test;
    if (TestDiffusionSIPDG<1>() != 0) { return 1; }
    if (TestDiffusionSIPDG<2>() != 0) { return 1; }
    if (TestDiffusionSIPDG<3>() != 0) { return 1; }

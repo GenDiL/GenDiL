@@ -12,7 +12,7 @@
 using namespace gendil;
 using namespace gendil::test;
 
-namespace
+namespace gendil_test_cartesian_product_partition_nonconforming
 {
 
 template<
@@ -548,6 +548,7 @@ bool TestVectorRawCOONonconformingValuesAndGradients()
 
 int main()
 {
+   using namespace gendil_test_cartesian_product_partition_nonconforming;
    bool success = true;
    success = TestNumericalNonconformingProduct<true>() && success;
    success = TestNumericalNonconformingProduct<false>() && success;

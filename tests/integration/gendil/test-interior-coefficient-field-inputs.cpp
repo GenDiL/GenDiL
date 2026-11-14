@@ -7,10 +7,11 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <tuple>
 
 using namespace gendil;
 
-namespace
+namespace interior_coefficient_field_inputs_test
 {
 
 struct CellAffineField
@@ -234,8 +235,14 @@ Vector ApplyInteriorJumpOracle(
                      eta_plus);
 
                const Real jump_u = u_minus - u_plus;
+               // In the current row, jump(u)*jump(v) reduces to
+               // (u_current-u_neighbor)*v_current. The coefficient still uses
+               // canonical traces: Cartesian minus is the higher-coordinate
+               // cell, whose outward facet normal points along the negative axis.
                const Real coeff_q =
-                  coefficient(ix, iy, neighbor_ix, neighbor_iy, x_q, y_q);
+                  plus_side_face
+                     ? coefficient(neighbor_ix, neighbor_iy, ix, iy, x_q, y_q)
+                     : coefficient(ix, iy, neighbor_ix, neighbor_iy, x_q, y_q);
                const Real weighted_value = coeff_q * jump_u * q_weight * ds;
 
                for (GlobalIndex j = 0; j < order + 1; ++j)
@@ -353,6 +360,19 @@ int TestInteriorCoefficientFieldInputsDG()
       jump_value_form,
       wf_ctx,
       integration_rule);
+   const auto global_faces = MakeCartesianInteriorFaceConnectivity<2>({nx, ny});
+   const auto partition = MakePartition(
+      MakeCellPart(mesh), MakeInteriorFacePart<0, 0>(global_faces));
+   const auto global_space = MakeMixedFiniteElementSpace(
+      partition, std::tuple{finite_element}, DGDirectSumNumbering{});
+   const auto global_ctx = MakeWeakFormContext(
+      MakeTrialField<"u">(global_space),
+      MakeFiniteElementField<"w_dg">(global_space, w_view),
+      MakeIntegrationDomain<"mesh">(partition));
+   const auto global_jump_value_op = MakeGenericOperator<KernelPolicy>(
+      jump_value_form,
+      global_ctx,
+      integration_rule);
    auto avg_gradient_op = MakeGenericOperator<KernelPolicy>(
       avg_gradient_form,
       wf_ctx,
@@ -360,6 +380,7 @@ int TestInteriorCoefficientFieldInputsDG()
 
    const Vector y_avg_value = ApplyOperator(avg_value_op, u_h);
    const Vector y_jump_value = ApplyOperator(jump_value_op, u_h);
+   const Vector y_global_jump_value = ApplyOperator(global_jump_value_op, u_h);
    const Vector y_avg_gradient = ApplyOperator(avg_gradient_op, u_h);
 
    const Vector y_avg_value_ref =
@@ -424,17 +445,24 @@ int TestInteriorCoefficientFieldInputsDG()
 
    const Real avg_value_err = RelativeL2Error(y_avg_value, y_avg_value_ref);
    const Real jump_value_err = RelativeL2Error(y_jump_value, y_jump_value_ref);
+   const Real global_jump_value_err =
+      RelativeL2Error(y_global_jump_value, y_jump_value_ref);
+   const Real jump_execution_err = RelativeL2Error(y_jump_value, y_global_jump_value);
    const Real avg_gradient_err =
       RelativeL2Error(y_avg_gradient, y_avg_gradient_ref);
 
    std::cout << "  average(FieldValue) error   = " << avg_value_err << "\n";
    std::cout << "  jump(FieldValue) error      = " << jump_value_err << "\n";
+   std::cout << "  global jump(FieldValue) err = " << global_jump_value_err << "\n";
+   std::cout << "  local/global jump error    = " << jump_execution_err << "\n";
    std::cout << "  average(FieldGradient) err  = " << avg_gradient_err << "\n";
 
    const Real tol = 1e-12;
-   if (avg_value_err > tol ||
-       jump_value_err > tol ||
-       avg_gradient_err > tol)
+   if (!(avg_value_err <= tol) ||
+       !(jump_value_err <= tol) ||
+       !(global_jump_value_err <= tol) ||
+       !(jump_execution_err <= tol) ||
+       !(avg_gradient_err <= tol))
    {
       std::cerr << "FAILED: interior coefficient field-input oracle mismatch.\n";
       return 1;
@@ -443,10 +471,11 @@ int TestInteriorCoefficientFieldInputsDG()
    return 0;
 }
 
-} // namespace
+} // namespace interior_coefficient_field_inputs_test
 
 int main()
 {
+   using namespace interior_coefficient_field_inputs_test;
    if (TestInteriorCoefficientFieldInputsDG<1>() != 0) { return 1; }
    if (TestInteriorCoefficientFieldInputsDG<2>() != 0) { return 1; }
 

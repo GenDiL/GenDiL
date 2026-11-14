@@ -11,7 +11,7 @@
 
 using namespace gendil;
 
-namespace
+namespace gendil_test_upwind_gradients
 {
 // Geometry is value-owned so the unequal-width cells also work on the device.
 struct UnequalCell
@@ -240,6 +240,7 @@ bool Run()
 
 int main()
 {
+   using namespace gendil_test_upwind_gradients;
    const bool scalar_ok = Run<false>();
    const bool vector_ok = Run<true>();
    if (!scalar_ok || !vector_ok) return 1;

@@ -15,7 +15,7 @@
 
 using namespace gendil;
 
-namespace
+namespace gendil_test_cartesian_product_partition_device_smoke
 {
 
 constexpr Real device_oracle_tolerance = Real{1.0e-10};
@@ -1010,6 +1010,7 @@ bool TestNestedMiddleFactorOracle()
 
 int main()
 {
+   using namespace gendil_test_cartesian_product_partition_device_smoke;
    bool success = true;
    success = TestOriginalInteriorBoundarySmoke() && success;
    success = TestStaticIdentitySecondFactorOracle() && success;

@@ -189,6 +189,12 @@ int main()
    Real max_abs_value = 0.0;
    for (Integer i = 0; i < y.Size(); ++i)
    {
+      if (!std::isfinite(y_data[i]))
+      {
+         std::cerr << "Constant-state SIPDG residual is nonfinite at DoF "
+                   << i << ".\n";
+         return 1;
+      }
       max_abs_value = std::max(max_abs_value, std::abs(y_data[i]));
    }
    if (max_abs_value > 1.0e-11)

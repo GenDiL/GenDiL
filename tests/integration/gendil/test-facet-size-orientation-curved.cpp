@@ -15,7 +15,7 @@
 
 using namespace gendil;
 
-namespace
+namespace facet_size_orientation_curved_test
 {
 
 using KP = SerialKernelConfiguration;
@@ -162,6 +162,32 @@ bool TestRotatedNeighbor()
       matrix(minus(NormalSize()), global_context), matrix(1.0, global_context)) && success;
    success = CheckMatrix("rotated global plus normal scale",
       matrix(plus(NormalSize()), global_context), matrix(0.5, global_context)) && success;
+   success = CheckMatrix("rotated local minus normal scale",
+      matrix(minus(NormalSize()), context), matrix(1.0, context)) && success;
+   success = CheckMatrix("rotated local plus normal scale",
+      matrix(plus(NormalSize()), context), matrix(0.5, context)) && success;
+   // This callback depends on reference axes, unlike the physical gradient.
+   // In the canonical left-cell frame the two inverse Jacobians are diagonal:
+   // diag(1,1/3) and diag(1/2,1/3), despite the neighbor's rotated native axes.
+   const auto inverse = MakeCoefficient<"inverse_entries", JacobianInverse>(
+      [] GENDIL_HOST_DEVICE (const auto& J) {
+         return GetValue(J,0,0) + 2.0*GetValue(J,0,1)
+            + 3.0*GetValue(J,1,0) + 4.0*GetValue(J,1,1);
+      });
+   success = CheckMatrix("rotated canonical minus inverse Jacobian",
+      matrix(minus(inverse), context), matrix(7.0/3.0, global_context)) && success;
+   success = CheckMatrix("rotated canonical plus inverse Jacobian",
+      matrix(plus(inverse), context), matrix(11.0/6.0, global_context)) && success;
+   const auto inverse_term = minus(inverse)*jump(u)*jump(v);
+   const auto physical_gradient = 0.37*average(dot(grad(u),Normal{}))*jump(v);
+   const auto combined_inverse = Evaluate(integrate(faces,inverse_term+physical_gradient),
+      context,rule,size);
+   success = CheckMatrix("rotated inverse and physical gradient local/global",
+      combined_inverse,Evaluate(integrate(faces,inverse_term+physical_gradient),
+         global_context,rule,size)) && success;
+   success = CheckMatrix("rotated inverse and physical gradient split/combined",
+      combined_inverse,Evaluate(integrate(faces,inverse_term)+integrate(faces,physical_gradient),
+         context,rule,size)) && success;
    success = CheckMatrix("rotated local/global nonlinear penalty",
       matrix(average(SquaredNormalSize()), context),
       matrix(average(SquaredNormalSize()), global_context)) && success;
@@ -207,29 +233,62 @@ bool TestCurvedHexes()
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3, 3, 3>{});
    const Integer size = space.GetNumberOfFiniteElementDofs();
+   const auto facets = MakeUnstructuredInteriorFaceConnectivity(connectivity, 2);
+   const auto partition = MakePartition(MakeCellPart(mesh),
+      MakeInteriorFacePart<0, 0>(std::get<3>(facets)));
+   const auto mixed = MakeMixedFiniteElementSpace(partition, std::tuple{fe}, DGDirectSumNumbering{});
+   const auto global_context = MakeWeakFormContext(
+      MakeTrialField<"u">(mixed), MakeIntegrationDomain<"m">(partition));
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
-   auto matrix = [&](const auto& coefficient)
+   auto matrix = [&](const auto& coefficient, const auto& ctx)
    {
-      return Evaluate(integrate(faces, coefficient * jump(u) * jump(v)), context, rule, size);
+      return Evaluate(integrate(faces, coefficient * jump(u) * jump(v)), ctx, rule, size);
    };
    const auto expected_normal = MakeCoefficient<"expected_normal", PhysicalCoordinates>(
       [] GENDIL_HOST_DEVICE (const std::array<Real, 3>& x)
       {
          return 0.625 * (1.0 + a * a * (x[1] * x[1] + x[2] * x[2]) / (b * b * c * c));
       });
-   bool success = CheckMatrix("curved hex true normal scales",
-      matrix(average(SquaredNormalSize())), matrix(expected_normal));
-   success = CheckGrouping(context, rule, size, 90.0 * average(SquaredNormalSize())) && success;
+   const auto mean = matrix(average(SquaredNormalSize()), context);
+   const auto global_mean = matrix(average(SquaredNormalSize()), global_context);
+   bool success = CheckMatrix("curved hex true mean normal scales",
+      mean, matrix(expected_normal, context));
+   success = CheckMatrix("curved hex mean normal scales local/global",
+      mean, global_mean) && success;
+
+   // Canonical minus is cell 0, with normal width 1; plus has width 2.
+   // Squaring their inverse scales gives factors 1 and 1/4, whose mean is 5/8.
+   const auto minus_scale = matrix(minus(SquaredNormalSize()), context);
+   const auto plus_scale = matrix(plus(SquaredNormalSize()), context);
+   success = CheckMatrix("curved hex independent minus normal scale",
+      minus_scale, matrix(1.6 * expected_normal, context)) && success;
+   success = CheckMatrix("curved hex independent plus normal scale",
+      plus_scale, matrix(0.4 * expected_normal, context)) && success;
+   success = CheckMatrix("curved hex minus normal scale local/global",
+      minus_scale, matrix(minus(SquaredNormalSize()), global_context)) && success;
+   success = CheckMatrix("curved hex plus normal scale local/global",
+      plus_scale, matrix(plus(SquaredNormalSize()), global_context)) && success;
+
+   const auto penalty = 90.0 * average(SquaredNormalSize());
+   success = CheckGrouping(context, rule, size, penalty) && success;
+   success = CheckGrouping(global_context, rule, size, penalty) && success;
+   const auto flux = -average(dot(grad(u), Normal{})) * jump(v)
+                     - jump(u) * average(dot(grad(v), Normal{}));
+   const auto combined = integrate(faces, flux + penalty * jump(u) * jump(v));
+   success = CheckMatrix("curved hex grouped SIPDG local/global",
+      Evaluate(combined, context, rule, size),
+      Evaluate(combined, global_context, rule, size)) && success;
 
    return success;
 }
 
-} // namespace
+} // namespace facet_size_orientation_curved_test
 
 int main()
 {
+   using namespace facet_size_orientation_curved_test;
    const bool rotated = TestRotatedNeighbor();
    const bool curved = TestCurvedHexes();
    if (!rotated || !curved) return 1;

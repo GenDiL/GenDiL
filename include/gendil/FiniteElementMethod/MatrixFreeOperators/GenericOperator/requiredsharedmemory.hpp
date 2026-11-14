@@ -203,12 +203,20 @@ consteval size_t OutputContractionMinimum(type_list<Fields...>)
 } // namespace detail
 
 template<class KernelPolicy, class Integrand, class Execution, class OperatorContext,
-         class PlusContext = Execution>
+         class SecondContext = Execution>
 struct GenericOperatorIntegrandRequiredSharedMemory
 {
    using Signature = typename OperatorContext::template signature_for<Integrand>;
    using Reads = concat_t<typename Signature::active_inputs, typename Signature::bound_inputs>;
    using Outputs = typename Signature::test_outputs;
+   static constexpr bool has_face_bound_output = [] {
+      if constexpr (!Signature::is_zero && (Signature::entity == SemanticEntity::InteriorFacet))
+      {
+         using Output = weak_form_traits::only_field_t<Outputs>;
+         return is_face_field_binding_v<decltype(std::declval<const Execution&>().template GetSpace<Output::name>())>;
+      }
+      else return false;
+   }();
    static constexpr size_t read_staging_slots = [] {
       if constexpr ((Signature::entity == SemanticEntity::Cell))
          return detail::ReadEndpointScratch<KernelPolicy, Execution>(Reads{});
@@ -220,28 +228,26 @@ struct GenericOperatorIntegrandRequiredSharedMemory
             typename Signature::template bound_inputs_on<SemanticSide::Minus>>;
          using PlusReads = concat_t<typename Signature::template active_inputs_on<SemanticSide::Plus>,
             typename Signature::template bound_inputs_on<SemanticSide::Plus>>;
-         return Max(detail::FacetEndpointsScratch<false, false, KernelPolicy, Execution>(MinusReads{}),
-            detail::FacetEndpointsScratch<true, false, KernelPolicy, PlusContext>(PlusReads{}));
+         const auto ordered = Max(detail::FacetEndpointsScratch<false, false, KernelPolicy, Execution>(MinusReads{}),
+            detail::FacetEndpointsScratch<true, false, KernelPolicy, SecondContext>(PlusReads{}));
+         if constexpr (has_face_bound_output)
+            return ordered;
+         else
+            return Max(ordered,
+               detail::FacetEndpointsScratch<false, false, KernelPolicy, Execution>(PlusReads{}),
+               detail::FacetEndpointsScratch<true, false, KernelPolicy, SecondContext>(MinusReads{}));
       }
    }();
-   static constexpr bool canonical = [] {
-      if constexpr (!Signature::is_zero && (Signature::entity == SemanticEntity::InteriorFacet))
-      {
-         using Output = weak_form_traits::only_field_t<Outputs>;
-         return is_face_field_binding_v<decltype(std::declval<const Execution&>().template GetSpace<Output::name>())>;
-      }
-      else return false;
-   }();
-   using MinusOutputs = std::conditional_t<canonical,
+   using MinusOutputs = std::conditional_t<has_face_bound_output,
       typename Signature::template test_outputs_on<SemanticSide::Minus>, Outputs>;
-   using PlusOutputs = std::conditional_t<canonical,
+   using PlusOutputs = std::conditional_t<has_face_bound_output,
       typename Signature::template test_outputs_on<SemanticSide::Plus>, type_list<>>;
    static constexpr size_t write_staging_slots = [] {
       if constexpr ((Signature::entity == SemanticEntity::Cell))
          return detail::WriteEndpointScratch<KernelPolicy, Execution>(Outputs{});
       else return Max(detail::FacetEndpointsScratch<false, true, KernelPolicy, Execution,
          (Signature::entity == SemanticEntity::BoundaryFacet)>(MinusOutputs{}),
-         detail::FacetEndpointsScratch<true, true, KernelPolicy, PlusContext>(PlusOutputs{}));
+         detail::FacetEndpointsScratch<true, true, KernelPolicy, SecondContext>(PlusOutputs{}));
    }();
    // Gather, contraction and scatter phases release their arena sequentially.
    // Retained interpolants, channels and rows own local/register storage.
@@ -258,6 +264,10 @@ struct GenericOperatorIntegrandRequiredSharedMemory
             detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext, SemanticSide::Plus>(PlusReads{}),
             detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext, SemanticSide::Minus>(MinusOutputs{}),
             detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext, SemanticSide::Plus>(PlusOutputs{}));
+         if constexpr (!has_face_bound_output)
+            contractions = Max(contractions,
+               detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext, SemanticSide::Minus>(PlusReads{}),
+               detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext, SemanticSide::Plus>(MinusReads{}));
       }
       else contractions = Max(detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext>(Reads{}),
          detail::FieldContractionScratch<KernelPolicy, Signature, OperatorContext>(Outputs{}));
@@ -267,10 +277,10 @@ struct GenericOperatorIntegrandRequiredSharedMemory
 };
 
 template<class KernelPolicy, class Integrand, class Execution, class OperatorContext,
-         class PlusContext = Execution>
+         class SecondContext = Execution>
 inline constexpr size_t generic_operator_integrand_required_shared_memory_v =
    GenericOperatorIntegrandRequiredSharedMemory<KernelPolicy, Integrand,
-      Execution, OperatorContext, PlusContext>::value;
+      Execution, OperatorContext, SecondContext>::value;
 
 /**
  * @brief Shared scratch needed by one global-face ReadDofs call.
@@ -376,12 +386,12 @@ namespace detail
 {
 
 // Sequential integrands reuse scratch; only their maximum is live at once.
-template<class Policy, class Execution, class OperatorContext, class PlusContext = Execution, class... Terms>
+template<class Policy, class Execution, class OperatorContext, class SecondContext = Execution, class... Terms>
 consteval size_t TermSharedSlots(std::tuple<Terms...>*)
 {
    size_t slots = 0;
    ((slots = Max(slots, GenericOperatorIntegrandRequiredSharedMemory<Policy,
-      std::remove_cvref_t<Terms>, Execution, OperatorContext, PlusContext>::value)), ...);
+      std::remove_cvref_t<Terms>, Execution, OperatorContext, SecondContext>::value)), ...);
    return slots;
 }
 

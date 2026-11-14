@@ -14,7 +14,7 @@
 
 using namespace gendil;
 
-namespace
+namespace facet_size_inputs_test
 {
 
 using KP = SerialKernelConfiguration;
@@ -437,10 +437,11 @@ bool TestThreeDimensionalScales()
    return success;
 }
 
-} // namespace
+} // namespace facet_size_inputs_test
 
 int main()
 {
+   using namespace facet_size_inputs_test;
    bool success = TestUnequalRectangles();
    success = TestNonconformingInterface() && success;
    success = TestWarpedQuads() && success;

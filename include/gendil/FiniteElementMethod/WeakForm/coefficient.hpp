@@ -8,6 +8,7 @@
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/coefficientinputs.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/coefficientjacobian.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointIO/readquadraturelocalvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/QuadraturePointFunctions/applymapping.hpp"
 
@@ -83,7 +84,10 @@ struct CoefficientInputGetter<ElementIndex>
       const QuadPtContext&,
       const Fields&)
    {
-      return (element_context.element_index);
+      if constexpr (requires { element_context.element_index; })
+         return (element_context.element_index);
+      else
+         return element_context.ElementIndex();
    }
 };
 
@@ -239,18 +243,21 @@ struct CoefficientInputGetter<JacobianInverse>
       const KernelContext&,
       const WeakFormContext&,
       const OperatorContext&,
-      const ElementContext&,
+      const ElementContext& element_context,
       const QuadPtContext& quad_pt_context,
       const Fields&)
    {
-      if constexpr (requires { quad_pt_context.inv_J_mesh; })
+      if constexpr (requires {
+         GetCoefficientJacobianInverse(element_context, quad_pt_context);
+      })
       {
-         return (quad_pt_context.inv_J_mesh);
+         return GetCoefficientJacobianInverse(element_context, quad_pt_context);
       }
       else
       {
-         static_assert(requires { quad_pt_context.inv_J_mesh; },
-            "JacobianInverse coefficient input requires QuadPtContext with inv_J_mesh field");
+         static_assert(requires {
+            GetCoefficientJacobianInverse(element_context, quad_pt_context);
+         }, "JacobianInverse coefficient input requires GetCoefficientJacobianInverse(context, point) for its context and point data");
          return Empty{};
       }
    }

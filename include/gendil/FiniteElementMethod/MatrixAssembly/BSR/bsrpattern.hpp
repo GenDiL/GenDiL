@@ -144,7 +144,7 @@ auto MakeDGBSRPattern(
          {
             if ( !IsBoundaryFace( face_info ) )
             {
-               const IndexType nb = static_cast<IndexType>(face_info.PlusSide().GetCellIndex());
+               const IndexType nb = static_cast<IndexType>(face_info.NeighborSide().GetCellIndex());
                cols.push_back(nb);
             }
          });

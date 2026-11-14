@@ -142,7 +142,7 @@ void FaceReadSpeedOfLightElementOperator(
    FaceLoop( fe_space, element_index,
       [&]( auto const & face_info )
       {
-         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.PlusSide(), dofs_in );
+         auto neighbor_u = ReadDofs( kernel_conf, fe_space, face_info.NeighborSide(), dofs_in );
 
          u += neighbor_u;
       }
@@ -169,7 +169,7 @@ void FaceWriteSpeedOfLightElementOperator(
       [&]( auto const & face_info )
       {
          // Write the result back to the neighbor
-         WriteAddDofs( kernel_conf, fe_space, face_info.PlusSide(), u, dofs_out );
+         WriteAddDofs( kernel_conf, fe_space, face_info.NeighborSide(), u, dofs_out );
       }
    );
 

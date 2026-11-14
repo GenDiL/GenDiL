@@ -222,19 +222,22 @@ int TestAdvection1D()
    const Real err_legacy_vs_assembled =
       RelativeL2Error(v_h_legacy, v_h_matrix);
 
-   if (err_generic_vs_legacy > tol_generic_vs_legacy)
+   if (!std::isfinite(err_generic_vs_legacy)
+       || err_generic_vs_legacy > tol_generic_vs_legacy)
    {
       std::cerr << "FAILED: generic advection operator does not match legacy advection operator.\n";
       return 1;
    }
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!std::isfinite(err_generic_vs_assembled)
+       || err_generic_vs_assembled > tol_generic_vs_assembled)
    {
       std::cerr << "FAILED: generic advection operator does not match generic assembled matrix.\n";
       return 1;
    }
 
-   if (err_legacy_vs_assembled > tol_legacy_vs_assembled)
+   if (!std::isfinite(err_legacy_vs_assembled)
+       || err_legacy_vs_assembled > tol_legacy_vs_assembled)
    {
       std::cerr << "FAILED: legacy advection operator does not match generic assembled matrix.\n";
       return 1;

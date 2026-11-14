@@ -110,17 +110,17 @@ void AssembleInteriorFacetSelfSparseMatrix(
       trial_fe_space,
       [&] ( const auto & trial_dof )
       {
-         auto x_minus = MakeZeroElementVector( kernel_context, trial_fe_space );
-         auto x_plus = MakeZeroElementVector( kernel_context, trial_fe_space );
-         SetLocalDofOnOwnerThread( kernel_context, x_minus, trial_dof, Real(1.0) );
-         auto y_minus = MakeZeroElementVector( kernel_context, test_fe_space );
+         auto x_current = MakeZeroElementVector( kernel_context, trial_fe_space );
+         auto x_neighbor = MakeZeroElementVector( kernel_context, trial_fe_space );
+         SetLocalDofOnOwnerThread( kernel_context, x_current, trial_dof, Real(1.0) );
+         auto y_current = MakeZeroElementVector( kernel_context, test_fe_space );
 
-         auto current = BindElementDofs< SemanticSide::Minus >(
+         auto current = BindLocalFacetElementDofs< true >(
             integrands, execution_context, operator_context,
-            ReadLocal< TrialName >( x_minus ), AddLocal< TestName >( y_minus ) );
-         auto neighbor = BindElementDofs< SemanticSide::Plus >(
+            ReadLocal< TrialName >( x_current ), AddLocal< TestName >( y_current ) );
+         auto neighbor = BindLocalFacetElementDofs< false >(
             integrands, execution_context, operator_context,
-            ReadLocal< TrialName >( x_plus ) );
+            ReadLocal< TrialName >( x_neighbor ) );
          std::apply( [&]( const auto &... term )
          {
             ( LocalInteriorFacetIntegrandOperator( kernel_context, current, neighbor,
@@ -133,7 +133,7 @@ void AssembleInteriorFacetSelfSparseMatrix(
             test_fe_space,
             element_context.ElementIndex(),
             trial_dof,
-            y_minus,
+            y_current,
             sparse_matrix );
       });
 }
@@ -161,33 +161,33 @@ void AssembleInteriorFacetNeighborSparseMatrix(
 
    const auto & trial_fe_space = execution_context.template GetSpace< TrialName >();
    const auto & test_fe_space = execution_context.template GetSpace< TestName >();
-   const auto & plus_orientation = face_info.PlusSide().GetOrientation();
+   const auto & neighbor_orientation = face_info.NeighborSide().GetOrientation();
 
-   // Block A(e,nb): plus-side trial basis -> current test residual
+   // Block A(e,nb): neighbor trial basis -> current test residual
    ForEachLocalTrialDof(
       kernel_context,
       trial_fe_space,
       [&] ( const auto & trial_dof )
       {
-         auto x_minus = MakeZeroElementVector( kernel_context, trial_fe_space );
-         auto x_plus = MakeZeroElementVector( kernel_context, trial_fe_space );
-         SetLocalDofOnOwnerThread( kernel_context, x_plus, trial_dof, Real(1.0) );
-         auto y_minus = MakeZeroElementVector( kernel_context, test_fe_space );
+         auto x_current = MakeZeroElementVector( kernel_context, trial_fe_space );
+         auto x_neighbor = MakeZeroElementVector( kernel_context, trial_fe_space );
+         SetLocalDofOnOwnerThread( kernel_context, x_neighbor, trial_dof, Real(1.0) );
+         auto y_current = MakeZeroElementVector( kernel_context, test_fe_space );
 
-         auto current = BindElementDofs< SemanticSide::Minus >(
+         auto current = BindLocalFacetElementDofs< true >(
             integrands, execution_context, operator_context,
-            ReadLocal< TrialName >( x_minus ), AddLocal< TestName >( y_minus ) );
-         auto neighbor = BindElementDofs< SemanticSide::Plus >(
+            ReadLocal< TrialName >( x_current ), AddLocal< TestName >( y_current ) );
+         auto neighbor = BindLocalFacetElementDofs< false >(
             integrands, execution_context, operator_context,
-            ReadLocal< TrialName >( x_plus ) );
+            ReadLocal< TrialName >( x_neighbor ) );
          std::apply( [&]( const auto &... term )
          {
             ( LocalInteriorFacetIntegrandOperator( kernel_context, current, neighbor,
                operator_context, element_context, face_info, term ), ... );
          }, integrands );
 
-         const auto plus_native_dof = OrientReferenceDofToNative(
-            trial_fe_space, trial_dof, plus_orientation );
+         const auto neighbor_native_dof = OrientReferenceDofToNative(
+            trial_fe_space, trial_dof, neighbor_orientation );
 
          AddSparseMatrixEntry(
             kernel_context,
@@ -195,8 +195,8 @@ void AssembleInteriorFacetNeighborSparseMatrix(
             test_fe_space,
             element_context.ElementIndex(),
             face_info,
-            plus_native_dof,
-            y_minus,
+            neighbor_native_dof,
+            y_current,
             sparse_matrix );
       });
 }
@@ -301,21 +301,21 @@ void AssembleBoundaryFacetSparseMatrix(
 
          apply_boundary(face_info, x_zero, y_rhs);
 
-         // Block A(e,e): minus-side trial basis -> minus-side test residual
+         // Block A(e,e): current-cell trial basis -> current-cell test residual
          ForEachLocalTrialDof( kernel_context, trial_fe_space, [&] ( const auto & trial_dof )
          {
-            auto x_minus = MakeZeroElementVector(kernel_context, trial_fe_space);
-            SetLocalDofOnOwnerThread( kernel_context, x_minus, trial_dof, Real(1.0) );
+            auto x_current = MakeZeroElementVector(kernel_context, trial_fe_space);
+            SetLocalDofOnOwnerThread( kernel_context, x_current, trial_dof, Real(1.0) );
 
-            auto y_minus = MakeZeroElementVector(kernel_context, test_fe_space);
+            auto y_current = MakeZeroElementVector(kernel_context, test_fe_space);
 
-            apply_boundary(face_info, x_minus, y_minus);
+            apply_boundary(face_info, x_current, y_current);
 
             // Subtract RHS contribution to get pure matrix column.
             SubtractLocalDofVector(
                kernel_context,
                test_fe_space,
-               y_minus,
+               y_current,
                y_rhs );
 
             AddSparseMatrixEntry(
@@ -324,7 +324,7 @@ void AssembleBoundaryFacetSparseMatrix(
                test_fe_space,
                element_index,
                trial_dof,
-               y_minus,
+               y_current,
                sparse_matrix
             );
          });

@@ -8,6 +8,7 @@
 #include <gendil/gendil.hpp>
 
 #include <chrono>
+#include <cmath>
 
 using namespace std;
 using namespace mfem;
@@ -55,7 +56,7 @@ mfem::Mesh mesh_2d_orientation(int face_perm_1, int face_perm_2)
 }
 
 template < Integer order, Integer num_quad_1d >
-void test( int fp1, int fp2 )
+bool test( int fp1, int fp2 )
 {
    // const int nx = fp1 + 1;
    // const int ny = fp2 + 1;
@@ -181,7 +182,8 @@ void test( int fp1, int fp2 )
 
    const double tol = 1e-10;
    const double norm = dofs_out_mf.Norml2();
-   if (dofs_out_mf.Norml2() < tol)
+   const bool passed = std::isfinite(norm) && norm < tol;
+   if (passed)
    {
       std::cout << "SUCCESS: " << norm << std::endl;
    }
@@ -193,6 +195,7 @@ void test( int fp1, int fp2 )
    // std::cout << "Absolute norm of the diff: " << dofs_out_mf.Norml2() << std::endl;
    // std::cout << "Relative norm of the diff: " << dofs_out_mf.Norml2()/dofs_out_pa.Norml2() << std::endl;
 
+   return passed;
 }
 
 int main(int argc, char *argv[])
@@ -209,15 +212,16 @@ int main(int argc, char *argv[])
 
    constexpr Integer order = 1;
    constexpr Integer num_quad_1d = order + 2;
+   bool passed = true;
    const int n_perms = 4;
    for (int fp2=0; fp2<n_perms; ++fp2)
    {
       for (int fp1=0; fp1<n_perms; ++fp1)
       {
          std::cout << "\nTEST< " << fp1 << ", " << fp2 << " >:\n";
-         test<order,num_quad_1d>(fp1, fp2);
+         passed = test<order,num_quad_1d>(fp1, fp2) && passed;
       }
    }
 
-   return 0;
+   return passed ? 0 : 1;
 }

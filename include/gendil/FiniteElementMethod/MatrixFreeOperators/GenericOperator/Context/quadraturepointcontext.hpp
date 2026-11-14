@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/negation.hpp"
 #include "gendil/Meshes/cell.hpp"
 #include "gendil/FiniteElementMethod/mixedfiniteelementspace.hpp"
 #include "gendil/Utilities/staticstring.hpp"
@@ -43,7 +44,8 @@ struct OneSidedFacetQuadraturePointContext
    Real weight;
    Real det_J_facet;          // Surface Jacobian determinant
    Real inverse_normal_cell_size; // Selected element: ||J^{-T} n_ref||
-   PhysicalNormal physical_normal;  // Normalized physical normal (unit length)
+   // Shared canonical unit normal on interiors, outward unit normal on boundaries.
+   PhysicalNormal physical_normal;
 };
 
 namespace quadrature_context_detail
@@ -99,6 +101,7 @@ struct BoundaryFacetQuadraturePointContext
    PhysicalCoordinates reference_coordinates;
 };
 
+// Fixed minus/plus geometry for global facet expression evaluation.
 template<
    typename QuadIndex,
    typename PhysicalCoordinates,
@@ -112,10 +115,10 @@ struct TwoSidedFacetQuadraturePointContext
    MinusJacobian inv_J_mesh_minus;
    PlusJacobian inv_J_mesh_plus;
    Real weight;
-   Real det_J_facet;          // Current/minus-side surface Jacobian determinant
+   Real det_J_facet;          // Minus-side surface Jacobian determinant
    Real inverse_normal_cell_size_minus;
    Real inverse_normal_cell_size_plus;
-   PhysicalNormal physical_normal;
+   PhysicalNormal physical_normal; // Canonical-minus outward unit normal
 
    GENDIL_HOST_DEVICE
    auto MinusSide() const
@@ -135,6 +138,48 @@ struct TwoSidedFacetQuadraturePointContext
             quad_index, X, inv_J_mesh_plus, weight, det_J_facet,
             inverse_normal_cell_size_plus, physical_normal };
       return qc_plus;
+   }
+};
+
+// Local geometry stays in current/neighbor order. The facet context selects
+// canonical traces without changing the storage identities. The point factory
+// orients the shared unit normal once; both selected traces retain that normal.
+template<
+   typename QuadIndex,
+   typename PhysicalCoordinates,
+   typename CurrentJacobian,
+   typename NeighborJacobian,
+   typename PhysicalNormal >
+struct LocalFacetQuadraturePointData
+{
+   QuadIndex quad_index;
+   PhysicalCoordinates X;
+   CurrentJacobian inv_J_mesh_current;
+   NeighborJacobian inv_J_mesh_neighbor;
+   Real weight;
+   Real det_J_facet;          // Current-cell surface Jacobian determinant
+   Real inverse_normal_cell_size_current;
+   Real inverse_normal_cell_size_neighbor;
+   PhysicalNormal physical_normal; // Shared canonical unit normal
+
+   GENDIL_HOST_DEVICE
+   auto CurrentSide() const
+   {
+      OneSidedFacetQuadraturePointContext<QuadIndex, PhysicalCoordinates, CurrentJacobian, PhysicalNormal>
+         qc_current{
+            quad_index, X, inv_J_mesh_current, weight, det_J_facet,
+            inverse_normal_cell_size_current, physical_normal };
+      return qc_current;
+   }
+
+   GENDIL_HOST_DEVICE
+   auto NeighborSide() const
+   {
+      OneSidedFacetQuadraturePointContext<QuadIndex, PhysicalCoordinates, NeighborJacobian, PhysicalNormal>
+         qc_neighbor{
+            quad_index, X, inv_J_mesh_neighbor, weight, det_J_facet,
+            inverse_normal_cell_size_neighbor, physical_normal };
+      return qc_neighbor;
    }
 };
 
@@ -240,7 +285,8 @@ auto MakeQuadraturePointContext(
 // Interior facet quadrature-point context
 // =============================================================================
 template<
-   bool NeedPlusSideInvJ,
+   bool NeedSecondSideInvJ,
+   template<class, class, class, class, class> class Context = TwoSidedFacetQuadraturePointContext,
    typename KernelContext,
    typename WeakFormContext,
    typename OperatorContext,
@@ -267,8 +313,13 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
 
    const auto& mesh_quad_data =
       op_ctx.template GetMeshFacetQuadData<DomainName>();
-   auto&& mesh_minus_quad_data =
-      GetFacetQuadData(mesh_quad_data.MinusSide(), face.MinusSide());
+   const auto& first_side = [&]() -> decltype(auto)
+   {
+      if constexpr (requires { face.CurrentSide(); }) return face.CurrentSide();
+      else return face.MinusSide();
+   }();
+   auto&& first_quad_data =
+      GetFacetQuadData(mesh_quad_data.MinusSide(), first_side);
 
    const auto& mesh =
       GetCellIntegrationDomainMesh(integrand, wf_ctx);
@@ -276,87 +327,67 @@ auto MakeInteriorFacetQuadraturePointContextImpl(
    using PhysicalCoordinates = typename Mesh::cell_type::physical_coordinates;
    using Jacobian            = typename Mesh::cell_type::jacobian;
 
-   QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_minus{};
-   qc_minus.quad_index = quad_index;
+   QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> first{};
+   first.quad_index = quad_index;
    mesh::ComputePhysicalCoordinatesAndJacobian(
       element_context.cell,
       quad_index,
-      mesh_minus_quad_data,
-      qc_minus.X,
-      qc_minus.J_mesh);
+      first_quad_data,
+      first.X,
+      first.J_mesh);
 
-   qc_minus.det_J  = ComputeInverseAndDeterminant(qc_minus.J_mesh, qc_minus.inv_J_mesh);
-   qc_minus.weight = GetWeight(quad_index, mesh_minus_quad_data);
+   first.det_J  = ComputeInverseAndDeterminant(first.J_mesh, first.inv_J_mesh);
+   first.weight = GetWeight(quad_index, first_quad_data);
 
-   auto reference_normal_minus = face.MinusSide().GetReferenceNormal();
-   auto facet_geometry_minus = ComputeFacetGeometry(
-      qc_minus.inv_J_mesh,
-      reference_normal_minus,
-      qc_minus.det_J);
+   auto first_reference_normal = first_side.GetReferenceNormal();
+   auto first_geometry = ComputeFacetGeometry(
+      first.inv_J_mesh,
+      first_reference_normal,
+      first.det_J);
 
-   using PhysicalNormal = decltype(facet_geometry_minus.normalized_physical_normal);
+   using PhysicalNormal = decltype(first_geometry.normalized_physical_normal);
 
-   if constexpr (NeedPlusSideInvJ)
+   if constexpr (NeedSecondSideInvJ)
    {
-      QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> qc_plus{};
-      auto&& mesh_plus_quad_data =
-         GetFacetQuadData(mesh_quad_data.PlusSide(), face.PlusSide());
+      const auto& second_side = [&]() -> decltype(auto)
+      {
+         if constexpr (requires { face.NeighborSide(); }) return face.NeighborSide();
+         else return face.PlusSide();
+      }();
+      QuadraturePointContext<QuadIndex, PhysicalCoordinates, Jacobian> second{};
+      auto&& second_quad_data =
+         GetFacetQuadData(mesh_quad_data.PlusSide(), second_side);
       mesh::ComputePhysicalCoordinatesAndJacobian(
-         face.plus_cell,
+         face.second_cell,
          quad_index,
-         mesh_plus_quad_data,
-         qc_plus.X,
-         qc_plus.J_mesh);
+         second_quad_data,
+         second.X,
+         second.J_mesh);
 
-      qc_plus.det_J  = ComputeInverseAndDeterminant(qc_plus.J_mesh, qc_plus.inv_J_mesh);
-      const auto facet_geometry_plus = ComputeFacetGeometry(
-         qc_plus.inv_J_mesh,
-         face.PlusSide().GetReferenceNormal(),
-         qc_plus.det_J);
+      second.det_J  = ComputeInverseAndDeterminant(second.J_mesh, second.inv_J_mesh);
+      const auto second_geometry = ComputeFacetGeometry(
+         second.inv_J_mesh,
+         second_side.GetReferenceNormal(),
+         second.det_J);
 
-      TwoSidedFacetQuadraturePointContext<
-         QuadIndex,
-         decltype(qc_minus.X),
-         decltype(qc_minus.inv_J_mesh),
-         decltype(qc_plus.inv_J_mesh),
-         PhysicalNormal
-      > facet_qctx;
-
-      facet_qctx.quad_index = qc_minus.quad_index;
-      facet_qctx.X = qc_minus.X;
-      facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
-      facet_qctx.inv_J_mesh_plus = qc_plus.inv_J_mesh;
-      facet_qctx.inverse_normal_cell_size_plus = facet_geometry_plus.inverse_normal_cell_size;
-      facet_qctx.weight = qc_minus.weight;
-      facet_qctx.det_J_facet =
-         face.MinusSide().Measure() * facet_geometry_minus.det_J_facet;
-      facet_qctx.inverse_normal_cell_size_minus = facet_geometry_minus.inverse_normal_cell_size;
-      facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
-
-      return facet_qctx;
+      return Context<QuadIndex, decltype(first.X), decltype(first.inv_J_mesh),
+         decltype(second.inv_J_mesh), PhysicalNormal>{
+         std::move(first.quad_index), std::move(first.X),
+         std::move(first.inv_J_mesh), std::move(second.inv_J_mesh),
+         first.weight, first_side.Measure() * first_geometry.det_J_facet,
+         first_geometry.inverse_normal_cell_size,
+         second_geometry.inverse_normal_cell_size,
+         std::move(first_geometry.normalized_physical_normal)};
    }
    else
    {
-      TwoSidedFacetQuadraturePointContext<
-         QuadIndex,
-         decltype(qc_minus.X),
-         decltype(qc_minus.inv_J_mesh),
-         Empty,
-         PhysicalNormal
-      > facet_qctx;
-
-      facet_qctx.quad_index = qc_minus.quad_index;
-      facet_qctx.X = qc_minus.X;
-      facet_qctx.inv_J_mesh_minus = qc_minus.inv_J_mesh;
-      facet_qctx.inv_J_mesh_plus = Empty{};
-      facet_qctx.inverse_normal_cell_size_plus = 0.0;
-      facet_qctx.weight = qc_minus.weight;
-      facet_qctx.det_J_facet =
-         face.MinusSide().Measure() * facet_geometry_minus.det_J_facet;
-      facet_qctx.inverse_normal_cell_size_minus = facet_geometry_minus.inverse_normal_cell_size;
-      facet_qctx.physical_normal = facet_geometry_minus.normalized_physical_normal;
-
-      return facet_qctx;
+      return Context<QuadIndex, decltype(first.X), decltype(first.inv_J_mesh),
+         Empty, PhysicalNormal>{
+         std::move(first.quad_index), std::move(first.X),
+         std::move(first.inv_J_mesh), Empty{},
+         first.weight, first_side.Measure() * first_geometry.det_J_facet,
+         first_geometry.inverse_normal_cell_size, Real{0},
+         std::move(first_geometry.normalized_physical_normal)};
    }
 }
 
@@ -378,8 +409,10 @@ auto MakeLocalInteriorFacetQuadraturePointContext(
    const Integrand& integrand,
    const QuadIndex& quad_index)
 {
-   return MakeInteriorFacetQuadraturePointContextImpl<
-      local_interior_context_requires_plus_side_jacobian_v<Integrand>>(
+   constexpr int Sign = static_face_normal_orientation_v<FaceContext>;
+   auto point = MakeInteriorFacetQuadraturePointContextImpl<
+      local_interior_context_requires_neighbor_jacobian_v<Integrand, Sign>,
+      LocalFacetQuadraturePointData>(
          kernel_context,
          wf_ctx,
          op_ctx,
@@ -387,6 +420,9 @@ auto MakeLocalInteriorFacetQuadraturePointContext(
          face,
          integrand,
          quad_index);
+   if constexpr (Sign == -1)
+      point.physical_normal = NegateValue(point.physical_normal);
+   return point;
 }
 
 template<
@@ -445,18 +481,23 @@ auto MakeFacetQuadraturePointContext(
 {
    if constexpr (BoundaryFacetIntegrand<Integrand>)
    {
+      const auto& side = [&]() -> const auto&
+      {
+         if constexpr (requires { face.CurrentSide(); }) return face.CurrentSide();
+         else return face.MinusSide();
+      }();
       // 1. Create base context using existing factory (preserves old convention)
       auto base_qctx = MakeQuadraturePointContext(
          kernel_context,
          wf_ctx,
          op_ctx,
          element_context,
-         face.MinusSide(),
+         side,
          integrand,
          quad_index);
 
       // 2. Extract reference normal from face using existing API
-      auto reference_normal = face.MinusSide().GetReferenceNormal();
+      auto reference_normal = side.GetReferenceNormal();
 
       // 3. Compute cleaned-up facet geometry
       auto facet_geometry = ComputeFacetGeometry(
@@ -484,14 +525,14 @@ auto MakeFacetQuadraturePointContext(
       // any reference subface map. A volume-rule lookup has the wrong point.
       constexpr auto DomainName = Integrand::domain_type::name;
       const auto& mesh_face_qdata = op_ctx.template GetMeshFacetQuadData<DomainName>();
-      const auto& selected_qdata = GetFacetQuadData(mesh_face_qdata.MinusSide(), face.MinusSide());
+      const auto& selected_qdata = GetFacetQuadData(mesh_face_qdata.MinusSide(), side);
       size_t reference_dimension = 0;
       quadrature_context_detail::BoundaryReferenceCoordinates(selected_qdata, quad_index,
          facet_qctx.reference_coordinates, reference_dimension);
 
       // Set facet-specific fields
       facet_qctx.det_J_facet =
-         face.MinusSide().Measure() * facet_geometry.det_J_facet;
+         side.Measure() * facet_geometry.det_J_facet;
       facet_qctx.inverse_normal_cell_size = facet_geometry.inverse_normal_cell_size;
       facet_qctx.physical_normal = facet_geometry.normalized_physical_normal;
 

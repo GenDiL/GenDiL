@@ -10,7 +10,7 @@
 
 using namespace gendil;
 
-namespace
+namespace inverse_normal_cell_size_device_test
 {
 constexpr Real curvature = 0.4;
 
@@ -254,10 +254,11 @@ bool RunDimension()
       global_context, rule, input) && success;
    return success;
 }
-} // namespace
+} // namespace inverse_normal_cell_size_device_test
 
 int main()
 {
+   using namespace inverse_normal_cell_size_device_test;
    const bool two_dimensions = RunDimension<2>();
    const bool three_dimensions = RunDimension<3>();
    if (!two_dimensions || !three_dimensions) return 1;

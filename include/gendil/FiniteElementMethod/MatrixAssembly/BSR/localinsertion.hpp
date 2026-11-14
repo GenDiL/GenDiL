@@ -333,7 +333,7 @@ void AddSparseMatrixEntry(
       trial_fe_space,
       test_fe_space,
       element_index,
-      face_info.PlusSide().GetCellIndex(),
+      face_info.NeighborSide().GetCellIndex(),
       trial_dof,
       y,
       bsr_matrix );

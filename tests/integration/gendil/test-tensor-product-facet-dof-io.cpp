@@ -44,7 +44,7 @@ bool CheckClose(
    }
    const Real relative_error =
       std::sqrt( error2 ) / std::max( Real{ 1 }, std::sqrt( norm2 ) );
-   if ( relative_error > 1e-12 )
+   if ( !std::isfinite( relative_error ) || relative_error > 1e-12 )
    {
       std::cerr << label << " relative error = " << relative_error << "\n";
       return false;

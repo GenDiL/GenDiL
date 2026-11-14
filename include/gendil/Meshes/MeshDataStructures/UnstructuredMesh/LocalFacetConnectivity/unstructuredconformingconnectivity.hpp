@@ -27,19 +27,21 @@ struct UnstructuredConformingConnectivity
    using orientation_type = Permutation< dim >;
    using boundary_type = bool;
    using conformity_type = ConformingFaceMap<dim>;
+   using normal_orientation_type = int;
    template <
       Integer FaceIndex,
       Integer NormalAxis = HyperCube< dim >::GetNormalDimensionIndex( FaceIndex ),
       int NormalSign = HyperCube< dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
-      ConformingCellFaceView <
+      LocalConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
          std::integral_constant< Integer, HyperCube< dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< dim, NormalAxis, NormalSign >,
          CanonicalVector< dim, NormalAxis, -NormalSign >,
-         boundary_type
+         boundary_type,
+         normal_orientation_type
       >;
 
    HostDevicePointer< ConformingCellConnectivity< Geometry > > element_connectivities;
@@ -73,10 +75,16 @@ struct UnstructuredConformingConnectivity
       );
 
       auto face_info = element_connectivities[ cell_index ].faces[ FaceIndex ];
+      // Imported connectivity may preserve an external side convention.
+      // Otherwise use the same lower-index convention as the global fallback.
+      const normal_orientation_type normal_orientation = face_info.normal_orientation != 0
+         ? static_cast<normal_orientation_type>(face_info.normal_orientation)
+         : (cell_index < face_info.cell_index ? 1 : -1);
 
       return face_info_type< FaceIndex >{
          { cell_index, {}, {}, {}, {}, face_info.boundary },
-         { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary }
+         { face_info.cell_index, {}, face_info.orientation, {}, {}, face_info.boundary },
+         normal_orientation
       };
    }
 };

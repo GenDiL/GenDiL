@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/facetnormal.hpp"
 
 namespace gendil
 {
@@ -16,10 +17,9 @@ namespace gendil
 // =============================================================================
 //
 // Returns the physical unit normal supplied by generic facet execution.
-// Boundary, local-interior, and global-interior contexts obtain it from
-// ComputeFacetGeometry. Both selected interior sides use the common normal.
-// A compatibility fallback for contexts without physical_normal still returns
-// unnormalized J^{-T} n_ref; generic facet execution does not use that fallback.
+// Both selected interior sides store the common canonical normal; boundary
+// normals remain outward. GetFacetNormal reads the stored value unchanged.
+// Custom contexts can supply a free GetFacetNormal overload with the same convention.
 //
 struct Normal : FieldBase
 {
@@ -39,19 +39,7 @@ struct Normal : FieldBase
       const QuadPtContext & quad_pt_context,
       const Fields & fields ) const
    {
-      // Check if quad_pt_context has physical_normal field (FacetQuadraturePointContext)
-      if constexpr (requires { quad_pt_context.physical_normal; })
-      {
-         // Facet geometry has already normalized this normal.
-         return quad_pt_context.physical_normal;
-      }
-      else
-      {
-         // Compatibility path for callers without facet geometry.
-         const auto reference_normal = GetReferenceNormal( face_context );
-         const auto physical_normal = ComputePhysicalNormal( quad_pt_context.inv_J_mesh, reference_normal );
-         return physical_normal;
-      }
+      return GetFacetNormal(face_context, quad_pt_context);
    }
 };
 

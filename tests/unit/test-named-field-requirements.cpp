@@ -356,7 +356,7 @@ int main()
       static_assert(has_unqualified_side_dependent_inputs_v<decltype(invalid_mixed)>);
       static_assert(requires_plus_side_jacobian_v<decltype(trial_flux)>);
 
-      std::cout << "  [PASS] side-dependent data inside test-space average uses current-side pullback semantics\n";
+      std::cout << "  [PASS] test-space averages qualify side-dependent coefficient inputs\n";
    }
 
    {

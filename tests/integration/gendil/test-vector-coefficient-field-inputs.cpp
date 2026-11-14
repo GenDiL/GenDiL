@@ -586,11 +586,11 @@ int TestVectorCoefficientFieldInputs()
              << boundary_gradient_err << "\n";
 
    const Real tol = 1e-12;
-   if (cell_value_err > tol ||
-       cell_gradient_err > tol ||
-       cell_value_and_gradient_err > tol ||
-       boundary_value_err > tol ||
-       boundary_gradient_err > tol)
+   if (!(cell_value_err <= tol) ||
+       !(cell_gradient_err <= tol) ||
+       !(cell_value_and_gradient_err <= tol) ||
+       !(boundary_value_err <= tol) ||
+       !(boundary_gradient_err <= tol))
    {
       std::cerr
          << "FAILED: vector coefficient field-input oracle mismatch.\n";

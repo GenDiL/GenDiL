@@ -78,7 +78,9 @@ static_assert(
       raw_coo_weight_test::WeightedSpace >::value,
    "RawCOO coordinate insertion must accept exact weighted rows." );
 
-namespace
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace raw_coo_assembly_test
 {
 
 constexpr Real tolerance = 1.0e-12;
@@ -2113,8 +2115,34 @@ bool TestScalarH1FacetRawCOOAndCSRAgainstGeneric()
             l2_dofs,
             ExpectedRawCOONNZ< false, false, true >( l2_space ),
             false,
-            true,
+            false,
             "L2 trial to H1 test" ) && success;
+
+      // Continuity removes the test jump, not the trial jump in this form.
+      // Use elementwise constants 0, 1, 2, 3 in the 2x2 Cartesian ordering.
+      // Canonical minus is the high-coordinate cell, giving jumps 1 and 2
+      // across vertical and horizontal faces. Each face has length 1/2,
+      // and each endpoint H1 basis integrates to 1/4 on that face.
+      Vector input( l2_dofs );
+      Real * input_data = input.WriteHostData();
+      for ( GlobalIndex i = 0; i < l2_dofs; ++i )
+      {
+         input_data[i] = static_cast< Real >( i / 4 );
+      }
+      const std::array< Real, 9 > exact_values{
+         0.0, 0.25, 0.0, 0.5, 1.5, 0.5, 0.0, 0.25, 0.0 };
+      Vector exact( h1_dofs );
+      Real * exact_data = exact.WriteHostData();
+      for ( GlobalIndex row = 0; row < h1_dofs; ++row )
+      {
+         exact_data[row] = exact_values[row];
+      }
+      const auto generic =
+         MakeGenericOperator< SerialKernelConfiguration >(
+            form, context, integration_rule );
+      success = CheckRectangularAction(
+         generic, input, exact,
+         "Discontinuous trial jump against continuous H1 average is wrong." ) && success;
    }
 
    {
@@ -2739,7 +2767,7 @@ bool TestRectangularP2TrialP1TestOrientedInteriorAssembly()
 
    bool success = true;
    success = Check(
-      fixture_face.PlusSide().orientation ==
+      fixture_face.NeighborSide().orientation ==
          Permutation< 2 >{ { -1, -2 } },
       "Two-quad fixture did not retain its nonidentity face orientation." ) && success;
    for ( GlobalIndex element = 0; element < 2; ++element )
@@ -3633,10 +3661,11 @@ bool TestPartitionVectorTensorProductRawCOOAndCSRAgainstGeneric()
    return success;
 }
 
-} // namespace
+} // namespace raw_coo_assembly_test
 
 int main(int argc, char** argv)
 {
+   using namespace raw_coo_assembly_test;
 #ifdef GENDIL_USE_HYPRE
    hypre_MPI_Init(&argc, &argv);
 #else

@@ -630,7 +630,7 @@ bool TestReverseOrientedInteriorBSR()
 
    bool success = true;
    success = Check(
-      fixture_face.PlusSide().orientation ==
+      fixture_face.NeighborSide().orientation ==
          Permutation< 2 >{ { -1, -2 } },
       "Two-quad BSR fixture did not retain its nonidentity face orientation." ) &&
       success;

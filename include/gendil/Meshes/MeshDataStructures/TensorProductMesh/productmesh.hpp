@@ -172,16 +172,12 @@ namespace details
       const Integer tail_index = cell_index / HeadNumCells;
       const Integer head_index = cell_index - tail_index * HeadNumCells;
 
-      bool boundary;
-
       constexpr Integer Index =
          HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex );
       constexpr int Sign =
          HyperCube< Dim >::GetNormalSign( FaceIndex );
 
-      GlobalIndex neighbor_index;
-
-      auto orientation = [&]
+      const auto neighbor = [&]
       {
          if constexpr ( Index < HeadDim )
          {
@@ -193,18 +189,7 @@ namespace details
 
             using face_index =
                std::integral_constant< Integer, sub_face_index >;
-            auto neighbor =
-               head_mesh.GetLocalFaceInfo( head_index, face_index{} );
-
-            auto head_neighbor_index =
-               neighbor.PlusSide().GetCellIndex();
-
-            neighbor_index =
-               head_neighbor_index + HeadNumCells * tail_index;
-            boundary = neighbor.PlusSide().boundary;
-            return MakeProductOrientationFromHead(
-               meshes,
-               neighbor.PlusSide().GetOrientation() );
+            return head_mesh.GetLocalFaceInfo( head_index, face_index{} );
          }
          else
          {
@@ -214,18 +199,28 @@ namespace details
                (Sign == -1) ? sub_index : (TailDim + sub_index);
 
             // recursion step
-            auto neighbor =
-               GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
+            return GetTailNeighbor< sub_face_index >( tail_meshes, tail_index );
+         }
+      }();
 
-            GlobalIndex tail_neighbor_index =
-               neighbor.PlusSide().GetCellIndex();
-
-            neighbor_index =
-               head_index + HeadNumCells * tail_neighbor_index;
-            boundary = neighbor.PlusSide().boundary;
+      const auto factor_neighbor_index = neighbor.NeighborSide().GetCellIndex();
+      const GlobalIndex neighbor_index = Index < HeadDim
+         ? factor_neighbor_index + HeadNumCells * tail_index
+         : head_index + HeadNumCells * factor_neighbor_index;
+      const bool boundary = neighbor.NeighborSide().boundary;
+      const auto orientation = [&]
+      {
+         if constexpr ( Index < HeadDim )
+         {
+            return MakeProductOrientationFromHead(
+               meshes,
+               neighbor.NeighborSide().GetOrientation() );
+         }
+         else
+         {
             return MakeProductOrientationFromTail(
                meshes,
-               neighbor.PlusSide().GetOrientation() );
+               neighbor.NeighborSide().GetOrientation() );
          }
       }();
 
@@ -233,21 +228,25 @@ namespace details
       using geometry = HyperCube< Dim >;
       using conformity_type = ConformingFaceMap< Dim >;
       using orientation_type = std::remove_cvref_t< decltype( orientation ) >;
+      using normal_orientation_type =
+         decltype(neighbor.GetNormalOrientation());
       using boundary_type = bool;
       using normal_type = CanonicalVector< Dim, Index, Sign >;
       using face_info_type =
-         ConformingCellFaceView <
+         LocalConformingCellFaceView <
             geometry,
             std::integral_constant< Integer, face_id >,
             std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( face_id ) >,
             orientation_type,
             CanonicalVector< Dim, Index, Sign >,
             CanonicalVector< Dim, Index, -Sign >,
-            boundary_type
+            boundary_type,
+            normal_orientation_type
          >;
       return face_info_type{
          { cell_index, {}, {}, {}, {}, boundary },
-         { neighbor_index, {}, orientation, {}, {}, boundary }
+         { neighbor_index, {}, orientation, {}, {}, boundary },
+         neighbor.GetNormalOrientation()
       };
    }
 }

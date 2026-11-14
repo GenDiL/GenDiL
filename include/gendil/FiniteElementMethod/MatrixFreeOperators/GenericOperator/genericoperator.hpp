@@ -210,6 +210,11 @@ void GenericExplicitOperator(const WeakForm& form, const WeakFormContext& contex
 template<class KernelPolicy, class IntegrationRule, class WeakForm, class WeakFormContext>
 class PullbackGenericOperator
 {
+   template<class Policy, class Rule, class Form, class Context, class Checks>
+   friend void ValidateOperator(
+      const PullbackGenericOperator<Policy, Rule, Form, Context>&,
+      const Checks&);
+
    WeakForm weak_form;
    WeakFormContext wf_ctx;
    IntegrationRule ir;

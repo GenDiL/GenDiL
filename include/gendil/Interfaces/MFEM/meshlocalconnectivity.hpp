@@ -150,10 +150,12 @@ UnstructuredConformingConnectivity< HyperCube< Dim > > MakeMeshLocalConnectivity
          element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].orientation =
             TranslateMFEMOrientation( mfem_orientation< Dim >{ mfem_local_face_id_0, mfem_local_face_id_1, orientation_1 } );
          element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].boundary = false;
+         element_connectivities[ elem_index_0 ].faces[ local_face_id_0 ].normal_orientation = 1;
          element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].cell_index = elem_index_0;
          element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].orientation =
             TranslateMFEMOrientation( mfem_orientation< Dim >{ mfem_local_face_id_1, mfem_local_face_id_0, inv_orientation[ orientation_1 ] } );
          element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].boundary = false;
+         element_connectivities[ elem_index_1 ].faces[ local_face_id_1 ].normal_orientation = -1;
       }
    }
 

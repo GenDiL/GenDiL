@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 using namespace gendil;
 
@@ -227,8 +228,10 @@ Vector ApplyInteriorJumpOracle(
                      xi_plus,
                      eta_plus);
 
-               max_trace_difference =
-                  std::max(max_trace_difference, std::abs(w_minus - w_plus));
+               const Real trace_difference = std::abs(w_minus - w_plus);
+               max_trace_difference = std::isfinite(trace_difference)
+                  ? std::max(max_trace_difference, trace_difference)
+                  : std::numeric_limits<Real>::infinity();
 
                const Real jump_u = u_minus - u_plus;
                const Real coeff_q = coefficient(x_q, y_q);
@@ -381,7 +384,8 @@ int TestInteriorCoefficientFieldInputsH1()
              << max_trace_difference << "\n";
 
    const Real tol = 1e-12;
-   if (average_err > tol ||
+   if (!std::isfinite(average_err) || average_err > tol ||
+       !std::isfinite(max_trace_difference) ||
        max_trace_difference > 50.0 * tol)
    {
       std::cerr << "FAILED: H1 interior explicit average FieldValue mismatch.\n";

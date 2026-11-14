@@ -54,7 +54,7 @@ static_assert(StaticMatrix<facet_arithmetic_test::ReadableMatrix>);
 
 using namespace gendil;
 
-namespace
+namespace facet_arithmetic_test
 {
 // Value-owned geometry keeps the same unequal-width fixture usable on a GPU.
 struct UnequalCell
@@ -249,10 +249,11 @@ auto CheckForms(const Context& context, const Rule& rule, const Vector& input)
       integrate(InteriorFacets<"m">{}, recursive_vector + recursive_matrix), context, rule, input)) && success;
    return std::pair{success, std::move(array)};
 }
-} // namespace
+} // namespace facet_arithmetic_test
 
 int main()
 {
+   using namespace facet_arithmetic_test;
    const UnequalMesh mesh;
    const auto fe = MakeLegendreFiniteElement(FiniteElementOrders<0, 0>{});
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3, 3>{});
