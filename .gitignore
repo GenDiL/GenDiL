@@ -40,5 +40,12 @@
 /install-*/
 /Debug/
 
+# AI
+.DS_Store
+
+
 # Editors
 /.vscode/
+
+#Documents
+docs/*
