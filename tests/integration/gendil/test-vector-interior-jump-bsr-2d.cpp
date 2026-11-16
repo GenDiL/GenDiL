@@ -217,7 +217,7 @@ int TestVectorInteriorJumpBsrAction()
    std::cout << "rel L2 error   = " << rel_error << "\n";
 
    const Real tolerance = 1.0e-12;
-   if ( rel_error > tolerance )
+   if ( !(rel_error <= tolerance) )
    {
       std::cerr
          << "FAILED: vector interior jump SGBSR action does not match "

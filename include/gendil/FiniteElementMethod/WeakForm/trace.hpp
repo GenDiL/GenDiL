@@ -7,6 +7,7 @@
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/facetsides.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
 
 namespace gendil
@@ -40,7 +41,7 @@ struct MinusTraceExpr : FieldBase
    {
       static_assert(
          !is_physical_boundary_v<QuadPtContext> &&
-         requires { quad_pt_context.MinusSide(); } &&
+         requires { GetMinusSide(face_context, quad_pt_context); } &&
          requires { fields.minus_fields; },
          "minus(expr) is an interior-facet trace operator. Boundary and cell "
          "contexts do not provide a canonical minus/plus trace pair.");
@@ -50,7 +51,7 @@ struct MinusTraceExpr : FieldBase
          weak_form_context,
          operator_context,
          face_context,
-         quad_pt_context.MinusSide(),
+         GetMinusSide(face_context, quad_pt_context),
          fields.minus_fields);
    }
 };
@@ -83,7 +84,7 @@ struct PlusTraceExpr : FieldBase
    {
       static_assert(
          !is_physical_boundary_v<QuadPtContext> &&
-         requires { quad_pt_context.PlusSide(); } &&
+         requires { GetPlusSide(face_context, quad_pt_context); } &&
          requires { fields.plus_fields; },
          "plus(expr) is an interior-facet trace operator. Boundary and cell "
          "contexts do not provide a canonical minus/plus trace pair.");
@@ -93,7 +94,7 @@ struct PlusTraceExpr : FieldBase
          weak_form_context,
          operator_context,
          face_context,
-         quad_pt_context.PlusSide(),
+         GetPlusSide(face_context, quad_pt_context),
          fields.plus_fields);
    }
 };

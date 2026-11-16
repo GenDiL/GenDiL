@@ -4,6 +4,7 @@
 
 #include <gendil/gendil.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -51,10 +52,11 @@ Vector CreateComponentVector(
    const Integer scalar_ndofs = scalar_input.Size();
 
    Vector result(scalar_ndofs * vdim);
-   result = 0.0;
 
    // Component-major layout: component c starts at offset c * scalar_ndofs
    Real* result_ptr = result.WriteHostData();
+   // Initialize inactive components too; WriteHostData does not preserve device values.
+   std::fill_n(result_ptr, result.Size(), 0.0);
    const Real* input_ptr = scalar_input.ReadHostData();
    for (Integer i = 0; i < scalar_ndofs; ++i) {
       result_ptr[component * scalar_ndofs + i] = input_ptr[i];

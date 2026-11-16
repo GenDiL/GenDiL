@@ -11,7 +11,7 @@
 
 using namespace gendil;
 
-namespace
+namespace gendil_test_generic_hp_adaptive_upwind
 {
 
 #if defined(GENDIL_USE_DEVICE)
@@ -368,6 +368,11 @@ bool CheckVectorClose(
    Real max_err = 0.0;
    for (Integer i = 0; i < got.Size(); ++i)
    {
+      if (!std::isfinite(got_data[i]) || !std::isfinite(expected_data[i]))
+      {
+         std::cerr << "FAILED: " << label << " has a non-finite entry at " << i << "\n";
+         return false;
+      }
       max_err = std::max(max_err, std::abs(got_data[i] - expected_data[i]));
    }
    std::cout << label << " | vector max error = " << max_err << "\n";
@@ -390,6 +395,11 @@ bool CheckDenseClose(
    size_t max_err_index = 0;
    for (size_t i = 0; i < got.size(); ++i)
    {
+      if (!std::isfinite(got[i]) || !std::isfinite(expected[i]))
+      {
+         std::cerr << "FAILED: " << label << " has a non-finite entry at " << i << "\n";
+         return false;
+      }
       const Real err = std::abs(got[i] - expected[i]);
       if (err > max_err) {
          max_err = err;
@@ -418,7 +428,7 @@ bool CheckNear(
    std::cout << label << " | got = " << got
              << ", expected = " << expected
              << ", error = " << err << "\n";
-   if (err > tol)
+   if (!std::isfinite(err) || err > tol)
    {
       std::cerr << "FAILED: " << label << "\n";
       return false;
@@ -689,6 +699,7 @@ bool TestFullCellAndFacetCase(
 
 int main()
 {
+   using namespace gendil_test_generic_hp_adaptive_upwind;
    bool success = true;
 
    success =

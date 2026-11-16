@@ -28,14 +28,15 @@ struct CartesianMesh
       Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
       int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
-      ConformingCellFaceView <
+      LocalConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
          std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
-         boundary_type
+         boundary_type,
+         std::integral_constant<int, -NormalSign>
       >;
 
    std::array< GlobalIndex, Dim > sizes;

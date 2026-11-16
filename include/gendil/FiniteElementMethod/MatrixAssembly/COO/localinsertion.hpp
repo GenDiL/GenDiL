@@ -393,7 +393,7 @@ void AddSparseMatrixEntry(
          element_index,
          face_info );
    const GlobalIndex neighbor_element_index =
-      face_info.PlusSide().GetCellIndex();
+      face_info.NeighborSide().GetCellIndex();
 
    AddRawCOOBlockEntries(
       kernel_context,

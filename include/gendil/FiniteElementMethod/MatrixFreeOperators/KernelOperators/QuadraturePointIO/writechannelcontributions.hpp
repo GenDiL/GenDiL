@@ -84,6 +84,17 @@ inline constexpr bool quadrature_context_compatible_v = []
          context.inv_J_mesh;
       };
    }
+   else if constexpr (Entity == PullbackEntity::LocalInteriorFacet)
+   {
+      return requires(const QuadPtContext& context)
+      {
+         context.weight;
+         context.det_J_facet;
+         context.inv_J_mesh_current;
+         context.CurrentSide();
+         context.NeighborSide();
+      };
+   }
    else
    {
       return requires(const QuadPtContext& context)
@@ -276,10 +287,11 @@ void ComputeContributions(
       {
          ApplyMappingTranspose(quad_pt_context.inv_J_mesh, grad_coeff_q);
       }
-      else if constexpr (requires { quad_pt_context.inv_J_mesh_minus; })
+      else if constexpr (requires { quad_pt_context.inv_J_mesh_current; })
       {
-         // For interior facets, use the minus side's inv_J_mesh for mapping
-         ApplyMappingTranspose(quad_pt_context.inv_J_mesh_minus, grad_coeff_q);
+         // Local inv_J_mesh_current stores the current cell's inverse Jacobian.
+         // Normal orientation does not change which cell owns this test row.
+         ApplyMappingTranspose(quad_pt_context.inv_J_mesh_current, grad_coeff_q);
       }
       else
       {
@@ -477,7 +489,7 @@ auto MakeBoundaryFacetPullback(
 // The measure expression evaluates to: weight * det_J_facet
 // Same measure as boundary facets (no distinction needed).
 //
-template<StaticString DomainName, FieldExpr Expr>
+template<int NormalOrientation = 1, StaticString DomainName, FieldExpr Expr>
 GENDIL_HOST_DEVICE
 auto MakeLocalInteriorFacetPullback(
    const Integrand<InteriorFacets<DomainName>, Expr>& integrand)
@@ -496,8 +508,24 @@ auto MakeLocalInteriorFacetPullback(
 
    const auto& field_expr = integrand.expr;  // Extract field expression (e.g., jump(u) * jump(v))
    FacetQuadratureMeasureExpr measure;       // Facet measure seed (same as boundary)
+   const auto canonical = pullback_interior(field_expr, measure);
+   using Channels = std::remove_cvref_t<decltype(canonical)>;
+   using Value = std::conditional_t<NormalOrientation == 1, ValueMinusChannel, ValuePlusChannel>;
+   using Gradient = std::conditional_t<NormalOrientation == 1, GradientMinusChannel, GradientPlusChannel>;
+   const auto values = [&] {
+      if constexpr (Channels::template Contains<Value>())
+         return PullbackResult{MakeStaticMap(MakeEntry<ValueChannel>(canonical.template Get<Value>()))};
+      else
+         return PullbackResult<>{};
+   }();
+   const auto gradients = [&] {
+      if constexpr (Channels::template Contains<Gradient>())
+         return PullbackResult{MakeStaticMap(MakeEntry<GradientChannel>(canonical.template Get<Gradient>()))};
+      else
+         return PullbackResult<>{};
+   }();
    return MakeEntityPullbackResult<PullbackEntity::LocalInteriorFacet>(
-      pullback(field_expr, measure));
+      merge_pullback_results(values, gradients));
 }
 
 // Construct separate minus/plus test coefficients for canonical facet traversal.
@@ -521,7 +549,7 @@ auto MakeGlobalInteriorFacetPullback(
    const auto& field_expr = integrand.expr;
    FacetQuadratureMeasureExpr measure;
    return MakeEntityPullbackResult<PullbackEntity::GlobalInteriorFacet>(
-      pullback_global_interior(field_expr, measure));
+      pullback_interior(field_expr, measure));
 }
 
 } // namespace gendil

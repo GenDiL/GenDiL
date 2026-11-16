@@ -5,7 +5,7 @@
 using namespace gendil;
 
 int main() {
-    // 1×1×2 mesh: one interior face in z-direction
+    // Periodic 1×1×2 mesh, including wrap and self-neighbor interfaces.
     constexpr Integer Dim = 3;
     const Integer nx = 1, ny = 1, nz = 2;
     const Real h = 0.5;
@@ -46,8 +46,10 @@ int main() {
     generic_operator(u_h, v_h_generic);
 
     std::cout << "1×1×2 mesh symmetry term with u[0]=1:\n";
-    std::cout << "Element 0 face 5 (+z): normal = [0, 0, +1]\n";
-    std::cout << "Element 1 face 2 (-z): normal = [0, 0, -1]\n\n";
+    std::cout << "Element 0 face 5 (+z): current outward normal = [0, 0, +1]\n";
+    std::cout << "Element 1 face 2 (-z): current outward normal = [0, 0, -1]\n";
+    std::cout << "On their shared interface, DSL minus is element 1 and Normal{} = [0, 0, -1].\n";
+    std::cout << "Periodic wrap interfaces also contribute to the output below.\n\n";
 
     std::cout << "Element 0 DOFs (0-7):\n";
     for (int i = 0; i < 8; i++) {
@@ -59,7 +61,7 @@ int main() {
         printf("  v[%d] = %12.6e\n", i, v_h_generic[i]);
     }
 
-    std::cout << "\nIf element 1 DOFs have opposite sign from expected, there's a sign flip bug.\n";
+    std::cout << "\nThis is a print-only diagnostic; output signs alone do not establish correctness.\n";
 
     return 0;
 }

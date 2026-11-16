@@ -47,7 +47,7 @@ bool CheckPoint(
    const Point< Dim > & expected,
    const std::string & message )
 {
-   if ( MaxError( got, expected ) > DecoderTolerance() )
+   if ( !(MaxError( got, expected ) <= DecoderTolerance()) )
    {
       std::cerr << "FAILED: " << message
                 << " got " << PointString( got )
@@ -66,7 +66,7 @@ bool CheckSize(
    bool ok = true;
    for ( Integer d = 0; d < Dim; ++d )
    {
-      if ( std::abs( map.size[d] - expected[d] ) > DecoderTolerance() )
+      if ( !(std::abs( map.size[d] - expected[d] ) <= DecoderTolerance()) )
       {
          std::cerr << "FAILED: " << message << " axis " << d
                    << " got " << map.size[d]
@@ -578,6 +578,15 @@ bool TestExhaustiveUniqueness()
 int main()
 {
    bool ok = true;
+   const Point<2> finite_point{0.0, 1.0};
+   for (const Real invalid : {std::numeric_limits<Real>::quiet_NaN(),
+                              std::numeric_limits<Real>::infinity()})
+   {
+      const Point<2> invalid_point{invalid, 1.0};
+      ok = Check(!std::isfinite(MaxError(invalid_point, finite_point)) &&
+                 !std::isfinite(MaxError(finite_point, invalid_point)),
+                 "point comparisons reject nonfinite coordinates") && ok;
+   }
    ok = TestLiteralValidCases() && ok;
    ok = TestInvalidCases() && ok;
    ok = TestExhaustiveUniqueness() && ok;

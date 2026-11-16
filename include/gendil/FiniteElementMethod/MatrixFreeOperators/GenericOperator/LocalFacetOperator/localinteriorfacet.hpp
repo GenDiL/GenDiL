@@ -30,21 +30,40 @@ void LocalInteriorFacetIntegrandOperator(Kernel& kernel, CurrentContext& executi
    const NeighborContext& neighbor_execution_context, const OperatorContext& operator_context,
    const Entity& entity, const Face& face, const Integrand& integrand)
 {
-   auto fields = InterpolateFields(kernel, execution_context, neighbor_execution_context,
-      operator_context, face, integrand);
-   auto face_context = MakeLocalInteriorFacetContext(execution_context, integrand, face);
-   auto rule = GetFaceIntegrationRule(face.MinusSide(), operator_context.GetFacetIntegrationRules());
-   const auto& output_space = GetOutputSpace(integrand, execution_context);
-   const auto pullback = MakeLocalInteriorFacetPullback(integrand);
-   auto contributions = MakeQuadraturePointContainerForSpace(kernel, rule, output_space, pullback);
-   QuadraturePointLoop(kernel, rule, [&](const auto& qi)
-   {
-      auto qcontext = MakeLocalInteriorFacetQuadraturePointContext(kernel,
-         execution_context, operator_context, entity, face_context, integrand, qi);
-      ComputeContributions(kernel, execution_context, operator_context, entity,
-         qcontext, fields, pullback, qi, contributions);
+   WithLocalFacetNormalOrientation(face, [&](const auto& static_face) {
+      constexpr int Sign = static_face_normal_orientation_v<decltype(static_face)>;
+      const auto pullback = MakeLocalInteriorFacetPullback<Sign>(integrand);
+      using Pullback = std::remove_cvref_t<decltype(pullback)>;
+      if constexpr (Pullback::template Contains<ValueChannel>() ||
+                    Pullback::template Contains<GradientChannel>())
+      {
+         auto local_fields = InterpolateLocalFacetFields(kernel, execution_context,
+            neighbor_execution_context, operator_context, static_face, integrand);
+         const auto fields = [&] {
+            if constexpr (Sign == 1)
+               return FacetTraceFields<const decltype(local_fields.current_fields)&,
+                                       const decltype(local_fields.neighbor_fields)&>{
+                  local_fields.current_fields, local_fields.neighbor_fields};
+            else
+               return FacetTraceFields<const decltype(local_fields.neighbor_fields)&,
+                                       const decltype(local_fields.current_fields)&>{
+                  local_fields.neighbor_fields, local_fields.current_fields};
+         }();
+         auto face_context = MakeLocalInteriorFacetContext(execution_context, integrand, static_face);
+         const auto& current_face = static_face.CurrentSide();
+         auto rule = GetFaceIntegrationRule(current_face, operator_context.GetFacetIntegrationRules());
+         const auto& output_space = GetOutputSpace(integrand, execution_context);
+         auto contributions = MakeQuadraturePointContainerForSpace(kernel, rule, output_space, pullback);
+         QuadraturePointLoop(kernel, rule, [&](const auto& qi)
+         {
+            auto qcontext = MakeLocalInteriorFacetQuadraturePointContext(kernel,
+               execution_context, operator_context, entity, face_context, integrand, qi);
+            ComputeContributions(kernel, execution_context, operator_context, face_context,
+               qcontext, fields, pullback, qi, contributions);
+         });
+         ApplyAddTestFunctions(kernel, execution_context, operator_context, entity, static_face, integrand, contributions);
+      }
    });
-   ApplyAddTestFunctions(kernel, execution_context, operator_context, entity, face, integrand, contributions);
 }
 
 template<class Kernel, class Context, class OperatorContext, class Entity, class Face, class Integrand>

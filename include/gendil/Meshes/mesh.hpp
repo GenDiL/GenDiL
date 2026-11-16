@@ -192,18 +192,18 @@ consteval bool LocalFaceGeometryMatches()
       if constexpr (
          requires
          {
-            typename FaceInfo::minus_side_type::geometry;
-            typename FaceInfo::plus_side_type::geometry;
+            typename FaceInfo::current_side_type::geometry;
+            typename FaceInfo::neighbor_side_type::geometry;
          })
       {
          using Geometry = mesh_geometry_t<MeshType>;
          return
             std::is_same_v<
                Geometry,
-               typename FaceInfo::minus_side_type::geometry> &&
+               typename FaceInfo::current_side_type::geometry> &&
             std::is_same_v<
                Geometry,
-               typename FaceInfo::plus_side_type::geometry>;
+               typename FaceInfo::neighbor_side_type::geometry>;
       }
    }
 
@@ -244,7 +244,7 @@ concept LocalFaceConnectivity =
  * @brief Require local face views to match the mesh reference geometry.
  *
  * This refines `LocalFaceConnectivity`. For every local face, both
- * `minus_side_type::geometry` and `plus_side_type::geometry` in the returned
+ * `current_side_type::geometry` and `neighbor_side_type::geometry` in the returned
  * face information must exactly equal `mesh_geometry_t<MeshType>`.
  *
  * @tparam MeshType Candidate mesh type.

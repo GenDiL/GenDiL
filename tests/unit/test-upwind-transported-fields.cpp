@@ -35,29 +35,41 @@ bool CheckSelectedSideTransport()
       [] GENDIL_HOST_DEVICE (const std::array<Real, 1>& derivative) { return derivative[0]; });
    auto active_derivative = MakeCoefficient<"active_derivative",FieldGradient<"u">>(
       [] GENDIL_HOST_DEVICE (const std::array<Real, 1>& derivative) { return derivative[0]; });
+   const auto direction = MakeVectorCoefficient<"direction">(
+      [] GENDIL_HOST_DEVICE () { return std::array<Real,1>{1}; });
    bool ok=true;
-   for (const Real speed : {Real(2),Real(-2)})
+   for (const Real speed : {Real(2),Real(-2),Real(0)})
    {
       auto beta = MakeVectorCoefficient<"beta">(
          [speed] GENDIL_HOST_DEVICE () { return std::array<Real,1>{speed}; });
-      auto check = [&](const auto& transported, Real minus_factor, Real plus_factor, const char* label) {
-         auto form=integrate(interior,upwind(beta,transported)*jump(v));
+      auto check_form = [&](const auto& form, Real minus_value, Real plus_value, const char* label) {
          auto op=MakeWeakFormResidualOperator<Policy>(form,context,rule);
          // The only face joins xi=1 of the .4 cell to xi=0 of the .6 cell.
-         // Exact P1 traces are 2 and 4; the physical derivatives are 2/3
-         // for f and 2.5/5 for u. The chosen side supplies its own inverse J.
-         const Real flux=speed*(speed>=0 ? 2*minus_factor : 4*plus_factor);
+         // Exact P1 traces are 2 and 4; the physical derivatives are 2 and 3
+         // for f and 2.5 and 5 for u. The chosen side supplies its own inverse J.
+         const Real flux=speed*(speed>=0 ? minus_value : plus_value);
          const std::array<Real,4> expected{0,flux,-flux,0};
          y=9; op(x,y);
          bool pass=boundary_test::Check(y,expected,label);
          y=-2; op.ApplyAdd(x,y);
          return boundary_test::Check(y,expected,label,1,-2) && pass;
       };
-      ok=check(u*inverse,1+1/.4,1+1/.6,"upwind selected inverse Jacobian") && ok;
-      ok=check(u*bound_derivative,2,3,"upwind selected bound gradient") && ok;
-      // A gradient callback reading the same active name remains valid; only
-      // an explicitly transported trial gradient retains its legacy rejection.
-      ok=check(u*active_derivative,2.5,5,"upwind selected active gradient callback") && ok;
+      auto check = [&](const auto& transported, Real minus_value, Real plus_value, const char* label) {
+         return check_form(integrate(interior,upwind(beta,transported)*jump(v)),
+            minus_value,plus_value,label);
+      };
+      ok=check(u*inverse,2*(1+1/.4),4*(1+1/.6),"upwind selected inverse Jacobian") && ok;
+      ok=check(u*bound_derivative,4,12,"upwind selected bound gradient") && ok;
+      ok=check(u*active_derivative,5,20,"upwind selected active gradient callback") && ok;
+
+      // The physical derivatives are (2-1)/.4 and (7-4)/.6. Transport
+      // the gradient itself as well as scalar and nonlinear expressions of it.
+      ok=check(dot(grad(u),direction),2.5,5,"upwind projected direct gradient") && ok;
+      ok=check(u*dot(grad(u),direction),5,20,"upwind composite value gradient") && ok;
+      const auto gradient_form = integrate(interior,
+         dot(upwind(beta,grad(u)),direction)*jump(v));
+      ok=check_form(gradient_form,2.5,5,"upwind direct gradient") && ok;
+      ok=check_form(lhs(gradient_form),2.5,5,"upwind direct gradient lhs") && ok;
    }
    return ok;
 }

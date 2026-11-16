@@ -11,7 +11,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace gendil_test_upwind_3d_generic
 {
 
 template <typename VectorType>
@@ -227,7 +227,7 @@ int TestFacetOnlyXDirection()
    const Real rel_err = RelativeL2Error(v_h_generic, v_h_matrix);
    const Real tol = 1e-12;
 
-   if (rel_err > tol)
+   if (!std::isfinite(rel_err) || rel_err > tol)
    {
       std::cerr << "FAILED: facet-only generic operator does not match assembly.\n";
       return 1;
@@ -348,6 +348,18 @@ int TestFullAdvectionXDirection()
    PrintVectorByElement(v_h_generic, num_elem, elem_dofs, "generic");
    PrintVectorByElement(v_h_matrix,  num_elem, elem_dofs, "assembled");
 
+   const Real generic_vs_legacy = RelativeL2Error(v_h_generic, v_h_legacy);
+   const Real generic_vs_assembled = RelativeL2Error(v_h_generic, v_h_matrix);
+   const Real legacy_vs_assembled = RelativeL2Error(v_h_legacy, v_h_matrix);
+   constexpr Real tol = 1e-12;
+   if (!std::isfinite(generic_vs_legacy) || !std::isfinite(generic_vs_assembled)
+       || !std::isfinite(legacy_vs_assembled) || generic_vs_legacy > tol
+       || generic_vs_assembled > tol || legacy_vs_assembled > tol)
+   {
+      std::cerr << "FAILED: full advection legacy/generic/assembled mismatch.\n";
+      return 1;
+   }
+
    return 0;
 }
 
@@ -355,6 +367,7 @@ int TestFullAdvectionXDirection()
 
 int main()
 {
+   using namespace gendil_test_upwind_3d_generic;
    CartesianMesh<3> mesh({3,3,3}, {1.0,1.0,1.0}, {0.0,0.0,0.0});
 
    for (GlobalIndex e = 0; e < mesh.GetNumberOfCells(); ++e)
@@ -371,12 +384,12 @@ int main()
       auto zp = mesh.GetLocalFaceInfo(e, std::integral_constant<Integer,5>{});
 
       std::cout << "  neighbors: "
-               << xm.PlusSide().GetCellIndex() << ", "
-               << ym.PlusSide().GetCellIndex() << ", "
-               << zm.PlusSide().GetCellIndex() << ", "
-               << xp.PlusSide().GetCellIndex() << ", "
-               << yp.PlusSide().GetCellIndex() << ", "
-               << zp.PlusSide().GetCellIndex() << "\n";
+               << xm.NeighborSide().GetCellIndex() << ", "
+               << ym.NeighborSide().GetCellIndex() << ", "
+               << zm.NeighborSide().GetCellIndex() << ", "
+               << xp.NeighborSide().GetCellIndex() << ", "
+               << yp.NeighborSide().GetCellIndex() << ", "
+               << zp.NeighborSide().GetCellIndex() << "\n";
    }
 
    int status = 0;

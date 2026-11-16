@@ -81,16 +81,16 @@ consteval size_t SparseAssemblyRequiredSharedMemory()
          }
          else
          {
-            using Minus = decltype( BindElementDofs< SemanticSide::Minus >(
+            using Current = decltype( BindLocalFacetElementDofs< true >(
                std::declval< const Integrands & >(), std::declval< const Context & >(),
                std::declval< const OperatorContext & >(),
                ReadLocal< TrialName >( std::declval< const InputRow & >() ),
                AddLocal< TestName >( std::declval< OutputRow & >() ) ) );
-            using Plus = decltype( BindElementDofs< SemanticSide::Plus >(
+            using Neighbor = decltype( BindLocalFacetElementDofs< false >(
                std::declval< const Integrands & >(), std::declval< const Context & >(),
                std::declval< const OperatorContext & >(),
                ReadLocal< TrialName >( std::declval< const InputRow & >() ) ) );
-            return detail::TermSharedSlots< Policy, Minus, OperatorContext, Plus >(
+            return detail::TermSharedSlots< Policy, Current, OperatorContext, Neighbor >(
                static_cast< TermTuple * >( nullptr ) );
          }
       }

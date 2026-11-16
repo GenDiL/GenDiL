@@ -11,7 +11,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace boundary_sipdg_2d_generic_test
 {
 
 template <typename VectorType>
@@ -222,10 +222,11 @@ int TestBoundarySIPDG()
    return 0;
 }
 
-} // namespace
+} // namespace boundary_sipdg_2d_generic_test
 
 int main()
 {
+   using namespace boundary_sipdg_2d_generic_test;
    int status = 0;
    status |= TestBoundarySIPDG<1>();
    status |= TestBoundarySIPDG<2>();

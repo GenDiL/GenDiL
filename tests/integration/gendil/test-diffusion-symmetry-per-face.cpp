@@ -1,17 +1,19 @@
-// Test symmetry term on each face individually
-// This will tell us if the bug is direction-specific (x, y, or z faces)
+// Compare symmetry contributions on periodic meshes elongated along each axis.
+// Periodic wrap and self-neighbor interfaces also contribute to each case.
 
 #include <gendil/gendil.hpp>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 using namespace gendil;
 
-// Test with mesh that isolates a single face direction
+// Vary the axis with two cells while retaining periodicity in every direction.
 template<int FaceDir>  // 0=x, 1=y, 2=z
 int TestSingleFaceDirection() {
     constexpr Integer Dim = 3;
 
-    // Create mesh with only one face in the specified direction
+    // Use two cells in the specified direction and one in the other directions.
     Integer nx = (FaceDir == 0) ? 2 : 1;
     Integer ny = (FaceDir == 1) ? 2 : 1;
     Integer nz = (FaceDir == 2) ? 2 : 1;
@@ -68,29 +70,37 @@ int TestSingleFaceDirection() {
     }
 
     const char* dir_name = (FaceDir == 0) ? "X" : (FaceDir == 1) ? "Y" : "Z";
-    std::cout << "\n=== Testing " << dir_name << "-direction face (mesh: "
+    std::cout << "\n=== Testing periodic mesh elongated along " << dir_name << " (mesh: "
               << nx << "×" << ny << "×" << nz << ") ===\n";
 
-    bool has_exact_minus_one = false;
-    for (Integer i = 0; i < num_dofs; i++) {
-        if (std::abs(v_h_legacy_symm[i]) > 1e-14 || std::abs(v_h_generic[i]) > 1e-14) {
-            Real ratio = (std::abs(v_h_legacy_symm[i]) > 1e-14) ? (v_h_generic[i] / v_h_legacy_symm[i]) : 0.0;
-            printf("DOF %3d | Legacy: %12.6e | Generic: %12.6e | Ratio: %7.3f%s\n",
-                   (int)i, v_h_legacy_symm[i], v_h_generic[i], ratio,
-                   (std::abs(ratio + 1.0) < 0.01) ? " <-- EXACT -1.0" : "");
-            if (std::abs(ratio + 1.0) < 0.01) {  // Close to -1.0
-                has_exact_minus_one = true;
-            }
+    // Compare all entries, including zeros, and reject nonfinite output.
+    const Real* reference = v_h_legacy_symm.ReadHostData();
+    const Real* actual = v_h_generic.ReadHostData();
+    Real max_error = 0.0;
+    Real reference_scale = 0.0;
+    for (Integer i = 0; i < num_dofs; ++i) {
+        if (!std::isfinite(reference[i]) || !std::isfinite(actual[i])) {
+            std::cerr << "Nonfinite symmetry contribution at DoF " << i << "\n";
+            return 1;
         }
+        max_error = std::max(max_error, std::abs(actual[i] - reference[i]));
+        reference_scale = std::max(reference_scale, std::abs(reference[i]));
     }
-
-    std::cout << "Result: " << (has_exact_minus_one ? "HAS -1.0 ratio (BUG)" : "No -1.0 ratio (OK)") << "\n";
-    return has_exact_minus_one ? 1 : 0;
+    if (!(reference_scale > 1.0e-12)) {
+        std::cerr << "The fixture does not exercise a nonzero symmetry contribution.\n";
+        return 1;
+    }
+    if (!(max_error <= 1.0e-11 * std::max(Real{1.0}, reference_scale))) {
+        std::cerr << "Generic and legacy symmetry contributions differ: "
+                  << max_error << "\n";
+        return 1;
+    }
+    return 0;
 }
 
 int main() {
-    std::cout << "Testing each face direction independently\n";
-    std::cout << "This will show if the bug is specific to X, Y, or Z faces\n";
+    std::cout << "Testing periodic two-cell meshes along each axis\n";
+    std::cout << "Each case also includes wrap and self-neighbor interfaces.\n";
 
     int failures = 0;
     failures += TestSingleFaceDirection<0>();  // X-faces
@@ -98,9 +108,9 @@ int main() {
     failures += TestSingleFaceDirection<2>();  // Z-faces
 
     if (failures > 0) {
-        std::cout << "\n" << failures << " direction(s) show the -1.0 bug.\n";
+        std::cout << "\n" << failures << " periodic mesh case(s) failed.\n";
     } else {
-        std::cout << "\nNo -1.0 ratios found in any direction.\n";
+        std::cout << "\nAll symmetry contributions match on the periodic meshes.\n";
     }
 
     return failures;

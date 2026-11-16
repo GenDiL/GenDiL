@@ -110,8 +110,14 @@ void ApplyAddTestFunctions(Kernel& kernel, Context& context, const OperatorConte
 {
    constexpr auto TestName = weak_form_traits::only_test_field_name_v< Integrand >;
    auto& endpoint = context.template GetWriteField<TestName>();
-   const auto binding = MakeMinusFacetFieldBinding(face, endpoint.space,
-      operator_context.template GetFiniteElementFacetQuadData<TestName>());
+   const auto binding = [&]
+   {
+      const auto& qdata = operator_context.template GetFiniteElementFacetQuadData<TestName>();
+      if constexpr (requires { face.CurrentSide(); })
+         return MakeCurrentFacetFieldBinding(face, endpoint.space, qdata);
+      else
+         return MakeMinusFacetFieldBinding(face, endpoint.space, qdata);
+   }();
    const auto& qdata = binding.qdata;
    auto apply = [&](auto& row)
    {

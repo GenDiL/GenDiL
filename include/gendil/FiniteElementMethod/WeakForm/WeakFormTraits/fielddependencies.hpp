@@ -610,212 +610,223 @@ inline constexpr bool has_unqualified_interior_test_trace_v =
    has_unqualified_interior_test_trace<std::remove_cvref_t<Expr>>::value;
 
 // ---------------------------------------------------------------------------
-// Plus-side physical geometry requirements for interior facets.
+// Side-specific physical geometry requirements for interior facets.
 //
 // Two-sided expression evaluation does not necessarily require two-sided
-// physical geometry. Value traces need plus-side field data and reference-side
-// evaluation, but they do not need the plus cell Jacobian. A plus-side Jacobian
-// is required only when an expression is actually evaluated
-// in the plus-side context and asks for a physical gradient or inverse Jacobian.
+// physical geometry. Value traces need the selected side's field data and
+// reference-side evaluation, but not its cell Jacobian. That Jacobian is
+// required when the expression asks for a physical gradient, inverse Jacobian,
+// or normal cell size on the selected side.
+// RequestedPlusSide retains the global plus-side query by default; local
+// traversal also queries minus when that mathematical side is the neighbor.
 // ---------------------------------------------------------------------------
 
 template<class Input>
-struct coefficient_input_requires_plus_side_jacobian : std::false_type {};
+struct coefficient_input_requires_cell_jacobian : std::false_type {};
 
 template<StaticString Name>
-struct coefficient_input_requires_plus_side_jacobian<FieldGradient<Name>>
+struct coefficient_input_requires_cell_jacobian<FieldGradient<Name>>
    : std::true_type {};
 
 template<>
-struct coefficient_input_requires_plus_side_jacobian<JacobianInverse>
+struct coefficient_input_requires_cell_jacobian<JacobianInverse>
    : std::true_type {};
 
-template<class Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement
+template<>
+struct coefficient_input_requires_cell_jacobian<InverseNormalCellSize>
+   : std::true_type {};
+
+template<class Expr, bool InPlusSideContext, bool RequestedPlusSide = true>
+struct side_jacobian_requirement
 {
    static constexpr bool value = false;
 };
 
-template<StaticString Name, FieldShape Shape>
-struct plus_side_jacobian_requirement<
-   GradientExpr<TrialSpace<Name, Shape>>, true>
+template<StaticString Name, FieldShape Shape, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   GradientExpr<TrialSpace<Name, Shape>>, InPlusSideContext, RequestedPlusSide>
 {
-   static constexpr bool value = true;
+   static constexpr bool value = InPlusSideContext == RequestedPlusSide;
 };
 
-template<StaticString Name>
-struct plus_side_jacobian_requirement<
-   GradientExpr<FiniteElementField<Name>>, true>
+template<StaticString Name, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   GradientExpr<FiniteElementField<Name>>, InPlusSideContext, RequestedPlusSide>
 {
-   static constexpr bool value = true;
+   static constexpr bool value = InPlusSideContext == RequestedPlusSide;
 };
 
-template<StaticString Name, FieldShape Shape, typename Fn, CoefficientInput... Inputs>
-struct plus_side_jacobian_requirement<
-   Coefficient<Name, Shape, Fn, Inputs...>, true>
+template<StaticString Name, FieldShape Shape, typename Fn, bool InPlusSideContext, bool RequestedPlusSide, CoefficientInput... Inputs>
+struct side_jacobian_requirement<
+   Coefficient<Name, Shape, Fn, Inputs...>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      (coefficient_input_requires_plus_side_jacobian<std::remove_cvref_t<Inputs>>::value || ...);
+      InPlusSideContext == RequestedPlusSide &&
+      (coefficient_input_requires_cell_jacobian<std::remove_cvref_t<Inputs>>::value || ...);
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<NegExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<NegExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, false>::value;
+      side_jacobian_requirement<Expr, false, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, true>::value;
+      side_jacobian_requirement<Expr, true, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<DivergenceExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<DivergenceExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext, RequestedPlusSide> {};
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<CurlExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<CurlExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<GradientExpr<Expr>, InPlusSideContext, RequestedPlusSide> {};
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<AverageExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<AverageExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>::value;
+      side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<JumpExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<JumpExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext>::value;
+      side_jacobian_requirement<MinusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<PlusTraceExpr<Expr>, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr AdvExpr, FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   UpwindExpr<AdvExpr, Expr>, InPlusSideContext>
+template<FieldExpr AdvExpr, FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   UpwindExpr<AdvExpr, Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<AdvExpr, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<Expr, false>::value ||
-      plus_side_jacobian_requirement<Expr, true>::value;
+      side_jacobian_requirement<AdvExpr, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<Expr, false, RequestedPlusSide>::value ||
+      side_jacobian_requirement<Expr, true, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Adv, typename Interior, typename Exterior, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   BoundaryUpwindExpr<Adv, Interior, Exterior>, InPlusSideContext>
+template<FieldExpr Adv, typename Interior, typename Exterior, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   BoundaryUpwindExpr<Adv, Interior, Exterior>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Adv, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<Interior, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<Exterior, InPlusSideContext>::value;
+      side_jacobian_requirement<Adv, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<Interior, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<Exterior, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<bool InPlusSideContext, FieldExpr Head, FieldExpr... Tail>
-struct plus_side_jacobian_requirement<
-   SumExpr<Head, Tail...>, InPlusSideContext>
+template<bool InPlusSideContext, bool RequestedPlusSide, FieldExpr Head, FieldExpr... Tail>
+struct side_jacobian_requirement<
+   SumExpr<Head, Tail...>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Head, InPlusSideContext>::value ||
-      (plus_side_jacobian_requirement<Tail, InPlusSideContext>::value || ...);
+      side_jacobian_requirement<Head, InPlusSideContext, RequestedPlusSide>::value ||
+      (side_jacobian_requirement<Tail, InPlusSideContext, RequestedPlusSide>::value || ...);
 };
 
-template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   MultFieldExpr<LHS, RHS>, InPlusSideContext>
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   MultFieldExpr<LHS, RHS>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+      side_jacobian_requirement<LHS, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<RHS, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<DotExpr<LHS, RHS>, InPlusSideContext>
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<DotExpr<LHS, RHS>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+      side_jacobian_requirement<LHS, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<RHS, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<InnerExpr<LHS, RHS>, InPlusSideContext>
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<InnerExpr<LHS, RHS>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+      side_jacobian_requirement<LHS, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<RHS, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<OuterExpr<LHS, RHS>, InPlusSideContext>
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<OuterExpr<LHS, RHS>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+      side_jacobian_requirement<LHS, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<RHS, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   ProductExpr<LHS, RHS>, InPlusSideContext>
+template<FieldExpr LHS, FieldExpr RHS, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   ProductExpr<LHS, RHS>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<LHS, InPlusSideContext>::value ||
-      plus_side_jacobian_requirement<RHS, InPlusSideContext>::value;
+      side_jacobian_requirement<LHS, InPlusSideContext, RequestedPlusSide>::value ||
+      side_jacobian_requirement<RHS, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   TransposeExpr<Expr>, InPlusSideContext>
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   TransposeExpr<Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide>::value;
 };
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<SymExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<SymExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide> {};
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<SkewExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<SkewExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide> {};
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<NormalProjectionExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<NormalProjectionExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide> {};
 
-template<FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<TangentialProjectionExpr<Expr>, InPlusSideContext>
-   : plus_side_jacobian_requirement<Expr, InPlusSideContext> {};
+template<FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<TangentialProjectionExpr<Expr>, InPlusSideContext, RequestedPlusSide>
+   : side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide> {};
 
-template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext>
-struct plus_side_jacobian_requirement<
-   Integrand<Domain, Expr>, InPlusSideContext>
+template<DomainExpr Domain, FieldExpr Expr, bool InPlusSideContext, bool RequestedPlusSide>
+struct side_jacobian_requirement<
+   Integrand<Domain, Expr>, InPlusSideContext, RequestedPlusSide>
 {
    static constexpr bool value =
-      plus_side_jacobian_requirement<Expr, InPlusSideContext>::value;
+      side_jacobian_requirement<Expr, InPlusSideContext, RequestedPlusSide>::value;
 };
 
 template<class Expr>
 inline constexpr bool requires_plus_side_jacobian_v =
-   plus_side_jacobian_requirement<std::remove_cvref_t<Expr>, false>::value;
+   side_jacobian_requirement<std::remove_cvref_t<Expr>, false>::value;
+
+template<class Expr>
+inline constexpr bool requires_minus_side_jacobian_v =
+   side_jacobian_requirement<std::remove_cvref_t<Expr>, false, false>::value;
 
 template<class... Terms>
 struct raw_named_field_requirements<std::tuple<Terms...>>
@@ -842,11 +853,11 @@ template<class Terms, class Symbols>
 struct has_unqualified_interior_test_trace<SumFormExpr<Terms, Symbols>> : has_unqualified_interior_test_trace<Terms> {};
 
 
-template<class... Terms, bool Plus>
-struct plus_side_jacobian_requirement<std::tuple<Terms...>, Plus>
-   : std::bool_constant<(plus_side_jacobian_requirement<std::remove_cvref_t<Terms>, Plus>::value || ...)> {};
-template<class Terms, class Symbols, bool Plus>
-struct plus_side_jacobian_requirement<SumFormExpr<Terms, Symbols>, Plus>
-   : plus_side_jacobian_requirement<Terms, Plus> {};
+template<class... Terms, bool Plus, bool RequestedPlusSide>
+struct side_jacobian_requirement<std::tuple<Terms...>, Plus, RequestedPlusSide>
+   : std::bool_constant<(side_jacobian_requirement<std::remove_cvref_t<Terms>, Plus, RequestedPlusSide>::value || ...)> {};
+template<class Terms, class Symbols, bool Plus, bool RequestedPlusSide>
+struct side_jacobian_requirement<SumFormExpr<Terms, Symbols>, Plus, RequestedPlusSide>
+   : side_jacobian_requirement<Terms, Plus, RequestedPlusSide> {};
 
 } // namespace gendil

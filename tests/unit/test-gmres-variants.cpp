@@ -51,7 +51,9 @@ void operator delete[](void* pointer, size_t) noexcept { std::free(pointer); }
 
 using namespace gendil;
 
-namespace {
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace gmres_variants_test {
 
 int failures = 0;
 
@@ -1291,10 +1293,11 @@ void BorrowedWorkspace()
    CHECK(owner.dense_workspace.data() == grown_dense);
 }
 
-} // namespace
+} // namespace gmres_variants_test
 
 int main()
 {
+   using namespace gmres_variants_test;
    const GMRESOptions defaults;
    CHECK(defaults.restart == 30 && defaults.max_iterations == 300);
    CHECK(defaults.relative_tolerance == std::sqrt(std::numeric_limits<Real>::epsilon()));

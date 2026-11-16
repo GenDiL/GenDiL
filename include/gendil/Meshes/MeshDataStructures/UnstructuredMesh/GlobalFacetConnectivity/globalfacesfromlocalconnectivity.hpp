@@ -50,7 +50,7 @@ void AddUnstructuredInteriorFaceRecordsForFace(
          continue;
       }
 
-      const GlobalIndex neighbor = local_face_info.PlusSide().GetCellIndex();
+      const GlobalIndex neighbor = local_face_info.NeighborSide().GetCellIndex();
       GENDIL_VERIFY(
          neighbor < num_cells,
          "Unstructured global face connectivity found an invalid interior neighbor index.");
@@ -58,10 +58,12 @@ void AddUnstructuredInteriorFaceRecordsForFace(
          neighbor != cell,
          "Unstructured global face connectivity found a self-neighbor interior face.");
 
-      if ( cell < neighbor )
+      // Emit the shared minus incidence. Imported side conventions must agree
+      // with direct global builders; unmarked connectivity still uses cell IDs.
+      if ( local_face_info.GetNormalOrientation() > 0 )
       {
          buckets[ FaceIndex ].push_back(
-            { cell, neighbor, local_face_info.PlusSide().GetOrientation() } );
+            { cell, neighbor, local_face_info.NeighborSide().GetOrientation() } );
       }
    }
 }

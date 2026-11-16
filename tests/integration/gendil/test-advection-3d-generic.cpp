@@ -11,7 +11,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace gendil_test_advection_3d_generic
 {
 
 template <typename VectorType>
@@ -235,7 +235,8 @@ int TestAdvection()
    const Real err_legacy_vs_assembled =
       RelativeL2Error(v_h_legacy, v_h_matrix);
 
-   if (err_generic_vs_legacy > tol_generic_vs_legacy)
+   if (!std::isfinite(err_generic_vs_legacy)
+       || err_generic_vs_legacy > tol_generic_vs_legacy)
    {
       std::cerr << "FAILED: generic advection operator does not match legacy advection operator.\n";
       std::cerr << "\nv_h generic: " << v_h_generic << "\n";
@@ -244,7 +245,8 @@ int TestAdvection()
       return 1;
    }
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!std::isfinite(err_generic_vs_assembled)
+       || err_generic_vs_assembled > tol_generic_vs_assembled)
    {
       std::cerr << "FAILED: generic advection operator does not match generic assembled matrix.\n";
       std::cerr << "\nv_h generic: " << v_h_generic << "\n";
@@ -253,7 +255,8 @@ int TestAdvection()
       return 1;
    }
 
-   if (err_legacy_vs_assembled > tol_legacy_vs_assembled)
+   if (!std::isfinite(err_legacy_vs_assembled)
+       || err_legacy_vs_assembled > tol_legacy_vs_assembled)
    {
       std::cerr << "FAILED: legacy advection operator does not match generic assembled matrix.\n";
       return 1;
@@ -267,6 +270,7 @@ int TestAdvection()
 
 int main()
 {
+   using namespace gendil_test_advection_3d_generic;
    if (TestAdvection<0>() != 0) { return 1; }
    if (TestAdvection<1>() != 0) { return 1; }
    if (TestAdvection<2>() != 0) { return 1; }

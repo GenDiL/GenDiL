@@ -71,6 +71,7 @@ void print_dofs_grid(const std::string& title,
 
 int main(int, char**)
 {
+  bool success = true;
   // --------------------------
   // Config: 2D, split along x (Axis=0)
   // --------------------------
@@ -248,8 +249,12 @@ int main(int, char**)
     }
     l2_err = std::sqrt(l2_err);
     l2_ref = std::sqrt(std::max(l2_ref, Real(1e-300)));
+    const bool passed = std::isfinite(l2_err) && std::isfinite(l2_ref)
+      && l2_ref > 1e-8 && l2_err <= 1e-12*std::max(Real{1}, l2_ref);
+    success = passed && success;
     std::cout << "  [" << label << "]  max|Δr|=" << max_err
-              << "  relL2=" << (l2_err/l2_ref) << "\n";
+              << "  relL2=" << (l2_err/l2_ref)
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n";
 
     if (do_print) {
       print_dofs_grid("r_full",           r_full,          nx_full, ny, p);
@@ -264,7 +269,7 @@ int main(int, char**)
   };
 
   // ---------- TEST 1: Random ----------
-  if (PRINT_RANDOM) {
+  {
     Vector u_full(ndofs_full);
     { // deterministic PRNG
       Real* uh = u_full.WriteHostData();
@@ -272,11 +277,11 @@ int main(int, char**)
       auto rnd = [&](){ s ^= s<<13; s ^= s>>17; s ^= s<<5; return Real((s & 0xFFFF))/Real(0xFFFF); };
       for (Integer i=0;i<ndofs_full;++i) uh[i] = rnd();
     }
-    run_case("Random", u_full, /*do_print=*/true);
+    run_case("Random", u_full, PRINT_RANDOM);
   }
 
   // ---------- TEST 2: Half-domain jump (L=1, R=0) ----------
-  if (PRINT_HALFJUMP) {
+  {
     Vector u_full(ndofs_full); {
       Real* uf = u_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
@@ -286,11 +291,11 @@ int main(int, char**)
         uf[g] = (I < nxL) ? Real(1.0) : Real(0.0);
       }
     }
-    run_case("Half-jump (L=1,R=0)", u_full, /*do_print=*/true);
+    run_case("Half-jump (L=1,R=0)", u_full, PRINT_HALFJUMP);
   }
 
   // ---------- TEST 3: Interface pulse (left column only) ----------
-  if (PRINT_PULSE) {
+  {
     Vector u_full(ndofs_full); {
       Real* uf = u_full.WriteHostData();
       for (Integer g=0; g<ndofs_full; ++g) {
@@ -300,7 +305,7 @@ int main(int, char**)
         uf[g] = (I == nxL-1) ? Real(1.0) : Real(0.0);
       }
     }
-    run_case("Interface pulse (left column only)", u_full, /*do_print=*/true);
+    run_case("Interface pulse (left column only)", u_full, PRINT_PULSE);
   }
 
   // ---------- Conservation (u=1) ----------
@@ -318,9 +323,13 @@ int main(int, char**)
     { const Real* a = r1_full.ReadHostData();
       const Real* b = r1_split_as_full.ReadHostData();
       for (Integer g=0; g<ndofs_full; ++g) { sum_full += a[g]; sum_split += b[g]; } }
+    const bool passed = std::isfinite(sum_full) && std::isfinite(sum_split)
+      && std::abs(sum_full) <= 1e-12 && std::abs(sum_split) <= 1e-12;
+    success = passed && success;
     std::cout << "  [Const] sum(r_full)=" << sum_full
-              << "  sum(r_split)=" << sum_split << "\n";
+              << "  sum(r_split)=" << sum_split
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n";
   }
 
-  return 0;
+  return success ? 0 : 1;
 }

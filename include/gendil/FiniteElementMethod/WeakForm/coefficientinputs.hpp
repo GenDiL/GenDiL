@@ -20,14 +20,17 @@ struct Jacobian              : CoefficientInputBase {};
 struct JacobianInverse       : CoefficientInputBase {};
 
 /**
- * @brief Inverse facet size coefficient input: ||J^{-T} n_ref||
+ * @brief Inverse cell size normal to a facet: ||J_K^{-T} n_ref||.
  *
- * Available only with FacetQuadraturePointContext.
- * For Cartesian mesh with spacing h, returns 1/h.
- *
- * Used for SIPDG penalty scaling: tau = kappa * h^{-1}
+ * Uses the [0,1]^d reference cell and its unit reference facet normal.
+ * Evaluated at the facet quadrature point using the selected cell's Jacobian;
+ * on curved cells this is a local scale, not a single geometric cell height.
+ * The two adjacent cells can have different values. On interior facets,
+ * select minus(...), plus(...), or average(...) of the coefficient; for
+ * example, average(tau) gives a shared SIPDG penalty when tau depends on
+ * this input. Boundary facets use their sole adjacent cell.
  */
-struct InverseFacetSize : CoefficientInputBase {};
+struct InverseNormalCellSize : CoefficientInputBase {};
 
 template <StaticString Name>
 struct FieldValue : CoefficientInputBase

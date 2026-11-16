@@ -71,6 +71,7 @@ void print_dofs_grid(const std::string& title,
 
 int main(int, char**)
 {
+  bool success = true;
   // --------------------------
   // Config
   // --------------------------
@@ -208,8 +209,10 @@ int main(int, char**)
     Real sum = 0.0;
     const Real* pr = r.ReadHostData();
     for (Integer g=0; g<ndofs_split; ++g) sum += pr[g];
+    const bool passed = std::isfinite(sum) && std::abs(sum) <= 1e-12;
+    success = passed && success;
     std::cout << "  [Const u=1] sum(r) = " << sum << "  → "
-              << (std::abs(sum) <= 1e-12 ? "PASS" : "FAIL") << "\n";
+              << (passed ? "PASS" : "FAIL") << "\n";
   }
 
   // (2) Interface pulse (coarse left interface column only)
@@ -235,6 +238,18 @@ int main(int, char**)
     auto rR = slice_right(r);
     print_dofs_grid("r (Left block)",  rL, nxL, nyL, p);
     print_dofs_grid("r (Right block)", rR, nxR, nyR, p);
+    // The unit pulse leaves the left block through an interface of length one.
+    Real sum_left = 0.0, sum_right = 0.0;
+    const Real* left_data = rL.ReadHostData();
+    const Real* right_data = rR.ReadHostData();
+    for (Integer g=0; g<ndofsL; ++g) sum_left += left_data[g];
+    for (Integer g=0; g<ndofsR; ++g) sum_right += right_data[g];
+    const bool passed = std::isfinite(sum_left) && std::isfinite(sum_right)
+      && std::abs(sum_left-1.0) <= 1e-12 && std::abs(sum_right+1.0) <= 1e-12;
+    success = passed && success;
+    std::cout << "  [Pulse block sums] left=" << sum_left
+              << " right=" << sum_right
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n";
   }
 
   // (3) r=1 fallback → matches conforming intermesh (interface-only)
@@ -277,9 +292,11 @@ int main(int, char**)
       l2 += d*d;
     }
     l2 = std::sqrt(l2);
+    const bool passed = std::isfinite(l2) && l2 <= 1e-12;
+    success = passed && success;
     std::cout << "\n[r=1 fallback: interface-only] ||Δ||_2 = " << l2
-              << "  → " << (l2 <= 1e-12 ? "PASS" : "FAIL") << "\n";
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n";
   }
 
-  return 0;
+  return success ? 0 : 1;
 }

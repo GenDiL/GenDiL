@@ -92,6 +92,7 @@ std::ostream& operator<<(std::ostream& os, const OuterExpr<LHS, RHS>& expr)
  * @return OuterExpr instance
  */
 template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto outer(const LHS& lhs, const RHS& rhs)
 {
    return OuterExpr<LHS, RHS>(lhs, rhs);

@@ -5,6 +5,7 @@
 #include <gendil/gendil.hpp>
 
 #include <cmath>
+#include <iostream>
 
 using namespace gendil;
 
@@ -103,8 +104,12 @@ int main(int, char**)
       sumR += r_data[i];
    }
 
-   if (std::abs(sumL + sumR) > 1e-10)
+   // u=1 and beta.n=y on the unit-square interface: integral y dS = 1/2.
+   if (!std::isfinite(sumL) || !std::isfinite(sumR)
+       || std::abs(sumL-0.5) > 1e-10 || std::abs(sumR+0.5) > 1e-10)
    {
+      std::cerr << "FAILED: interface block sums " << sumL << ", " << sumR
+                << " should be 0.5, -0.5.\n";
       return 2;
    }
 

@@ -4,6 +4,8 @@
 
 #include <gendil/gendil.hpp>
 
+#include <cmath>
+
 using namespace std;
 using namespace gendil;
 
@@ -410,10 +412,18 @@ int main()
 
    v_h -= v_h_matrix;
    Real error = 0.0;
+   Real reference_scale = 0.0;
    for (size_t i = 0; i < v_h.Size(); ++i)   {
       error += std::abs(v_h[i]);
+      reference_scale += std::abs(v_h_matrix[i]);
    }
    std::cout << "Error between matrix-free and assembled application: " << error << "\n";
+   if (!std::isfinite(error) || !std::isfinite(reference_scale) ||
+       error > 1e-12*(1.0 + reference_scale))
+   {
+      std::cerr << "Matrix-free and assembled mass applications disagree.\n";
+      return 1;
+   }
 
    /////////////////////
    // Advection Operator
@@ -465,10 +475,18 @@ int main()
 
    v_h -= v_h_matrix;
    error = 0.0;
+   reference_scale = 0.0;
    for (size_t i = 0; i < v_h.Size(); ++i)   {
       error += std::abs(v_h[i]);
+      reference_scale += std::abs(v_h_matrix[i]);
    }
    std::cout << "Error between matrix-free and assembled advection application: " << error << "\n";
+   if (!std::isfinite(error) || !std::isfinite(reference_scale) ||
+       error > 1e-12*(1.0 + reference_scale))
+   {
+      std::cerr << "Matrix-free and assembled advection applications disagree.\n";
+      return 1;
+   }
 
    return 0;
 }

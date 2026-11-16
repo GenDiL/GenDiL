@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "gendil/Algebra/staticalgebraconcepts.hpp"
+#include "gendil/Algebra/arrayarithmetic.hpp"
 #include "gendil/Algebra/accessors.hpp"
 #include "gendil/Utilities/RecursiveArray/recursivearray.hpp"
 #include <array>
@@ -17,36 +17,34 @@ namespace gendil
 // Forward declaration to avoid circular dependency
 struct FieldBase;
 
-// Scalar scaling uses the same owning matrix storage as vector gradients, so
-// a nested-array coefficient can enter the mapping and quadrature-write paths.
-template<typename Scalar, typename Entry, size_t Rows, size_t Cols>
-   requires (std::is_arithmetic_v<Scalar> && std::is_arithmetic_v<Entry>)
+// Matrix scaling uses owning recursive storage, including for read-only and
+// proxy operands. Native recursive-array overloads retain their contracts.
+template<class Scalar, StaticMatrix Matrix>
+   requires (std::is_arithmetic_v<Scalar> &&
+             array_arithmetic_detail::class_operand<Matrix> &&
+             !array_arithmetic_detail::is_recursive_array<std::remove_cvref_t<Matrix>>)
 GENDIL_HOST_DEVICE
-auto operator*(const Scalar& scalar,
-               const std::array<std::array<Entry, Cols>, Rows>& matrix)
-   -> SerialRecursiveArray<std::remove_cvref_t<decltype(
-      std::declval<Scalar>() * std::declval<Entry>())>, Rows, Cols>
+constexpr auto operator*(const Scalar& scalar, const Matrix& matrix)
 {
-   using Result = std::remove_cvref_t<decltype(std::declval<Scalar>() * std::declval<Entry>())>;
-   SerialRecursiveArray<Result, Rows, Cols> result;
-   for (size_t i = 0; i < Rows; ++i)
-      for (size_t j = 0; j < Cols; ++j) { result(i, j) = scalar * matrix[i][j]; }
-   return result;
+   using Entry = std::remove_cvref_t<decltype(
+      std::declval<Scalar>() * std::declval<matrix_value_t<Matrix>>())>;
+   using Result = array_arithmetic_detail::result_t<Entry, Matrix, false>;
+   return array_arithmetic_detail::ApplyEntrywise<Result>(
+      matrix, [&](auto value) { return scalar * value; });
 }
 
-template<typename Entry, typename Scalar, size_t Rows, size_t Cols>
-   requires (std::is_arithmetic_v<Entry> && std::is_arithmetic_v<Scalar>)
+template<StaticMatrix Matrix, class Scalar>
+   requires (std::is_arithmetic_v<Scalar> &&
+             array_arithmetic_detail::class_operand<Matrix> &&
+             !array_arithmetic_detail::is_recursive_array<std::remove_cvref_t<Matrix>>)
 GENDIL_HOST_DEVICE
-auto operator*(const std::array<std::array<Entry, Cols>, Rows>& matrix,
-               const Scalar& scalar)
-   -> SerialRecursiveArray<std::remove_cvref_t<decltype(
-      std::declval<Entry>() * std::declval<Scalar>())>, Rows, Cols>
+constexpr auto operator*(const Matrix& matrix, const Scalar& scalar)
 {
-   using Result = std::remove_cvref_t<decltype(std::declval<Entry>() * std::declval<Scalar>())>;
-   SerialRecursiveArray<Result, Rows, Cols> result;
-   for (size_t i = 0; i < Rows; ++i)
-      for (size_t j = 0; j < Cols; ++j) { result(i, j) = matrix[i][j] * scalar; }
-   return result;
+   using Entry = std::remove_cvref_t<decltype(
+      std::declval<matrix_value_t<Matrix>>() * std::declval<Scalar>())>;
+   using Result = array_arithmetic_detail::result_t<Entry, Matrix, false>;
+   return array_arithmetic_detail::ApplyEntrywise<Result>(
+      matrix, [&](auto value) { return value * scalar; });
 }
 
 // Multiply compatible fixed-size matrix/vector values through their const
@@ -78,6 +76,41 @@ auto operator*(const Mat& A, const Vec& v)
                       static_cast<VecValue>(GetValue(v, j));
       }
    }
+   return result;
+}
+
+// Matrix composition accepts any compatible const-readable static matrices.
+// Its owning result follows scalar promotion, independently of input storage.
+template<StaticMatrix Left, StaticMatrix Right>
+   requires (static_num_cols_v<Left> == static_num_rows_v<Right> &&
+             (array_arithmetic_detail::class_operand<Left> ||
+              array_arithmetic_detail::class_operand<Right>) &&
+             !std::derived_from<std::remove_cvref_t<Left>, FieldBase> &&
+             !std::derived_from<std::remove_cvref_t<Right>, FieldBase>)
+GENDIL_HOST_DEVICE
+auto operator*(const Left& left, const Right& right)
+{
+   using LeftValue = matrix_value_t<Left>;
+   using RightValue = matrix_value_t<Right>;
+   using ResultValue = decltype(std::declval<LeftValue>() * std::declval<RightValue>());
+   constexpr Integer Rows = static_num_rows_v<Left>;
+   constexpr Integer Inner = static_num_cols_v<Left>;
+   constexpr Integer Columns = static_num_cols_v<Right>;
+
+   SerialRecursiveArray<ResultValue, Rows, Columns> result;
+   ConstexprLoop<Rows, Columns>([&](auto row, auto column)
+   {
+      const auto i = static_cast<GlobalIndex>(row);
+      const auto j = static_cast<GlobalIndex>(column);
+      ResultValue sum{};
+      ConstexprLoop<Inner>([&](auto index)
+      {
+         const auto k = static_cast<GlobalIndex>(index);
+         sum += static_cast<LeftValue>(GetValue(left, i, k)) *
+                static_cast<RightValue>(GetValue(right, k, j));
+      });
+      result(i, j) = sum;
+   });
    return result;
 }
 

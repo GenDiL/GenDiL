@@ -1,13 +1,15 @@
-// Detailed analysis of symmetry term on a single face
-// Print all intermediate values to understand the sign discrepancy
+// Compare symmetry contributions on a periodic two-cell mesh.
+// The wrap interfaces include self-neighbors in the one-cell directions.
 
 #include <gendil/gendil.hpp>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 using namespace gendil;
 
 int main() {
-    // Simplest case: 2×1×1 mesh (only one interior face)
+    // Periodic 2×1×1 mesh, including wrap interfaces in all directions.
     constexpr Integer Dim = 3;
     const Integer nx = 2, ny = 1, nz = 1;
     const Real h = 1.0 / nx;
@@ -83,7 +85,29 @@ int main() {
     std::cout << "\nElement ownership (order=" << order << ", so " << ((order+1)*(order+1)*(order+1)) << " DOFs per element):\n";
     std::cout << "Element 0: DOFs 0-7\n";
     std::cout << "Element 1: DOFs 8-15\n";
-    std::cout << "\nIf element 1's DOFs have ratio -1.0, the sign is flipped for the neighbor element.\n";
+    std::cout << "\nRatios compare complete periodic-mesh outputs; all entries are checked below.\n";
 
+    // Compare all entries, including zeros, and reject nonfinite output.
+    const Real* reference = v_h_legacy_symm.ReadHostData();
+    const Real* actual = v_h_generic.ReadHostData();
+    Real max_error = 0.0;
+    Real reference_scale = 0.0;
+    for (Integer i = 0; i < num_dofs; ++i) {
+        if (!std::isfinite(reference[i]) || !std::isfinite(actual[i])) {
+            std::cerr << "Nonfinite symmetry contribution at DoF " << i << "\n";
+            return 1;
+        }
+        max_error = std::max(max_error, std::abs(actual[i] - reference[i]));
+        reference_scale = std::max(reference_scale, std::abs(reference[i]));
+    }
+    if (!(reference_scale > 1.0e-12)) {
+        std::cerr << "The fixture does not exercise a nonzero symmetry contribution.\n";
+        return 1;
+    }
+    if (!(max_error <= 1.0e-11 * std::max(Real{1.0}, reference_scale))) {
+        std::cerr << "Generic and legacy symmetry contributions differ: "
+                  << max_error << "\n";
+        return 1;
+    }
     return 0;
 }

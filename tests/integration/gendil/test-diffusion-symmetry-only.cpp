@@ -15,7 +15,7 @@
 using namespace std;
 using namespace gendil;
 
-namespace
+namespace diffusion_symmetry_only_test
 {
 
 template <typename VectorType>
@@ -201,7 +201,7 @@ int TestDiffusionSymmetryOnly()
    const Real err_generic_vs_assembled =
       RelativeL2Error(v_h_generic, v_h_matrix);
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!(err_generic_vs_assembled <= tol_generic_vs_assembled))
    {
       std::cerr << "FAILED: generic symmetry-only diffusion does not match assembled matrix.\n";
       std::cerr << "\nv_h generic: " << v_h_generic << "\n";
@@ -213,10 +213,11 @@ int TestDiffusionSymmetryOnly()
    return 0;
 }
 
-} // namespace
+} // namespace diffusion_symmetry_only_test
 
 int main()
 {
+   using namespace diffusion_symmetry_only_test;
    std::cout << "Testing diffusion operator with SYMMETRY TERM ONLY\n";
    std::cout << "This validates: ∫_Γ σ [[u]] {{μ ∇v · n}} ds\n";
    std::cout << "This is the term most likely to have issues with test gradient handling.\n\n";

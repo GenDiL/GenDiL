@@ -195,7 +195,7 @@ int TestDiffusionVolumeOnly()
    const Real err_generic_vs_assembled =
       RelativeL2Error(v_h_generic, v_h_matrix);
 
-   if (err_generic_vs_assembled > tol_generic_vs_assembled)
+   if (!(err_generic_vs_assembled <= tol_generic_vs_assembled))
    {
       std::cerr << "FAILED: generic volume-only diffusion does not match assembled matrix.\n";
       std::cerr << "\nv_h generic: " << v_h_generic << "\n";

@@ -60,19 +60,22 @@ struct CartesianLocalFaceConnectivity
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
+   template < int Sign >
+   using normal_orientation_type = std::integral_constant< int, Sign >;
    template <
       Integer FaceIndex,
       Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
       int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
-      ConformingCellFaceView <
+      LocalConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
          std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
-         boundary_type
+         boundary_type,
+         normal_orientation_type< -NormalSign >
       >;
 
    std::array< GlobalIndex, Dim > sizes;
@@ -223,19 +226,22 @@ struct CartesianLocalFaceConnectivity< 1 >
    using orientation_type = IdentityOrientation< Dim >;
    using conformity_type = ConformingFaceMap< Dim >;
    using boundary_type = bool;
+   template < int Sign >
+   using normal_orientation_type = std::integral_constant< int, Sign >;
    template <
       Integer FaceIndex,
       Integer NormalAxis = HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex ),
       int NormalSign = HyperCube< Dim >::GetNormalSign( FaceIndex ) >
    using face_info_type =
-      ConformingCellFaceView <
+      LocalConformingCellFaceView <
          geometry,
          std::integral_constant< Integer, FaceIndex >,
          std::integral_constant< Integer, HyperCube< Dim >::GetOppositeFaceIndex( FaceIndex ) >,
          orientation_type,
          CanonicalVector< Dim, NormalAxis, NormalSign >,
          CanonicalVector< Dim, NormalAxis, -NormalSign >,
-         boundary_type
+         boundary_type,
+         normal_orientation_type< -NormalSign >
       >;
 
    GlobalIndex size;

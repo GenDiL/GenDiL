@@ -1,7 +1,10 @@
-// Test if the bug is related to "minus" faces (0,1,2) vs "plus" faces (3,4,5)
+// Compare symmetry contributions across negative- and positive-coordinate faces.
+// These local face directions do not name the canonical DSL traces.
 // Face indices: 0=-x, 1=-y, 2=-z, 3=+x, 4=+y, 5=+z
 
 #include <gendil/gendil.hpp>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 using namespace gendil;
@@ -27,7 +30,7 @@ int main() {
 
     std::cout << "Testing with 2×2×2 mesh (" << (n*n*n) << " elements, "
               << num_dofs << " DOFs)\n";
-    std::cout << "Setting u[i]=1 for each DOF i and checking which elements show -1.0 ratio\n\n";
+    std::cout << "Using a unit input at DoF 0 and comparing every output entry.\n\n";
 
     auto velocity = [=] GENDIL_HOST_DEVICE (std::array<Real, Dim> const& X) -> Real { return 1.0; };
     const Real sigma = 1.0;
@@ -103,15 +106,33 @@ int main() {
                                (elem == 6) ? "(0,1,1)" : "(1,1,1)";
 
         std::cout << "  Element " << elem << " " << grid_pos << ": "
-                  << (has_minus_one ? "HAS -1.0 ratio" : "OK") << "\n";
+                  << (has_minus_one ? "HAS -1.0 ratio" : "No -1.0 ratio") << "\n";
     }
 
-    std::cout << "\nInterpretation:\n";
-    std::cout << "  - Element 1 connects via face 3 (+x) = OK\n";
-    std::cout << "  - Element 2 connects via face 4 (+y) = OK\n";
-    std::cout << "  - Element 4 connects via face 5 (+z) = ?\n";
-    std::cout << "\nIf only element 4 has -1.0, the bug affects +z faces specifically.\n";
-    std::cout << "If elements 1,2,4 all have -1.0, the bug affects all positive faces.\n";
+    std::cout << "\nEach neighboring element receives both an internal and a periodic-wrap contribution.\n";
+    std::cout << "The ratios above are diagnostic; the full numerical comparison below determines success.\n";
 
+    // Compare all entries, including zeros, and reject nonfinite output.
+    const Real* reference = v_h_legacy_symm.ReadHostData();
+    const Real* actual = v_h_generic.ReadHostData();
+    Real max_error = 0.0;
+    Real reference_scale = 0.0;
+    for (Integer i = 0; i < num_dofs; ++i) {
+        if (!std::isfinite(reference[i]) || !std::isfinite(actual[i])) {
+            std::cerr << "Nonfinite symmetry contribution at DoF " << i << "\n";
+            return 1;
+        }
+        max_error = std::max(max_error, std::abs(actual[i] - reference[i]));
+        reference_scale = std::max(reference_scale, std::abs(reference[i]));
+    }
+    if (!(reference_scale > 1.0e-12)) {
+        std::cerr << "The fixture does not exercise a nonzero symmetry contribution.\n";
+        return 1;
+    }
+    if (!(max_error <= 1.0e-11 * std::max(Real{1.0}, reference_scale))) {
+        std::cerr << "Generic and legacy symmetry contributions differ: "
+                  << max_error << "\n";
+        return 1;
+    }
     return 0;
 }

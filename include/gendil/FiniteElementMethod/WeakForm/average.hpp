@@ -5,53 +5,31 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Algebra/arrayarithmetic.hpp"
+#include "gendil/Algebra/matrixvectorops.hpp"
 #include "gendil/Algebra/staticvectorops.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/testlineartraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/trace.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/quadraturepointcontexttraits.hpp"
-#include "gendil/Utilities/arraytraits.hpp"
 
 namespace gendil
 {
 
-// =============================================================================
-// Helper: Elementwise Averaging for Scalar and Vector-Valued Expressions
-// =============================================================================
-//
-// AverageValues computes 0.5 * (minus_value + plus_value) for:
-//   - Scalar types: uses operator+
-//   - std::array types: elementwise averaging
-//
-// vector-valued coefficient in expressions like:
-//     dot(average(grad(u)), normal) * jump(v)
-//
-
 namespace details
 {
 
-// Scalar case: use operator+
+// Use shared arithmetic without widening floating-point entries merely for
+// the internal factor 1/2. Integral entries need a real factor to retain
+// fractional averages instead of narrowing back into the operand's type.
 template <typename T>
 GENDIL_HOST_DEVICE
-constexpr std::enable_if_t<!is_std_array_v<T>, T>
-AverageValues(const T& minus_value, const T& plus_value)
+constexpr auto AverageValues(const T& minus_value, const T& plus_value)
 {
-   return 0.5 * (minus_value + plus_value);
-}
-
-// std::array case: elementwise averaging
-template <typename T, std::size_t N>
-GENDIL_HOST_DEVICE
-constexpr std::array<T, N> AverageValues(
-   const std::array<T, N>& minus_value,
-   const std::array<T, N>& plus_value)
-{
-   std::array<T, N> result;
-   for (std::size_t i = 0; i < N; ++i)
-   {
-      result[i] = 0.5 * (minus_value[i] + plus_value[i]);
-   }
-   return result;
+   using Scalar = std::conditional_t<StaticMatrix<T>, matrix_value_t<T>,
+      std::conditional_t<StaticVector<T>, vector_value_t<T>, T>>;
+   using Scale = std::conditional_t<std::is_floating_point_v<Scalar>, Scalar, Real>;
+   return Scale{0.5} * (minus_value + plus_value);
 }
 
 } // namespace details

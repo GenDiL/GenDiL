@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -105,7 +106,12 @@ Real MaxError( const Point< Dim > & a, const Point< Dim > & b )
    Real err = 0.0;
    for ( Integer d = 0; d < Dim; ++d )
    {
-      err = std::max( err, std::abs( a[d] - b[d] ) );
+      const Real difference = std::abs(a[d] - b[d]);
+      if (!std::isfinite(difference))
+      {
+         return std::numeric_limits<Real>::infinity();
+      }
+      err = std::max(err, difference);
    }
    return err;
 }

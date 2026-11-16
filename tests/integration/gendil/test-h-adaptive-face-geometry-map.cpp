@@ -29,7 +29,7 @@ constexpr Real tol = 1.0e-11;
 bool CheckNear(const std::string& label, const Real got, const Real expected)
 {
    const Real err = std::abs(got - expected);
-   if (err > tol)
+   if (!std::isfinite(err) || err > tol)
    {
       std::cerr << "FAILED: " << label
                 << " got " << got
@@ -43,7 +43,7 @@ bool CheckNear(const std::string& label, const Real got, const Real expected)
 bool CheckFar(const std::string& label, const Real a, const Real b)
 {
    const Real diff = std::abs(a - b);
-   if (diff <= 100.0 * tol)
+   if (!std::isfinite(diff) || diff <= 100.0 * tol)
    {
       std::cerr << "FAILED: " << label
                 << " values unexpectedly matched: " << a

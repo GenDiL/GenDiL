@@ -25,7 +25,7 @@ enum class GeometryRequirement : unsigned
    JacobianInverse = 1u << 3,
    Determinant = 1u << 4,
    Normal = 1u << 5,
-   InverseFacetSize = 1u << 6,
+   InverseNormalCellSize = 1u << 6,
    ElementIndex = 1u << 7,
    QuadratureIndex = 1u << 8,
    IntegrationMeasure = 1u << 9

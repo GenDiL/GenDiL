@@ -451,10 +451,9 @@ auto pullback(const MinusTraceExpr<E>&, const Seed&)
 {
    static_assert(
       dependent_false_v<E, Seed>,
-      "minus(expr) is a canonical interior-facet trace operator. The local/"
-      "current-row and boundary pullback paths do not assign row-relative "
-      "semantics to public minus(...); use jump/average in the local path or "
-      "the canonical global-interior lowering path.");
+      "minus(expr) is a canonical interior-facet trace operator. "
+      "Use the local or global interior-facet pullback factory; ordinary "
+      "one-row pullback does not assign a canonical side to a test field.");
    return PullbackResult<>{};
 }
 
@@ -464,10 +463,9 @@ auto pullback(const PlusTraceExpr<E>&, const Seed&)
 {
    static_assert(
       dependent_false_v<E, Seed>,
-      "plus(expr) is a canonical interior-facet trace operator. The local/"
-      "current-row and boundary pullback paths do not assign row-relative "
-      "semantics to public plus(...); use jump/average in the local path or "
-      "the canonical global-interior lowering path.");
+      "plus(expr) is a canonical interior-facet trace operator. "
+      "Use the local or global interior-facet pullback factory; ordinary "
+      "one-row pullback does not assign a canonical side to a test field.");
    return PullbackResult<>{};
 }
 
@@ -485,8 +483,8 @@ auto pullback(const PlusTraceExpr<E>&, const Seed&)
 /**
  * @brief Pullback for ProductExpr (algebraic product).
  *
- * Currently implemented for ProductKind::ScalarTimes and the two linear
- * ProductKind::MatVec adjoints.
+ * Supports scalar multiplication and matrix-vector/matrix-matrix products
+ * with exactly one test-linear operand.
  *
  * ScalarTimes adjoint rule:
  *   pullback(scalar_free * test_expr, seed)
@@ -495,12 +493,11 @@ auto pullback(const PlusTraceExpr<E>&, const Seed&)
  * Valid combinations:
  *   - test-linear × test-free scalar
  *   - test-free scalar × test-linear
+ *   - MatVec or MatMat with exactly one test-linear operand
  *
  * Invalid combinations (will fail with clear static_assert):
  *   - Both test-free → no test contribution
  *   - Both test-linear → NonlinearInTest
- *   - ProductKind::MatVec → supported when exactly one operand is test-linear
- *   - ProductKind::MatMat → requires product-specific adjoint (not implemented)
  *
  * @tparam LHS Left operand type
  * @tparam RHS Right operand type
@@ -577,12 +574,31 @@ auto pullback(const ProductExpr<LHS, RHS>& expr, const Seed& seed)
             "and test-free matrix * test-linear vector.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatMat)
+   {
+      static_assert(field_shape_v<S> == FieldShape::Matrix && is_test_free_v<S>,
+         "MatMat ProductExpr pullback requires a test-free Matrix-shaped seed.");
+
+      // Frobenius adjoints: <L R, S> = <L, S R^T> = <R, L^T S>.
+      if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
+      {
+         return pullback(expr.lhs, seed * transpose(expr.rhs));
+      }
+      else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         return pullback(expr.rhs, transpose(expr.lhs) * seed);
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "MatMat ProductExpr pullback requires exactly one TestLinear operand "
+            "and one TestFree operand.");
+      }
+   }
    else
    {
       static_assert(dependent_false_v<L, R, S>,
-         "ProductExpr pullback is implemented for ProductKind::ScalarTimes and "
-         "the linear ProductKind::MatVec adjoints. "
-         "MatMat and broader product-specific adjoints are not implemented.");
+         "Unsupported ProductKind in ProductExpr pullback.");
    }
 }
 
@@ -682,6 +698,19 @@ GENDIL_HOST_DEVICE
 auto pullback(const NegExpr<Expr>& expr, const Seed& seed)
 {
    return pullback(expr.expr, -seed);
+}
+
+// Transposition is self-adjoint under the Frobenius pairing:
+// <E^T, S> = <E, S^T>, including rectangular matrices.
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const TransposeExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(MatrixExpr<Expr> && is_seed_shape_compatible_v<TransposeExpr<Expr>, Seed>,
+      "Matrix transpose pullback requires a matrix operand and matrix seed.");
+   static_assert(is_test_linear_v<Expr> && is_test_free_v<Seed>,
+      "Matrix transpose pullback requires a test-linear operand and a test-free seed.");
+   return pullback(expr.expr, transpose(seed));
 }
 
 // Symmetric and skew-symmetric projection are self-adjoint under the real
@@ -1021,33 +1050,12 @@ auto pullback(const OuterExpr<LHS, RHS>& /*expr*/, const Seed& /*seed*/)
 // AverageExpr Pullback for Test Functions
 // =============================================================================
 //
-// For interior facets, test functions only use minus side with 1/2 factor:
-//    average(v) = 0.5 * v_minus
-//
-// Pullback rule:
-//    pullback(average(v), seed) = pullback(v, 0.5 * seed)
-//
-// Trial functions (not implemented here):
-//    average(u) = 0.5 * (u_minus + u_plus)  (handled by AverageExpr::operator())
+// Ordinary row-relative pullback retains its historical half-weight rule.
+// Actual interior-facet execution uses the canonical pullback below and selects
+// the current row (local traversal) or delivers both rows (global traversal).
 //
 
-
-/**
- * @brief Pullback for average(E) on interior facets when E is test-linear.
- *
- * With the current/minus-side convention used by the pullback operator:
- *
- *     average(E) = 0.5 * E_minus
- *
- * Therefore:
- *
- *     pullback(average(E), seed)
- *       = pullback(E, 0.5 * seed)
- *
- * This handles average(v), average(grad(v)), and more complex
- * test-linear expressions such as average(coef * grad(v)), provided
- * the inner expression E has a valid pullback rule.
- */
+/** @brief Ordinary row-relative pullback of a test-linear average. */
 template<FieldExpr E, class Seed>
    requires (is_test_linear_v<E>)
 GENDIL_HOST_DEVICE
@@ -1077,37 +1085,17 @@ auto pullback(const AverageExpr<E>&, const Seed&)
 // JumpExpr Pullback for Test Functions
 // =============================================================================
 //
-// For interior facets, test functions only use minus side:
-//    jump(v) = v_minus
-//
-// Pullback rule:
-//    pullback(jump(v), seed) = pullback(v, seed)
-//
-// Trial functions (not implemented here):
-//    jump(u) = u_minus - u_plus  (handled by JumpExpr::operator())
-//
-// The same current-side rule applies to any supported test-linear expression.
+// This ordinary rule describes the positive row-relative contribution only.
+// It is not the identity jump(v) = v_minus: canonical facet lowering below
+// emits opposite signs for the two test rows.
 //
 
-/**
- * @brief Pullback for jump of test space (interior facets).
- *
- * For test functions on interior facets:
- *    jump(v) = v_minus (only current/minus side)
- *
- * Therefore:
- *    pullback(jump(v), seed) = pullback(v, seed) = ValueChannel with seed
- *
- * @tparam Name Test space name
- * @tparam Shape Test space field shape (Scalar or Vector)
- * @tparam Seed Seed expression type
- */
+/** @brief Ordinary positive-row pullback of a test-space jump. */
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback(const JumpExpr<TestSpace<Name, Shape>>& jump_expr, const Seed& seed)
 {
-   // For test functions, jump only uses minus side
-   // Extract underlying test space and pullback directly
+   // Preserve the ordinary positive-row rule.
    const auto& test_space = jump_expr.expr;
    return pullback(test_space, seed);
 }
@@ -1115,9 +1103,9 @@ auto pullback(const JumpExpr<TestSpace<Name, Shape>>& jump_expr, const Seed& see
 /**
  * @brief Pull back a jump of a test-linear expression on the current side.
  *
- * Each local facet visit contributes only its current test row. Thus jump(E)
- * has the same pullback as E, including gradients and div(v). The opposite
- * row is handled by the neighboring visit, with its own trial jump.
+ * This is the ordinary positive-row rule, including gradients and div(v).
+ * Local facet execution instead selects its signed canonical contribution
+ * from pullback_interior.
  */
 template<FieldExpr E, class Seed>
    requires (is_test_linear_v<E>)
@@ -1252,13 +1240,13 @@ auto pullback_boundary(const E& expr, const Seed& seed)
 }
 
 // =============================================================================
-// Canonical Global Interior Pullback
+// Canonical Interior Pullback
 // =============================================================================
 //
-// The ordinary pullback rules above are row-relative: jump(v) contributes to
-// the current/minus row only. Canonical global-face lowering evaluates both
-// rows from one canonical face context, so test-side dependence is lowered into
-// side-qualified channel keys instead. Trace selection is pushed structurally
+// The ordinary pullback rules above are row-relative. Interior-facet lowering
+// first assigns canonical minus/plus channel keys: global traversal delivers
+// both rows, while local traversal selects its current row before evaluation.
+// Trace selection is pushed structurally
 // through the expression tree before pullback; this keeps public minus/plus as
 // semantic DSL nodes without carrying a side template parameter through every
 // pullback overload.
@@ -1311,7 +1299,7 @@ auto TraceToMinusSide(const MinusTraceExpr<Expr>&)
    static_assert(
       dependent_false_v<Expr>,
       "Nested interior trace expressions such as minus(minus(expr)) are not "
-      "part of the current canonical global-interior lowering.");
+      "part of the current canonical interior lowering.");
    return PullbackResult<>{};
 }
 
@@ -1322,7 +1310,7 @@ auto TraceToMinusSide(const PlusTraceExpr<Expr>&)
    static_assert(
       dependent_false_v<Expr>,
       "Nested interior trace expressions such as minus(plus(expr)) are not "
-      "part of the current canonical global-interior lowering.");
+      "part of the current canonical interior lowering.");
    return PullbackResult<>{};
 }
 
@@ -1333,7 +1321,7 @@ auto TraceToPlusSide(const MinusTraceExpr<Expr>&)
    static_assert(
       dependent_false_v<Expr>,
       "Nested interior trace expressions such as plus(minus(expr)) are not "
-      "part of the current canonical global-interior lowering.");
+      "part of the current canonical interior lowering.");
    return PullbackResult<>{};
 }
 
@@ -1344,7 +1332,7 @@ auto TraceToPlusSide(const PlusTraceExpr<Expr>&)
    static_assert(
       dependent_false_v<Expr>,
       "Nested interior trace expressions such as plus(plus(expr)) are not "
-      "part of the current canonical global-interior lowering.");
+      "part of the current canonical interior lowering.");
    return PullbackResult<>{};
 }
 
@@ -1423,6 +1411,20 @@ auto TraceToMinusSide(const ProductExpr<LHS, RHS>& expr)
 
 template<FieldExpr LHS, FieldExpr RHS>
 GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const OuterExpr<LHS, RHS>& expr)
+{
+   return outer(TraceToMinusSide(expr.lhs), TraceToMinusSide(expr.rhs));
+}
+
+template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const OuterExpr<LHS, RHS>& expr)
+{
+   return outer(TraceToPlusSide(expr.lhs), TraceToPlusSide(expr.rhs));
+}
+
+template<FieldExpr LHS, FieldExpr RHS>
+GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const ProductExpr<LHS, RHS>& expr)
 {
    return TraceToPlusSide(expr.lhs) * TraceToPlusSide(expr.rhs);
@@ -1468,6 +1470,20 @@ GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const AverageExpr<Expr>& expr)
 {
    return 0.5 * TraceToPlusSide(expr.expr);
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToMinusSide(const TransposeExpr<Expr>& expr)
+{
+   return transpose(TraceToMinusSide(expr.expr));
+}
+
+template<FieldExpr Expr>
+GENDIL_HOST_DEVICE
+auto TraceToPlusSide(const TransposeExpr<Expr>& expr)
+{
+   return transpose(TraceToPlusSide(expr.expr));
 }
 
 template<FieldExpr Expr>
@@ -1530,7 +1546,7 @@ auto TraceToPlusSide(const TangentialProjectionExpr<Expr>& expr)
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MinusTraceExpr<TestSpace<Name, Shape>>&,
    const Seed& seed)
 {
@@ -1538,7 +1554,7 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<TestSpace<Name, Shape>, SeedType>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    return PullbackResult{MakeStaticMap(MakeEntry<ValueMinusChannel>(seed))};
@@ -1546,7 +1562,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const PlusTraceExpr<TestSpace<Name, Shape>>&,
    const Seed& seed)
 {
@@ -1554,7 +1570,7 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<TestSpace<Name, Shape>, SeedType>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    return PullbackResult{MakeStaticMap(MakeEntry<ValuePlusChannel>(seed))};
@@ -1562,7 +1578,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MinusTraceExpr<GradientExpr<TestSpace<Name, Shape>>>&,
    const Seed& seed)
 {
@@ -1570,7 +1586,7 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<GradientExpr<TestSpace<Name, Shape>>, SeedType>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    return PullbackResult{MakeStaticMap(MakeEntry<GradientMinusChannel>(seed))};
@@ -1578,7 +1594,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const PlusTraceExpr<GradientExpr<TestSpace<Name, Shape>>>&,
    const Seed& seed)
 {
@@ -1586,7 +1602,7 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<GradientExpr<TestSpace<Name, Shape>>, SeedType>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    return PullbackResult{MakeStaticMap(MakeEntry<GradientPlusChannel>(seed))};
@@ -1594,7 +1610,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MinusTraceExpr<DivergenceExpr<TestSpace<Name, FieldShape::Vector>>>&,
    const Seed& seed)
 {
@@ -1606,7 +1622,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const PlusTraceExpr<DivergenceExpr<TestSpace<Name, FieldShape::Vector>>>&,
    const Seed& seed)
 {
@@ -1618,7 +1634,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MinusTraceExpr<CurlExpr<TestSpace<Name, FieldShape::Vector>>>&,
    const Seed& seed)
 {
@@ -1630,7 +1646,7 @@ auto pullback_global_interior(
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const PlusTraceExpr<CurlExpr<TestSpace<Name, FieldShape::Vector>>>&,
    const Seed& seed)
 {
@@ -1642,7 +1658,7 @@ auto pullback_global_interior(
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MinusTraceExpr<Expr>& expr,
    const Seed& seed)
 {
@@ -1651,15 +1667,15 @@ auto pullback_global_interior(
 
    static_assert(
       !std::is_same_v<SideExpr, MinusTraceExpr<Expr>>,
-      "Canonical global interior pullback cannot pull back a pure minus-side "
+      "Canonical interior pullback cannot pull back a pure minus-side "
       "test-free leaf. The integrand must be test-linear.");
 
-   return pullback_global_interior(side_expr, seed);
+   return pullback_interior(side_expr, seed);
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const PlusTraceExpr<Expr>& expr,
    const Seed& seed)
 {
@@ -1668,34 +1684,34 @@ auto pullback_global_interior(
 
    static_assert(
       !std::is_same_v<SideExpr, PlusTraceExpr<Expr>>,
-      "Canonical global interior pullback cannot pull back a pure plus-side "
+      "Canonical interior pullback cannot pull back a pure plus-side "
       "test-free leaf. The integrand must be test-linear.");
 
-   return pullback_global_interior(side_expr, seed);
+   return pullback_interior(side_expr, seed);
 }
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const TestSpace<Name, Shape>&,
    const Seed&)
 {
    static_assert(
       dependent_false_v<Seed>,
-      "Unqualified TestSpace on canonical global interior facets is "
+      "Unqualified TestSpace on canonical interior facets is "
       "ambiguous. Use minus(v), plus(v), jump(v), or average(v).");
    return PullbackResult<>{};
 }
 
 template<StaticString Name, FieldShape Shape, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const GradientExpr<TestSpace<Name, Shape>>&,
    const Seed&)
 {
    static_assert(
       dependent_false_v<Seed>,
-      "Unqualified grad(v) on canonical global interior facets is ambiguous. "
+      "Unqualified grad(v) on canonical interior facets is ambiguous. "
       "Use minus(grad(v)), plus(grad(v)), jump(grad(v)), or "
       "average(grad(v)).");
    return PullbackResult<>{};
@@ -1703,103 +1719,122 @@ auto pullback_global_interior(
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const DivergenceExpr<TestSpace<Name, FieldShape::Vector>>&,
    const Seed&)
 {
    static_assert(dependent_false_v<Seed>,
-      "Unqualified div(v) on canonical global interior facets is ambiguous. "
+      "Unqualified div(v) on canonical interior facets is ambiguous. "
       "Use minus(div(v)), plus(div(v)), jump(div(v)), or average(div(v)).");
    return PullbackResult<>{};
 }
 
 template<StaticString Name, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const CurlExpr<TestSpace<Name, FieldShape::Vector>>&,
    const Seed&)
 {
    static_assert(dependent_false_v<Seed>,
-      "Unqualified curl(v) on canonical global interior facets is ambiguous. "
+      "Unqualified curl(v) on canonical interior facets is ambiguous. "
       "Use minus(curl(v)), plus(curl(v)), jump(curl(v)), or average(curl(v)).");
    return PullbackResult<>{};
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const JumpExpr<Expr>& expr,
    const Seed& seed)
 {
    auto minus_channels =
-      pullback_global_interior(details::TraceToMinusSide(expr.expr), seed);
+      pullback_interior(details::TraceToMinusSide(expr.expr), seed);
    auto plus_channels =
-      pullback_global_interior(details::TraceToPlusSide(expr.expr), -seed);
+      pullback_interior(details::TraceToPlusSide(expr.expr), -seed);
    return merge_pullback_results(minus_channels, plus_channels);
+}
+
+template<FieldExpr LHS, FieldExpr RHS, class Seed>
+   requires (is_test_linear_v<LHS> && is_test_free_v<RHS>)
+GENDIL_HOST_DEVICE
+auto pullback_interior(const OuterExpr<LHS, RHS>& expr, const Seed& seed)
+{
+   return pullback_interior(expr.lhs, seed * expr.rhs);
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const AverageExpr<Expr>& expr,
    const Seed& seed)
 {
    auto half_seed = 0.5 * seed;
    auto minus_channels =
-      pullback_global_interior(details::TraceToMinusSide(expr.expr), half_seed);
+      pullback_interior(details::TraceToMinusSide(expr.expr), half_seed);
    auto plus_channels =
-      pullback_global_interior(details::TraceToPlusSide(expr.expr), half_seed);
+      pullback_interior(details::TraceToPlusSide(expr.expr), half_seed);
    return merge_pullback_results(minus_channels, plus_channels);
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const NegExpr<Expr>& expr,
    const Seed& seed)
 {
-   return pullback_global_interior(expr.expr, -seed);
+   return pullback_interior(expr.expr, -seed);
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(const SymExpr<Expr>& expr, const Seed& seed)
+auto pullback_interior(const TransposeExpr<Expr>& expr, const Seed& seed)
+{
+   static_assert(MatrixExpr<Expr> && is_seed_shape_compatible_v<TransposeExpr<Expr>, Seed>,
+      "Matrix transpose pullback requires a matrix operand and matrix seed.");
+   static_assert(is_test_linear_v<Expr> && is_test_free_v<Seed>,
+      "Matrix transpose pullback requires a test-linear operand and a test-free seed.");
+   return pullback_interior(expr.expr, transpose(seed));
+}
+
+template<FieldExpr Expr, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_interior(const SymExpr<Expr>& expr, const Seed& seed)
 {
    static_assert(is_seed_shape_compatible_v<SymExpr<Expr>, Seed>,
       "Symmetric projection pullback requires a matrix seed.");
-   return pullback_global_interior(expr.expr, sym(seed));
+   return pullback_interior(expr.expr, sym(seed));
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(const SkewExpr<Expr>& expr, const Seed& seed)
+auto pullback_interior(const SkewExpr<Expr>& expr, const Seed& seed)
 {
    static_assert(is_seed_shape_compatible_v<SkewExpr<Expr>, Seed>,
       "Skew-symmetric projection pullback requires a matrix seed.");
-   return pullback_global_interior(expr.expr, skew(seed));
+   return pullback_interior(expr.expr, skew(seed));
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(const NormalProjectionExpr<Expr>& expr, const Seed& seed)
+auto pullback_interior(const NormalProjectionExpr<Expr>& expr, const Seed& seed)
 {
    static_assert(is_seed_shape_compatible_v<NormalProjectionExpr<Expr>, Seed>,
       "Normal projection pullback requires a vector seed.");
-   return pullback_global_interior(expr.expr, normal_projection(seed));
+   return pullback_interior(expr.expr, normal_projection(seed));
 }
 
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(const TangentialProjectionExpr<Expr>& expr, const Seed& seed)
+auto pullback_interior(const TangentialProjectionExpr<Expr>& expr, const Seed& seed)
 {
    static_assert(is_seed_shape_compatible_v<TangentialProjectionExpr<Expr>, Seed>,
       "Tangential projection pullback requires a vector seed.");
-   return pullback_global_interior(expr.expr, tangential_projection(seed));
+   return pullback_interior(expr.expr, tangential_projection(seed));
 }
 
 template<FieldExpr Head, FieldExpr... Tail, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const SumExpr<Head, Tail...>& expr,
    const Seed& seed)
 {
@@ -1808,21 +1843,21 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<Expr, S>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    return std::apply(
       [&](const auto&... terms)
       {
          return merge_pullback_results(
-            pullback_global_interior(terms, seed)...);
+            pullback_interior(terms, seed)...);
       },
       expr.terms);
 }
 
 template<FieldExpr LHS, FieldExpr RHS, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const DotExpr<LHS, RHS>& expr,
    const Seed& seed)
 {
@@ -1833,16 +1868,16 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<Expr, S>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
    {
-      return pullback_global_interior(expr.lhs, seed * expr.rhs);
+      return pullback_interior(expr.lhs, seed * expr.rhs);
    }
    else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
    {
-      return pullback_global_interior(expr.rhs, seed * expr.lhs);
+      return pullback_interior(expr.rhs, seed * expr.lhs);
    }
    else
    {
@@ -1855,7 +1890,7 @@ auto pullback_global_interior(
 
 template<FieldExpr LHS, FieldExpr RHS, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const InnerExpr<LHS, RHS>& expr,
    const Seed& seed)
 {
@@ -1865,11 +1900,11 @@ auto pullback_global_interior(
 
    if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
    {
-      return pullback_global_interior(expr.lhs, seed * expr.rhs);
+      return pullback_interior(expr.lhs, seed * expr.rhs);
    }
    else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
    {
-      return pullback_global_interior(expr.rhs, seed * expr.lhs);
+      return pullback_interior(expr.rhs, seed * expr.lhs);
    }
    else
    {
@@ -1882,7 +1917,7 @@ auto pullback_global_interior(
 
 template<FieldExpr LHS, FieldExpr RHS, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const ProductExpr<LHS, RHS>& expr,
    const Seed& seed)
 {
@@ -1893,7 +1928,7 @@ auto pullback_global_interior(
 
    static_assert(
       is_seed_shape_compatible_v<Expr, S>,
-      "pullback_global_interior(expr, seed) requires seed to have the same "
+      "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
    if constexpr (Expr::product_kind == ProductKind::ScalarTimes)
@@ -1904,7 +1939,7 @@ auto pullback_global_interior(
             field_shape_v<R> == FieldShape::Scalar,
             "Canonical global interior scalar-times pullback requires the "
             "test-free multiplier to be Scalar.");
-         return pullback_global_interior(expr.lhs, seed * expr.rhs);
+         return pullback_interior(expr.lhs, seed * expr.rhs);
       }
       else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
       {
@@ -1912,7 +1947,7 @@ auto pullback_global_interior(
             field_shape_v<L> == FieldShape::Scalar,
             "Canonical global interior scalar-times pullback requires the "
             "test-free multiplier to be Scalar.");
-         return pullback_global_interior(expr.rhs, seed * expr.lhs);
+         return pullback_interior(expr.rhs, seed * expr.lhs);
       }
       else
       {
@@ -1939,13 +1974,13 @@ auto pullback_global_interior(
 
       if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
       {
-         return pullback_global_interior(
+         return pullback_interior(
             expr.lhs,
             outer(seed, expr.rhs));
       }
       else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
       {
-         return pullback_global_interior(
+         return pullback_interior(
             expr.rhs,
             transpose(expr.lhs) * seed);
       }
@@ -1959,18 +1994,36 @@ auto pullback_global_interior(
             "test-linear vector.");
       }
    }
+   else if constexpr (Expr::product_kind == ProductKind::MatMat)
+   {
+      static_assert(field_shape_v<S> == FieldShape::Matrix && is_test_free_v<S>,
+         "Canonical global interior MatMat pullback requires a test-free Matrix-shaped seed.");
+
+      if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
+      {
+         return pullback_interior(expr.lhs, seed * transpose(expr.rhs));
+      }
+      else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
+      {
+         return pullback_interior(expr.rhs, transpose(expr.lhs) * seed);
+      }
+      else
+      {
+         static_assert(dependent_false_v<L, R, S>,
+            "Canonical global interior MatMat pullback requires exactly one "
+            "TestLinear operand and one TestFree operand.");
+      }
+   }
    else
    {
-      static_assert(
-         dependent_false_v<L, R, S>,
-         "Canonical global interior ProductExpr pullback currently supports "
-         "scalar-times products and linear MatVec products.");
+      static_assert(dependent_false_v<L, R, S>,
+         "Unsupported ProductKind in canonical global interior ProductExpr pullback.");
    }
 }
 
 template<FieldExpr LHS, FieldExpr RHS, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(
+auto pullback_interior(
    const MultFieldExpr<LHS, RHS>& expr,
    const Seed& seed)
 {
@@ -1990,11 +2043,11 @@ auto pullback_global_interior(
    };
    if constexpr (is_test_linear_v<L> && is_test_free_v<R>)
    {
-      return pullback_global_interior(expr.lhs, multiply(expr.rhs));
+      return pullback_interior(expr.lhs, multiply(expr.rhs));
    }
    else if constexpr (is_test_free_v<L> && is_test_linear_v<R>)
    {
-      return pullback_global_interior(expr.rhs, multiply(expr.lhs));
+      return pullback_interior(expr.rhs, multiply(expr.lhs));
    }
    else
    {
@@ -2007,11 +2060,11 @@ auto pullback_global_interior(
 
 template<class Expr, class Seed>
 GENDIL_HOST_DEVICE
-auto pullback_global_interior(const Expr&, const Seed&)
+auto pullback_interior(const Expr&, const Seed&)
 {
    static_assert(
       dependent_false_v<Expr, Seed>,
-      "Canonical global interior pullback cannot lower this traced expression "
+      "Canonical interior pullback cannot lower this traced expression "
       "yet. The expression is structurally valid, but the canonical pullback "
       "must provide a side-qualified channel rule for its test-linear part.");
    return PullbackResult<>{};

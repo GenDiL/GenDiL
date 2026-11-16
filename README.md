@@ -160,7 +160,7 @@ auto k =
       {
          return conductivity;
       });
-auto tau = MakeCoefficient<"penalty", InverseFacetSize>(tau_fn);
+auto tau = MakeCoefficient<"penalty", InverseNormalCellSize>(tau_fn);
 
 auto sipdg_form =
    integrate(cells, k * dot(grad(u), grad(v)))
@@ -168,7 +168,7 @@ auto sipdg_form =
         interior_facets,
         -average(k * dot(grad(u), Normal{})) * jump(v)
         - jump(u) * average(k * dot(grad(v), Normal{}))
-        + tau * average(k) * jump(u) * jump(v))
+        + average(tau * k) * jump(u) * jump(v))
    + integrate(
         boundary_facets,
         -k * dot(grad(u), Normal{}) * v
@@ -176,9 +176,11 @@ auto sipdg_form =
         + tau * k * u * v);
 ```
 
-The `FieldValue<"conductivity">` input evaluates the conductivity
-field registered in the weak-form context. Nonzero Dirichlet data require the
-corresponding boundary load terms in addition to this bilinear form.
+The conductivity field supplies $k$, and `average(tau * k)` combines the
+neighboring cells' penalty contributions. Nonzero Dirichlet data require the
+corresponding boundary load terms in addition to this bilinear form. See the
+[weak-form guide](include/gendil/FiniteElementMethod/WeakForm/README.md) for the
+full DSL reference and further examples.
 
 The SIPDG weak form can create a matrix-free operator or an assembled sparse
 matrix. Here `mesh` is the integration mesh, `fe_space` is the trial and test

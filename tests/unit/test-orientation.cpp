@@ -82,7 +82,7 @@ struct OrientedMesh
          HyperCube< Dim >::GetNormalDimensionIndex( FaceIndex );
       constexpr int normal_sign =
          HyperCube< Dim >::GetNormalSign( FaceIndex );
-      using face_info_type = ConformingCellFaceView<
+      using face_info_type = LocalConformingCellFaceView<
          HyperCube< Dim >,
          std::integral_constant< Integer, FaceIndex >,
          std::integral_constant<
@@ -1206,39 +1206,39 @@ bool TestProductMeshConnectivity()
    using TailInfo = std::remove_cvref_t< decltype( tail_face ) >;
    bool success = true;
    success = Check(
-      FlattenOrientation( head_face.PlusSide().GetOrientation() ) ==
+      FlattenOrientation( head_face.NeighborSide().GetOrientation() ) ==
          Permutation< 3 >{ { -2, 1, 3 } },
       "head-factor orientation was not embedded as a leading block" ) &&
       success;
    success = Check(
-      FlattenOrientation( tail_face.PlusSide().GetOrientation() ) ==
+      FlattenOrientation( tail_face.NeighborSide().GetOrientation() ) ==
          Permutation< 3 >{ { 1, 2, -3 } },
       "tail-factor orientation was not lifted by the full head rank" ) &&
       success;
    success = Check(
-      FlattenOrientation( head_face.MinusSide().GetOrientation() ) ==
+      FlattenOrientation( head_face.CurrentSide().GetOrientation() ) ==
          MakeReferencePermutation< 3 >(),
-      "product global-face minus orientation is not canonical" ) && success;
+      "product local-face current orientation is not identity" ) && success;
    success = Check(
       !head_face.IsBoundary() && !tail_face.IsBoundary(),
       "product connectivity changed the boundary flag" ) && success;
    success = Check(
-      HeadInfo::minus_side_type::local_face_index_type::value == 0 &&
-      HeadInfo::plus_side_type::local_face_index_type::value == 3,
+      HeadInfo::current_side_type::local_face_index_type::value == 0 &&
+      HeadInfo::neighbor_side_type::local_face_index_type::value == 3,
       "product head face IDs are incorrect" ) && success;
    success = Check(
-      TailInfo::minus_side_type::local_face_index_type::value == 2 &&
-      TailInfo::plus_side_type::local_face_index_type::value == 5,
+      TailInfo::current_side_type::local_face_index_type::value == 2 &&
+      TailInfo::neighbor_side_type::local_face_index_type::value == 5,
       "product tail face IDs are incorrect" ) && success;
    success = Check(
-      HeadInfo::minus_side_type::normal_type::index == 0 &&
-      HeadInfo::minus_side_type::normal_type::sign == -1 &&
-      HeadInfo::plus_side_type::normal_type::sign == 1,
+      HeadInfo::current_side_type::normal_type::index == 0 &&
+      HeadInfo::current_side_type::normal_type::sign == -1 &&
+      HeadInfo::neighbor_side_type::normal_type::sign == 1,
       "product head normals are incorrect" ) && success;
    success = Check(
-      TailInfo::minus_side_type::normal_type::index == 2 &&
-      TailInfo::minus_side_type::normal_type::sign == -1 &&
-      TailInfo::plus_side_type::normal_type::sign == 1,
+      TailInfo::current_side_type::normal_type::index == 2 &&
+      TailInfo::current_side_type::normal_type::sign == -1 &&
+      TailInfo::neighbor_side_type::normal_type::sign == 1,
       "product tail normals are incorrect" ) && success;
 
    auto cell = mesh.GetCell( 0 );
@@ -1277,27 +1277,27 @@ bool TestRecursiveProductComposition()
    const auto right_second_factor_face = right_recursive.GetLocalFaceInfo(
       GlobalIndex{ 0 }, std::integral_constant< Integer, 2 >{} );
    using RightOrientation = std::remove_cvref_t< decltype(
-      right_second_factor_face.PlusSide().GetOrientation() ) >;
+      right_second_factor_face.NeighborSide().GetOrientation() ) >;
    static_assert( RightOrientation::num_components == 2 );
    static_assert( is_tensor_product_orientation_v<
       std::tuple_element_t< 1, typename RightOrientation::component_types > > );
 
    auto right_cell = right_recursive.GetCell( 0 );
    ApplyOrientationToCell(
-      right_second_factor_face.PlusSide().GetOrientation(),
+      right_second_factor_face.NeighborSide().GetOrientation(),
       right_cell );
 
    return Check(
-      FlattenOrientation( second_factor_face.PlusSide().GetOrientation() ) ==
+      FlattenOrientation( second_factor_face.NeighborSide().GetOrientation() ) ==
          Permutation< 4 >{ { 1, 2, -3, 4 } },
       "recursive product did not preserve the nested factor block" ) &&
       Check(
-         FlattenOrientation( third_factor_face.PlusSide().GetOrientation() ) ==
+         FlattenOrientation( third_factor_face.NeighborSide().GetOrientation() ) ==
             Permutation< 4 >{ { 1, 2, 3, -4 } },
          "recursive product did not lift the final factor orientation" ) &&
       Check(
          FlattenOrientation(
-            right_second_factor_face.PlusSide().GetOrientation() ) ==
+            right_second_factor_face.NeighborSide().GetOrientation() ) ==
             Permutation< 4 >{ { 1, 2, -3, 4 } },
          "right-nested product did not preserve the nested factor block" ) &&
       Check(

@@ -5,6 +5,7 @@
 #include <gendil/gendil.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iomanip>
@@ -24,11 +25,70 @@ static inline Integer lin_cell_3d(Integer i, Integer j, Integer k,
   return i + nx*(j + ny*k);
 }
 
+// Independent trace assembly for the P1/P3 fixture. Four-point Gauss quadrature
+// exactly integrates the degree-six face products, without using operator,
+// connectivity, finite-element evaluation, or quadrature implementation helpers.
+template<Integer P>
+Real TraceBasis(const Integer i, const Real x)
+{
+  static_assert(P == 1 || P == 3);
+  if constexpr (P == 1)
+    return i == 0 ? 1.0 - x : x;
+  else
+  {
+    const Real a = 1.0 / std::sqrt(5.0);
+    const std::array<Real, 4> nodes{0.0, (1.0-a)/2.0, (1.0+a)/2.0, 1.0};
+    Real value = 1.0;
+    for (Integer j = 0; j <= P; ++j)
+      if (j != i) value *= (x-nodes[j])/(nodes[i]-nodes[j]);
+    return value;
+  }
+}
+
+template<Integer PLeft, Integer PRight>
+void AddJumpDissipationFace(
+    const Real* u, std::vector<Real>& result,
+    const Integer left_base, const Integer right_base,
+    const Real area, const Real left_y_scale = 1.0,
+    const Real left_y_origin = 0.0)
+{
+  constexpr std::array<Real, 4> points{
+    0.06943184420297371, 0.33000947820757187,
+    0.66999052179242813, 0.93056815579702629};
+  constexpr std::array<Real, 4> weights{
+    0.17392742256872693, 0.32607257743127307,
+    0.32607257743127307, 0.17392742256872693};
+  for (Integer qz = 0; qz < points.size(); ++qz)
+    for (Integer qy = 0; qy < points.size(); ++qy)
+    {
+      const Real y_left = left_y_origin + left_y_scale*points[qy];
+      Real jump = 0.0;
+      for (Integer k = 0; k <= PLeft; ++k)
+        for (Integer j = 0; j <= PLeft; ++j)
+          jump += u[left_base + PLeft + (PLeft+1)*(j+(PLeft+1)*k)]
+                * TraceBasis<PLeft>(j, y_left)*TraceBasis<PLeft>(k, points[qz]);
+      for (Integer k = 0; k <= PRight; ++k)
+        for (Integer j = 0; j <= PRight; ++j)
+          jump -= u[right_base + (PRight+1)*(j+(PRight+1)*k)]
+                * TraceBasis<PRight>(j, points[qy])*TraceBasis<PRight>(k, points[qz]);
+      const Real flux = area*weights[qy]*weights[qz]*jump;
+      for (Integer k = 0; k <= PLeft; ++k)
+        for (Integer j = 0; j <= PLeft; ++j)
+          result[left_base + PLeft + (PLeft+1)*(j+(PLeft+1)*k)]
+            += flux*TraceBasis<PLeft>(j, y_left)*TraceBasis<PLeft>(k, points[qz]);
+      for (Integer k = 0; k <= PRight; ++k)
+        for (Integer j = 0; j <= PRight; ++j)
+          result[right_base + (PRight+1)*(j+(PRight+1)*k)]
+            -= flux*TraceBasis<PRight>(j, points[qy])*TraceBasis<PRight>(k, points[qz]);
+    }
+}
+
 } // namespace
 
 int main(int, char**)
 {
   std::cout.setf(std::ios::fixed); std::cout<<std::setprecision(6);
+  bool success = true;
 
   // --------------------------
   // Config: 3D, split along +x
@@ -157,8 +217,10 @@ int main(int, char**)
     Real sum = 0.0;
     const Real* pr = r.ReadHostData();
     for (Integer g=0; g<ndofs_split; ++g) sum += pr[g];
+    const bool passed = std::isfinite(sum) && std::abs(sum) <= 1e-12;
+    success = passed && success;
     std::cout << "  [Const u=1] sum(r) = " << sum << "  → "
-              << (std::abs(sum) <= 1e-12 ? "PASS" : "FAIL") << "\n\n";
+              << (passed ? "PASS" : "FAIL") << "\n\n";
   }
 
   // --------------------------
@@ -196,7 +258,7 @@ int main(int, char**)
     {
       Real* pu = u.WriteHostData();
       // deterministic-ish fill
-      for (Integer g=0; g<u.Size(); ++g) pu[g] = Real((g%11)-5) / Real(7);
+      for (Integer g=0; g<u.Size(); ++g) pu[g] = (Real(g%11)-5.0) / 7.0;
     }
 
     r_nc = 0.0; face_L_pos(u, r_nc);  face_R1_pos(u, r_nc);  face_IF_nc(u, r_nc);
@@ -206,12 +268,15 @@ int main(int, char**)
     const Real *a = r_nc.ReadHostData(), *b = r_cf.ReadHostData();
     for (Integer g=0; g<r_nc.Size(); ++g) l2 += sqr(a[g]-b[g]);
     l2 = std::sqrt(l2);
+    const bool passed = std::isfinite(l2) && l2 <= 1e-12;
+    success = passed && success;
     std::cout << "[r=1 fallback vs conforming] ||Δ||_2 = " << l2
-              << "  → " << (l2 <= 1e-12 ? "PASS" : "FAIL") << "\n\n";
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n\n";
   }
 
   // --------------------------
-  // (3) β sign flip symmetry: r(+β) + r(−β) ≈ 0 (combined h+p)
+  // (3) Reversing beta preserves upwind dissipation:
+  // r(+beta) + r(-beta) = integral |beta.n| jump(u) jump(v).
   // --------------------------
   {
     Vector u(ndofs_split), r_pos(ndofs_split), r_neg(ndofs_split);
@@ -225,18 +290,49 @@ int main(int, char**)
     apply_all(face_L_pos, face_R_pos, face_IF_pos, u, r_pos);
     apply_all(face_L_neg, face_R_neg, face_IF_neg, u, r_neg);
 
-    Real l2 = 0.0;
+    std::vector<Real> expected(ndofs_split, 0.0);
+    const Real* pu = u.ReadHostData();
+    constexpr Integer nldofsL = (pL+1)*(pL+1)*(pL+1);
+    constexpr Integer nldofsR = (pR+1)*(pR+1)*(pR+1);
+    // Only x-normal faces contribute, since beta=(1,0,0).
+    for (Integer k=0; k<nzL; ++k)
+      for (Integer j=0; j<nyL; ++j)
+        for (Integer i=0; i+1<nxL; ++i)
+          AddJumpDissipationFace<pL,pL>(pu, expected,
+            lin_cell_3d(i,j,k,nxL,nyL)*nldofsL,
+            lin_cell_3d(i+1,j,k,nxL,nyL)*nldofsL, hyL*hz);
+    for (Integer k=0; k<nzR; ++k)
+      for (Integer j=0; j<nyR; ++j)
+        for (Integer i=0; i+1<nxR; ++i)
+          AddJumpDissipationFace<pR,pR>(pu, expected,
+            ndofsL+lin_cell_3d(i,j,k,nxR,nyR)*nldofsR,
+            ndofsL+lin_cell_3d(i+1,j,k,nxR,nyR)*nldofsR, hyR*hz);
+    for (Integer k=0; k<nzR; ++k)
+      for (Integer j=0; j<nyR; ++j)
+        AddJumpDissipationFace<pL,pR>(pu, expected,
+          lin_cell_3d(nxL-1,j/2,k,nxL,nyL)*nldofsL,
+          ndofsL+lin_cell_3d(0,j,k,nxR,nyR)*nldofsR,
+          hyR*hz, 0.5, 0.5*Real(j%2));
+
+    Real error2 = 0.0, expected_norm2 = 0.0;
     const Real *rp = r_pos.ReadHostData(), *rn = r_neg.ReadHostData();
-    for (Integer g=0; g<ndofs_split; ++g) l2 += sqr(rp[g] + rn[g]);
-    l2 = std::sqrt(l2);
-    std::cout << "[β sign flip] ||r(+β) + r(−β)||_2 = " << l2
-              << "  → " << (l2 <= 1e-12 ? "PASS" : "WARN") << "\n\n";
+    for (Integer g=0; g<ndofs_split; ++g)
+    {
+      error2 += sqr(rp[g] + rn[g] - expected[g]);
+      expected_norm2 += sqr(expected[g]);
+    }
+    const Real error = std::sqrt(error2);
+    const Real expected_norm = std::sqrt(expected_norm2);
+    const bool passed = std::isfinite(error) && std::isfinite(expected_norm)
+      && expected_norm > 1e-8 && error <= 1e-12*std::max(Real{1}, expected_norm);
+    success = passed && success;
+    std::cout << "[β reversal dissipation] reference norm = " << expected_norm
+              << ", ||r(+β) + r(−β) - reference||_2 = " << error
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n\n";
   }
 
   // --------------------------
-  // (4) Interface pulse on coarse-left column (diagnostic print)
-  //     (pL != pR, ry=2): we don’t enforce a per-DOF equality; this is a
-  //     quick human sanity snapshot.
+  // (4) Interface pulse on coarse-left column: nonzero and conservative.
   // --------------------------
   {
     const Integer nldofsL = (pL+1)*(pL+1)*(pL+1);
@@ -274,11 +370,15 @@ int main(int, char**)
 
     // quick global sum
     for (Integer g=0; g<ndofs_split; ++g) sum_all += pr[g];
+    const bool passed = std::isfinite(sum_all) && std::isfinite(max_minus)
+      && std::abs(sum_all) <= 1e-12 && max_minus > 1e-8;
+    success = passed && success;
 
     // print
     std::cout << "[Interface pulse]  max|r| on minus slice = " << max_minus
-              << "   sum(r) = " << sum_all << " (should be ~0)\n";
+              << "   sum(r) = " << sum_all
+              << "  → " << (passed ? "PASS" : "FAIL") << "\n";
   }
 
-  return 0;
+  return success ? 0 : 1;
 }

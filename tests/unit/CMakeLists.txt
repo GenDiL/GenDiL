@@ -40,6 +40,8 @@ foreach(mode input-replace input-add direct-input output-replace output-add
 endforeach()
 
 gendil_add_test(test-dot test-dot.cpp)
+gendil_add_test(test-array-arithmetic test-array-arithmetic.cpp)
+gendil_add_test(test-matrix-product-pullback test-matrix-product-pullback.cpp)
 gendil_add_test(test-vector-l2-error test-vector-l2-error.cpp)
 gendil_add_test(test-divergence-pullback test-divergence-pullback.cpp)
 gendil_add_test(test-curl-pullback test-curl-pullback.cpp)
@@ -208,6 +210,26 @@ gendil_add_non_nvcc_test(
 gendil_add_test(test-structural-broken-space-restriction test-structural-broken-space-restriction.cpp)
 gendil_add_test(test-cell-reference-geometry test-cell-reference-geometry.cpp)
 gendil_add_test(test-orientation test-orientation.cpp)
+gendil_add_test(test-normal-orientation test-normal-orientation.cpp)
+gendil_add_test(test-local-facet-geometry-view test-local-facet-geometry-view.cpp)
+gendil_add_test(test-local-facet-quadrature-validation test-local-facet-quadrature-validation.cpp)
+target_compile_definitions(test-local-facet-quadrature-validation PRIVATE NDEBUG)
+foreach(mode operator form)
+  add_test(NAME test-local-facet-quadrature-reject-${mode}
+    COMMAND ${CMAKE_COMMAND}
+      -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
+      -DMODE=reject-${mode}
+      "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+endforeach()
+if(USE_CUDA OR USE_HIP)
+  add_test(NAME test-local-facet-quadrature-reject-device-operator
+    COMMAND ${CMAKE_COMMAND}
+      -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
+      -DMODE=reject-device-operator
+      "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+endif()
 gendil_add_test(test-face-read-dofs-direct-global test-face-read-dofs-direct-global.cpp)
 gendil_add_non_nvcc_test(test-face-read-dofs-direct-global-vector test-face-read-dofs-direct-global-vector.cpp)
 gendil_add_test(test-generic-oriented-dof-view test-generic-oriented-dof-view.cpp)
@@ -303,6 +325,7 @@ endforeach()
 gendil_add_non_nvcc_test(test-weak-form test-weak-form.cpp)
 gendil_add_non_nvcc_test(test-vector-h1-generic-operator test-vector-h1-generic-operator.cpp)
 gendil_add_non_nvcc_test(test-named-field-requirements test-named-field-requirements.cpp)
+gendil_add_non_nvcc_test(test-facet-size-dimensions test-facet-size-dimensions.cpp)
 gendil_add_non_nvcc_test(test-vector-weakform-traits test-vector-weakform-traits.cpp)
 gendil_add_non_nvcc_test(test-vector-expression-construction test-vector-expression-construction.cpp)
 gendil_add_non_nvcc_test(test-transpose-expression test-transpose-expression.cpp)

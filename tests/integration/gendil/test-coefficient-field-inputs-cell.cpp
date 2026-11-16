@@ -223,10 +223,10 @@ int TestCoefficientFieldInputsCell()
    std::cout << "  FieldValue+FieldGradient err  = " << err_value_and_gradient << "\n";
    std::cout << "  Multiple FieldValue error     = " << err_multiple_fields << "\n";
 
-   if (err_value > tol ||
-       err_gradient > tol ||
-       err_value_and_gradient > tol ||
-       err_multiple_fields > tol)
+   if (!(err_value <= tol) ||
+       !(err_gradient <= tol) ||
+       !(err_value_and_gradient <= tol) ||
+       !(err_multiple_fields <= tol))
    {
       std::cerr << "FAILED: cell coefficient field-input operator mismatch.\n";
       return 1;

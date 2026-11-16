@@ -44,7 +44,9 @@ void operator delete[]( void * pointer, std::size_t ) noexcept
    std::free( pointer );
 }
 
-namespace {
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace p_nonconforming_fixed_stencil_test {
 
 using namespace gendil;
 
@@ -638,9 +640,10 @@ bool TestQ1Q2Case()
    return success;
 }
 
-} // namespace
+} // namespace p_nonconforming_fixed_stencil_test
 
 int main()
 {
+   using namespace p_nonconforming_fixed_stencil_test;
    return TestQ1Q2Case< false >() && TestQ1Q2Case< true >() ? 0 : 1;
 }

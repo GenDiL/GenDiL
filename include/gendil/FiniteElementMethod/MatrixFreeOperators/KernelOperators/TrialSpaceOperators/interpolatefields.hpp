@@ -18,9 +18,10 @@
  *    element_context, integrand);
  * @endcode
  * The returned StaticMap contains InterpolatedField entries keyed by NameTag.
- * Boundary interpolation adds a face argument and also returns one map. Interior
- * interpolation returns FaceFields with separate minus and plus maps; their side
- * ordering follows the supplied face, whether current/neighbor or canonical.
+ * Boundary interpolation adds a face argument and also returns one map. Global
+ * interior interpolation returns FacetTraceFields in fixed weak-form minus/plus
+ * order. InterpolateLocalFacetFields returns LocalFacetFields in current/neighbor
+ * order; local evaluation then selects the weak-form trace views.
  *
  * The operator context supplies reusable basis data and the integrand's signature,
  * already resolved against the complete form. Only the named reads and operators
@@ -37,6 +38,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/Connectivities/faceconnectivity.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/executioncontext.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 #include "gendil/Utilities/staticmap.hpp"
@@ -50,24 +52,33 @@ namespace gendil
 {
 
 /**
- * @brief Named quadrature fields on the two sides of an interior facet.
+ * @brief Named quadrature fields in fixed weak-form minus/plus order.
  *
- * Local traversal supplies current/neighbor fields; canonical traversal supplies
- * fixed minus/plus fields. The two maps may contain different names and operators.
+ * Global interpolation owns these maps; local evaluation uses references to its
+ * current/neighbor storage in the required trace order. The two maps may contain
+ * different names and operators.
  */
 template < typename MinusFields, typename PlusFields >
-struct FaceFields
+struct FacetTraceFields
 {
    MinusFields minus_fields;
    PlusFields plus_fields;
 
-   /// Unqualified access uses the current (minus) side after facet validation.
+   /// Unqualified access uses the minus trace after facet validation.
    template < typename Key >
    GENDIL_HOST_DEVICE
    constexpr decltype(auto) Get() const
    {
       return minus_fields.template Get<Key>();
    }
+};
+
+/// Own local interpolants in current/neighbor order, independent of trace order.
+template < typename CurrentFields, typename NeighborFields >
+struct LocalFacetFields
+{
+   CurrentFields current_fields;
+   NeighborFields neighbor_fields;
 };
 
 namespace details
@@ -345,6 +356,14 @@ struct FacetFieldSideBinding
    const FaceQuadData & qdata;
 };
 
+template < typename FaceSide, typename VolumeSpace, typename FaceQuadData >
+GENDIL_HOST_DEVICE
+constexpr auto MakeFacetFieldSideBinding(const FaceSide& side,
+   const VolumeSpace& volume_space, const FaceQuadData& qdata)
+{
+   return FacetFieldSideBinding<FaceSide, VolumeSpace, FaceQuadData>{side, volume_space, qdata};
+}
+
 /// Select the minus side (the adjacent cell for a physical boundary).
 template < typename FaceContext, typename FieldSpace, typename QDataWrapper >
 GENDIL_HOST_DEVICE
@@ -353,18 +372,8 @@ constexpr auto MakeMinusFacetFieldBinding(
    const FieldSpace & field_space,
    const QDataWrapper & qdata_wrapper )
 {
-   decltype(auto) volume_space = GetMinusFacetFieldVolumeSpace(field_space);
-   decltype(auto) qdata = qdata_wrapper.MinusSide();
-
-   using FaceSide = std::remove_cvref_t<decltype(face_info.MinusSide())>;
-   using VolumeSpace = std::remove_cvref_t<decltype(volume_space)>;
-   using FaceQuadData = std::remove_cvref_t<decltype(qdata)>;
-
-   return FacetFieldSideBinding<FaceSide, VolumeSpace, FaceQuadData>{
-      face_info.MinusSide(),
-      volume_space,
-      qdata
-   };
+   return MakeFacetFieldSideBinding(face_info.MinusSide(),
+      GetMinusFacetFieldVolumeSpace(field_space), qdata_wrapper.MinusSide());
 }
 
 /// Select the plus side using the same ordering as the supplied interior face.
@@ -375,18 +384,30 @@ constexpr auto MakePlusFacetFieldBinding(
    const FieldSpace & field_space,
    const QDataWrapper & qdata_wrapper )
 {
-   decltype(auto) volume_space = GetPlusFacetFieldVolumeSpace(field_space);
-   decltype(auto) qdata = qdata_wrapper.PlusSide();
+   return MakeFacetFieldSideBinding(face_info.PlusSide(),
+      GetPlusFacetFieldVolumeSpace(field_space), qdata_wrapper.PlusSide());
+}
 
-   using FaceSide = std::remove_cvref_t<decltype(face_info.PlusSide())>;
-   using VolumeSpace = std::remove_cvref_t<decltype(volume_space)>;
-   using FaceQuadData = std::remove_cvref_t<decltype(qdata)>;
+/// Select current storage, independently of its canonical trace identity.
+template < typename FaceContext, typename FieldSpace, typename QDataWrapper >
+GENDIL_HOST_DEVICE
+constexpr auto MakeCurrentFacetFieldBinding(
+   const FaceContext& face_info, const FieldSpace& field_space,
+   const QDataWrapper& qdata_wrapper)
+{
+   return MakeFacetFieldSideBinding(face_info.CurrentSide(),
+      GetMinusFacetFieldVolumeSpace(field_space), qdata_wrapper.MinusSide());
+}
 
-   return FacetFieldSideBinding<FaceSide, VolumeSpace, FaceQuadData>{
-      face_info.PlusSide(),
-      volume_space,
-      qdata
-   };
+/// Select neighbor storage, independently of its canonical trace identity.
+template < typename FaceContext, typename FieldSpace, typename QDataWrapper >
+GENDIL_HOST_DEVICE
+constexpr auto MakeNeighborFacetFieldBinding(
+   const FaceContext& face_info, const FieldSpace& field_space,
+   const QDataWrapper& qdata_wrapper)
+{
+   return MakeFacetFieldSideBinding(face_info.NeighborSide(),
+      GetPlusFacetFieldVolumeSpace(field_space), qdata_wrapper.PlusSide());
 }
 
 /**
@@ -426,9 +447,10 @@ decltype(auto) ReadFieldDofs(
    }
 }
 
-// Select the side after resolving the field by name; storage stays name-only.
+// Select the first/second stored endpoint after resolving the field by name.
+// These endpoints are current/neighbor locally and fixed minus/plus globally.
 template <
-   bool Plus,
+   bool SecondSide,
    typename Requirement,
    typename KernelContext,
    typename ExecutionContext,
@@ -447,7 +469,14 @@ auto InterpolateFacetBoundField(
 
    const auto binding = [&]()
    {
-      if constexpr (Plus)
+      if constexpr (requires { face.CurrentSide(); })
+      {
+         if constexpr (SecondSide)
+            return MakeNeighborFacetFieldBinding(face, source.space, finite_element_quad_data);
+         else
+            return MakeCurrentFacetFieldBinding(face, source.space, finite_element_quad_data);
+      }
+      else if constexpr (SecondSide)
       {
          return MakePlusFacetFieldBinding(face, source.space, finite_element_quad_data);
       }
@@ -467,7 +496,7 @@ auto InterpolateFacetBoundField(
 }
 
 template <
-   bool Plus,
+   bool SecondSide,
    typename KernelContext,
    typename ExecutionContext,
    typename OperatorContext,
@@ -483,10 +512,10 @@ auto InterpolateFacetBoundFields(
 {
    // Complete each gather/interpolation before beginning the next field, and
    // construct the final named map directly without intermediate tuples.
-   return StaticMap<decltype(InterpolateFacetBoundField<Plus, Fields>(
+   return StaticMap<decltype(InterpolateFacetBoundField<SecondSide, Fields>(
       kernel_context, execution_context, operator_context, face))...>{
       {
-         InterpolateFacetBoundField<Plus, Fields>(
+         InterpolateFacetBoundField<SecondSide, Fields>(
             kernel_context, execution_context, operator_context, face)...
       }
    };
@@ -495,10 +524,10 @@ auto InterpolateFacetBoundFields(
 /**
  * @brief Interpolate an interior integrand's reads separately on each side.
  *
- * Each map uses its side's required names and masks. Distinct contexts allow
- * cached current rows with restricted neighbor reads, or two local assembly
- * buffers sharing the same field names. Minus interpolation finishes before
- * plus interpolation begins, so their temporary staging can reuse scratch.
+ * Each map uses its weak-form trace side's required names and masks. Distinct
+ * contexts allow separate assembly buffers sharing the same field names.
+ * Minus interpolation finishes before plus interpolation begins, so their
+ * temporary staging can reuse scratch.
  */
 template <
    typename KernelContext,
@@ -538,7 +567,32 @@ auto InterpolateFields(
       face,
       PlusReads{});
 
-   return FaceFields{std::move(minus_fields), std::move(plus_fields)};
+   return FacetTraceFields{std::move(minus_fields), std::move(plus_fields)};
+}
+
+// Route fixed weak-form trace requests to current/neighbor interpolation storage.
+template<class Kernel, class CurrentContext, class NeighborContext,
+         class OperatorContext, class Face, class Integrand>
+GENDIL_HOST_DEVICE
+auto InterpolateLocalFacetFields(Kernel& kernel, const CurrentContext& current,
+   const NeighborContext& neighbor, const OperatorContext& context,
+   const Face& face, const Integrand&)
+{
+   using Signature = typename OperatorContext::template signature_for<Integrand>;
+   constexpr int Sign = static_face_normal_orientation_v<Face>;
+   constexpr auto CurrentTraceSide = Sign == 1 ? SemanticSide::Minus : SemanticSide::Plus;
+   constexpr auto NeighborTraceSide = Sign == 1 ? SemanticSide::Plus : SemanticSide::Minus;
+   using CurrentReads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::template active_inputs_on<CurrentTraceSide>,
+      typename Signature::template bound_inputs_on<CurrentTraceSide>>>;
+   using NeighborReads = merge_named_field_requirement_list_t<concat_t<
+      typename Signature::template active_inputs_on<NeighborTraceSide>,
+      typename Signature::template bound_inputs_on<NeighborTraceSide>>>;
+   auto current_fields = InterpolateFacetBoundFields<false>(
+      kernel, current, context, face, CurrentReads{});
+   auto neighbor_fields = InterpolateFacetBoundFields<true>(
+      kernel, neighbor, context, face, NeighborReads{});
+   return LocalFacetFields{std::move(current_fields), std::move(neighbor_fields)};
 }
 
 /// Read both interior sides from one invocation context using their restrictions.
@@ -586,7 +640,13 @@ auto InterpolateBoundaryBoundField(
    const auto & source = execution_context.template GetReadField<Requirement::name>();
    const auto & finite_element_quad_data =
       operator_context.template GetFiniteElementFacetQuadData<Requirement::name>();
-   const auto binding = MakeMinusFacetFieldBinding(face, source.space, finite_element_quad_data);
+   const auto binding = [&]
+   {
+      if constexpr (requires { face.CurrentSide(); })
+         return MakeCurrentFacetFieldBinding(face, source.space, finite_element_quad_data);
+      else
+         return MakeMinusFacetFieldBinding(face, source.space, finite_element_quad_data);
+   }();
 
    decltype(auto) element_dofs = [&]() -> decltype(auto)
    {

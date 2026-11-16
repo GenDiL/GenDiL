@@ -11,7 +11,7 @@
 
 using namespace gendil;
 
-namespace
+namespace gendil_test_generic_global_face_domains
 {
 
 #if defined(GENDIL_USE_DEVICE)
@@ -126,7 +126,7 @@ bool CheckClose(
              << " | abs L2 error = " << abs_err
              << ", rel L2 error = " << rel_err << "\n";
 
-   if (rel_err > tol)
+   if (!std::isfinite(abs_err) || !std::isfinite(rel_err) || rel_err > tol)
    {
       std::cerr << "FAILED: " << label << " exceeded tolerance " << tol << "\n";
       return false;
@@ -204,6 +204,11 @@ bool CheckDenseClose(
    Real max_err = 0.0;
    for (size_t i = 0; i < dense.size(); ++i)
    {
+      if (!std::isfinite(dense[i]) || !std::isfinite(ref[i]))
+      {
+         std::cerr << "FAILED: " << label << " has a non-finite entry at " << i << "\n";
+         return false;
+      }
       max_err = std::max(max_err, std::abs(dense[i] - ref[i]));
    }
 
@@ -442,6 +447,13 @@ bool TestInteriorTwoCellSigns()
             fe_space.GetNumberOfFiniteElementDofs()),
          canonical_ref) &&
       success;
+   success = CheckDenseClose(
+      "two-Cell canonical local sign-sensitive dense reference",
+      BuildDenseMatrix(
+         MakeGenericOperator<LocalKernelPolicy>(
+            canonical_sign_sensitive_form, local_ctx, integration_rule),
+         fe_space.GetNumberOfFiniteElementDofs()),
+      canonical_ref) && success;
    return success;
 }
 
@@ -808,6 +820,7 @@ bool TestDispatchIndependence()
 
 int main()
 {
+   using namespace gendil_test_generic_global_face_domains;
    bool success = true;
    success = TestContextStorage() && success;
    success = TestInteriorTwoCellSigns() && success;

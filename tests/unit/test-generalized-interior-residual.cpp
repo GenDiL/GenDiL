@@ -103,7 +103,10 @@ bool CheckCoupledMesh()
       const Real uc = U(point.cell, point.x, point.y), un = U(neighbor, point.x, point.y);
       const Real pc = P(point.cell, point.x, point.y), pn = P(neighbor, point.x, point.y);
       const Real fc = F(point.cell, point.x, point.y), fn = F(neighbor, point.x, point.y);
-      AddP1(rows, point, hx, hy, (uc+un)/2 + (uc-un)*(pc+pn)/2 + fc-fn);
+      // Cartesian global faces choose the higher-index cell as minus. A
+      // single test jump changes sign between visits; two jumps cancel it.
+      const Real test_jump_sign = point.cell > neighbor ? 1 : -1;
+      AddP1(rows, point, hx, hy, test_jump_sign*(uc+un)/2 + (uc-un)*(pc+pn)/2 + fc-fn);
       expected[24+point.cell] += point.weight*(pc-pn);
    });
    for (size_t i = 0; i < rows.size(); ++i) { expected[3+i] = rows[i]; }
@@ -258,7 +261,8 @@ bool CheckWeightedInteriorEndpoints()
    InteriorPoints(2,1,hx,hy,0,0,[&](const PointData& point,size_t neighbor) {
       const Real current=value(point.cell,point.xi,point.eta);
       const Real adjacent=value(neighbor,1-point.xi,point.eta);
-      AddP1(rows,point,hx,hy,current-adjacent+2);
+      const Real test_jump_sign = point.cell > neighbor ? 1 : -1;
+      AddP1(rows,point,hx,hy,current-adjacent+2*test_jump_sign);
    });
    std::array<Real,12> expected{};
    for(size_t row=0;row<8;++row)

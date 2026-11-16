@@ -4,13 +4,15 @@
 
 #include <gendil/gendil.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 using namespace gendil;
 
-namespace
+namespace sipdg_coefficient_field_inputs_test
 {
 
 struct CellAffineField
@@ -535,7 +537,7 @@ int TestSIPDGCoefficientFieldInputs()
          fe_space,
          mu_h);
 
-   const Real sigma = 1.0;
+   const Real sigma = -1.0;
    const Real kappa = static_cast<Real>((order + 1) * (order + 1));
 
    TrialSpace<"u"> u;
@@ -551,7 +553,7 @@ int TestSIPDGCoefficientFieldInputs()
          });
 
    auto tau =
-      MakeCoefficient<"penalty", InverseFacetSize>(
+      MakeCoefficient<"penalty", InverseNormalCellSize>(
          [=] GENDIL_HOST_DEVICE (const Real h_inv) -> Real
          {
             return kappa * h_inv;
@@ -564,7 +566,7 @@ int TestSIPDGCoefficientFieldInputs()
          interior_facets,
          - average(mu * dot(grad(u), Normal{})) * jump(v)
          + sigma * jump(u) * average(mu * dot(grad(v), Normal{}))
-         + tau * average(mu) * jump(u) * jump(v));
+         + average(tau * mu) * jump(u) * jump(v));
    auto diffusion_form =
       integrate(cells, mu * dot(grad(u), grad(v))) + facet_form;
 
@@ -610,14 +612,15 @@ int TestSIPDGCoefficientFieldInputs()
 
    const Real tol = 1e-11;
    const Real separation_tol = 1e-3;
-   if (rel_err > tol)
+   if (!(rel_err <= tol))
    {
       std::cerr
          << "FAILED: generic SIPDG coefficient field-input form does not "
          << "match the hand oracle.\n";
       return 1;
    }
-   if (minus_only_separation < separation_tol)
+   if (!std::isfinite(minus_only_separation) ||
+       minus_only_separation < separation_tol)
    {
       std::cerr
          << "FAILED: manufactured data does not distinguish averaged mu "
@@ -625,13 +628,55 @@ int TestSIPDGCoefficientFieldInputs()
       return 1;
    }
 
+   // Check every matrix entry: agreement with the hand oracle alone would
+   // also pass if both used the nonsymmetric interior-penalty sign.
+   const Integer num_dofs = u_h.Size();
+   std::vector<Real> matrix(num_dofs * num_dofs);
+   Vector basis(num_dofs);
+   Real matrix_scale = 1.0;
+   for (Integer column = 0; column < num_dofs; ++column)
+   {
+      basis = 0.0;
+      basis.ReadWriteHostData()[column] = 1.0;
+      const Vector action = ApplyOperator(op, basis);
+      const Real* values = action.ReadHostData();
+      for (Integer row = 0; row < num_dofs; ++row)
+      {
+         if (!std::isfinite(values[row]))
+         {
+            std::cerr << "FAILED: SIPDG matrix contains a nonfinite entry.\n";
+            return 1;
+         }
+         matrix[row * num_dofs + column] = values[row];
+         matrix_scale = std::max(matrix_scale, std::abs(values[row]));
+      }
+   }
+   Real symmetry_error = 0.0;
+   for (Integer row = 0; row < num_dofs; ++row)
+   {
+      for (Integer column = 0; column < row; ++column)
+      {
+         symmetry_error = std::max(symmetry_error, std::abs(
+            matrix[row * num_dofs + column] -
+            matrix[column * num_dofs + row]));
+      }
+   }
+   std::cout << "  SIPDG matrix symmetry error = "
+             << symmetry_error / matrix_scale << "\n";
+   if (!(symmetry_error <= tol * matrix_scale))
+   {
+      std::cerr << "FAILED: SIPDG coefficient field-input operator is not symmetric.\n";
+      return 1;
+   }
+
    return 0;
 }
 
-} // namespace
+} // namespace sipdg_coefficient_field_inputs_test
 
 int main()
 {
+   using namespace sipdg_coefficient_field_inputs_test;
    if (TestSIPDGCoefficientFieldInputs<1>() != 0) { return 1; }
    if (TestSIPDGCoefficientFieldInputs<2>() != 0) { return 1; }
 

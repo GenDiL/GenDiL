@@ -6,7 +6,9 @@
 #include <iostream>
 #include <vector>
 
-namespace
+// Keep fixture-dependent template instantiations externally linked:
+// AppleClang 21's OpenMP liveness analysis scales poorly for internal definitions.
+namespace vector_l2_error_test
 {
 using namespace gendil;
 using Policy = SerialKernelConfiguration;
@@ -187,10 +189,11 @@ bool CheckOriginalCase()
    ok = Close(Error(space, rule, array_exact, input, ok), std::sqrt(Real{5}), "zero versus (1,2), array") && ok;
    return Close(Error(space, rule, recursive_exact, input, ok), std::sqrt(Real{5}), "zero versus (1,2), recursive array") && ok;
 }
-} // namespace
+} // namespace vector_l2_error_test
 
 int main()
 {
+   using namespace vector_l2_error_test;
    bool ok = CheckOriginalCase();
    ok = CheckSpace<2, 3, false>() && ok;
    ok = CheckSpace<2, 3, true>() && ok;

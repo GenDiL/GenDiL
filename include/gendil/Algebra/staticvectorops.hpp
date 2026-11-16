@@ -4,31 +4,39 @@
 
 #pragma once
 
-#include "gendil/Algebra/staticalgebraconcepts.hpp"
-#include "gendil/Utilities/Loop/constexprloop.hpp"
+#include "gendil/Algebra/arrayarithmetic.hpp"
 
 namespace gendil
 {
 
-// Retain the vector's storage and scalar type. Readability alone does not
-// guarantee that a new writable result of that type can be returned.
-template < typename T, StaticVector<T> VecType >
-   requires std::same_as<T, vector_value_t<VecType>> &&
-            (!std::is_array_v<VecType>) &&
-            std::default_initializable<VecType> &&
-            std::move_constructible<VecType> &&
-            requires(VecType& out, const VecType& in, const T& scalar, GlobalIndex i) {
-               GetValue(out, i) = scalar * static_cast<T>(GetValue(in, i));
-            }
+// Scale any readable static vector into owning storage. Native recursive-array
+// overloads retain their existing arithmetic and custom-element contracts.
+template<class Scalar, StaticVector Vector>
+   requires (std::is_arithmetic_v<Scalar> &&
+             array_arithmetic_detail::class_operand<Vector> &&
+             !array_arithmetic_detail::is_recursive_array<std::remove_cvref_t<Vector>>)
 GENDIL_HOST_DEVICE
-constexpr auto operator*( const T & scalar, const VecType & vec )
+constexpr auto operator*(const Scalar& scalar, const Vector& vector)
 {
-   VecType result;
-   ConstexprLoop< static_extent_v<VecType> >( [&] ( auto i )
-   {
-      GetValue(result, i) = scalar * static_cast<T>(GetValue(vec, i));
-   });
-   return result;
+   using Entry = std::remove_cvref_t<decltype(
+      std::declval<Scalar>() * std::declval<vector_value_t<Vector>>())>;
+   using Result = array_arithmetic_detail::result_t<Entry, Vector>;
+   return array_arithmetic_detail::ApplyEntrywise<Result>(
+      vector, [&](auto value) { return scalar * value; });
+}
+
+template<StaticVector Vector, class Scalar>
+   requires (std::is_arithmetic_v<Scalar> &&
+             array_arithmetic_detail::class_operand<Vector> &&
+             !array_arithmetic_detail::is_recursive_array<std::remove_cvref_t<Vector>>)
+GENDIL_HOST_DEVICE
+constexpr auto operator*(const Vector& vector, const Scalar& scalar)
+{
+   using Entry = std::remove_cvref_t<decltype(
+      std::declval<vector_value_t<Vector>>() * std::declval<Scalar>())>;
+   using Result = array_arithmetic_detail::result_t<Entry, Vector>;
+   return array_arithmetic_detail::ApplyEntrywise<Result>(
+      vector, [&](auto value) { return value * scalar; });
 }
 
 } // namespace gendil

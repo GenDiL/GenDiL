@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: (BSD-3-Clause)
 
-// Componentwise addition of fixed-size arrays and mixed array storage.
-#include "gendil/Algebra/arrayaddition.hpp"
+// Componentwise arithmetic of fixed-size arrays and mixed array storage.
+#include "gendil/Algebra/arrayarithmetic.hpp"
 
 // Readable fixed-size vector and matrix contracts.
 #include "gendil/Algebra/staticalgebraconcepts.hpp"
