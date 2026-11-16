@@ -53,9 +53,11 @@ DenseMatrix Dense(const Operator& op, const Integer size)
    Vector x(size), y(size);
    for (Integer column = 0; column < size; ++column)
    {
-      x = 0.0;
+      // WriteHostData discards prior device contents: fill the whole basis vector.
+      Real* basis = x.WriteHostData();
+      std::fill_n(basis, size, 0.0);
+      basis[column] = 1.0;
       y = 0.0;
-      x.WriteHostData()[column] = 1.0;
       op(x, y);
       const Real* values = y.ReadHostData();
       for (Integer row = 0; row < size; ++row)

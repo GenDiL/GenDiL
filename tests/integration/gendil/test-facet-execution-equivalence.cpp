@@ -175,7 +175,10 @@ Matrix Dense(const Operator& op)
    Vector x(dofs), y(dofs);
    for (Integer column = 0; column < dofs; ++column)
    {
-      x = 0.; x.WriteHostData()[column] = 1.;
+      // WriteHostData discards prior device contents: fill the whole basis vector.
+      Real* basis = x.WriteHostData();
+      std::fill_n(basis, dofs, 0.0);
+      basis[column] = 1.0;
       op(x,y);
       GENDIL_DEVICE_SYNC;
       const Real* output = y.ReadHostData();
