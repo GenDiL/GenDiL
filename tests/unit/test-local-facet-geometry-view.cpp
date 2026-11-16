@@ -1035,7 +1035,11 @@ bool CheckNormalConstruction(int direction, const Integrand& integrand)
    using Side = FaceView<std::integral_constant<Integer, 0>, HyperCube<2>,
       IdentityOrientation<2>, CanonicalVector<2, 0, 1>, ConformingFaceMap<2>>;
    using RuntimeFace = LocalFaceInfo<Side, Empty, int>;
-   const RuntimeFace runtime{{}, {}, direction};
+   // Avoid nested aggregate initialization of empty face members: ROCm 6.3.1
+   // crashes during aggregate code generation in this fixture.
+   RuntimeFace runtime;
+   runtime.current.cell_index = 0;
+   runtime.normal_orientation = direction;
    const NormalFactoryMesh mesh{};
    const NormalFactoryOperatorContext op{{std::make_tuple(
       MakeTensorProductData(NormalFactoryWeights{1.}, NormalFactoryWeights{.25}))}};
