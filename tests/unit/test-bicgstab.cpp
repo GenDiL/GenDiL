@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <initializer_list>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <string_view>
@@ -111,16 +112,42 @@ Real TrueResidual(const Matrix& op, const Vector& rhs, const Vector& x)
    return rhs_norm == 0 ? residual : residual/rhs_norm;
 }
 
+// Independent evaluations of b - A*x can round differently before cancellation.
+// Scale their comparison by |b| + |A||x|, with the same RHS normalization.
+Real ResidualArithmeticScale(const Matrix& op, const Vector& rhs, const Vector& x)
+{
+   const auto* b = rhs.ReadHostData();
+   const auto* solution = x.ReadHostData();
+   Real scale = 0, rhs_norm = 0;
+   for (size_t i = 0; i < op.size; ++i)
+   {
+      Real row_scale = std::abs(b[i]);
+      for (size_t j = 0; j < op.size; ++j)
+         row_scale += std::abs(op.entries[op.size*i+j])*std::abs(solution[j]);
+      scale = std::hypot(scale, row_scale);
+      rhs_norm = std::hypot(rhs_norm, b[i]);
+   }
+   return rhs_norm == 0 ? scale : scale/rhs_norm;
+}
+
 bool CheckNumerics(const IterativeSolverResult& result, const Matrix& op,
                    const Vector& rhs, const Vector& saved_rhs, const Vector& x,
                    Real tolerance, const char* label)
 {
    const Real actual = TrueResidual(op, rhs, x);
    constexpr Real slack = 64*std::numeric_limits<Real>::epsilon();
+   const Real reporting_tolerance = slack*ResidualArithmeticScale(op, rhs, x);
    bool ok = Check(Same(rhs, saved_rhs), "BiCGSTAB changed its RHS");
-   ok = Check(std::isfinite(actual) && std::isfinite(result.relative_error) &&
-      result.relative_error >= 0 &&
-      std::abs(result.relative_error-actual) <= slack*actual, label) && ok;
+   const bool report_matches = std::isfinite(actual) &&
+      std::isfinite(result.relative_error) && result.relative_error >= 0 &&
+      std::isfinite(reporting_tolerance) &&
+      std::abs(result.relative_error-actual) <= reporting_tolerance;
+   if (!report_matches)
+      std::cerr << std::setprecision(17) << label
+         << ": reported residual=" << result.relative_error
+         << ", independent residual=" << actual
+         << ", reporting tolerance=" << reporting_tolerance << '\n';
+   ok = report_matches && ok;
    if (result.success)
       ok = Check(actual <= tolerance*(1+slack), label) && ok;
    return ok;

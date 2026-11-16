@@ -49,7 +49,7 @@ jobs:
         run: cmake --build build -- -j$(nproc)
 
       - name: Run tests
-        run: cmake --build build --target test
+        run: ctest --test-dir build --output-on-failure
 
       - name: Run clang-tidy
         if: matrix.compiler == 'clang++'
