@@ -111,14 +111,6 @@ bool TransverseFace(const std::array<Real, D>& x)
    return false;
 }
 
-#if defined(GENDIL_USE_DEVICE)
-template<class Layout, Integer Shared, Integer Batch>
-using TestPolicy = DeviceKernelConfiguration<Layout, Shared, Batch>;
-#else
-template<class Layout, Integer Shared, Integer Batch>
-using TestPolicy = SerialKernelConfiguration;
-#endif
-
 template<Integer D, size_t... I>
 auto MakeOrders(std::index_sequence<I...>)
 { return FiniteElementOrders<(static_cast<void>(I), 2)...>{}; }
@@ -168,9 +160,20 @@ Vector Evaluate(const Form& form, const Context& context, const Rule& rule,
    return Apply(MakeGenericOperator<Policy>(form, context, rule), input);
 }
 
-template<Integer D, bool Global, class Policy, class Context, class Rule>
+template<Integer D, bool Global, class DevicePolicy, class Context, class Rule>
 bool CheckForms(const Context& context, const Rule& rule, const Vector& input)
 {
+   // Check the device layout even when this fixture executes the serial fallback.
+   using DofShape = orders_to_num_dofs<decltype(MakeOrders<D>(std::make_index_sequence<D>{}))>;
+   using QuadShape = typename Rule::points::num_points_tensor;
+   static_assert(threaded_shape_covered_v<DevicePolicy, max_sequence_t<DofShape, QuadShape>>,
+      "Device test layout must cover the fixture's DoF and quadrature shapes.");
+#if defined(GENDIL_USE_DEVICE)
+   using Policy = DevicePolicy;
+#else
+   using Policy = SerialKernelConfiguration;
+#endif
+
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
@@ -236,9 +239,9 @@ bool RunDimension()
    Real* data = input.WriteHostData();
    for (Integer i = 0; i < input.Size(); ++i)
       data[i] = 0.1 + 0.07 * i + 0.03 * ((i * 7) % 11);
-   bool success = CheckForms<D, false, TestPolicy<ThreadBlockLayout<2>, 1, 1>>(
+   bool success = CheckForms<D, false, DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 1>>(
       local_context, rule, input);
-   success = CheckForms<D, false, TestPolicy<ThreadBlockLayout<8, 4>, 2, 1>>(
+   success = CheckForms<D, false, DeviceKernelConfiguration<ThreadBlockLayout<8, 4>, 2, 1>>(
       local_context, rule, input) && success;
 
    const auto partition = MakePartition(MakeCellPart(mesh),
@@ -248,9 +251,9 @@ bool RunDimension()
       DGDirectSumNumbering{});
    const auto global_context = MakeWeakFormContext(
       MakeTrialField<"u">(global_space), MakeIntegrationDomain<"m">(partition));
-   success = CheckForms<D, true, TestPolicy<ThreadBlockLayout<2>, 1, 4>>(
+   success = CheckForms<D, true, DeviceKernelConfiguration<ThreadBlockLayout<4>, 1, 4>>(
       global_context, rule, input) && success;
-   success = CheckForms<D, true, TestPolicy<ThreadBlockLayout<8, 4>, 2, 4>>(
+   success = CheckForms<D, true, DeviceKernelConfiguration<ThreadBlockLayout<8, 4>, 2, 4>>(
       global_context, rule, input) && success;
    return success;
 }
