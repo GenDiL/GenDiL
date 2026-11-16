@@ -211,12 +211,6 @@ constexpr auto GetPlusSide(
       return point.CurrentSide();
 }
 
-template<class FaceInfo>
-LocalFacetContext(const FaceInfo&) -> LocalFacetContext<FaceInfo>;
-
-template<class FaceInfo, class NeighborCell>
-LocalFacetContext(const FaceInfo&, const NeighborCell&) -> LocalFacetContext<FaceInfo, NeighborCell>;
-
 template<class Channels>
 inline constexpr bool global_interior_channels_require_plus_side_jacobian_v =
    std::remove_cvref_t<Channels>::template Contains<GradientPlusChannel>();

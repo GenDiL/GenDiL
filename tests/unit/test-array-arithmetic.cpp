@@ -6,6 +6,7 @@
 #include <gendil/gendil.hpp>
 
 #include <array>
+#include <cstddef>
 #include <iostream>
 #include <type_traits>
 
@@ -77,10 +78,6 @@ template<class L, class R>
 concept CanSubtract = requires(const L& left, const R& right) { left - right; };
 template<class L, class R>
 concept CanMultiply = requires(const L& left, const R& right) { left * right; };
-template<class L, class R>
-concept CanSubtractArrays = requires(const L& left, const R& right)
-{ gendil::operator-(left, right); };
-
 using ArrayVector = std::array<short, 3>;
 using RecursiveVector = SerialRecursiveArray<short, 3>;
 using ArrayMatrix = std::array<std::array<short, 3>, 2>;
@@ -126,8 +123,10 @@ static_assert(CanAdd<ReadOnlyVector<float, 3>, float[3]>);
 static_assert(CanSubtract<float[3], ArrayVector>);
 static_assert(CanSubtract<RecursiveVector, float[3]>);
 static_assert(!CanAdd<float[3], float[3]>);
-// Unqualified raw-array subtraction is built-in pointer subtraction, not algebra.
-static_assert(!CanSubtractArrays<float[3], float[3]>);
+// Raw arrays use built-in pointer subtraction; no array operator participates.
+// Probe the expression rather than forming an invalid raw/raw operator signature.
+static_assert(std::is_same_v<decltype(std::declval<const float(&)[3]>() -
+                                    std::declval<const float(&)[3]>()), std::ptrdiff_t>);
 
 template<class T, size_t N>
 GENDIL_HOST_DEVICE

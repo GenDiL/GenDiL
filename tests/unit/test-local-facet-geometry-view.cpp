@@ -1037,8 +1037,8 @@ bool CheckNormalConstruction(int direction, const Integrand& integrand)
    using RuntimeFace = LocalFaceInfo<Side, Empty, int>;
    const RuntimeFace runtime{{}, {}, direction};
    const NormalFactoryMesh mesh{};
-   const NormalFactoryOperatorContext op{{std::tuple{
-      MakeTensorProductData(NormalFactoryWeights{1.}, NormalFactoryWeights{.25})}}};
+   const NormalFactoryOperatorContext op{{std::make_tuple(
+      MakeTensorProductData(NormalFactoryWeights{1.}, NormalFactoryWeights{.25}))}};
    int evaluations = 0;
    const ElementContext<NormalFactoryCell> element{0, {&evaluations}};
    bool ok = true;

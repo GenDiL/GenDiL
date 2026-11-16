@@ -110,7 +110,7 @@ GENDIL_HOST_DEVICE
 auto Field(const Gradient<Components, Dim>& gradient)
 {
    auto tensors = [&]<size_t... I>(std::index_sequence<I...>)
-   { return std::tuple{GradientTensor<Dim>{gradient[I]}...}; }
+   { return std::make_tuple(GradientTensor<Dim>{gradient[I]}...); }
       (std::make_index_sequence<Components>{});
    return InterpolatedField<Empty, decltype(tensors)>{{}, tensors};
 }
