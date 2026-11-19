@@ -31,6 +31,8 @@ CONFIGURE_DIAGNOSTICS = ("CMakeCache.txt", "compile_commands.json", "GENDILConfi
 TEST_DIAGNOSTICS = ("Testing/Temporary/LastTest.log", "Testing/Temporary/LastTestsFailed.log")
 CHECK_REPORTS = ("configure.log", "build.log", "ctest.log", "clang-tidy.log", "junit.xml",
                  "coverage.json", "coverage.txt", "features.txt", "excluded-tests.txt",
+                 "ctest-inventory.json", "ctest-inventory.log",
+                 "ctest-gpu-selection.json", "ctest-gpu-selection.log",
                  "installed-consumer", "configure-probes") + tuple(
                      Path(path).name for path in CONFIGURE_DIAGNOSTICS + TEST_DIAGNOSTICS)
 

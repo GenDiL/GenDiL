@@ -54,9 +54,11 @@ wait for discovery to finish. Helper-test failures prevent all builds.
 ## CUDA compiler and target coverage
 
 CUDA has two independent jobs because NVCC and Clang accept different subsets of
-the test suite. `cuda-nvcc` retains the existing NVCC exclusions; `cuda-clang`
-compiles those tests as CUDA, including the excluded weak-form, facet, assembly,
-and partition tests. Clang 19 follows the compiler family in the repository's
+the test suite. NVCC excludes weak-form DSL tests affected by its template
+compilation bugs, as well as the other explicitly excluded tests. These tests
+remain enabled for Clang CUDA, HIP, and CPU builds. NVCC still compiles the
+registered low-level arithmetic, geometry, device, and legacy-operator tests.
+Clang 19 follows the compiler family in the repository's
 Matrix machine configuration. Both jobs use the same CUDA toolkit and GPU
 architecture, and each builds its own CUDA-enabled MFEM/Hypre installations.
 The installed consumer uses the same CUDA compiler as its producer.
@@ -64,10 +66,9 @@ CUDA 12.4.1 replaces 12.2.2 because the older NVCC/GCC 12 combination fails on
 the C++20 `std::variant` used by current MFEM; NVIDIA reports the reproducer
 working with [CUDA 12.4.1](https://forums.developer.nvidia.com/t/nvcc-c-20-std-variant-complie-failed/270162/5).
 
-The current all-TPL CUDA registration has 110 default test executables with NVCC
-and 196 with Clang, plus seven examples and 48 benchmarks for either compiler.
-These are executable counts, not CTest case counts or executed GPU tests. An
-additional filtered-synchronization experiment remains excluded from the default
+Configured executable counts and excluded test names are recorded in each job's
+coverage reports; they are not counts of executed GPU tests. The
+filtered-synchronization experiment remains excluded from the default
 build. Six 4D–6D adaptive-advection benchmarks retain their pre-existing exclusion
 for **both** CUDA compilers; CPU/HIP builds register 54 benchmarks. These exclusions
 need separate compilation evidence before they can be narrowed to NVCC alone.

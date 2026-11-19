@@ -283,6 +283,10 @@ class DriverTests(unittest.TestCase):
                 self.assertTrue((reports / "LastTest.log").is_file())
                 self.write(reports / "features.txt", "old features")
                 self.write(reports / "coverage.json", "old coverage")
+                inventory_files = ("ctest-inventory.json", "ctest-inventory.log",
+                                   "ctest-gpu-selection.json", "ctest-gpu-selection.log")
+                for name in inventory_files:
+                    self.write(reports / name, "old CTest inventory")
                 self.write(reports / "context.json", "preserved preparation")
                 self.write(build / "compiled.o", "preserved object")
                 with self.assertRaisesRegex(RuntimeError, f"intentional {failure} failure"):
@@ -295,7 +299,7 @@ class DriverTests(unittest.TestCase):
                           for path in reports.rglob("*") if path.is_file()}
                 self.assertEqual(first, second)
                 for name in ("junit.xml", "LastTest.log", "features.txt", "coverage.json", "ctest.log",
-                             "installed-consumer", "configure-probes"):
+                             "installed-consumer", "configure-probes") + inventory_files:
                     self.assertFalse((reports / name).exists(), name)
                 self.assertEqual(run.phase_status(reports)[failure], "failed")
                 self.assertEqual(run.phase_status(reports)["test"], "unattempted")
