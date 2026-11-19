@@ -24,7 +24,9 @@ network resolution is needed. For a configuration with optional libraries, first
 run `python3 scripts/ci/dependencies.py resolve --output .ci/dependencies.json`,
 then replace `minimal` in the commands above with that configuration.
 `--jobs` controls build
-parallelism and defaults to two. `--work-dir` and `--manifest` select different
+parallelism and defaults to two. Hosted analysis uses four workers to complete
+the full clang-tidy pass within its timeout; other jobs use two.
+`--work-dir` and `--manifest` select different
 build/cache and dependency-manifest locations.
 `check` refreshes the CMake configuration so capability probes reflect the selected
 dependencies, including when reusing a local work directory.
@@ -42,10 +44,11 @@ dependencies, including when reusing a local work directory.
 
 RAJA and GPU profiling services are not enabled. MPI is disabled. The first seven
 configurations run on PRs, pushes to `main`, weekly schedules, and manual runs;
-sanitizers run weekly and on manual runs. Every Release compiler job builds all
-registered tests, examples, and benchmarks in the default build. Examples and
-benchmarks are compiled and linked, but not executed. The analysis job includes
-benchmark sources; the sanitizer job leaves benchmarks disabled. Performance
+sanitizers run weekly and on manual runs. Release compiler jobs build all
+registered tests and examples. CPU compiler jobs also build benchmarks; GPU jobs
+disable benchmark compilation because of its cost. Examples and benchmarks are
+compiled and linked, but not executed. The analysis job includes benchmark
+sources; the sanitizer job leaves benchmarks disabled. Performance
 measurements and thresholds remain outside this workflow.
 Dependency discovery failures leave the workflow failed, but still allow
 `minimal` and any scheduled/manual sanitizer configuration to run. These jobs
@@ -69,15 +72,14 @@ working with [CUDA 12.4.1](https://forums.developer.nvidia.com/t/nvcc-c-20-std-v
 Configured executable counts and excluded test names are recorded in each job's
 coverage reports; they are not counts of executed GPU tests. The
 filtered-synchronization experiment remains excluded from the default
-build. Six 4D–6D adaptive-advection benchmarks retain their pre-existing exclusion
-for **both** CUDA compilers; CPU/HIP builds register 54 benchmarks. These exclusions
-need separate compilation evidence before they can be narrowed to NVCC alone.
+build. Both CUDA jobs and HIP leave `GENDIL_ENABLE_BENCHMARKS=OFF`; local builds
+can enable benchmarks independently of CI.
 
 Each job records the actual configured target inventory and CTest selection in
 `coverage.json` and `coverage.txt`. This makes compiler-specific omissions visible
 without treating a reduced NVCC build as complete CUDA coverage. The report checks
-the selected CUDA compiler identity, the presence of tests/examples/benchmarks,
-and device-language compilation of their sources. The target inventory describes
+the selected CUDA compiler identity, the presence of tests/examples and any
+enabled benchmarks, and device-language compilation of their sources. The target inventory describes
 configuration; a successful build log establishes compilation, and JUnit records
 only the tests actually executed.
 
@@ -156,7 +158,9 @@ immutable, so delete a damaged entry in Actions if it is repeatedly restored;
 the next successful run will save a fresh installation under the same key.
 
 Compiler caches are bounded to 1 GiB per job and can reuse compilation work across
-commits. Complete build trees and NVCC intermediates are not cached. Dependency
+commits within the same configuration. This prevents a later analysis job from
+superseding a compiler job's populated cache. Complete build trees and NVCC
+intermediates are not cached. Dependency
 caches are saved immediately after each successful installation, so a later
 dependency or numerical failure does not discard those builds. For local work,
 `run.py dependencies --dependency NAME` selects a single dependency.

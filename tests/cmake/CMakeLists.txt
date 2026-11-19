@@ -75,6 +75,7 @@ if(USE_HIP)
         "-DHIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}"
         "-DHIP_ROCM_ROOT=${CMAKE_HIP_COMPILER_ROCM_ROOT}"
         -DHIP_DIR=${HIP_DIR}
+        -Dhip_DIR=${hip_DIR}
         -Drocsparse_DIR=${rocsparse_DIR}
         -DEXPECT_SUCCESS=${gendil_missing_rocprim_success}
         ${gendil_configure_probe_arguments}

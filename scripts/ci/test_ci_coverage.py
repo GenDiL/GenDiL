@@ -89,6 +89,19 @@ class CoverageTests(unittest.TestCase):
                 result = coverage.collect(build, reports, {"backend": "cpu", "benchmarks": False})
             self.assertIsNone(result["ctest_gpu_host_only_selection"])
 
+    def test_gpu_coverage_accepts_explicitly_disabled_benchmarks(self):
+        for language, compiler in (("CUDA", "NVIDIA"), ("CUDA", "Clang"), ("HIP", "Clang")):
+            with self.subTest(language=language, compiler=compiler), tempfile.TemporaryDirectory() as directory:
+                build, reports = self.fixture(directory, language, compiler, benchmarks=False)
+                with patch.object(coverage.subprocess, "run", side_effect=self.ctest):
+                    result = coverage.collect(build, reports, {
+                        "backend": language.lower(), "device_compiler_id": compiler, "benchmarks": False})
+                self.assertEqual(result["targets"]["benchmarks"], [])
+                self.assertTrue(result["targets"]["tests"])
+                self.assertTrue(result["targets"]["examples"])
+                self.assertTrue(result["ctest_gpu_host_only_selection"])
+                self.assertEqual(result["errors"], [])
+
     def test_ctest_discovery_failures_preserve_diagnostics(self):
         with tempfile.TemporaryDirectory() as directory:
             build, reports = self.fixture(directory)

@@ -8,9 +8,9 @@
     "gcc": {"backend": "cpu", "cc": "gcc-14", "cxx": "g++-14", "tpls": true, "openmp": true, "native": true, "profile": "gcc", "benchmarks": true},
     "clang": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": true, "openmp": true, "profile": "clang", "benchmarks": true},
     "minimal": {"backend": "cpu", "cc": "gcc-14", "cxx": "g++-14", "tpls": false, "openmp": false, "profile": "gcc", "benchmarks": true},
-    "cuda-nvcc": {"backend": "cuda", "cc": "gcc-12", "cxx": "g++-12", "device_compiler": "/usr/local/cuda/bin/nvcc", "device_compiler_id": "NVIDIA", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-nvcc", "benchmarks": true},
-    "cuda-clang": {"backend": "cuda", "cc": "clang-19", "cxx": "clang++-19", "device_compiler": "clang++-19", "device_compiler_id": "Clang", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-clang", "benchmarks": true},
-    "hip": {"backend": "hip", "cc": "gcc-12", "cxx": "/opt/rocm/bin/hipcc", "host_cxx": "g++-12", "device_compiler": "/opt/rocm/llvm/bin/clang++", "architecture": "gfx90a", "tpls": true, "openmp": true, "profile": "hip", "benchmarks": true},
+    "cuda-nvcc": {"backend": "cuda", "cc": "gcc-12", "cxx": "g++-12", "device_compiler": "/usr/local/cuda/bin/nvcc", "device_compiler_id": "NVIDIA", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-nvcc", "benchmarks": false},
+    "cuda-clang": {"backend": "cuda", "cc": "clang-19", "cxx": "clang++-19", "device_compiler": "clang++-19", "device_compiler_id": "Clang", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-clang", "benchmarks": false},
+    "hip": {"backend": "hip", "cc": "gcc-12", "cxx": "/opt/rocm/bin/hipcc", "host_cxx": "g++-12", "device_compiler": "/opt/rocm/llvm/bin/clang++", "architecture": "gfx90a", "tpls": true, "openmp": true, "profile": "hip", "benchmarks": false},
     "analysis": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": true, "openmp": true, "profile": "clang", "benchmarks": true},
     "sanitizers": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": false, "openmp": false, "profile": "clang", "benchmarks": false}
   }

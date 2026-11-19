@@ -135,7 +135,7 @@ jobs:
         with:
           path: .ci/ccache
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-
+          restore-keys: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-
       - name: Reset compiler-cache statistics
         run: ccache --zero-stats
       - name: Restore MFEM
@@ -203,7 +203,8 @@ jobs:
       - name: Build and check GenDiL
         env:
           CONFIGURATION: ${{ matrix.configuration }}
-        run: python3 scripts/ci/run.py check --configuration "$CONFIGURATION" --jobs 2
+          BUILD_JOBS: ${{ matrix.configuration == 'analysis' && 4 || 2 }}
+        run: python3 scripts/ci/run.py check --configuration "$CONFIGURATION" --jobs "$BUILD_JOBS"
       - name: Check compiler-cache availability
         id: compiler_cache_directory
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
