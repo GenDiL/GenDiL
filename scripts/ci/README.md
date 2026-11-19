@@ -136,6 +136,12 @@ reuse. Required headers, libraries, package files, and MFEM mesh fixtures are
 checked after restoration. Updating MFEM does not invalidate unchanged Hypre or
 Caliper caches. MFEM's `copy_data` target is built so cached installs retain the
 meshes used by integration tests.
+Dependency installations must live outside the GenDiL source tree so CMake can
+export their include paths. With the default work directory they use a stable
+repository-specific directory under `RUNNER_TEMP` (or the local temporary
+directory). An external `--work-dir` keeps them under that directory instead.
+The manifest records the exact prefixes; build objects and reports remain in
+the selected work directory.
 NVCC and Clang CUDA use separate dependency prefixes and cache identities;
 compiler and toolkit versions are included in the manifest.
 Caliper's default host-only cache uses its actual host toolchain and recipe;

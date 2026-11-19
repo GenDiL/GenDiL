@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 
 import dependencies
 import ci_coverage as coverage
@@ -41,6 +42,17 @@ def configuration(name):
 def paths(args):
     work = Path(args.work_dir).resolve()
     return work, work / "build" / args.configuration, work / "reports" / args.configuration
+
+
+def dependency_prefix(work, profile):
+    # Exported targets cannot refer to include directories inside this source tree.
+    base = work / "dependencies"
+    if base.is_relative_to(ROOT):
+        temporary = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()).resolve()
+        base = temporary / "gendil-ci-dependencies" / digest(str(ROOT))[:12]
+    if base.is_relative_to(ROOT):
+        raise RuntimeError("Set --work-dir or RUNNER_TEMP outside the GenDiL source tree for dependency installations")
+    return base / profile
 
 
 def execute(command, log, env=None):
@@ -167,7 +179,7 @@ def prepare_context(args):
         "openmp": cfg["openmp"], "generator": os.environ.get("CMAKE_GENERATOR", "Ninja"),
         "container": os.environ.get("GENDIL_CI_IMAGE", "local"),
         "ccache": shutil.which("ccache"),
-        "cache_prefix": str(work / "dependencies" / cfg["profile"]),
+        "cache_prefix": str(dependency_prefix(work, cfg["profile"])),
         "user_cmake_options": shlex.split(os.environ.get("GENDIL_CI_CMAKE_OPTIONS", "")),
         "toolchain": {
             "cc": version([cc, "--version"]), "cxx": version([cxx, "--version"]),
