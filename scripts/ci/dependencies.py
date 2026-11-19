@@ -172,7 +172,7 @@ def cmake_options(name, context, prefix):
     if name == "mfem":
         # MFEM has no named modules; automatic scanning adds GCC module flags
         # that prevent ccache from caching ordinary C++ compilation.
-        options += ["-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
+        options += ["-DCMAKE_INSTALL_MESSAGE=LAZY", "-DCMAKE_CXX_SCAN_FOR_MODULES=OFF",
                     "-DINSTALL_LIB_DIR=lib", "-DMFEM_PRECISION=double", "-DMFEM_USE_MPI=OFF",
                     "-DMFEM_USE_METIS=OFF", f"-DMFEM_USE_OPENMP={openmp}",
                     "-DMFEM_ENABLE_TESTING=OFF", "-DMFEM_ENABLE_EXAMPLES=OFF",

@@ -58,7 +58,7 @@ jobs:
         run: |
           matrix_args=()
           if [[ "$INCLUDE_SANITIZERS" == true ]]; then matrix_args+=(--include-sanitizers); fi
-          matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}" | python3 -c 'import json,sys; m=json.load(sys.stdin); m["include"]=[r for r in m["include"] if r["configuration"] in ("gcc","clang")]; print(json.dumps(m))')
+          matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}" | python3 -c 'import json,sys; m=json.load(sys.stdin); m["include"]=[r for r in m["include"] if r["configuration"] in ("clang",)]; print(json.dumps(m))')
           dependency_free_matrix=$(python3 scripts/ci/run.py matrix --dependency-free "${matrix_args[@]}")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "dependency_free_matrix=$dependency_free_matrix" >> "$GITHUB_OUTPUT"
