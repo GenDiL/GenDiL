@@ -205,6 +205,52 @@ class DriverTests(unittest.TestCase):
                 self.assertEqual(manifest["dependency_build_options"], {})
                 self.assertEqual(run.phase_status(reports)["prepare"], "passed")
 
+    def test_external_work_directory_keeps_its_dependency_prefix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            root, work = base / "source", base / "external-build"
+            with patch.object(run, "ROOT", root), \
+                 patch.dict(os.environ, {"RUNNER_TEMP": str(root / "unsuitable-temp")}):
+                self.assertEqual(run.dependency_prefix(work, "gcc"), work / "dependencies/gcc")
+                self.assertEqual(run.dependency_prefix(work, "clang"), work / "dependencies/clang")
+
+    def test_in_source_dependency_prefix_is_external_stable_and_profile_specific(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            root, runner_temp = base / "source", base / "runner-temp"
+            with patch.object(run, "ROOT", root), \
+                 patch.dict(os.environ, {"RUNNER_TEMP": str(runner_temp)}):
+                gcc = run.dependency_prefix(root / ".ci", "gcc")
+                clang = run.dependency_prefix(root / ".ci", "clang")
+                self.assertTrue(gcc.is_relative_to(runner_temp))
+                self.assertFalse(gcc.is_relative_to(root))
+                self.assertEqual(gcc.name, "gcc")
+                self.assertEqual(clang.name, "clang")
+                self.assertEqual(gcc.parent, clang.parent)
+                self.assertEqual(run.dependency_prefix(root / ".ci", "gcc"), gcc)
+                self.assertEqual(run.dependency_prefix(root / "another-build", "gcc"), gcc)
+            other_root = base / "another-checkout"
+            with patch.object(run, "ROOT", other_root), \
+                 patch.dict(os.environ, {"RUNNER_TEMP": str(runner_temp)}):
+                self.assertNotEqual(run.dependency_prefix(other_root / ".ci", "gcc"), gcc)
+
+    def test_in_source_dependency_prefix_uses_local_temp_and_rejects_source_temp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            root, local_temp = base / "source", base / "local-temp"
+            with patch.object(run, "ROOT", root), patch.dict(os.environ, {}, clear=True), \
+                 patch.object(run.tempfile, "gettempdir", return_value=str(local_temp)):
+                prefix = run.dependency_prefix(root / ".ci", "gcc")
+                self.assertTrue(prefix.is_relative_to(local_temp))
+                with patch.dict(os.environ, {"RUNNER_TEMP": ""}):
+                    self.assertEqual(run.dependency_prefix(root / ".ci", "gcc"), prefix)
+                with patch.dict(os.environ, {"RUNNER_TEMP": str(root / "temp")}):
+                    with self.assertRaisesRegex(RuntimeError, "outside the GenDiL source tree"):
+                        run.dependency_prefix(root / ".ci", "gcc")
+                with patch.object(run.tempfile, "gettempdir", return_value=str(root / "temp")):
+                    with self.assertRaisesRegex(RuntimeError, "outside the GenDiL source tree"):
+                        run.dependency_prefix(root / ".ci", "gcc")
+
     def test_prepare_failure_cannot_republish_previous_context(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.args(directory, "minimal")
