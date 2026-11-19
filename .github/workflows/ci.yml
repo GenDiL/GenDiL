@@ -135,7 +135,7 @@ jobs:
         with:
           path: .ci/ccache
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-
+          restore-keys: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-
       - name: Reset compiler-cache statistics
         run: ccache --zero-stats
       - name: Restore MFEM

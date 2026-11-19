@@ -158,7 +158,9 @@ immutable, so delete a damaged entry in Actions if it is repeatedly restored;
 the next successful run will save a fresh installation under the same key.
 
 Compiler caches are bounded to 1 GiB per job and can reuse compilation work across
-commits. Complete build trees and NVCC intermediates are not cached. Dependency
+commits within the same configuration. This prevents a later analysis job from
+superseding a compiler job's populated cache. Complete build trees and NVCC
+intermediates are not cached. Dependency
 caches are saved immediately after each successful installation, so a later
 dependency or numerical failure does not discard those builds. For local work,
 `run.py dependencies --dependency NAME` selects a single dependency.
