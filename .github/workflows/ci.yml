@@ -60,7 +60,6 @@ jobs:
           if [[ "$INCLUDE_SANITIZERS" == true ]]; then matrix_args+=(--include-sanitizers); fi
           matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}")
           dependency_free_matrix=$(python3 scripts/ci/run.py matrix --dependency-free "${matrix_args[@]}")
-          matrix=$(python3 -c 'import json,sys; m=json.loads(sys.argv[1]); m["include"]=[x for x in m["include"] if x["configuration"] == "cuda-nvcc"]; print(json.dumps(m))' "$matrix")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "dependency_free_matrix=$dependency_free_matrix" >> "$GITHUB_OUTPUT"
       - name: Resolve shared dependency revisions
