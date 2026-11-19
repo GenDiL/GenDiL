@@ -50,7 +50,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check CI helpers
-        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v && exit 23
       - name: Prepare configuration matrices
         id: matrix
         env:
