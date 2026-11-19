@@ -34,8 +34,8 @@ dependencies, including when reusing a local work directory.
 | `gcc` | GCC 14, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `clang` | Clang 18, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `minimal` | GCC 14, no optional TPLs or OpenMP; full CPU tests |
-| `cuda-nvcc` | NVCC 12.2.2/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
-| `cuda-clang` | Clang 19/CUDA 12.2.2, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
+| `cuda-nvcc` | NVCC 12.4.1/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
+| `cuda-clang` | Clang 19/CUDA 12.4.1, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `hip` | ROCm 6.3.1, architecture gfx90a, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `analysis` | Clang 18 with all supported TPLs; full clang-tidy analysis |
 | `sanitizers` | Clang 18, no optional TPLs/OpenMP; ASan and UBSan |
@@ -60,6 +60,9 @@ and partition tests. Clang 19 follows the compiler family in the repository's
 Matrix machine configuration. Both jobs use the same CUDA toolkit and GPU
 architecture, and each builds its own CUDA-enabled MFEM/Hypre installations.
 The installed consumer uses the same CUDA compiler as its producer.
+CUDA 12.4.1 replaces 12.2.2 because the older NVCC/GCC 12 combination fails on
+the C++20 `std::variant` used by current MFEM; NVIDIA reports the reproducer
+working with [CUDA 12.4.1](https://forums.developer.nvidia.com/t/nvcc-c-20-std-variant-complie-failed/270162/5).
 
 The current all-TPL CUDA registration has 110 default test executables with NVCC
 and 196 with Clang, plus seven examples and 48 benchmarks for either compiler.
@@ -121,9 +124,8 @@ python3 scripts/ci/dependencies.py resolve --output .ci/dependencies.json \
 ```
 
 The same three overrides are available under **Run workflow** on GitHub. Upgrade
-toolkits deliberately when a new dependency requires them. CUDA 12.2.2 does not
-exercise newer optional cuSPARSE APIs; the feature report records the capabilities
-selected by each toolchain.
+toolkits deliberately when a new dependency requires them. The feature report
+records the optional cuSPARSE capabilities selected by each toolchain.
 The former `cuda` configuration is now named `cuda-nvcc`; use `cuda-clang` to
 reproduce the other CUDA frontend.
 

@@ -200,10 +200,6 @@ jobs:
           path: ${{ steps.prepare.outputs.dependency_prefix }}/mfem
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-mfem-${{ steps.prepare.outputs.mfem_key }}
       # The helper selects CPU tests, GPU compilation/host checks, or static analysis.
-      - name: Inject expected late test failure
-        if: matrix.configuration == 'gcc'
-        run: |
-          printf '%s\n' 'add_test(NAME ci-intentional-failure COMMAND "${CMAKE_COMMAND}" -E false)' >> tests/CMakeLists.txt
       - name: Build and check GenDiL
         env:
           CONFIGURATION: ${{ matrix.configuration }}
