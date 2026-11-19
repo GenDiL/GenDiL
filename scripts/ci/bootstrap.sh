@@ -18,7 +18,7 @@ case "$configuration" in
 esac
 apt-get update
 if [[ "$configuration" == cuda-clang ]]; then
-  # The CUDA 12.2 image uses Jammy. Match the Clang 19 family used by the
+  # The CUDA 12.4.1 image uses Jammy. Match the Clang 19 family used by the
   # Matrix machine build, obtaining it from LLVM's signed Jammy repository.
   apt-get install -y --no-install-recommends ca-certificates curl gnupg
   curl --fail --show-error --location --retry 3 \

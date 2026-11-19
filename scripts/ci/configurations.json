@@ -1,7 +1,7 @@
 {
   "images": {
     "cpu": "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8",
-    "cuda": "nvidia/cuda:12.2.2-devel-ubuntu22.04@sha256:ae8a022c02aec945c4f8c52f65deaf535de7abb58e840350d19391ec683f4980",
+    "cuda": "nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5",
     "hip": "rocm/dev-ubuntu-22.04:6.3.1-complete@sha256:b3bf4a771a7d1048cf22b31eb289b390feb959c2813be94bfd4fbda9c4206b51"
   },
   "configurations": {
