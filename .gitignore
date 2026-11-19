@@ -39,6 +39,8 @@
 /install_*/
 /install-*/
 /Debug/
+/.ci/
+/scripts/ci/__pycache__/
 
 # AI
 .DS_Store

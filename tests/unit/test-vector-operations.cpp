@@ -225,6 +225,11 @@ bool TestAxpyFamiliesAndLocalOperations()
 
    using Registers = ThreadedView<std::index_sequence<2, 3>,
       HostKernelConfiguration, SerialRecursiveArray<Real, 2, 3>>;
+   static_assert(details::is_threaded_operand_v<Registers>);
+   static_assert(details::ReadableLocalEntries<Registers>());
+   static_assert(details::ReadableLocalEntries<const Registers>());
+   static_assert(details::WritableLocalEntries<Registers>());
+   static_assert(!details::WritableLocalEntries<const Registers>());
    Registers register_x{}, register_y{};
    register_x = 2;
    register_y = 1;

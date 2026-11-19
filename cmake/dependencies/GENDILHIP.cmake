@@ -8,6 +8,7 @@ function(gendil_configure_hip target output_sparse_enabled)
   find_package(HIP REQUIRED)
   find_package(rocsparse REQUIRED CONFIG)
   target_link_libraries(${target} INTERFACE roc::rocsparse)
+  target_compile_features(${target} INTERFACE hip_std_20)
   target_include_directories(${target} INTERFACE ${hip_INCLUDE_DIRS})
   target_compile_options(
     ${target}

@@ -15,6 +15,19 @@
 
 namespace gendil{
 
+namespace face_connectivity_detail
+{
+// Keep these dependent checks outside function bodies for CUDA compilers.
+template<class Orientation>
+concept HasOrientationValue = requires { Orientation::value; };
+
+template<class Orientation>
+concept StaticOrientation = requires
+{
+   std::integral_constant<int, Orientation::value>{};
+};
+} // namespace face_connectivity_detail
+
 template<class MinusView, class PlusView,
          class NormalOrientation = std::integral_constant<int, 1>>
 struct GlobalFaceInfo {
@@ -102,7 +115,7 @@ struct LocalFaceInfo
 // Keep the same direct members and aggregate initialization as the runtime
 // record. An alias-bearing base would add an aggregate initialization element.
 template<class CurrentView, class NeighborView, class NormalOrientation>
-   requires requires { std::integral_constant<int, NormalOrientation::value>{}; }
+   requires face_connectivity_detail::StaticOrientation<NormalOrientation>
 struct LocalFaceInfo<CurrentView, NeighborView, NormalOrientation>
 {
    static_assert(NormalOrientation::value == 1 || NormalOrientation::value == -1,
@@ -163,9 +176,7 @@ template<class Face>
 inline constexpr int static_face_normal_orientation_v = [] {
    using Orientation = std::remove_cvref_t<decltype(
       std::declval<const Face&>().GetNormalOrientation())>;
-   constexpr bool is_static = requires {
-      std::integral_constant<int, Orientation::value>{};
-   };
+   constexpr bool is_static = face_connectivity_detail::StaticOrientation<Orientation>;
    static_assert(is_static,
       "Local facet evaluation requires a compile-time normal orientation. "
       "Dispatch the face with WithLocalFacetNormalOrientation first.");
@@ -206,7 +217,7 @@ void WithLocalFacetNormalOrientation(const Face& face, Function&& function)
 {
    const auto orientation = face.GetNormalOrientation();
    using Orientation = std::remove_cvref_t<decltype(orientation)>;
-   if constexpr (requires { Orientation::value; })
+   if constexpr (face_connectivity_detail::HasOrientationValue<Orientation>)
    {
       static_assert(static_face_normal_orientation_v<Face> == 1 ||
                     static_face_normal_orientation_v<Face> == -1);

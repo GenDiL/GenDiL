@@ -94,6 +94,10 @@ function(gendil_configure_hypre target output_device_enabled)
     cmake_push_check_state(RESET)
     set(CMAKE_REQUIRED_INCLUDES ${hypre_internal_include_dirs})
     set(CMAKE_REQUIRED_LIBRARIES HYPRE::HYPRE)
+    # HYPRE's C OpenMP target does not supply flags for this C++ probe.
+    if(USE_OPENMP AND TARGET OpenMP::OpenMP_CXX)
+      list(APPEND CMAKE_REQUIRED_LIBRARIES OpenMP::OpenMP_CXX)
+    endif()
     check_cxx_source_compiles(
       "
       #include <HYPRE.h>

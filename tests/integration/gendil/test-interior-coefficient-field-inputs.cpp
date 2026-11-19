@@ -327,11 +327,11 @@ int TestInteriorCoefficientFieldInputsDG()
    TestSpace<"u"> v;
 
    auto value_coeff = MakeCoefficient<"interior_value", FieldValue<"w_dg">>(
-      [] (const Real w) { return 0.5 + 0.75 * w; });
+      [] GENDIL_HOST_DEVICE (const Real w) { return 0.5 + 0.75 * w; });
 
    auto gradient_coeff =
       MakeCoefficient<"interior_gradient", FieldGradient<"w_dg">>(
-         [] (const auto& grad_w)
+         [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& grad_w)
          {
             return 1.0 + grad_w[0] - 0.5 * grad_w[1];
          });

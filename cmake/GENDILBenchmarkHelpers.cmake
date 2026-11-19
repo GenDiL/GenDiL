@@ -23,6 +23,7 @@ endfunction()
 
 function(gendil_add_non_cuda_benchmark target source)
   if(USE_CUDA)
+    message(STATUS "Skipping benchmark ${target}: excluded for CUDA backend")
     return()
   endif()
   gendil_add_benchmark(${target} "${source}")

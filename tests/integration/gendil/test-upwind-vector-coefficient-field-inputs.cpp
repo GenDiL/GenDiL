@@ -482,7 +482,7 @@ int TestUpwindVectorCoefficientFieldInputs()
 
    auto beta =
       MakeVectorCoefficient<"beta", FieldValue<"beta_field">>(
-         [] (const auto& b) -> std::array<Real, 2>
+         [] GENDIL_HOST_DEVICE (const SerialRecursiveArray<Real, 2>& b) -> std::array<Real, 2>
          {
             return { b(0), b(1) };
          });

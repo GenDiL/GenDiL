@@ -93,8 +93,9 @@ Real Error(const Space& space, const Rule& rule, Exact& exact,
    return result;
 }
 
-template<size_t Dim, size_t Components, bool H1>
-bool CheckSpace()
+// NVCC requires these host/device callbacks outside generic lambdas.
+template<size_t Dim, size_t Components, bool H1, bool Recursive>
+bool CheckSpaceStorage()
 {
    const auto mesh = []
    {
@@ -127,52 +128,54 @@ bool CheckSpace()
       offset_squared += offsets[c]*offsets[c];
    }
    bool ok = true;
-   const auto check_storage = [&]<bool Recursive>()
+   for (const bool polynomial : {false, true})
    {
-      for (const bool polynomial : {false, true})
+      auto represented = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
+      { return Store<Recursive>(RepresentedField<Components>(x, polynomial)); };
+      const auto input = InterpolateNodalField<Policy>(vector_space, represented);
+      ok = Close(Error(vector_space, rule, represented, input, ok), 0,
+         "represented vector field") && ok;
+      auto shifted = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
       {
-         auto represented = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
-         { return Store<Recursive>(RepresentedField<Components>(x, polynomial)); };
-         const auto input = InterpolateNodalField<Policy>(vector_space, represented);
-         ok = Close(Error(vector_space, rule, represented, input, ok), 0,
-            "represented vector field") && ok;
-         auto shifted = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
-         {
-            auto value = RepresentedField<Components>(x, polynomial);
-            for (size_t c = 0; c < Components; ++c) value[c] += offsets[c];
-            return Store<Recursive>(value);
-         };
-         ok = Close(Error(vector_space, rule, shifted, input, ok), std::sqrt(volume*offset_squared),
-            "constant component offsets") && ok;
-         if (!polynomial) continue;
-         auto exact = [] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
-         {
-            auto value = RepresentedField<Components>(x, true);
-            for (size_t c = 0; c < Components; ++c) value[c] += NonconstantError(c, x);
-            return Store<Recursive>(value);
-         };
-         const Real vector_error = Error(vector_space, rule, exact, input, ok);
-         Real scalar_squared = 0;
-         for (size_t c = 0; c < Components; ++c)
-         {
-            auto scalar_field = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
-            { return RepresentedField<Components>(x, true)[c]; };
-            auto scalar_exact = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
-            { return RepresentedField<Components>(x, true)[c]+NonconstantError(c, x); };
-            const auto component_input = InterpolateNodalField<Policy>(scalar_space, scalar_field);
-            const Real component_error = Error(scalar_space, rule, scalar_exact, component_input, ok);
-            if (!(std::isfinite(component_error) && component_error > 1e-6)) ok = false;
-            scalar_squared += component_error*component_error;
-         }
-         ok = Close(vector_error*vector_error, scalar_squared,
-            "vector error squared equals sum of scalar component errors squared") && ok;
+         auto value = RepresentedField<Components>(x, polynomial);
+         for (size_t c = 0; c < Components; ++c) value[c] += offsets[c];
+         return Store<Recursive>(value);
+      };
+      ok = Close(Error(vector_space, rule, shifted, input, ok), std::sqrt(volume*offset_squared),
+         "constant component offsets") && ok;
+      if (!polynomial) continue;
+      auto exact = [] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
+      {
+         auto value = RepresentedField<Components>(x, true);
+         for (size_t c = 0; c < Components; ++c) value[c] += NonconstantError(c, x);
+         return Store<Recursive>(value);
+      };
+      const Real vector_error = Error(vector_space, rule, exact, input, ok);
+      Real scalar_squared = 0;
+      for (size_t c = 0; c < Components; ++c)
+      {
+         auto scalar_field = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
+         { return RepresentedField<Components>(x, true)[c]; };
+         auto scalar_exact = [=] GENDIL_HOST_DEVICE (const Coordinates<Dim>& x)
+         { return RepresentedField<Components>(x, true)[c]+NonconstantError(c, x); };
+         const auto component_input = InterpolateNodalField<Policy>(scalar_space, scalar_field);
+         const Real component_error = Error(scalar_space, rule, scalar_exact, component_input, ok);
+         if (!(std::isfinite(component_error) && component_error > 1e-6)) ok = false;
+         scalar_squared += component_error*component_error;
       }
-   };
-   check_storage.template operator()<false>();
-   check_storage.template operator()<true>();
+      ok = Close(vector_error*vector_error, scalar_squared,
+         "vector error squared equals sum of scalar component errors squared") && ok;
+   }
    if (!ok) std::cerr << Dim << "D " << Components << "-component " << (H1 ? "H1" : "DG")
                       << " vector L2 error failed\n";
    return ok;
+}
+
+template<size_t Dim, size_t Components, bool H1>
+bool CheckSpace()
+{
+   const bool array_ok = CheckSpaceStorage<Dim, Components, H1, false>();
+   return CheckSpaceStorage<Dim, Components, H1, true>() && array_ok;
 }
 
 bool CheckOriginalCase()

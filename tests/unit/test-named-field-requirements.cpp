@@ -15,6 +15,34 @@ using namespace gendil;
 namespace
 {
 
+struct CustomBoundField
+{
+   const Real* dofs;
+};
+
+// Bound-field discovery is structural and must not mistake space-only or
+// absent registrations for persistent storage.
+using DetectionFields = StaticMap<
+   Entry<FiniteElementFieldKey<"bound">, FiniteElementFieldView<int, const Real*>>,
+   Entry<FiniteElementFieldKey<"space">, FiniteElementSpaceView<int>>,
+   Entry<FiniteElementFieldKey<"custom">, CustomBoundField>>;
+using DetectionContext = WeakFormContext<
+   StaticMap<>, StaticMap<>, StaticMap<>, DetectionFields, StaticMap<>>;
+static_assert(DetectionContext::HasBoundField<"bound">());
+static_assert(DetectionContext::HasBoundField<"custom">());
+static_assert(!DetectionContext::HasBoundField<"space">());
+static_assert(!DetectionContext::HasBoundField<"absent">());
+
+using BoundRead = FiniteElementFieldView<int, const Real*>;
+using ReadBindings = StaticMap<Entry<NameTag<"bound">, BoundRead>>;
+using ReadContext = ExecutionContext<DetectionContext, ReadBindings, StaticMap<>>;
+using ReadOverlay = ExecutionContext<const ReadContext&, StaticMap<>, StaticMap<>>;
+using NestedReadOverlay = ExecutionContext<const ReadOverlay&, StaticMap<>, StaticMap<>>;
+// An inherited read keeps the parent's const reference through nested overlays.
+static_assert(std::is_same_v<
+   decltype(std::declval<const NestedReadOverlay&>().GetReadField<"bound">()),
+   const BoundRead&>);
+
 struct FakeValueTensor2D
 {
    Real data[2][2]{};

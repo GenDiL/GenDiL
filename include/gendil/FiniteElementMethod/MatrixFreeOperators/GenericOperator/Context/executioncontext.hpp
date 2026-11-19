@@ -53,6 +53,14 @@ namespace gendil
 
 namespace execution_context_detail
 {
+// Evaluate parent readability independently of GetReadField's member template;
+// NVCC can mis-evaluate the equivalent inline requires-expression there.
+template<class Parent, StaticString Name>
+concept HasReadField = requires(const Parent& parent)
+{
+   parent.template GetReadField<Name>();
+};
+
 template<class Base> struct RegistryType { using type = Base; };
 template<class Parent> struct RegistryType<const Parent&>
 {
@@ -134,7 +142,7 @@ struct ExecutionContext
          return reads.template Get<NameTag<Name>>();
       else
       {
-         static_assert(is_borrowed && requires { selected.template GetReadField<Name>(); },
+         static_assert(is_borrowed && execution_context_detail::HasReadField<Base, Name>,
             "Execution context has no binding for the required read field.");
          return selected.template GetReadField<Name>();
       }
@@ -364,11 +372,12 @@ void ValidateElementStorageExtent(const Restriction& restriction, const Storage&
       static_assert(Storage::rank == static_cast<size_t>(R::tensor_dim) + 1,
          "Persistent element storage rank does not match its selected restriction.");
       []<size_t... I>(const auto& values, GlobalIndex count, std::index_sequence<I...>) {
-         ([&] {
-            if constexpr (requires { values.Get(AxisTag<I>{}); })
-               GENDIL_VERIFY((values.Get(AxisTag<I>{}) >= seq_get_v<I, typename R::dof_shape_type>),
+         auto validate_local_extent = [&]<size_t Axis>() {
+            if constexpr (requires { values.Get(AxisTag<Axis>{}); })
+               GENDIL_VERIFY((values.Get(AxisTag<Axis>{}) >= seq_get_v<Axis, typename R::dof_shape_type>),
                   "Persistent field element storage has an insufficient local extent.");
-         }(), ...);
+         };
+         (validate_local_extent.template operator()<I>(), ...);
          if constexpr (requires { values.Get(AxisTag<Storage::rank - 1>{}); })
             GENDIL_VERIFY(values.Get(AxisTag<Storage::rank - 1>{}) >= count,
                "Persistent field element storage has an insufficient element extent.");

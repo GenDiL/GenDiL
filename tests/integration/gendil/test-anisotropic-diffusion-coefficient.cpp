@@ -16,6 +16,7 @@ namespace
 using Matrix2 = std::array<std::array<Real, 2>, 2>;
 using Vector2 = std::array<Real, 2>;
 
+GENDIL_HOST_DEVICE
 Matrix2 ConstantMatrix()
 {
    return Matrix2{{
@@ -24,6 +25,7 @@ Matrix2 ConstantMatrix()
    }};
 }
 
+GENDIL_HOST_DEVICE
 Matrix2 NamedFieldMatrix(const Real a)
 {
    return Matrix2{{
@@ -354,14 +356,14 @@ int TestAnisotropicDiffusionCoefficient()
 
    auto A_const =
       MakeMatrixCoefficient<"A_const">(
-         [] ()
+         [] GENDIL_HOST_DEVICE ()
          {
             return ConstantMatrix();
          });
 
    auto A_named =
       MakeMatrixCoefficient<"A_named", FieldValue<"a">>(
-         [] (const Real a)
+         [] GENDIL_HOST_DEVICE (const Real a)
          {
             return NamedFieldMatrix(a);
          });
