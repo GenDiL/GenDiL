@@ -24,7 +24,9 @@ network resolution is needed. For a configuration with optional libraries, first
 run `python3 scripts/ci/dependencies.py resolve --output .ci/dependencies.json`,
 then replace `minimal` in the commands above with that configuration.
 `--jobs` controls build
-parallelism and defaults to two. `--work-dir` and `--manifest` select different
+parallelism and defaults to two. Hosted analysis uses four workers to complete
+the full clang-tidy pass within its timeout; other jobs use two.
+`--work-dir` and `--manifest` select different
 build/cache and dependency-manifest locations.
 `check` refreshes the CMake configuration so capability probes reflect the selected
 dependencies, including when reusing a local work directory.
