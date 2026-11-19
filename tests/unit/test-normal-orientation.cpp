@@ -21,6 +21,11 @@ using Side = FaceView<Integer, HyperCube<2>, Permutation<2>,
    std::array<Real, 2>, NonconformingHyperCubeFaceMap<2>, bool, int>;
 using RuntimeFace = LocalFaceInfo<Side, Side, int>;
 
+static_assert(!face_connectivity_detail::HasOrientationValue<int>);
+static_assert(!face_connectivity_detail::StaticOrientation<int>);
+static_assert(face_connectivity_detail::HasOrientationValue<std::integral_constant<int, -1>>);
+static_assert(face_connectivity_detail::StaticOrientation<std::integral_constant<int, -1>>);
+
 template<class Face>
 concept HasCanonicalSides = requires(const Face& face)
 {
