@@ -28,8 +28,9 @@ Checks run on PRs targeting `main`, pushes to `main`, weekly, and manually.
 Sanitizers run only weekly/manually. New PR runs replace obsolete ones.
 
 Test jobs also check `find_package(GENDIL)` using a separate installed-package
-consumer. GPU consumers only compile. Release builds compile examples and
-benchmarks without running them. NVCC's incompatible weak-form tests remain covered
+consumer. GPU consumers only compile. Release builds compile examples without
+running them; CPU jobs also compile benchmarks. GPU benchmark compilation is
+disabled because of its cost. NVCC's incompatible weak-form tests remain covered
 by Clang CUDA, HIP, and CPU builds; compiler exclusions are listed in reports.
 
 Most extra YAML manages **caches and failure reports**. Separate library caches

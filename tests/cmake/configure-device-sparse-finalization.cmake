@@ -43,6 +43,8 @@ if(DEFINED DEVICE_BACKEND AND DEVICE_BACKEND STREQUAL "HIP")
     "-DCMAKE_HIP_ARCHITECTURES=${hip_architectures}"
     "-DAMDGPU_TARGETS=${hip_architectures}"
     "-DHIP_DIR=${HIP_DIR}"
+    # GenDiL finds HIP; rocSPARSE's dependency uses the lowercase package name.
+    "-Dhip_DIR=${hip_DIR}"
     "-Drocsparse_DIR=${rocsparse_DIR}"
     -DCMAKE_DISABLE_FIND_PACKAGE_rocprim=TRUE
     -DGENDIL_FETCH_ROCPRIM=OFF

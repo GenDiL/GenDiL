@@ -55,7 +55,7 @@ class DriverTests(unittest.TestCase):
         with patch.object(run.shutil, "which", return_value=None):
             run.report(args)
 
-    def test_cuda_frontends_and_benchmark_coverage_are_explicit(self):
+    def test_cuda_frontends_are_explicit(self):
         for name, compiler in (("cuda-nvcc", "NVIDIA"), ("cuda-clang", "Clang")):
             with self.subTest(configuration=name), tempfile.TemporaryDirectory() as directory:
                 cfg = run.configuration(name)
@@ -70,11 +70,20 @@ class DriverTests(unittest.TestCase):
                 self.assertIn("-DCUDAToolkit_ROOT=/usr/local/cuda", command)
                 self.assertEqual(any(option.startswith("-DCMAKE_CUDA_HOST_COMPILER=")
                                      for option in command), compiler == "NVIDIA")
-                self.assertIn("-DGENDIL_ENABLE_BENCHMARKS=ON", command)
                 for dependency in ("MFEM", "HYPRE", "CALIPER"):
                     self.assertIn("-DUSE_" + dependency + "=ON", command)
+
+    def test_benchmarks_are_enabled_only_in_cpu_and_analysis_jobs(self):
         for name, cfg in run.CONFIG["configurations"].items():
-            self.assertEqual(cfg["benchmarks"], name != "sanitizers")
+            with self.subTest(configuration=name), tempfile.TemporaryDirectory() as directory:
+                expected = cfg["backend"] == "cpu" and name != "sanitizers"
+                self.assertEqual(cfg["benchmarks"], expected)
+                context = dict(cfg, generator="Ninja", cache_prefix=directory,
+                               cmake_options=[], ccache=None)
+                with patch.object(run, "find_package_dir", return_value="/tpl"):
+                    command = run.configure_command(self.args(directory, name), context)
+                option = "-DGENDIL_ENABLE_BENCHMARKS=" + ("ON" if expected else "OFF")
+                self.assertIn(option, command)
 
     def test_gpu_jobs_cannot_run_the_general_test_suite(self):
         for configuration in ("cuda-nvcc", "cuda-clang", "hip"):
