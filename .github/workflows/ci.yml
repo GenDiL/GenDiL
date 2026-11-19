@@ -60,7 +60,6 @@ jobs:
           if [[ "$INCLUDE_SANITIZERS" == true ]]; then matrix_args+=(--include-sanitizers); fi
           matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}")
           dependency_free_matrix=$(python3 scripts/ci/run.py matrix --dependency-free "${matrix_args[@]}")
-          matrix=$(python3 -c 'import json,sys; m=json.loads(sys.argv[1]); m["include"]=[x for x in m["include"] if x["configuration"] == "cuda-nvcc"]; print(json.dumps(m))' "$matrix")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "dependency_free_matrix=$dependency_free_matrix" >> "$GITHUB_OUTPUT"
       - name: Resolve shared dependency revisions
@@ -202,7 +201,6 @@ jobs:
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-mfem-${{ steps.prepare.outputs.mfem_key }}
       # The helper selects CPU tests, GPU compilation/host checks, or static analysis.
       - name: Build and check GenDiL
-        id: build_check
         env:
           CONFIGURATION: ${{ matrix.configuration }}
           BUILD_JOBS: ${{ matrix.configuration == 'analysis' && 4 || 2 }}
@@ -221,10 +219,6 @@ jobs:
           path: .ci/ccache
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
       # Keep logs and configuration details even when an earlier step fails.
-      - name: Collect remaining NVCC compilation errors
-        if: ${{ failure() && steps.build_check.outcome == 'failure' }}
-        run: |
-          cmake --build .ci/build/cuda-nvcc --parallel 2 -- -k 0 2>&1 | tee .ci/reports/cuda-nvcc/build-keepgoing.log
       - name: Collect diagnostics
         if: always()
         env:
