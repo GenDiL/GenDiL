@@ -14,7 +14,6 @@
 
 #if defined( GENDIL_USE_MFEM )
 #include <mfem.hpp>
-#include "general/forall.hpp"
 #endif
 
 namespace gendil {

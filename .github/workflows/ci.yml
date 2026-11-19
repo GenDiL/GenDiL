@@ -1,58 +1,243 @@
+# High-level guide: .github/workflows/README.md
+# Toolchain choices and build commands live in scripts/ci/.
 name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  schedule:
+    - cron: '17 9 * * 1'
   workflow_dispatch:
+    inputs:
+      mfem_ref:
+        description: 'MFEM revision (empty: latest development commit)'
+        type: string
+      hypre_ref:
+        description: 'Hypre revision (empty: latest stable release)'
+        type: string
+      caliper_ref:
+        description: 'Caliper revision (empty: latest stable release)'
+        type: string
+      cache_namespace:
+        description: 'Cache namespace (use a new value for cold-cache validation)'
+        type: string
+        default: v1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        compiler: [g++, clang++]
-
+  # Choose dependency revisions once so every configuration tests the same versions.
+  resolve:
+    name: Resolve dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      dependency_free_matrix: ${{ steps.matrix.outputs.dependency_free_matrix }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check CI helpers
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
+      - name: Prepare configuration matrices
+        id: matrix
+        env:
+          INCLUDE_SANITIZERS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          matrix_args=()
+          if [[ "$INCLUDE_SANITIZERS" == true ]]; then matrix_args+=(--include-sanitizers); fi
+          matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}")
+          dependency_free_matrix=$(python3 scripts/ci/run.py matrix --dependency-free "${matrix_args[@]}")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "dependency_free_matrix=$dependency_free_matrix" >> "$GITHUB_OUTPUT"
+      - name: Resolve shared dependency revisions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MFEM_REF: ${{ inputs.mfem_ref }}
+          HYPRE_REF: ${{ inputs.hypre_ref }}
+          CALIPER_REF: ${{ inputs.caliper_ref }}
+        run: |
+          refs=()
+          if [[ -n "$MFEM_REF" ]]; then refs+=(--mfem-ref "$MFEM_REF"); fi
+          if [[ -n "$HYPRE_REF" ]]; then refs+=(--hypre-ref "$HYPRE_REF"); fi
+          if [[ -n "$CALIPER_REF" ]]; then refs+=(--caliper-ref "$CALIPER_REF"); fi
+          python3 scripts/ci/dependencies.py resolve --output .ci/dependencies.json "${refs[@]}"
+          cat .ci/dependencies.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Save dependency manifest
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-manifest
+          path: .ci/dependencies.json
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: true
 
+  # Run independent checks for the configurations in scripts/ci/configurations.json.
+  check:
+    name: ${{ matrix.configuration }}
+    needs: resolve
+    # Dependency discovery must not suppress configurations that need no TPLs.
+    if: ${{ !cancelled() && needs.resolve.outputs.matrix != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.result == 'success' && needs.resolve.outputs.matrix || needs.resolve.outputs.dependency_free_matrix) }}
+    container:
+      image: ${{ matrix.image }}
+    env:
+      GENDIL_CI_IMAGE: ${{ matrix.image }}
+      GENDIL_CI_CACHE_NAMESPACE: ${{ inputs.cache_namespace || 'v1' }}
+      CCACHE_DIR: ${{ github.workspace }}/.ci/ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_MAXSIZE: 1G
+      OMP_NUM_THREADS: '2'
+      OMP_DYNAMIC: 'FALSE'
+    steps:
+      - name: Install checkout prerequisites
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install build tools
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: bash scripts/ci/bootstrap.sh "$CONFIGURATION"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: matrix.tpls
+        with:
+          name: dependency-manifest
+          path: .ci
+      - name: Record toolchain and compute cache keys
+        id: prepare
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: python3 scripts/ci/run.py prepare --configuration "$CONFIGURATION" --github-output "$GITHUB_OUTPUT"
+      # Compiler outputs and each library installation have separate caches.
+      - name: Restore compiler cache
+        id: compiler_cache
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci/ccache
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-
+      - name: Reset compiler-cache statistics
+        run: ccache --zero-stats
+      - name: Restore MFEM
+        id: mfem
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/mfem
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-mfem-${{ steps.prepare.outputs.mfem_key }}
+      - name: Restore Hypre
+        id: hypre
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/hypre
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-hypre-${{ steps.prepare.outputs.hypre_key }}
+      - name: Restore Caliper
+        id: caliper
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/caliper
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-caliper-${{ steps.prepare.outputs.caliper_key }}
+      # Save each successful library build before a later dependency or test can fail.
+      - name: Validate or build Hypre
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: python3 scripts/ci/run.py dependencies --configuration "$CONFIGURATION" --dependency hypre --jobs 2
+      - name: Cache Hypre installation
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true' && steps.hypre.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/hypre
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-hypre-${{ steps.prepare.outputs.hypre_key }}
+      - name: Validate or build Caliper
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: python3 scripts/ci/run.py dependencies --configuration "$CONFIGURATION" --dependency caliper --jobs 2
+      - name: Cache Caliper installation
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true' && steps.caliper.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/caliper
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-caliper-${{ steps.prepare.outputs.caliper_key }}
+      - name: Validate or build MFEM
+        if: steps.prepare.outputs.uses_tpls == 'true'
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: python3 scripts/ci/run.py dependencies --configuration "$CONFIGURATION" --dependency mfem --jobs 2
+      - name: Cache MFEM installation
+        continue-on-error: true
+        if: steps.prepare.outputs.uses_tpls == 'true' && steps.mfem.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.prepare.outputs.dependency_prefix }}/mfem
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-mfem-${{ steps.prepare.outputs.mfem_key }}
+      # The helper selects CPU tests, GPU compilation/host checks, or static analysis.
+      - name: Build and check GenDiL
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+          BUILD_JOBS: ${{ matrix.configuration == 'analysis' && 4 || 2 }}
+        run: python3 scripts/ci/run.py check --configuration "$CONFIGURATION" --jobs "$BUILD_JOBS"
+      - name: Check compiler-cache availability
+        id: compiler_cache_directory
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build libomp-dev
-
-      - name: Clone & build MFEM
+          if [[ -d "$CCACHE_DIR" ]]; then echo 'exists=true' >> "$GITHUB_OUTPUT"; fi
+      # Retain successful compilation work even when a later build or test fails.
+      - name: Save compiler cache
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.compiler_cache_directory.outputs.exists == 'true' && steps.compiler_cache.outputs.cache-hit != 'true' }}
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ci/ccache
+          key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-compiler-${{ steps.prepare.outputs.ccache_key }}-${{ matrix.configuration }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      # Keep logs and configuration details even when an earlier step fails.
+      - name: Collect diagnostics
+        if: always()
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
         run: |
-          MFEM_ROOT=$RUNNER_TEMP/mfem
-          git clone --depth 1 https://github.com/mfem/mfem.git $MFEM_ROOT
-          mkdir -p $MFEM_ROOT/build
-          cd $MFEM_ROOT/build
-          cmake \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
-            -DMFEM_USE_MPI=OFF \
-            $MFEM_ROOT
-          cmake --build . -- -j$(nproc)
-
-      - name: Configure GenDiL
-        run: |
-          MFEM_ROOT=$RUNNER_TEMP/mfem
-          cmake -B build -S . \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
-            -DUSE_MFEM=ON \
-            -DMFEM_DIR=$MFEM_ROOT/build
-
-      - name: Build GenDiL
-        run: cmake --build build -- -j$(nproc)
-
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Run clang-tidy
-        if: matrix.compiler == 'clang++'
-        run: |
-          cd build
-          run-clang-tidy -p .
+          python3 scripts/ci/run.py report --configuration "$CONFIGURATION"
+          if [[ "$CONFIGURATION" == cuda-* || "$CONFIGURATION" == hip ]]; then
+            echo "GPU compilation only: numerical GPU tests were not executed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -f ".ci/reports/$CONFIGURATION/coverage.txt" ]]; then
+            cat ".ci/reports/$CONFIGURATION/coverage.txt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: diagnostics-${{ matrix.configuration }}
+          path: |
+            .ci/reports/${{ matrix.configuration }}
+            .ci/dependencies.json
+          retention-days: 7
+          include-hidden-files: true

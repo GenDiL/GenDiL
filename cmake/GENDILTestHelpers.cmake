@@ -65,6 +65,7 @@ function(gendil_add_compile_failure_test target source expected_text)
       -DEXPECTED_TEXT=${expected_text}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_compile_failure.cmake
   )
+  set_tests_properties(${target} PROPERTIES LABELS "compile-failure")
 endfunction()
 
 function(gendil_add_target_compile_failure_test target source expected_text)
@@ -83,5 +84,7 @@ function(gendil_add_target_compile_failure_test target source expected_text)
       "-DEXPECTED_TEXT=${expected_text}"
       -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_target_compile_failure.cmake
   )
-  set_tests_properties(${target} PROPERTIES RUN_SERIAL TRUE)
+  set_tests_properties(
+    ${target} PROPERTIES LABELS "compile-failure" RUN_SERIAL TRUE
+  )
 endfunction()

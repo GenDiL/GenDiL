@@ -113,6 +113,9 @@ Executables are organized in three categories: benchmarks, tests, and examples.
 - Tests verify the correctness of the library.
 - Benchmarks measure the performance of the library.
 
+See the [CI guide](scripts/ci/README.md) for tested configurations and commands
+to reproduce CI builds locally.
+
 ## Weak Form DSL
 GenDiL weak forms are expression templates built from trial/test fields,
 integration domains, and algebraic operators. A typical weak form declares

@@ -143,6 +143,30 @@ struct ScaledSquares
    }
 };
 
+// Keep host-only basis callable types out of the device launch template context.
+template<class Left, class Right>
+void ComputeProjectionPartials(Left left, Right right, Real* column,
+   const size_t size, const size_t parts)
+{
+   KernelLoop<true>(parts, [=] GENDIL_HOST_DEVICE (const size_t part) mutable
+   {
+      Real sum = 0.0;
+      for (size_t i = part; i < size; i += parts) { sum += left[i] * right[i]; }
+      column[part] = sum;
+   });
+}
+
+inline void ReduceProjectionColumns(const size_t columns, const size_t parts,
+   Real* partial, Real* result)
+{
+   KernelLoop<true>(columns, [=] GENDIL_HOST_DEVICE (const size_t j) mutable
+   {
+      Real sum = 0.0;
+      for (size_t p = 0; p < parts; ++p) { sum += partial[j * parts + p]; }
+      result[j] = sum;
+   });
+}
+
 template<class Basis>
 void ValidateContiguousBasis(Basis& basis, const size_t columns, const size_t size)
 {
@@ -483,20 +507,11 @@ void ProjectEuclidean(const EuclideanDot<KernelPolicy>& dot, Basis&& basis,
                "Euclidean projection requires matching vector extents.");
             auto left = ReadKernelVector<true>(vector);
             Real* column = partial + static_cast<size_t>(j) * parts;
-            KernelLoop<true>(parts, [=] GENDIL_HOST_DEVICE (const size_t part) mutable
-            {
-               Real sum = 0.0;
-               for (size_t i = part; i < size; i += parts) { sum += left[i] * right[i]; }
-               column[part] = sum;
-            });
+            vector_reduction_detail::ComputeProjectionPartials(
+               left, right, column, size, parts);
          }
       }
-      KernelLoop<true>(columns, [=] GENDIL_HOST_DEVICE (const size_t j) mutable
-      {
-         Real sum = 0.0;
-         for (size_t p = 0; p < parts; ++p) { sum += partial[j * parts + p]; }
-         result[j] = sum;
-      });
+      vector_reduction_detail::ReduceProjectionColumns(columns, parts, partial, result);
       vector_reduction_detail::CopyResultsToHost(host, result, columns);
       for (Integer j = 0; j < count; ++j) { coefficients[j] = host[j]; }
    }

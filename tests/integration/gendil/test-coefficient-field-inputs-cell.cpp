@@ -119,36 +119,36 @@ int TestCoefficientFieldInputsCell()
    TestSpace<"u"> v;
 
    auto constant_25 = MakeCoefficient<"constant_25">(
-      [] () { return 2.5; });
+      [] GENDIL_HOST_DEVICE () { return 2.5; });
 
    auto field_value_coeff = MakeCoefficient<"field_value", FieldValue<"w">>(
-      [] (const Real w) { return w; });
+      [] GENDIL_HOST_DEVICE (const Real w) { return w; });
 
    auto field_gradient_coeff = MakeCoefficient<"field_gradient", FieldGradient<"g">>(
-      [] (const auto& grad_w)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 3>& grad_w)
       {
          return 1.0 + grad_w[0] + grad_w[1] + grad_w[2];
       });
 
    auto value_and_gradient_coeff =
       MakeCoefficient<"field_value_and_gradient", FieldValue<"w">, FieldGradient<"w">>(
-         [] (const Real w, const auto& grad_w)
+         [] GENDIL_HOST_DEVICE (const Real w, const std::array<Real, 3>& grad_w)
          {
             return w + grad_w[0] + grad_w[1] + grad_w[2];
          });
 
    auto multiple_fields_coeff =
       MakeCoefficient<"multiple_fields", FieldValue<"w">, FieldValue<"z">>(
-         [] (const Real w, const Real z) { return w + z; });
+         [] GENDIL_HOST_DEVICE (const Real w, const Real z) { return w + z; });
 
    auto constant_1 = MakeCoefficient<"constant_1">(
-      [] () { return 1.0; });
+      [] GENDIL_HOST_DEVICE () { return 1.0; });
 
    auto constant_55 = MakeCoefficient<"constant_55">(
-      [] () { return 5.5; });
+      [] GENDIL_HOST_DEVICE () { return 5.5; });
 
    auto constant_affine_gradient = MakeCoefficient<"constant_affine_gradient">(
-      [] () { return 3.6; });
+      [] GENDIL_HOST_DEVICE () { return 3.6; });
 
    auto wf_ctx = MakeWeakFormContext(
       MakeTrialField<"u">(fe_space),

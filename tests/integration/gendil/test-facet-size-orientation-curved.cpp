@@ -69,18 +69,6 @@ Matrix Evaluate(const Form& form, const Context& context, const Rule& rule,
    return matrix;
 }
 
-auto NormalSize()
-{
-   return MakeCoefficient<"normal_size", InverseNormalCellSize>(
-      [] GENDIL_HOST_DEVICE (Real size) { return size; });
-}
-
-auto SquaredNormalSize()
-{
-   return MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
-      [] GENDIL_HOST_DEVICE (Real size) { return size * size; });
-}
-
 template<Integer Dim>
 auto BoundaryConnectivity()
 {
@@ -140,6 +128,10 @@ bool TestRotatedNeighbor()
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3, 3>{});
+   const auto normal_size = MakeCoefficient<"normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real size) { return size; });
+   const auto squared_normal = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real size) { return size * size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
@@ -148,11 +140,11 @@ bool TestRotatedNeighbor()
    {
       return Evaluate(integrate(faces, coefficient * jump(u) * jump(v)), ctx, rule, size);
    };
-   bool success = CheckMatrix("rotated mean normal scale", matrix(average(NormalSize()), context),
+   bool success = CheckMatrix("rotated mean normal scale", matrix(average(normal_size), context),
                                matrix(0.75, context));
    success = CheckMatrix("rotated nonlinear mean normal scale",
-      matrix(average(SquaredNormalSize()), context), matrix(0.625, context)) && success;
-   success = CheckGrouping(context, rule, size, 90.0 * average(SquaredNormalSize())) && success;
+      matrix(average(squared_normal), context), matrix(0.625, context)) && success;
+   success = CheckGrouping(context, rule, size, 90.0 * average(squared_normal)) && success;
 
    auto facets = MakeUnstructuredInteriorFaceConnectivity(connectivity, 2);
    auto partition = MakePartition(MakeCellPart(mesh),
@@ -161,18 +153,18 @@ bool TestRotatedNeighbor()
    const auto global_context = MakeWeakFormContext(
       MakeTrialField<"u">(mixed), MakeIntegrationDomain<"m">(partition));
    success = CheckMatrix("rotated global minus normal scale",
-      matrix(minus(NormalSize()), global_context), matrix(1.0, global_context)) && success;
+      matrix(minus(normal_size), global_context), matrix(1.0, global_context)) && success;
    success = CheckMatrix("rotated global plus normal scale",
-      matrix(plus(NormalSize()), global_context), matrix(0.5, global_context)) && success;
+      matrix(plus(normal_size), global_context), matrix(0.5, global_context)) && success;
    success = CheckMatrix("rotated local minus normal scale",
-      matrix(minus(NormalSize()), context), matrix(1.0, context)) && success;
+      matrix(minus(normal_size), context), matrix(1.0, context)) && success;
    success = CheckMatrix("rotated local plus normal scale",
-      matrix(plus(NormalSize()), context), matrix(0.5, context)) && success;
+      matrix(plus(normal_size), context), matrix(0.5, context)) && success;
    // This callback depends on reference axes, unlike the physical gradient.
    // In the canonical left-cell frame the two inverse Jacobians are diagonal:
    // diag(1,1/3) and diag(1/2,1/3), despite the neighbor's rotated native axes.
    const auto inverse = MakeCoefficient<"inverse_entries", JacobianInverse>(
-      [] GENDIL_HOST_DEVICE (const auto& J) {
+      [] GENDIL_HOST_DEVICE (const std::array<std::array<Real,2>,2>& J) {
          return GetValue(J,0,0) + 2.0*GetValue(J,0,1)
             + 3.0*GetValue(J,1,0) + 4.0*GetValue(J,1,1);
       });
@@ -191,10 +183,10 @@ bool TestRotatedNeighbor()
       combined_inverse,Evaluate(integrate(faces,inverse_term)+integrate(faces,physical_gradient),
          context,rule,size)) && success;
    success = CheckMatrix("rotated local/global nonlinear penalty",
-      matrix(average(SquaredNormalSize()), context),
-      matrix(average(SquaredNormalSize()), global_context)) && success;
+      matrix(average(squared_normal), context),
+      matrix(average(squared_normal), global_context)) && success;
    success = CheckGrouping(global_context, rule, size,
-                            90.0 * average(SquaredNormalSize())) && success;
+                            90.0 * average(squared_normal)) && success;
    return success;
 }
 
@@ -234,6 +226,8 @@ bool TestCurvedHexes()
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3, 3, 3>{});
+   const auto squared_normal = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real size) { return size * size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
    const auto facets = MakeUnstructuredInteriorFaceConnectivity(connectivity, 2);
    const auto partition = MakePartition(MakeCellPart(mesh),
@@ -253,8 +247,8 @@ bool TestCurvedHexes()
       {
          return 0.625 * (1.0 + a * a * (x[1] * x[1] + x[2] * x[2]) / (b * b * c * c));
       });
-   const auto mean = matrix(average(SquaredNormalSize()), context);
-   const auto global_mean = matrix(average(SquaredNormalSize()), global_context);
+   const auto mean = matrix(average(squared_normal), context);
+   const auto global_mean = matrix(average(squared_normal), global_context);
    bool success = CheckMatrix("curved hex true mean normal scales",
       mean, matrix(expected_normal, context));
    success = CheckMatrix("curved hex mean normal scales local/global",
@@ -262,18 +256,18 @@ bool TestCurvedHexes()
 
    // Canonical minus is cell 0, with normal width 1; plus has width 2.
    // Squaring their inverse scales gives factors 1 and 1/4, whose mean is 5/8.
-   const auto minus_scale = matrix(minus(SquaredNormalSize()), context);
-   const auto plus_scale = matrix(plus(SquaredNormalSize()), context);
+   const auto minus_scale = matrix(minus(squared_normal), context);
+   const auto plus_scale = matrix(plus(squared_normal), context);
    success = CheckMatrix("curved hex independent minus normal scale",
       minus_scale, matrix(1.6 * expected_normal, context)) && success;
    success = CheckMatrix("curved hex independent plus normal scale",
       plus_scale, matrix(0.4 * expected_normal, context)) && success;
    success = CheckMatrix("curved hex minus normal scale local/global",
-      minus_scale, matrix(minus(SquaredNormalSize()), global_context)) && success;
+      minus_scale, matrix(minus(squared_normal), global_context)) && success;
    success = CheckMatrix("curved hex plus normal scale local/global",
-      plus_scale, matrix(plus(SquaredNormalSize()), global_context)) && success;
+      plus_scale, matrix(plus(squared_normal), global_context)) && success;
 
-   const auto penalty = 90.0 * average(SquaredNormalSize());
+   const auto penalty = 90.0 * average(squared_normal);
    success = CheckGrouping(context, rule, size, penalty) && success;
    success = CheckGrouping(global_context, rule, size, penalty) && success;
    const auto flux = -average(dot(grad(u), Normal{})) * jump(v)

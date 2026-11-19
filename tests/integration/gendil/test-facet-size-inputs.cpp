@@ -130,21 +130,6 @@ DenseMatrix AssembleGlobal(const Form& form, const Context& context,
    return result;
 }
 
-auto NormalSize()
-{
-   return MakeCoefficient<"normal_size", InverseNormalCellSize>(
-      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size; });
-}
-
-auto SquaredNormalSize()
-{
-   return MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
-      [] GENDIL_HOST_DEVICE (Real inverse_size)
-      {
-         return inverse_size * inverse_size;
-      });
-}
-
 template<class Context, class Rule>
 bool CheckConstantScales(const Context& context, const Rule& rule,
                          const Integer size)
@@ -152,8 +137,10 @@ bool CheckConstantScales(const Context& context, const Rule& rule,
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
-   const auto normal = NormalSize();
-   const auto squared = SquaredNormalSize();
+   const auto normal = MakeCoefficient<"normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size; });
+   const auto squared = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size * inverse_size; });
    auto matrix = [&](const auto& coefficient)
    {
       return Evaluate(integrate(faces, coefficient * jump(u) * jump(v)),
@@ -236,10 +223,12 @@ bool TestUnequalRectangles()
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<4, 4>{});
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
+   const auto squared_normal = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size * inverse_size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
    bool success = CheckConstantScales(context, rule, size);
    success = CheckSplitting<false>(context, rule, size,
-                                  90.0 * average(SquaredNormalSize())) && success;
+                                  90.0 * average(squared_normal)) && success;
 
    auto facets = MakeUnstructuredInteriorFaceConnectivity(connectivity, 2);
    auto partition = MakePartition(MakeCellPart(mesh),
@@ -250,12 +239,12 @@ bool TestUnequalRectangles()
       MakeTrialField<"u">(mixed), MakeIntegrationDomain<"m">(partition));
    success = CheckConstantScales(global_context, rule, size) && success;
    success = CheckSplitting<true>(global_context, rule, size,
-                                 90.0 * average(SquaredNormalSize())) && success;
+                                 90.0 * average(squared_normal)) && success;
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
    const auto form = integrate(faces,
-      average(SquaredNormalSize()) * jump(u) * jump(v));
+      average(squared_normal) * jump(u) * jump(v));
    success = Check("local and global penalties",
       Evaluate(form, context, rule, size),
       Evaluate(form, global_context, rule, size)) && success;
@@ -276,10 +265,12 @@ bool TestNonconformingInterface()
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(partition));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<4, 4>{});
+   const auto squared_normal = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size * inverse_size; });
    const Integer size = GetNumberOfGlobalDofs(space);
    bool success = CheckConstantScales(context, rule, size);
    success = CheckSplitting<true>(context, rule, size,
-                                 90.0 * average(SquaredNormalSize())) && success;
+                                 90.0 * average(squared_normal)) && success;
    return success;
 }
 
@@ -327,8 +318,10 @@ bool TestWarpedQuads()
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<4, 4>{});
+   const auto normal_size = MakeCoefficient<"normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
-   return CheckSplitting<false>(context, rule, size, 90.0 * average(NormalSize()));
+   return CheckSplitting<false>(context, rule, size, 90.0 * average(normal_size));
 }
 
 bool TestCurvedEdge()
@@ -364,30 +357,36 @@ bool TestCurvedEdge()
    const auto space = MakeFiniteElementSpace(mesh, fe);
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
+   const auto squared_normal = MakeCoefficient<"squared_normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size * inverse_size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
-   const auto actual = integrate(faces, average(SquaredNormalSize()) * jump(u) * jump(v));
-   auto expected_form = [&](const Real curvature)
-   {
-      auto scale = MakeCoefficient<"expected_normal", PhysicalCoordinates>(
-         [curvature] GENDIL_HOST_DEVICE (const std::array<Real, 2>& x)
-         {
-            const Real slope = curvature * (1.0 - 2.0 * x[1] / 3.0) / 3.0;
-            // Mean of rho^2 for normal reference widths 1 and 2.
-            return 0.625 * (1.0 + slope * slope);
-         });
-      return integrate(faces, scale * jump(u) * jump(v));
-   };
+   const auto actual = integrate(faces, average(squared_normal) * jump(u) * jump(v));
+   const auto initial_scale = MakeCoefficient<"expected_normal", PhysicalCoordinates>(
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& x)
+      {
+         const Real slope = 0.8 * (1.0 - 2.0 * x[1] / 3.0) / 3.0;
+         // Mean of rho^2 for normal reference widths 1 and 2.
+         return 0.625 * (1.0 + slope * slope);
+      });
+   const auto updated_scale = MakeCoefficient<"expected_normal", PhysicalCoordinates>(
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& x)
+      {
+         const Real slope = 1.2 * (1.0 - 2.0 * x[1] / 3.0) / 3.0;
+         return 0.625 * (1.0 + slope * slope);
+      });
+   const auto expected_form = integrate(faces, initial_scale * jump(u) * jump(v));
+   const auto updated_form = integrate(faces, updated_scale * jump(u) * jump(v));
    const auto rule4 = MakeIntegrationRule(IntegrationRuleNumPoints<4, 4>{});
    const auto rule6 = MakeIntegrationRule(IntegrationRuleNumPoints<6, 6>{});
    bool success = Check("curved normal scales with four-point operator rule",
-      Evaluate(actual, context, rule4, size), Evaluate(expected_form(0.8), context, rule4, size));
+      Evaluate(actual, context, rule4, size), Evaluate(expected_form, context, rule4, size));
    success = Check("curved normal scales with six-point operator rule",
-      Evaluate(actual, context, rule6, size), Evaluate(expected_form(0.8), context, rule6, size)) && success;
+      Evaluate(actual, context, rule6, size), Evaluate(expected_form, context, rule6, size)) && success;
    success = CheckSplitting<false>(context, rule4, size,
-                                  90.0 * average(SquaredNormalSize())) && success;
+                                  90.0 * average(squared_normal)) && success;
 
    // An existing operator must observe changes in the mesh node storage.
    const auto existing_operator = MakeGenericOperator<KP>(actual, context, rule4);
@@ -404,7 +403,7 @@ bool TestCurvedEdge()
    }
    success = Check("normal scales after mesh coordinates change",
       Dense(existing_operator, size),
-      Evaluate(expected_form(1.2), context, rule4, size)) && success;
+      Evaluate(updated_form, context, rule4, size)) && success;
    return success;
 }
 
@@ -416,12 +415,14 @@ bool TestThreeDimensionalScales()
    const auto context = MakeWeakFormContext(
       MakeTrialField<"u">(space), MakeIntegrationDomain<"m">(mesh));
    const auto rule = MakeIntegrationRule(IntegrationRuleNumPoints<3, 3, 3>{});
+   const auto normal_size = MakeCoefficient<"normal_size", InverseNormalCellSize>(
+      [] GENDIL_HOST_DEVICE (Real inverse_size) { return inverse_size; });
    const Integer size = space.GetNumberOfFiniteElementDofs();
    TrialSpace<"u"> u;
    TestSpace<"u"> v;
    InteriorFacets<"m"> faces;
    BoundaryFacets<"m"> boundary;
-   const auto normal = integrate(faces, average(NormalSize()) * jump(u) * jump(v));
+   const auto normal = integrate(faces, average(normal_size) * jump(u) * jump(v));
    const auto expected_normal = integrate(faces, jump(u) * jump(v));
    bool success = Check("three-dimensional normal cell width",
       Evaluate(normal, context, rule, size), Evaluate(expected_normal, context, rule, size));
@@ -434,7 +435,7 @@ bool TestThreeDimensionalScales()
          return 1.0 / 3.0;
       });
    success = Check("boundary normal scale without a side selector",
-      Evaluate(integrate(boundary, NormalSize() * u * v), context, rule, size),
+      Evaluate(integrate(boundary, normal_size * u * v), context, rule, size),
       Evaluate(integrate(boundary, boundary_normal * u * v), context, rule, size)) && success;
    return success;
 }

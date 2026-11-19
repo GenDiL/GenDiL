@@ -31,19 +31,33 @@ inline constexpr bool is_threaded_operand_v = requires
    typename std::remove_cvref_t<VectorType>::thread_shape;
 };
 
+// Ordinary helpers keep dependent requires-expressions out of generic lambdas
+// for CUDA compilers.
+template<class VectorType, size_t... I>
+constexpr bool WritableLocalEntries(std::index_sequence<I...>)
+{
+   return requires(VectorType& vector)
+   {
+      vector.data((void(I), size_t{})...) = Real{};
+   };
+}
+
+template<class VectorType, size_t... I>
+constexpr bool ReadableLocalEntries(std::index_sequence<I...>)
+{
+   return requires(const VectorType& vector)
+   {
+      { vector.data((void(I), size_t{})...) } -> std::convertible_to<Real>;
+   };
+}
+
 template<class VectorType>
 constexpr bool WritableLocalEntries()
 {
    if constexpr (is_threaded_operand_v<VectorType>)
    {
-      return []<size_t... I>(std::index_sequence<I...>)
-      {
-         return requires(VectorType& vector)
-         {
-            vector.data((void(I), size_t{})...) = Real{};
-         };
-      }(std::make_index_sequence<
-           std::remove_cvref_t<VectorType>::register_shape::size()>{});
+      return WritableLocalEntries<VectorType>(std::make_index_sequence<
+         std::remove_cvref_t<VectorType>::register_shape::size()>{});
    }
    else
    {
@@ -57,14 +71,8 @@ constexpr bool ReadableLocalEntries()
 {
    if constexpr (is_threaded_operand_v<VectorType>)
    {
-      return []<size_t... I>(std::index_sequence<I...>)
-      {
-         return requires(const VectorType& vector)
-         {
-            { vector.data((void(I), size_t{})...) } -> std::convertible_to<Real>;
-         };
-      }(std::make_index_sequence<
-           std::remove_cvref_t<VectorType>::register_shape::size()>{});
+      return ReadableLocalEntries<VectorType>(std::make_index_sequence<
+         std::remove_cvref_t<VectorType>::register_shape::size()>{});
    }
    else
    {

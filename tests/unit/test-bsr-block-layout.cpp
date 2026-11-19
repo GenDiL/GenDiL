@@ -241,7 +241,7 @@ bool TestAssemblySupportsBothBlockLayouts()
    TestSpace< "u" > v;
    auto rho =
       MakeCoefficient< "density", PhysicalCoordinates >(
-         [] ( const auto & x_phys )
+         [] GENDIL_HOST_DEVICE ( const std::array< Real, 1 > & x_phys )
          {
             return 1.0 + x_phys[0] * x_phys[0];
          } );

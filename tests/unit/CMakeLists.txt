@@ -1,50 +1,70 @@
+# NVCC template bugs prevent these named weak-form tests from compiling.
+# Keep them enabled for CPU, Clang CUDA, and HIP.
+gendil_add_non_nvcc_test(test-generalized-interior-residual test-generalized-interior-residual.cpp)
+gendil_add_non_nvcc_test(test-upwind-transported-fields test-upwind-transported-fields.cpp)
+gendil_add_non_nvcc_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)
+gendil_add_non_nvcc_test(test-boundary-upwind test-boundary-upwind.cpp)
+gendil_add_non_nvcc_test(test-execution-context test-execution-context.cpp)
+if(TARGET test-execution-context)
+  foreach(mode bound-local-extent bound-element-extent)
+    if(mode STREQUAL "bound-local-extent")
+      set(diagnostic "Persistent field element storage has an insufficient local extent.")
+    else()
+      set(diagnostic "Persistent field element storage has an insufficient element extent.")
+    endif()
+    add_test(NAME test-execution-context-${mode}
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-execution-context>
+        -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endforeach()
+endif()
+gendil_add_non_nvcc_test(test-cell-invocation-validation test-cell-invocation-validation.cpp NO_CTEST)
+if(TARGET test-cell-invocation-validation)
+  foreach(mode input-replace input-add direct-input output-replace output-add
+               load-replace load-add direct-output direct-load domain-topology)
+    if(mode STREQUAL "domain-topology")
+      set(diagnostic "Active finite-element field is not compatible with the selected integration-domain cell topology.")
+    elseif(mode MATCHES "input")
+      set(diagnostic "Weak-form input vector is smaller than its required algebraic extent.")
+    else()
+      set(diagnostic "Weak-form output vector is smaller than its required algebraic extent.")
+    endif()
+    add_test(NAME test-cell-invocation-${mode}
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-cell-invocation-validation>
+        -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endforeach()
+endif()
 
-gendil_add_test(test-generalized-interior-residual test-generalized-interior-residual.cpp)
-gendil_add_test(test-upwind-transported-fields test-upwind-transported-fields.cpp)
-gendil_add_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)
-gendil_add_test(test-boundary-upwind test-boundary-upwind.cpp)
-gendil_add_test(test-execution-context test-execution-context.cpp)
-gendil_add_test(test-cell-invocation-validation test-cell-invocation-validation.cpp NO_CTEST)
-foreach(mode input-replace input-add direct-input output-replace output-add
-             load-replace load-add direct-output direct-load domain-topology)
-  if(mode STREQUAL "domain-topology")
-    set(diagnostic "Active finite-element field is not compatible with the selected integration-domain cell topology.")
-  elseif(mode MATCHES "input")
-    set(diagnostic "Weak-form input vector is smaller than its required algebraic extent.")
-  else()
-    set(diagnostic "Weak-form output vector is smaller than its required algebraic extent.")
-  endif()
-  add_test(NAME test-cell-invocation-${mode}
-    COMMAND ${CMAKE_COMMAND}
-      -DTEST_PROGRAM=$<TARGET_FILE:test-cell-invocation-validation>
-      -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
-endforeach()
-
-gendil_add_test(test-boundary-invocation-validation test-cell-invocation-validation.cpp NO_CTEST)
-target_compile_definitions(test-boundary-invocation-validation PRIVATE GENDIL_TEST_BOUNDARY_INVOCATION)
-foreach(mode input-replace input-add direct-input output-replace output-add
-             load-replace load-add direct-output direct-load domain-topology)
-  if(mode STREQUAL "domain-topology")
-    set(diagnostic "Active finite-element field is not compatible with the selected integration-domain cell topology.")
-  elseif(mode MATCHES "input")
-    set(diagnostic "Weak-form input vector is smaller than its required algebraic extent.")
-  else()
-    set(diagnostic "Weak-form output vector is smaller than its required algebraic extent.")
-  endif()
-  add_test(NAME test-boundary-invocation-${mode}
-    COMMAND ${CMAKE_COMMAND}
-      -DTEST_PROGRAM=$<TARGET_FILE:test-boundary-invocation-validation>
-      -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
-endforeach()
+gendil_add_non_nvcc_test(test-boundary-invocation-validation test-cell-invocation-validation.cpp NO_CTEST)
+if(TARGET test-boundary-invocation-validation)
+  target_compile_definitions(test-boundary-invocation-validation PRIVATE GENDIL_TEST_BOUNDARY_INVOCATION)
+  foreach(mode input-replace input-add direct-input output-replace output-add
+               load-replace load-add direct-output direct-load domain-topology)
+    if(mode STREQUAL "domain-topology")
+      set(diagnostic "Active finite-element field is not compatible with the selected integration-domain cell topology.")
+    elseif(mode MATCHES "input")
+      set(diagnostic "Weak-form input vector is smaller than its required algebraic extent.")
+    else()
+      set(diagnostic "Weak-form output vector is smaller than its required algebraic extent.")
+    endif()
+    add_test(NAME test-boundary-invocation-${mode}
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-boundary-invocation-validation>
+        -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endforeach()
+endif()
 
 gendil_add_test(test-dot test-dot.cpp)
+gendil_add_test(test-caliper-interface test-caliper-interface.cpp)
 gendil_add_test(test-array-arithmetic test-array-arithmetic.cpp)
-gendil_add_test(test-matrix-product-pullback test-matrix-product-pullback.cpp)
+gendil_add_non_nvcc_test(test-matrix-product-pullback test-matrix-product-pullback.cpp)
 gendil_add_test(test-vector-l2-error test-vector-l2-error.cpp)
-gendil_add_test(test-divergence-pullback test-divergence-pullback.cpp)
-gendil_add_test(test-curl-pullback test-curl-pullback.cpp)
+gendil_add_non_nvcc_test(test-divergence-pullback test-divergence-pullback.cpp)
+gendil_add_non_nvcc_test(test-curl-pullback test-curl-pullback.cpp)
 gendil_add_test(test-threaded-view-indexing test-threaded-view-indexing.cpp)
 gendil_add_test(test-kernel-configuration test-kernel-configuration.cpp)
 gendil_add_test(test-getpoint test-getpoint.cpp)
@@ -197,7 +217,7 @@ if(TARGET test-checked-arithmetic)
   )
 endif()
 gendil_add_test(test-dof-to-quad-policies test-dof-to-quad-policies.cpp)
-gendil_add_test(test-facet-quad-data test-facet-quad-data.cpp)
+gendil_add_non_nvcc_test(test-facet-quad-data test-facet-quad-data.cpp)
 gendil_add_test(test-restriction-layout test-restriction-layout.cpp)
 gendil_add_test(
   test-weighted-restriction-operations
@@ -210,25 +230,29 @@ gendil_add_non_nvcc_test(
 gendil_add_test(test-structural-broken-space-restriction test-structural-broken-space-restriction.cpp)
 gendil_add_test(test-cell-reference-geometry test-cell-reference-geometry.cpp)
 gendil_add_test(test-orientation test-orientation.cpp)
+gendil_add_test(test-quad-cell-header test-quad-cell-header.cpp)
+gendil_add_test(test-hex-cell-header test-hex-cell-header.cpp)
 gendil_add_test(test-normal-orientation test-normal-orientation.cpp)
-gendil_add_test(test-local-facet-geometry-view test-local-facet-geometry-view.cpp)
-gendil_add_test(test-local-facet-quadrature-validation test-local-facet-quadrature-validation.cpp)
-target_compile_definitions(test-local-facet-quadrature-validation PRIVATE NDEBUG)
-foreach(mode operator form)
-  add_test(NAME test-local-facet-quadrature-reject-${mode}
-    COMMAND ${CMAKE_COMMAND}
-      -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
-      -DMODE=reject-${mode}
-      "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
-endforeach()
-if(USE_CUDA OR USE_HIP)
-  add_test(NAME test-local-facet-quadrature-reject-device-operator
-    COMMAND ${CMAKE_COMMAND}
-      -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
-      -DMODE=reject-device-operator
-      "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+gendil_add_non_nvcc_test(test-local-facet-geometry-view test-local-facet-geometry-view.cpp)
+gendil_add_non_nvcc_test(test-local-facet-quadrature-validation test-local-facet-quadrature-validation.cpp)
+if(TARGET test-local-facet-quadrature-validation)
+  target_compile_definitions(test-local-facet-quadrature-validation PRIVATE NDEBUG)
+  foreach(mode operator form)
+    add_test(NAME test-local-facet-quadrature-reject-${mode}
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
+        -DMODE=reject-${mode}
+        "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endforeach()
+  if(USE_CUDA OR USE_HIP)
+    add_test(NAME test-local-facet-quadrature-reject-device-operator
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-local-facet-quadrature-validation>
+        -DMODE=reject-device-operator
+        "-DEXPECTED_TEXT=Local interior-facet quadrature is incompatible with the face coordinate orientation."
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endif()
 endif()
 gendil_add_test(test-face-read-dofs-direct-global test-face-read-dofs-direct-global.cpp)
 gendil_add_non_nvcc_test(test-face-read-dofs-direct-global-vector test-face-read-dofs-direct-global-vector.cpp)
@@ -297,7 +321,7 @@ if(USE_CUDA OR USE_HIP)
   )
 endif()
 # gendil_add_test(test-gmres test-gmres.cpp)
-gendil_add_test(test-conjugate-gradient test-conjugate-gradient.cpp)
+gendil_add_non_nvcc_test(test-conjugate-gradient test-conjugate-gradient.cpp)
 gendil_add_test(test-bicgstab test-bicgstab.cpp)
 foreach(mode negative-tolerance nan-tolerance infinite-tolerance
              single-negative-tolerance single-nan-tolerance single-infinite-tolerance)
@@ -309,18 +333,20 @@ foreach(mode negative-tolerance nan-tolerance infinite-tolerance
       -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
 endforeach()
 gendil_add_test(test-iterative-solver-utilities test-iterative-solver-utilities.cpp)
-foreach(mode negative-tolerance nan-tolerance infinite-tolerance size-mismatch)
-  if(mode STREQUAL "size-mismatch")
-    set(diagnostic "CG requires matching RHS and solution sizes.")
-  else()
-    set(diagnostic "CG requires a finite, nonnegative tolerance.")
-  endif()
-  add_test(NAME test-conjugate-gradient-rejects-${mode}
-    COMMAND ${CMAKE_COMMAND}
-      -DTEST_PROGRAM=$<TARGET_FILE:test-conjugate-gradient>
-      -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
-endforeach()
+if(TARGET test-conjugate-gradient)
+  foreach(mode negative-tolerance nan-tolerance infinite-tolerance size-mismatch)
+    if(mode STREQUAL "size-mismatch")
+      set(diagnostic "CG requires matching RHS and solution sizes.")
+    else()
+      set(diagnostic "CG requires a finite, nonnegative tolerance.")
+    endif()
+    add_test(NAME test-conjugate-gradient-rejects-${mode}
+      COMMAND ${CMAKE_COMMAND}
+        -DTEST_PROGRAM=$<TARGET_FILE:test-conjugate-gradient>
+        -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+  endforeach()
+endif()
 # gendil_add_test(test-solvers test-solvers.cpp)
 gendil_add_non_nvcc_test(test-weak-form test-weak-form.cpp)
 gendil_add_non_nvcc_test(test-vector-h1-generic-operator test-vector-h1-generic-operator.cpp)

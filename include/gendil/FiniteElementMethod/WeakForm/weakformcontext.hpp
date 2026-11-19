@@ -343,6 +343,14 @@ constexpr auto MakeIntegrationDomain(T&& x)
 // Context
 // -----------------------------------------------------------------------------
 
+namespace weak_form_context_detail
+{
+// Keep structural storage detection outside the member function template:
+// NVCC can otherwise mis-evaluate this dependent requires-expression.
+template<class Field>
+concept HasDofStorage = requires(const Field& field) { field.dofs; };
+}
+
 // WeakFormContext stores normalized entries in separate maps. This keeps
 // lookups simple and name-specific: Cells<Name> query domains, global
 // InteriorFacets<Name> query interior_face_domains, and global
@@ -410,7 +418,7 @@ struct WeakFormContext
       {
          using Field = std::remove_cvref_t<decltype(
             std::declval<const FEFieldsMap&>().template Get<FiniteElementFieldKey<Name>>())>;
-         return requires(const Field& field) { field.dofs; };
+         return weak_form_context_detail::HasDofStorage<Field>;
       }
       return false;
    }
