@@ -12,6 +12,7 @@
 
 #include <array>
 #include <iostream>
+#include <string_view>
 #include <type_traits>
 
 namespace native_bindings_test
@@ -148,6 +149,38 @@ struct CountedContainer
    Real& operator[](GlobalIndex i) { return data[i]; }
    const Real& operator[](GlobalIndex i) const { return data[i]; }
 };
+
+template<bool Complete>
+struct QueryExtentStorage
+{
+   static constexpr size_t rank = 3;
+   std::array<GlobalIndex, rank> extents{2, 3, 5};
+   mutable std::array<int, rank> queries{};
+
+   template<size_t Axis> requires (Complete || Axis != 1)
+   GlobalIndex Get(AxisTag<Axis>) const
+   {
+      ++queries[Axis];
+      return extents[Axis];
+   }
+};
+
+struct UnboundedExtentStorage
+{
+   static constexpr size_t rank = 3;
+};
+
+bool CheckElementStorageExtents()
+{
+   const ContiguousL2Restriction<std::index_sequence<2, 3>> restriction{0, 30, 30};
+   QueryExtentStorage<true> complete;
+   QueryExtentStorage<false> partial;
+   execution_context_detail::ValidateElementStorageExtent(restriction, complete, 5);
+   execution_context_detail::ValidateElementStorageExtent(restriction, partial, 5);
+   execution_context_detail::ValidateElementStorageExtent(restriction, UnboundedExtentStorage{}, 5);
+   return complete.queries == std::array<int, 3>{1, 1, 1}
+      && partial.queries == std::array<int, 3>{1, 0, 1};
+}
 
 bool CheckBorrowedLocalOverlay()
 {
@@ -500,9 +533,21 @@ bool CheckBindings()
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-   bool ok = CheckBorrowedLocalOverlay() && CheckReadOnlyPreboundViews() &&
+   if (argc != 1)
+   {
+      if (argc != 2) { return 2; }
+      const std::string_view mode(argv[1]);
+      const ContiguousL2Restriction<std::index_sequence<2, 3>> restriction{0, 30, 30};
+      QueryExtentStorage<true> storage;
+      if (mode == "bound-local-extent") { storage.extents[1] = 2; }
+      else if (mode == "bound-element-extent") { storage.extents[2] = 4; }
+      else { return 2; }
+      execution_context_detail::ValidateElementStorageExtent(restriction, storage, 5);
+      return 0;
+   }
+   bool ok = CheckElementStorageExtents() && CheckBorrowedLocalOverlay() && CheckReadOnlyPreboundViews() &&
       CheckReadOnlyComponentViews<gendil::HostKernelConfiguration>() &&
       CheckOwnerSelection<gendil::HostKernelConfiguration>() &&
       CheckFacetBindings<gendil::HostKernelConfiguration>() &&

@@ -342,6 +342,8 @@ template<class Left, class Right>
 GENDIL_HOST_DEVICE
 bool CheckMatrixProductPair(const Left& left, const Right& right, double seed)
 {
+   // Keep operator lookup explicit for standard/custom containers on NVCC.
+   using gendil::operator*;
    const std::array<std::array<double, 2>, 2> expected{
       {{.5*seed-12.5, 2*seed+30.}, {31., -55.}}};
    const std::array<std::array<double, 3>, 3> reverse{

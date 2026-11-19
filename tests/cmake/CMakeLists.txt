@@ -1,3 +1,21 @@
+set(
+  GENDIL_TEST_HOST_C_COMPILER "${CMAKE_C_COMPILER}" CACHE FILEPATH
+  "C compiler for host-only configuration checks"
+)
+set(
+  GENDIL_TEST_HOST_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE FILEPATH
+  "C++ compiler for host-only configuration checks"
+)
+
+# Carry the selected host toolchain into nested configurations. HIP CI can use
+# a plain host compiler here even when its main C++ compiler is hipcc.
+set(gendil_configure_probe_arguments
+  "-DC_COMPILER=${GENDIL_TEST_HOST_C_COMPILER}"
+  "-DCXX_COMPILER=${GENDIL_TEST_HOST_CXX_COMPILER}"
+  "-DGENERATOR=${CMAKE_GENERATOR}"
+  "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+)
+
 foreach(gendil_sparse_mode IN ITEMS AUTO OFF)
   string(TOLOWER "${gendil_sparse_mode}" gendil_sparse_mode_lower)
   add_test(
@@ -8,6 +26,7 @@ foreach(gendil_sparse_mode IN ITEMS AUTO OFF)
       -DBINARY_DIR=${PROJECT_BINARY_DIR}/configure-tests/${gendil_sparse_mode_lower}
       -DMODE=${gendil_sparse_mode}
       -DEXPECT_SUCCESS=TRUE
+      ${gendil_configure_probe_arguments}
       -P
       ${PROJECT_SOURCE_DIR}/tests/cmake/configure-device-sparse-finalization.cmake
   )
@@ -21,6 +40,7 @@ add_test(
     -DBINARY_DIR=${PROJECT_BINARY_DIR}/configure-tests/on-no-device
     -DMODE=ON
     -DEXPECT_SUCCESS=FALSE
+    ${gendil_configure_probe_arguments}
     "-DEXPECTED_TEXT=requires USE_CUDA=ON or USE_HIP=ON"
     -P
     ${PROJECT_SOURCE_DIR}/tests/cmake/configure-device-sparse-finalization.cmake
@@ -52,9 +72,12 @@ if(USE_HIP)
         -DMODE=${gendil_missing_rocprim_mode}
         -DDEVICE_BACKEND=HIP
         -DHIP_COMPILER=${CMAKE_HIP_COMPILER}
+        "-DHIP_ARCHITECTURES=${CMAKE_HIP_ARCHITECTURES}"
+        "-DHIP_ROCM_ROOT=${CMAKE_HIP_COMPILER_ROCM_ROOT}"
         -DHIP_DIR=${HIP_DIR}
         -Drocsparse_DIR=${rocsparse_DIR}
         -DEXPECT_SUCCESS=${gendil_missing_rocprim_success}
+        ${gendil_configure_probe_arguments}
         "-DEXPECTED_TEXT=${gendil_missing_rocprim_text}"
         -P
         ${PROJECT_SOURCE_DIR}/tests/cmake/configure-device-sparse-finalization.cmake
@@ -71,3 +94,8 @@ if(USE_HIP)
     )
   endif()
 endif()
+
+get_property(gendil_configure_tests DIRECTORY PROPERTY TESTS)
+set_tests_properties(${gendil_configure_tests} PROPERTIES LABELS "configure")
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/register-installed-package.cmake")

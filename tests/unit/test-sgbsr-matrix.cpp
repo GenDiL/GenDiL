@@ -329,7 +329,7 @@ struct CopyBsrScatter
          }();
          DeviceLoop(
             GetVectorSize( input ),
-            [=] GENDIL_HOST_DEVICE ( const size_t i )
+            [input_data, output_data] GENDIL_HOST_DEVICE ( const size_t i )
             {
                if constexpr ( Add )
                {

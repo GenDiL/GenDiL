@@ -1,5 +1,8 @@
 @PACKAGE_INIT@
 
+# Resolve this before dependencies can change PACKAGE_PREFIX_DIR in older CMake.
+set_and_check(GENDIL_INCLUDE_DIRS "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+
 include(CMakeFindDependencyMacro)
 
 if (@USE_HYPRE@ AND NOT CMAKE_C_COMPILER_LOADED)
@@ -63,15 +66,10 @@ set(GENDIL_HAS_DEVICE_SPARSE_FINALIZATION
 
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 
-set(GENDIL_INCLUDE_DIRS "@PACKAGE_INCLUDE_INSTALL_DIR@")
-
 # Provide additional variables for convenience
 set(GENDIL_LIBRARIES GENDIL::GENDIL)
 
 # For backwards compatibility
 set(GENDIL_FOUND TRUE)
-
-# Configurations
-set(CMAKE_INSTALL_PREFIX @CMAKE_INSTALL_PREFIX@)
 
 check_required_components("@PROJECT_NAME@")

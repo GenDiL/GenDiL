@@ -256,17 +256,17 @@ int TestBoundaryCoefficientFieldInputs()
    TestSpace<"u"> v;
 
    auto value_coeff = MakeCoefficient<"boundary_value", FieldValue<"w">>(
-      [] (const Real w) { return 0.5 + w; });
+      [] GENDIL_HOST_DEVICE (const Real w) { return 0.5 + w; });
 
    auto gradient_coeff = MakeCoefficient<"boundary_gradient", FieldGradient<"w">>(
-      [] (const auto& grad_w)
+      [] GENDIL_HOST_DEVICE (const std::array<Real, 2>& grad_w)
       {
          return 1.0 + grad_w[0] - 0.5 * grad_w[1];
       });
 
    auto value_and_gradient_coeff =
       MakeCoefficient<"boundary_value_and_gradient", FieldValue<"w">, FieldGradient<"w">>(
-         [] (const Real w, const auto& grad_w)
+         [] GENDIL_HOST_DEVICE (const Real w, const std::array<Real, 2>& grad_w)
          {
             return 0.25 + 0.75 * w + grad_w[0] - 0.5 * grad_w[1];
          });

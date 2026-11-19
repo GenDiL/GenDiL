@@ -4,6 +4,18 @@ gendil_add_test(test-upwind-transported-fields test-upwind-transported-fields.cp
 gendil_add_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)
 gendil_add_test(test-boundary-upwind test-boundary-upwind.cpp)
 gendil_add_test(test-execution-context test-execution-context.cpp)
+foreach(mode bound-local-extent bound-element-extent)
+  if(mode STREQUAL "bound-local-extent")
+    set(diagnostic "Persistent field element storage has an insufficient local extent.")
+  else()
+    set(diagnostic "Persistent field element storage has an insufficient element extent.")
+  endif()
+  add_test(NAME test-execution-context-${mode}
+    COMMAND ${CMAKE_COMMAND}
+      -DTEST_PROGRAM=$<TARGET_FILE:test-execution-context>
+      -DMODE=${mode} "-DEXPECTED_TEXT=${diagnostic}"
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/expect_runtime_failure.cmake)
+endforeach()
 gendil_add_test(test-cell-invocation-validation test-cell-invocation-validation.cpp NO_CTEST)
 foreach(mode input-replace input-add direct-input output-replace output-add
              load-replace load-add direct-output direct-load domain-topology)
@@ -40,6 +52,7 @@ foreach(mode input-replace input-add direct-input output-replace output-add
 endforeach()
 
 gendil_add_test(test-dot test-dot.cpp)
+gendil_add_test(test-caliper-interface test-caliper-interface.cpp)
 gendil_add_test(test-array-arithmetic test-array-arithmetic.cpp)
 gendil_add_test(test-matrix-product-pullback test-matrix-product-pullback.cpp)
 gendil_add_test(test-vector-l2-error test-vector-l2-error.cpp)
@@ -210,6 +223,8 @@ gendil_add_non_nvcc_test(
 gendil_add_test(test-structural-broken-space-restriction test-structural-broken-space-restriction.cpp)
 gendil_add_test(test-cell-reference-geometry test-cell-reference-geometry.cpp)
 gendil_add_test(test-orientation test-orientation.cpp)
+gendil_add_test(test-quad-cell-header test-quad-cell-header.cpp)
+gendil_add_test(test-hex-cell-header test-hex-cell-header.cpp)
 gendil_add_test(test-normal-orientation test-normal-orientation.cpp)
 gendil_add_test(test-local-facet-geometry-view test-local-facet-geometry-view.cpp)
 gendil_add_test(test-local-facet-quadrature-validation test-local-facet-quadrature-validation.cpp)

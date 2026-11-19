@@ -53,6 +53,23 @@ function(gendil_configure_cuda target openmp_flags output_sparse_enabled)
       #include <cub/device/device_radix_sort.cuh>
       #include <cub/device/device_reduce.cuh>
       #include <cub/device/device_scan.cuh>
+      // Match the production operations without depending on CUB utility functors.
+      template <typename T>
+      struct Add
+      {
+        __host__ __device__ T operator()(const T& lhs, const T& rhs) const
+        {
+          return lhs + rhs;
+        }
+      };
+      template <typename T>
+      struct Maximum
+      {
+        __host__ __device__ T operator()(const T lhs, const T rhs) const
+        {
+          return lhs < rhs ? rhs : lhs;
+        }
+      };
       struct Coordinate
       {
         unsigned int major;
@@ -80,10 +97,10 @@ function(gendil_configure_cuda target openmp_flags output_sparse_enabled)
           temporary_storage, temporary_storage_bytes,
           coordinates, unique_coordinates,
           values, alternate_values, unique_count,
-          cub::Sum{}, 0);
+          Add<double>{}, 0);
         cub::DeviceScan::InclusiveScan(
           temporary_storage, temporary_storage_bytes,
-          keys, alternate_keys, cub::Max(), 0);
+          keys, alternate_keys, Maximum<unsigned int>{}, 0);
         return 0;
       }
       "

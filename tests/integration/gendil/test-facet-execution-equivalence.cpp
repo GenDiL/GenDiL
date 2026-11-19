@@ -198,14 +198,13 @@ bool CheckForms(const Local& local, const Global& global, const Rule& rule, bool
    const auto rho = MakeCoefficient<"rho",InverseNormalCellSize>(
       [] GENDIL_HOST_DEVICE (Real r) { return r; });
    const auto inverse = MakeCoefficient<"inverse_entries",JacobianInverse>(
-      [] GENDIL_HOST_DEVICE (const auto& J) {
-         static_assert(std::is_same_v<std::remove_cvref_t<decltype(J)>,std::array<Real,2>>);
+      [] GENDIL_HOST_DEVICE (const std::array<Real,2>& J) {
          return GetValue(J,0)+2.*GetValue(J,1);
       });
    const auto w = MakeCoefficient<"w_value",FieldValue<"w">>(
       [] GENDIL_HOST_DEVICE (Real value) { return value; });
    const auto dw = MakeCoefficient<"w_gradient",FieldGradient<"w">>(
-      [] GENDIL_HOST_DEVICE (const auto& value) { return value[0]+2.*value[1]; });
+      [] GENDIL_HOST_DEVICE (const std::array<Real,2>& value) { return value[0]+2.*value[1]; });
    bool success = true;
    auto check = [&](const char* label, const auto& expression, Term term, Real speed = 1.) {
       const auto form = integrate(faces,expression);

@@ -166,6 +166,8 @@ void CheckPackedDenseLifetime()
 // storage, as well as before invoking a numerical map or preconditioner.
 struct GuardedSolution { Slice slice; };
 size_t GetVectorSize(const GuardedSolution&) { return 3; }
+// Required by the readable-vector concept; runtime reads use the slice.
+[[maybe_unused]]
 const Real* ReadHostVector(const GuardedSolution& value)
 { return gendil::ReadHostVector(value.slice); }
 Real* WriteHostVector(GuardedSolution&)
