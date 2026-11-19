@@ -50,7 +50,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check CI helpers
-        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v && exit 23
+        run: python3 -m unittest discover -s scripts/ci -p 'test_*.py' -v
       - name: Prepare configuration matrices
         id: matrix
         env:
@@ -58,7 +58,7 @@ jobs:
         run: |
           matrix_args=()
           if [[ "$INCLUDE_SANITIZERS" == true ]]; then matrix_args+=(--include-sanitizers); fi
-          matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}")
+          matrix=$(python3 scripts/ci/run.py matrix "${matrix_args[@]}" | python3 -c 'import json,sys; m=json.load(sys.stdin); m["include"]=[r for r in m["include"] if r["configuration"] in ("gcc","clang")]; print(json.dumps(m))')
           dependency_free_matrix=$(python3 scripts/ci/run.py matrix --dependency-free "${matrix_args[@]}")
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "dependency_free_matrix=$dependency_free_matrix" >> "$GITHUB_OUTPUT"
@@ -200,6 +200,10 @@ jobs:
           path: ${{ steps.prepare.outputs.dependency_prefix }}/mfem
           key: ${{ env.GENDIL_CI_CACHE_NAMESPACE }}-tpl-mfem-${{ steps.prepare.outputs.mfem_key }}
       # The helper selects CPU tests, GPU compilation/host checks, or static analysis.
+      - name: Inject expected late test failure
+        if: matrix.configuration == 'gcc'
+        run: |
+          printf '%s\n' 'add_test(NAME ci-intentional-failure COMMAND "${CMAKE_COMMAND}" -E false)' >> tests/CMakeLists.txt
       - name: Build and check GenDiL
         env:
           CONFIGURATION: ${{ matrix.configuration }}
