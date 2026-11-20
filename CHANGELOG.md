@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Input-free weak-form loads and multi-field residuals across cells, facets, and partitions, with affine `lhs`/`rhs` extraction.
+- Expanded weak-form vector calculus, facet projections, matrix products, and gradient upwinding.
+- Signed and weighted finite-element restrictions, including explicitly supplied p-nonconforming constraints, for matrix-free evaluation and supported sparse assembly paths.
+- Finite-element composition and Cartesian H1 numbering helpers, with extended interpolation, linear-form assembly, and L2 errors for vector and mixed spaces.
+- Block operator composition, vector subviews, and expanded vector/matrix arithmetic and reductions.
+- Restarted and flexible GMRES with right preconditioning and reusable workspaces.
+- An MFEM adapter for using GenDiL operators and sparse matrices with MFEM solvers.
+- Opt-in validation of local interior-facet quadrature compatibility.
+
+### Changed
+
+- Breaking: `FieldValue` and `FieldGradient` now default to scalar fields and validate field shape. Use `VectorFieldValue` and `VectorFieldGradient` for vector fields.
+- Breaking: replaced `InverseFacetSize` with `InverseNormalCellSize`. Interior-facet uses require an explicit trace or average.
+- Breaking: boundary upwinding requires explicit inflow data through `upwind(beta, u, g)`.
+- Breaking: `MakeLinearForm` now returns `Vector`; callers naming the previous return type should use `auto` or `Vector`.
+- Breaking: renamed `BiCGSTAB_no_alloc` to `BiCGSTAB`; use `RestartedBiCGSTAB_no_alloc` for explicit restart recovery.
+- Breaking: reorganized vector, finite-element, weak-form-trait, and GMRES headers; update direct includes.
+- Breaking: `GetValue` replaces `vector_access`/`matrix_access`, and kernel vector accessors return sized views instead of raw pointers.
+- Breaking: custom local facet connectivity requires current/neighbor endpoints and explicit normal orientation; custom facet contexts use free trace, normal, and Jacobian accessors.
+- Breaking: mixed scalar multiplication of recursive arrays now promotes element types. Integer-valued vector and matrix averages preserve fractional results.
+
+### Fixed
+
+- Corrected interior-facet orientation and trace consistency across local/global evaluation and assembly, restoring SIPDG symmetry and penalty scaling on unequal cells.
+- Corrected iterative-solver convergence, residual reporting, and breakdown handling.
+- Fixed threaded tensor indexing and vector-header linker errors across multiple translation units.
+
 ## [0.0.6] - 2026-08-25
 
 ### Added
