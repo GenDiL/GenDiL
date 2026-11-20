@@ -351,6 +351,27 @@ endif()
 gendil_add_non_nvcc_test(test-weak-form test-weak-form.cpp)
 gendil_add_non_nvcc_test(test-vector-h1-generic-operator test-vector-h1-generic-operator.cpp)
 gendil_add_non_nvcc_test(test-named-field-requirements test-named-field-requirements.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-inputs test-shaped-coefficient-inputs.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-construction test-shaped-coefficient-construction.cpp)
+if(TARGET test-shaped-coefficient-construction)
+  set(shaped_case 0)
+  foreach(mode bound-value-vector-on-scalar bound-value-scalar-on-vector
+               bound-gradient-vector-on-scalar bound-gradient-scalar-on-vector
+               active-value-vector-on-scalar active-value-scalar-on-vector
+               active-gradient-vector-on-scalar active-gradient-scalar-on-vector
+               plus-value-vector-on-scalar plus-value-scalar-on-vector
+               plus-gradient-vector-on-scalar plus-gradient-scalar-on-vector
+               default-bound-value-on-vector default-bound-gradient-on-vector
+               default-active-value-on-vector default-active-gradient-on-vector
+               default-plus-value-on-vector default-plus-gradient-on-vector)
+    math(EXPR shaped_case "${shaped_case} + 1")
+    set(shaped_target test-shaped-coefficient-reject-${mode})
+    gendil_add_target_compile_failure_test(${shaped_target}
+      test-shaped-coefficient-construction.cpp
+      "Coefficient field input shape declaration does not match the selected finite-element space.")
+    target_compile_definitions(${shaped_target}-probe PRIVATE GENDIL_SHAPED_REJECT_CASE=${shaped_case})
+  endforeach()
+endif()
 gendil_add_non_nvcc_test(test-facet-size-dimensions test-facet-size-dimensions.cpp)
 gendil_add_non_nvcc_test(test-vector-weakform-traits test-vector-weakform-traits.cpp)
 gendil_add_non_nvcc_test(test-vector-expression-construction test-vector-expression-construction.cpp)

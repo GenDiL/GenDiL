@@ -176,7 +176,8 @@ test field, and `w` a prescribed vector finite-element field.
 Apply these derivatives to named fields, then combine or trace their
 results: for example, `grad(u) + grad(p)` or
 `average(normal_derivative(u))`. To obtain the gradient of a prescribed field,
-use the coefficient input `FieldGradient<"w">` described below.
+use the coefficient input `VectorFieldGradient<"w">` described below for a
+vector field, or `FieldGradient<"s">` for a scalar field.
 
 For example, a vector diffusion or elasticity contribution can use
 `inner(grad(U), grad(V))`, `inner(sym_grad(U), sym_grad(V))`, or
@@ -260,7 +261,7 @@ auto diffusion = integrate(cells, k * dot(grad(u), grad(v)));
 ```
 
 For prescribed vector values used in `dot`, `inner`, or `outer`, expose
-`FieldValue<"w">` through `MakeVectorCoefficient` with an identity callback.
+`VectorFieldValue<"w">` through `MakeVectorCoefficient` with an identity callback.
 This supplies the explicit result shape those operations require before
 context binding; a bare `FiniteElementField<"w">` has an unresolved shape
 at that stage.
@@ -279,18 +280,50 @@ facet means evaluation under `minus`, `plus`, or an operation such as
 | `JacobianDeterminant` | Parent-cell Jacobian determinant, not the facet integration measure. | Yes | Yes | Not currently supplied. |
 | `JacobianInverse` | Inverse parent-cell Jacobian. | Yes | Yes | Selected side, expressed in the canonical-minus reference-axis frame. |
 | `InverseNormalCellSize` | $\lVert J_K^{-T}\widehat n\rVert$. | No | Adjacent cell | Selected side. |
-| `FieldValue<"w">` | Named field value. | Yes | Yes | Selected side. |
-| `FieldGradient<"w">` | Named field's physical gradient. | Yes | Yes | Selected side. |
+| `FieldValue<"u">` | Scalar field value (default shape). | Yes | Yes | Selected side. |
+| `FieldGradient<"u">` | Scalar field's physical gradient (default field shape). | Yes | Yes | Selected side. |
+| `FieldValue<"u", FieldShape::Scalar>` | Explicitly scalar field value. | Yes | Yes | Selected side. |
+| `FieldGradient<"u", FieldShape::Scalar>` | Explicitly scalar field's physical gradient. | Yes | Yes | Selected side. |
+| `VectorFieldValue<"w">` | Explicitly vector field value. | Yes | Yes | Selected side. |
+| `VectorFieldGradient<"w">` | Explicitly vector field's physical gradient. | Yes | Yes | Selected side. |
 
 Interior field and side-geometry inputs have no implicit minus-side default.
 Select a trace of the coefficient or an enclosing expression, for example
 `minus(k)`, `plus(k)`, or `average(k)`. Operations such as `jump` and the
 transported operand of interior `upwind` also establish the selected sides.
 
-`FieldGradient` returns a vector for a scalar field and a component-by-direction
-matrix for a vector field. Index, geometry, and field inputs use representations
-determined by the mesh and space; generic callback parameters (`const auto&`)
-are useful for those inputs.
+`FieldValue<Name, Shape>` and `FieldGradient<Name, Shape>` declare a field
+shape, with `Shape` defaulting to `FieldShape::Scalar`.
+`VectorFieldValue<Name>` and `VectorFieldGradient<Name>` are aliases for
+`FieldValue<Name, FieldShape::Vector>` and
+`FieldGradient<Name, FieldShape::Vector>`. All declarations are checked
+against the selected FE space during operator construction, including the
+selected interior-facet side, even if a generic callback accepts any rank.
+These spellings work for both active trial and prescribed finite-element fields.
+
+The shape declaration describes the **underlying field**. For a scalar field
+on a mesh of physical dimension `d`, the gradient has length `d`. For a field
+with `m` components, the gradient has shape `m × d`, indexed as
+`dw(component, direction)`. The bound space supplies these extents; `m` need
+not equal `d`. Index, geometry, and field inputs use representations determined
+by the mesh and space; generic callback parameters (`const auto&`) are useful
+for those inputs.
+
+The factory independently declares the callback's **output** shape. For example,
+this scalar coefficient reads a three-component field on a 2D mesh, with
+arguments supplied in the order of the input tags:
+
+```cpp
+auto c = MakeCoefficient<"c", VectorFieldValue<"w">, VectorFieldGradient<"w">>(
+   [] GENDIL_HOST_DEVICE (const auto& w, const auto& dw) {
+      return w(2) + dw(2, 1);
+   });
+```
+
+For compile-time inspection, all field input tags expose `field_shape` and
+`argument_rank`: scalar value/gradient ranks are 0/1, and vector value/gradient
+ranks are 1/2.
+Declarations support scalar and componentwise vector FE fields.
 
 The interior `ReferenceCoordinates` provider currently falls back to a
 reference integration-rule point; it does not map that point to the selected

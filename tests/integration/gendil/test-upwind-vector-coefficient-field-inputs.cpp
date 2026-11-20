@@ -481,7 +481,7 @@ int TestUpwindVectorCoefficientFieldInputs()
    InteriorFacets<"mesh"> interior_facets;
 
    auto beta =
-      MakeVectorCoefficient<"beta", FieldValue<"beta_field">>(
+      MakeVectorCoefficient<"beta", VectorFieldValue<"beta_field">>(
          [] GENDIL_HOST_DEVICE (const SerialRecursiveArray<Real, 2>& b) -> std::array<Real, 2>
          {
             return { b(0), b(1) };

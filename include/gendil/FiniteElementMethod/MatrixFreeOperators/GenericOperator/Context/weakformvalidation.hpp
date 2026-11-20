@@ -269,6 +269,22 @@ struct shape_obligation<ShapeObligation<Op, L, R>, Context, Side, Signature>
 { static constexpr bool value = weak_form_traits::combined_shape(Op,
    bound_shape<L, Context, Side, Signature>::value, bound_shape<R, Context, Side, Signature>::value) != SemanticShape::Unsupported; };
 
+// Input declarations constrain the underlying field on the occurrence's side,
+// independently of the callback's output shape or its ability to accept a rank.
+template<StaticString Name, FieldShape Shape, SemanticSide OccurrenceSide,
+         class Context, SemanticSide Side, class Signature>
+struct shape_obligation<ShapeObligation<ShapeOperation::CoefficientField, NameTag<Name>,
+   std::integral_constant<FieldShape, Shape>,
+   std::integral_constant<SemanticSide, OccurrenceSide>>, Context, Side, Signature>
+{
+   using Bound = bound_shape<FiniteElementField<Name>, Context,
+      OccurrenceSide == SemanticSide::Unqualified ? Side : OccurrenceSide,
+      std::conditional_t<OccurrenceSide == SemanticSide::Unqualified, Signature, void>>;
+   static constexpr bool value = Bound::value == weak_form_traits::semantic_shape(Shape);
+   static_assert(value,
+      "Coefficient field input shape declaration does not match the selected finite-element space.");
+};
+
 // A divergence occurrence constrains only its selected side. A value-only read
 // of the same field on the other side must not acquire this extent obligation.
 template<StaticString Name, SemanticSide OccurrenceSide, class Context,

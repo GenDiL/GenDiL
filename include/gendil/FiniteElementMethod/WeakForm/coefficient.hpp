@@ -297,8 +297,8 @@ struct CoefficientInputGetter<InverseNormalCellSize>
 };
 
 // New: named field value input
-template <StaticString Name>
-struct CoefficientInputGetter<FieldValue<Name>>
+template <StaticString Name, FieldShape Shape>
+struct CoefficientInputGetter<FieldValue<Name, Shape>>
 {
    template <
       typename KernelContext,
@@ -324,8 +324,8 @@ struct CoefficientInputGetter<FieldValue<Name>>
 };
 
 // New: named field gradient input
-template <StaticString Name>
-struct CoefficientInputGetter<FieldGradient<Name>>
+template <StaticString Name, FieldShape Shape>
+struct CoefficientInputGetter<FieldGradient<Name, Shape>>
 {
    template <
       typename KernelContext,
@@ -594,14 +594,14 @@ inline std::ostream& operator<<(std::ostream& os, const ReferenceCoordinates&)
    return os << "x_ref";
 }
 
-template <StaticString Name>
-inline std::ostream& operator<<(std::ostream& os, const FieldValue<Name>&)
+template <StaticString Name, FieldShape Shape>
+inline std::ostream& operator<<(std::ostream& os, const FieldValue<Name, Shape>&)
 {
    return os << "value(" << Name.view() << ")";
 }
 
-template <StaticString Name>
-inline std::ostream& operator<<(std::ostream& os, const FieldGradient<Name>&)
+template <StaticString Name, FieldShape Shape>
+inline std::ostream& operator<<(std::ostream& os, const FieldGradient<Name, Shape>&)
 {
    return os << "grad(" << Name.view() << ")";
 }

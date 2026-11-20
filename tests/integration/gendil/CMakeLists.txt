@@ -78,6 +78,7 @@ gendil_add_non_nvcc_test(test-coefficient-field-inputs-cell test-coefficient-fie
 gendil_add_non_nvcc_test(test-boundary-coefficient-field-inputs test-boundary-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-interior-coefficient-field-inputs test-interior-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-vector-coefficient-field-inputs test-vector-coefficient-field-inputs.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-field-inputs test-shaped-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-upwind-vector-coefficient-field-inputs test-upwind-vector-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-sipdg-coefficient-field-inputs test-sipdg-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-anisotropic-diffusion-coefficient test-anisotropic-diffusion-coefficient.cpp)
