@@ -382,3 +382,6 @@ gendil_add_non_nvcc_test(test-pullback-generic-cell test-pullback-generic-cell.c
 if(USE_OPENMP)
   gendil_add_test(test-openmp test-openmp.cpp)
 endif()
+
+gendil_add_non_nvcc_test(test-form-transpose-traits test-form-transpose-traits.cpp)
+gendil_add_non_nvcc_test(test-form-transpose-admission-controls test-form-transpose-rejections.cpp)

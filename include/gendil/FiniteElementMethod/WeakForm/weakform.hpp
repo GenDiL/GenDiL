@@ -124,3 +124,6 @@
 
 // Extract lhs and rhs forms from residuals with provably affine trial dependence.
 #include "gendil/FiniteElementMethod/WeakForm/affinesplit.hpp"
+
+// Exchange the trial and test roles of a bilinear form.
+#include "gendil/FiniteElementMethod/WeakForm/transposeform.hpp"

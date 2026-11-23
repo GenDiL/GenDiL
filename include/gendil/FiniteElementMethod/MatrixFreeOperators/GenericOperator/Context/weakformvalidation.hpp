@@ -9,6 +9,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/weakformrequirements.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainiteration.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/genericoperatortraits.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/transposeform.hpp"
 
 namespace gendil::weak_form_validation_detail
 {
@@ -124,6 +125,13 @@ struct bound_shape<PlusTraceExpr<E>, Context, Side, Signature>
    : bound_shape<E, Context, SemanticSide::Plus, Signature> {};
 template<FieldExpr A, FieldExpr E, class Context, SemanticSide Side, class Signature>
 struct bound_shape<UpwindExpr<A, E>, Context, Side, Signature> : bound_shape<E, Context, Side, Signature> {};
+
+template<FieldExpr E, GeometryRequirement M, class Context, SemanticSide Side, class Signature>
+struct bound_shape<weak_form_detail::TransposedBilinearExpr<E,M>,Context,Side,Signature>
+   : bound_shape<E,Context,Side,Signature> {};
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B, class Context, SemanticSide Side, class Signature>
+struct bound_shape<weak_form_detail::UpwindFluxBranchExpr<A,E,B>,Context,Side,Signature>
+   : bound_shape<E,Context,Side,Signature> {};
 
 template<FieldShape Shape, class Context, SemanticSide Side, class Signature>
 struct bound_shape<weak_form_detail::BoundaryUpwindZero<Shape>, Context, Side, Signature>
@@ -250,6 +258,13 @@ struct bound_extents<OuterExpr<L, R>, Context, Side, Signature>
                    bound_extents<R, Context, Side, Signature>::rows,
                    bound_extents<L, Context, Side, Signature>::compatible &&
                       bound_extents<R, Context, Side, Signature>::compatible> {};
+
+template<FieldExpr E, GeometryRequirement M, class Context, SemanticSide Side, class Signature>
+struct bound_extents<weak_form_detail::TransposedBilinearExpr<E,M>,Context,Side,Signature>
+   : bound_extents<E,Context,Side,Signature> {};
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B, class Context, SemanticSide Side, class Signature>
+struct bound_extents<weak_form_detail::UpwindFluxBranchExpr<A,E,B>,Context,Side,Signature>
+   : bound_extents<E,Context,Side,Signature> {};
 
 template<class Obligation, class Context, SemanticSide Side = SemanticSide::Unqualified, class Signature = void>
 struct shape_obligation;
@@ -483,6 +498,24 @@ void ValidateExecutionBatch(
    const Context& context, const Batch& batch,
    type_list<Signatures...>, Dimensions)
 {
+   // Trace selectors do not change traversal indices. Moving an interior row
+   // to its neighbor would otherwise silently change these callback values.
+   if constexpr (!is_selected_interior_face_execution_domain_v<Batch>)
+   {
+      ([]<class S>() {
+         if constexpr (S::entity == SemanticEntity::InteriorFacet &&
+                       requires { S::transpose_context_requirements; })
+         {
+            constexpr auto mask = S::transpose_context_requirements;
+            static_assert(!has_geometry(mask,GeometryRequirement::ElementIndex),
+               "transpose on local interior facets does not support ElementIndex.");
+            static_assert(!has_geometry(mask,GeometryRequirement::QuadratureIndex),
+               "transpose on local interior facets does not support QuadraturePointIndex.");
+            static_assert(!has_geometry(mask,GeometryRequirement::ReferenceCoordinates),
+               "transpose on local interior facets does not support ReferenceCoordinates.");
+         }
+      }.template operator()<Signatures>(),...);
+   }
    using Requirements = typename weak_form_execution_detail::signature_requirements<
       type_list<Signatures...>>::type;
    using Outputs = weak_form_traits::merge_sides<typename Signatures::logical_output_sides...>;

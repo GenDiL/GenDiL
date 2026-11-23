@@ -132,3 +132,7 @@ gendil_add_non_nvcc_test(test-cartesian-product-partition-structure test-cartesi
 gendil_add_non_nvcc_test(test-cartesian-product-partition-operators test-cartesian-product-partition-operators.cpp)
 gendil_add_non_nvcc_test(test-cartesian-product-partition-nonconforming test-cartesian-product-partition-nonconforming.cpp)
 gendil_add_non_nvcc_test(test-cartesian-product-partition-device-smoke test-cartesian-product-partition-device-smoke.cpp)
+
+# Bilinear weak-form transpose: independent cell and facet oracles.
+gendil_add_non_nvcc_test(test-form-transpose-operator test-form-transpose-operator.cpp)
+gendil_add_non_nvcc_test(test-form-transpose-facets test-form-transpose-facets.cpp)

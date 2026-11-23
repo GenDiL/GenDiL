@@ -29,6 +29,7 @@
 #include "gendil/FiniteElementMethod/WeakForm/jump.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/average.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/upwind.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/transposeform.hpp"
 
 namespace gendil
 {
@@ -968,7 +969,7 @@ auto pullback(const InnerExpr<LHS, RHS>& /*expr*/, const Seed& /*seed*/)
 //
 // OuterExpr represents the outer product of two vector expressions.
 //
-// Pullback rule (narrow scope - test-linear LHS only):
+// Pullback rule for a test-linear LHS:
 //    pullback(outer(test_expr, test_free_vector), tensor_seed)
 //       = pullback(test_expr, contracted_seed)
 //
@@ -982,10 +983,8 @@ auto pullback(const InnerExpr<LHS, RHS>& /*expr*/, const Seed& /*seed*/)
 //    pullback(outer(jump(V), normal), A)
 //       → pullback(jump(V), A * normal)
 //
-// NARROW SCOPE:
-//    - Only implements outer(test_expr, test_free_vector)
-//    - Does NOT implement outer(test_free, test_expr) unless compiler proves needed
-//    - Rejects both-test-dependent cases (quadratic, invalid)
+// A test-linear RHS contracts with the transposed seed. Both-test-dependent
+// operands are quadratic and remain invalid.
 //
 
 /**
@@ -1012,21 +1011,14 @@ auto pullback(const OuterExpr<LHS, RHS>& expr, const Seed& seed)
 }
 
 /**
- * @brief OuterExpr pullback: test-free LHS, test-linear RHS (not implemented).
- *
- * For outer(test_free_vector, test_expr):
- *    Not needed for vector SIPDG (RHS is always Normal/geometry).
- *    Reserved for future extension if compiler proves necessary.
+ * @brief Contract the second outer-product operand with the transposed seed.
  */
 template<FieldExpr LHS, FieldExpr RHS, class Seed>
    requires (is_test_free_v<LHS> && is_test_linear_v<RHS>)
 GENDIL_HOST_DEVICE
-auto pullback(const OuterExpr<LHS, RHS>& /*expr*/, const Seed& /*seed*/)
+auto pullback(const OuterExpr<LHS, RHS>& expr, const Seed& seed)
 {
-   static_assert(dependent_false_v<LHS, RHS, Seed>,
-      "OuterExpr pullback: test-linear RHS not yet implemented. "
-      "Only outer(test_expr, test_free_vector) is supported for vector SIPDG.");
-   return PullbackResult<>{};
+   return pullback(expr.rhs, transpose(seed) * expr.lhs);
 }
 
 /**
@@ -1132,33 +1124,82 @@ auto pullback(const JumpExpr<E>&, const Seed&)
 
 namespace boundary_pullback_detail
 {
-// Rebuild only the numerical expression. The original form, declarations, and
-// integrand signature remain unchanged. No coefficient callback is evaluated.
+/**
+ * @brief Rewrite physical-boundary expressions before the algebraic pullback.
+ *
+ * Boundary jump/average reduce to their operand. Rebuild surrounding algebra,
+ * preserve stored coefficients, and diagnose interior-only traces and fluxes.
+ * Only the numerical expression changes: the original form, declarations and
+ * integrand signature remain intact. No coefficient callback is evaluated.
+ */
 template<class E>
-struct lower
-{
-   GENDIL_HOST_DEVICE
-   static auto apply(const E& expr) { return expr; }
-};
+GENDIL_HOST_DEVICE
+auto Lower(const E& expr);
+
+// Declare every overload before recursive calls, including the transpose nodes.
+// Their namespaces do not make later declarations visible here through ADL.
+// Qualified calls keep this internal rewrite independent of unrelated Lower
+// functions. New node handlers must also be added to this declaration set.
+#define GENDIL_DECLARE_BOUNDARY_UNARY(Node) \
+template<FieldExpr E> GENDIL_HOST_DEVICE auto Lower(const Node<E>& expr);
+GENDIL_DECLARE_BOUNDARY_UNARY(JumpExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(AverageExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(NegExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(TransposeExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(SymExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(SkewExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(NormalProjectionExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(TangentialProjectionExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(MinusTraceExpr)
+GENDIL_DECLARE_BOUNDARY_UNARY(PlusTraceExpr)
+#undef GENDIL_DECLARE_BOUNDARY_UNARY
+
+#define GENDIL_DECLARE_BOUNDARY_BINARY(Node) \
+template<FieldExpr L, FieldExpr R> GENDIL_HOST_DEVICE auto Lower(const Node<L,R>& expr);
+GENDIL_DECLARE_BOUNDARY_BINARY(ProductExpr)
+GENDIL_DECLARE_BOUNDARY_BINARY(MultFieldExpr)
+GENDIL_DECLARE_BOUNDARY_BINARY(DotExpr)
+GENDIL_DECLARE_BOUNDARY_BINARY(InnerExpr)
+GENDIL_DECLARE_BOUNDARY_BINARY(OuterExpr)
+#undef GENDIL_DECLARE_BOUNDARY_BINARY
+
+template<FieldExpr Head, FieldExpr... Tail>
+GENDIL_HOST_DEVICE
+auto Lower(const SumExpr<Head,Tail...>& expr);
+template<FieldExpr Adv, FieldExpr E>
+GENDIL_HOST_DEVICE
+auto Lower(const UpwindExpr<Adv,E>& expr);
+template<FieldExpr Adv, class Interior, class Exterior>
+GENDIL_HOST_DEVICE
+auto Lower(const BoundaryUpwindExpr<Adv,Interior,Exterior>& expr);
+template<FieldExpr E, GeometryRequirement M>
+GENDIL_HOST_DEVICE
+auto Lower(const weak_form_detail::TransposedBilinearExpr<E,M>& expr);
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B>
+GENDIL_HOST_DEVICE
+auto Lower(const weak_form_detail::UpwindFluxBranchExpr<A,E,B>& expr);
+
+// Keep this fallback unconstrained: Empty and BoundaryUpwindZero are not field
+// expressions, but omitted boundary-upwind states must pass through unchanged.
+template<class E>
+GENDIL_HOST_DEVICE
+auto Lower(const E& expr) { return expr; }
+
 template<FieldExpr E>
-struct lower<JumpExpr<E>>
-{
-   GENDIL_HOST_DEVICE
-   static auto apply(const JumpExpr<E>& expr) { return lower<E>::apply(expr.expr); }
-};
+GENDIL_HOST_DEVICE
+auto Lower(const JumpExpr<E>& expr)
+{ return boundary_pullback_detail::Lower(expr.expr); }
+
 template<FieldExpr E>
-struct lower<AverageExpr<E>>
-{
-   GENDIL_HOST_DEVICE
-   static auto apply(const AverageExpr<E>& expr) { return lower<E>::apply(expr.expr); }
-};
+GENDIL_HOST_DEVICE
+auto Lower(const AverageExpr<E>& expr)
+{ return boundary_pullback_detail::Lower(expr.expr); }
+
 #define GENDIL_BOUNDARY_UNARY(Node) \
-template<FieldExpr E> struct lower<Node<E>> { \
-   GENDIL_HOST_DEVICE static auto apply(const Node<E>& expr) { \
-      auto child = lower<E>::apply(expr.expr); \
-      return Node<std::remove_cvref_t<decltype(child)>>{child}; \
-   } \
-};
+template<FieldExpr E> GENDIL_HOST_DEVICE auto Lower(const Node<E>& expr) { \
+   auto child = boundary_pullback_detail::Lower(expr.expr); \
+   return Node<std::remove_cvref_t<decltype(child)>>{child}; \
+}
 GENDIL_BOUNDARY_UNARY(NegExpr)
 GENDIL_BOUNDARY_UNARY(TransposeExpr)
 GENDIL_BOUNDARY_UNARY(SymExpr)
@@ -1167,13 +1208,11 @@ GENDIL_BOUNDARY_UNARY(NormalProjectionExpr)
 GENDIL_BOUNDARY_UNARY(TangentialProjectionExpr)
 #undef GENDIL_BOUNDARY_UNARY
 #define GENDIL_BOUNDARY_BINARY(Node) \
-template<FieldExpr L, FieldExpr R> struct lower<Node<L, R>> { \
-   GENDIL_HOST_DEVICE static auto apply(const Node<L, R>& expr) { \
-      auto lhs = lower<L>::apply(expr.lhs); \
-      auto rhs = lower<R>::apply(expr.rhs); \
-      return Node<std::remove_cvref_t<decltype(lhs)>, std::remove_cvref_t<decltype(rhs)>>{lhs, rhs}; \
-   } \
-};
+template<FieldExpr L, FieldExpr R> GENDIL_HOST_DEVICE auto Lower(const Node<L,R>& expr) { \
+   auto lhs = boundary_pullback_detail::Lower(expr.lhs); \
+   auto rhs = boundary_pullback_detail::Lower(expr.rhs); \
+   return Node<std::remove_cvref_t<decltype(lhs)>, std::remove_cvref_t<decltype(rhs)>>{lhs, rhs}; \
+}
 GENDIL_BOUNDARY_BINARY(ProductExpr)
 GENDIL_BOUNDARY_BINARY(MultFieldExpr)
 GENDIL_BOUNDARY_BINARY(DotExpr)
@@ -1182,53 +1221,58 @@ GENDIL_BOUNDARY_BINARY(OuterExpr)
 #undef GENDIL_BOUNDARY_BINARY
 
 template<FieldExpr Head, FieldExpr... Tail>
-struct lower<SumExpr<Head, Tail...>>
+GENDIL_HOST_DEVICE
+auto Lower(const SumExpr<Head,Tail...>& expr)
 {
-   GENDIL_HOST_DEVICE
-   static auto apply(const SumExpr<Head, Tail...>& expr)
+   return std::apply([] (const auto&... terms)
    {
-      return std::apply([] (const auto&... terms)
-      {
-         return SumExpr{lower<std::remove_cvref_t<decltype(terms)>>::apply(terms)...};
-      }, expr.terms);
-   }
-};
+      return SumExpr{boundary_pullback_detail::Lower(terms)...};
+   }, expr.terms);
+}
 #define GENDIL_BOUNDARY_REJECT_TRACE(Node) \
-template<FieldExpr E> struct lower<Node<E>> { \
-   GENDIL_HOST_DEVICE static auto apply(const Node<E>&) { \
-      static_assert(dependent_false_v<E>, \
-         "Explicit minus/plus traces are interior-only and are invalid on physical boundaries."); \
-   } \
-};
+template<FieldExpr E> GENDIL_HOST_DEVICE auto Lower(const Node<E>&) { \
+   static_assert(dependent_false_v<E>, \
+      "Explicit minus/plus traces are interior-only and are invalid on physical boundaries."); \
+}
 GENDIL_BOUNDARY_REJECT_TRACE(MinusTraceExpr)
 GENDIL_BOUNDARY_REJECT_TRACE(PlusTraceExpr)
 #undef GENDIL_BOUNDARY_REJECT_TRACE
 
 template<FieldExpr Adv, FieldExpr E>
-struct lower<UpwindExpr<Adv, E>>
+GENDIL_HOST_DEVICE
+auto Lower(const UpwindExpr<Adv,E>&)
 {
-   GENDIL_HOST_DEVICE
-   static auto apply(const UpwindExpr<Adv, E>&)
-   {
-      static_assert(dependent_false_v<Adv, E>,
-         "upwind(beta, expr) requires two interior traces; "
-         "physical-boundary inflow data must be specified explicitly.");
-   }
-};
+   static_assert(dependent_false_v<Adv, E>,
+      "upwind(beta, expr) requires two interior traces; "
+      "physical-boundary inflow data must be specified explicitly.");
+}
 
 template<FieldExpr Adv, class Interior, class Exterior>
-struct lower<BoundaryUpwindExpr<Adv, Interior, Exterior>>
+GENDIL_HOST_DEVICE
+auto Lower(const BoundaryUpwindExpr<Adv,Interior,Exterior>& expr)
 {
-   GENDIL_HOST_DEVICE
-   static auto apply(const BoundaryUpwindExpr<Adv, Interior, Exterior>& expr)
-   {
-      auto velocity = lower<Adv>::apply(expr.adv_expr);
-      auto interior = lower<Interior>::apply(expr.interior_expr);
-      auto exterior = lower<Exterior>::apply(expr.exterior_expr);
-      return BoundaryUpwindExpr<decltype(velocity), decltype(interior), decltype(exterior)>{
-         velocity, interior, exterior};
-   }
-};
+   auto velocity = boundary_pullback_detail::Lower(expr.adv_expr);
+   auto interior = boundary_pullback_detail::Lower(expr.interior_expr);
+   auto exterior = boundary_pullback_detail::Lower(expr.exterior_expr);
+   return BoundaryUpwindExpr<decltype(velocity), decltype(interior), decltype(exterior)>{
+      velocity, interior, exterior};
+}
+
+// Provenance stays in the original signature; it has no numerical effect here.
+template<FieldExpr E, GeometryRequirement M>
+GENDIL_HOST_DEVICE
+auto Lower(const weak_form_detail::TransposedBilinearExpr<E,M>& expr)
+{ return boundary_pullback_detail::Lower(expr.expr); }
+
+// Keep the selected flux branch and lower both its frozen velocity and state.
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B>
+GENDIL_HOST_DEVICE
+auto Lower(const weak_form_detail::UpwindFluxBranchExpr<A,E,B>& expr)
+{
+   auto velocity = boundary_pullback_detail::Lower(expr.adv_expr);
+   auto state = boundary_pullback_detail::Lower(expr.expr);
+   return weak_form_detail::UpwindFluxBranchExpr<decltype(velocity),decltype(state),B>{velocity,state};
+}
 } // namespace boundary_pullback_detail
 
 /** Apply one-sided jump/average identities before the ordinary algebra pullback. */
@@ -1236,7 +1280,7 @@ template<FieldExpr E, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback_boundary(const E& expr, const Seed& seed)
 {
-   return pullback(boundary_pullback_detail::lower<E>::apply(expr), seed);
+   return pullback(boundary_pullback_detail::Lower(expr), seed);
 }
 
 // =============================================================================
@@ -1762,6 +1806,14 @@ auto pullback_interior(const OuterExpr<LHS, RHS>& expr, const Seed& seed)
    return pullback_interior(expr.lhs, seed * expr.rhs);
 }
 
+template<FieldExpr LHS, FieldExpr RHS, class Seed>
+   requires (is_test_free_v<LHS> && is_test_linear_v<RHS>)
+GENDIL_HOST_DEVICE
+auto pullback_interior(const OuterExpr<LHS, RHS>& expr, const Seed& seed)
+{
+   return pullback_interior(expr.rhs, transpose(seed) * expr.lhs);
+}
+
 template<FieldExpr Expr, class Seed>
 GENDIL_HOST_DEVICE
 auto pullback_interior(
@@ -2069,5 +2121,39 @@ auto pullback_interior(const Expr&, const Seed&)
       "must provide a side-qualified channel rule for its test-linear part.");
    return PullbackResult<>{};
 }
+
+// Transpose provenance has no numerical effect. Flux branches, however, gate
+// the complete lowered channel so inactive state coefficients are never read.
+template<FieldExpr E, GeometryRequirement M, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const weak_form_detail::TransposedBilinearExpr<E,M>& e, const Seed& seed)
+{ return pullback(e.expr,seed); }
+template<FieldExpr E, GeometryRequirement M, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_interior(const weak_form_detail::TransposedBilinearExpr<E,M>& e, const Seed& seed)
+{ return pullback_interior(e.expr,seed); }
+
+namespace pullback_detail
+{
+template<weak_form_detail::FluxBranch Branch, class A, class Channels>
+GENDIL_HOST_DEVICE
+auto GateFluxChannels(const A& adv, const Channels& channels)
+{
+   return std::apply([&](const auto&... entry) {
+      return PullbackResult{MakeStaticMap(
+         MakeEntry<typename std::remove_cvref_t<decltype(entry)>::key_type>(
+            weak_form_detail::UpwindFluxBranchExpr<A,
+               typename std::remove_cvref_t<decltype(entry)>::value_type,Branch>{adv,entry.value})...)};
+   },channels.entries);
+}
+}
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback(const weak_form_detail::UpwindFluxBranchExpr<A,E,B>& e, const Seed& seed)
+{ return pullback_detail::GateFluxChannels<B>(e.adv_expr,pullback(e.expr,seed)); }
+template<FieldExpr A, FieldExpr E, weak_form_detail::FluxBranch B, class Seed>
+GENDIL_HOST_DEVICE
+auto pullback_interior(const weak_form_detail::UpwindFluxBranchExpr<A,E,B>& e, const Seed& seed)
+{ return pullback_detail::GateFluxChannels<B>(e.adv_expr,pullback_interior(e.expr,seed)); }
 
 } // namespace gendil
