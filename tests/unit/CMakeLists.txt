@@ -1,5 +1,5 @@
-# NVCC template bugs prevent these named weak-form tests from compiling.
-# Keep them enabled for CPU, Clang CUDA, and HIP.
+# Named weak-form tests require a sufficiently recent NVCC. The shared helper
+# retains older compiler exclusions while enabling CPU, Clang CUDA, and HIP.
 gendil_add_non_nvcc_test(test-generalized-interior-residual test-generalized-interior-residual.cpp)
 gendil_add_non_nvcc_test(test-upwind-transported-fields test-upwind-transported-fields.cpp)
 gendil_add_non_nvcc_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)
@@ -385,6 +385,42 @@ endif()
 
 gendil_add_non_nvcc_test(test-form-transpose-traits test-form-transpose-traits.cpp)
 gendil_add_non_nvcc_test(test-form-transpose-admission-controls test-form-transpose-rejections.cpp)
+if(TARGET test-form-transpose-admission-controls)
+  set(transpose_case 0)
+  foreach(mode load rhs-load affine joint-nonlinear opaque-active active-selector
+               prescribed-callback-name invalid-test rhs-zero local-element-index
+               traced-local-element-index local-quadrature-index local-reference-coordinates
+               runtime-zero-nonlinear cancelling-loads prescribed-expression-name input-free-zero
+               nonscalar-prescribed-multiplier)
+    math(EXPR transpose_case "${transpose_case} + 1")
+    if(transpose_case EQUAL 1 OR transpose_case EQUAL 2 OR transpose_case EQUAL 9 OR transpose_case EQUAL 17)
+      set(diagnostic "transpose requires a callable input space.")
+    elseif(transpose_case EQUAL 3 OR transpose_case EQUAL 15)
+      set(diagnostic "transpose rejects an affine residual or nonzero load; use lhs first.")
+    elseif(transpose_case EQUAL 4 OR transpose_case EQUAL 14)
+      set(diagnostic "transpose rejects nonlinear active dependence.")
+    elseif(transpose_case EQUAL 5 OR transpose_case EQUAL 6)
+      set(diagnostic "transpose cannot prove linearity of active-dependent callbacks or selectors.")
+    elseif(transpose_case EQUAL 7 OR transpose_case EQUAL 16)
+      set(diagnostic "transpose would rebind a prescribed field as an active trial.")
+    elseif(transpose_case EQUAL 8)
+      set(diagnostic "transpose requires a valid bilinear weak form.")
+    elseif(transpose_case EQUAL 10 OR transpose_case EQUAL 11)
+      set(diagnostic "transpose on local interior facets does not support ElementIndex.")
+    elseif(transpose_case EQUAL 12)
+      set(diagnostic "transpose on local interior facets does not support QuadraturePointIndex.")
+    elseif(transpose_case EQUAL 18)
+      set(diagnostic "Weak-form field shape obligations are incompatible with the selected finite element spaces.")
+    else()
+      set(diagnostic "transpose on local interior facets does not support ReferenceCoordinates.")
+    endif()
+    set(transpose_target test-form-transpose-reject-${mode})
+    gendil_add_target_compile_failure_test(${transpose_target}
+      test-form-transpose-rejections.cpp "${diagnostic}")
+    target_compile_definitions(${transpose_target}-probe PRIVATE GENDIL_TRANSPOSE_REJECT_CASE=${transpose_case})
+  endforeach()
+endif()
+
 # Host/device tuple construction must retain non-literal expression values.
 gendil_add_test(test-device-tuple test-device-tuple.cpp)
 target_compile_options(test-device-tuple PRIVATE
