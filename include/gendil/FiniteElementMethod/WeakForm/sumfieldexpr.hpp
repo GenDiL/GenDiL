@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include "gendil/Utilities/TupleHelperFunctions/apply.hpp"
+#include "gendil/Utilities/TupleHelperFunctions/concatenate.hpp"
+
 #include "gendil/prelude.hpp"
 #include "gendil/Algebra/arrayarithmetic.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/weakformtraits.hpp"
@@ -39,7 +42,7 @@ struct SumExpr : FieldBase
    GENDIL_HOST_DEVICE
    constexpr auto operator()(Args&&... args) const
    {
-      return std::apply(
+      return Apply(
          [&] (const auto&... terms)
          {
             return (terms(std::forward<Args>(args)...) + ...);
@@ -78,7 +81,7 @@ template < class Tuple >
 GENDIL_HOST_DEVICE
 constexpr auto MakeSumExprFromTuple(Tuple&& tuple)
 {
-   return std::apply(
+   return Apply(
       [] (auto&&... xs)
       {
          using Sum = SumExpr<std::remove_cvref_t<decltype(xs)>...>;
@@ -115,7 +118,7 @@ constexpr auto operator+(LHS&& lhs, RHS&& rhs)
 {
    auto lhs_terms = AsSumTuple(std::forward<LHS>(lhs));
    auto rhs_terms = AsSumTuple(std::forward<RHS>(rhs));
-   auto all_terms = std::tuple_cat(std::move(lhs_terms), std::move(rhs_terms));
+   auto all_terms = Concatenate(std::move(lhs_terms), std::move(rhs_terms));
    return MakeSumExprFromTuple(std::move(all_terms));
 }
 
@@ -125,7 +128,7 @@ constexpr auto operator-(LHS&& lhs, RHS&& rhs)
 {
    auto lhs_terms = AsSumTuple(std::forward<LHS>(lhs));
    auto rhs_terms = AsSumTuple(NegExpr{std::forward<RHS>(rhs)});
-   auto all_terms = std::tuple_cat(std::move(lhs_terms), std::move(rhs_terms));
+   auto all_terms = Concatenate(std::move(lhs_terms), std::move(rhs_terms));
    return MakeSumExprFromTuple(std::move(all_terms));
 }
 

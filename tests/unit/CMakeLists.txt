@@ -385,3 +385,7 @@ endif()
 
 gendil_add_non_nvcc_test(test-form-transpose-traits test-form-transpose-traits.cpp)
 gendil_add_non_nvcc_test(test-form-transpose-admission-controls test-form-transpose-rejections.cpp)
+# Host/device tuple construction must retain non-literal expression values.
+gendil_add_test(test-device-tuple test-device-tuple.cpp)
+target_compile_options(test-device-tuple PRIVATE
+  "$<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:--diag-error=20011,20014>")

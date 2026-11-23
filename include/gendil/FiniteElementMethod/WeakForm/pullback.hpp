@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/TupleHelperFunctions/apply.hpp"
+
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticmap.hpp"
 #include "gendil/Utilities/dependentfalse.hpp"
@@ -812,7 +814,7 @@ constexpr auto merge_two_pullback_results(
    const PullbackResult<EntriesB...>& b)
 {
    // Unpack entries from b and recursively insert/merge into a's map
-   auto result_map = std::apply(
+   auto result_map = Apply(
       [&](const auto&... b_entries)
       {
          return merge_entries_impl(StaticMap{a.entries}, b_entries...);
@@ -882,7 +884,7 @@ auto pullback(const SumExpr<Head, Tail...>& expr, const Seed& seed)
    // Each term checks its seed shape recursively. Querying the aggregate's
    // shape here would prematurely reject named bound multipliers whose shape
    // remains an obligation until the execution context selects their spaces.
-   return std::apply(
+   return Apply(
       [&](const auto&... terms)
       {
          return merge_pullback_results(pullback(terms, seed)...);
@@ -1224,7 +1226,7 @@ template<FieldExpr Head, FieldExpr... Tail>
 GENDIL_HOST_DEVICE
 auto Lower(const SumExpr<Head,Tail...>& expr)
 {
-   return std::apply([] (const auto&... terms)
+   return Apply([] (const auto&... terms)
    {
       return SumExpr{boundary_pullback_detail::Lower(terms)...};
    }, expr.terms);
@@ -1398,7 +1400,7 @@ template<FieldExpr Head, FieldExpr... Tail>
 GENDIL_HOST_DEVICE
 auto TraceToMinusSide(const SumExpr<Head, Tail...>& expr)
 {
-   return std::apply(
+   return Apply(
       [] (const auto&... terms)
       {
          return (TraceToMinusSide(terms) + ...);
@@ -1410,7 +1412,7 @@ template<FieldExpr Head, FieldExpr... Tail>
 GENDIL_HOST_DEVICE
 auto TraceToPlusSide(const SumExpr<Head, Tail...>& expr)
 {
-   return std::apply(
+   return Apply(
       [] (const auto&... terms)
       {
          return (TraceToPlusSide(terms) + ...);
@@ -1898,7 +1900,7 @@ auto pullback_interior(
       "pullback_interior(expr, seed) requires seed to have the same "
       "FieldShape as expr.");
 
-   return std::apply(
+   return Apply(
       [&](const auto&... terms)
       {
          return merge_pullback_results(
@@ -2139,7 +2141,7 @@ template<weak_form_detail::FluxBranch Branch, class A, class Channels>
 GENDIL_HOST_DEVICE
 auto GateFluxChannels(const A& adv, const Channels& channels)
 {
-   return std::apply([&](const auto&... entry) {
+   return Apply([&](const auto&... entry) {
       return PullbackResult{MakeStaticMap(
          MakeEntry<typename std::remove_cvref_t<decltype(entry)>::key_type>(
             weak_form_detail::UpwindFluxBranchExpr<A,
