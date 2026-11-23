@@ -14,6 +14,10 @@ function(gendil_configure_mfem target output_enable_cuda)
       HINTS "${MFEM_DIR}" "${MFEM_DIR}/lib/cmake/mfem"
       NO_DEFAULT_PATH
     )
+    # Package exports and consumer tests need the selected config directory,
+    # not a relative or install-prefix hint from the producer's cache.
+    get_filename_component(resolved_mfem_dir "${MFEM_CONFIG}" DIRECTORY)
+    set(MFEM_DIR "${resolved_mfem_dir}" PARENT_SCOPE)
 
     if(USE_CUDA AND NOT MFEM_USE_CUDA)
       message(

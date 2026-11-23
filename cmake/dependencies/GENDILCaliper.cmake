@@ -7,6 +7,9 @@ function(gendil_configure_caliper target)
       HINTS "${caliper_DIR}" "${caliper_DIR}/share/cmake/caliper"
       NO_DEFAULT_PATH
     )
+    # Preserve the selected config directory for package exports and test replay.
+    get_filename_component(resolved_caliper_dir "${caliper_CONFIG}" DIRECTORY)
+    set(caliper_DIR "${resolved_caliper_dir}" PARENT_SCOPE)
     message(STATUS "Caliper found!")
     target_link_libraries(${target} INTERFACE caliper)
     target_compile_definitions(${target} INTERFACE GENDIL_USE_CALIPER)

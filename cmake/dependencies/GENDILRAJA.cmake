@@ -10,6 +10,9 @@ function(gendil_configure_raja target)
         "${RAJA_DIR}/lib/cmake/raja"
       NO_DEFAULT_PATH
     )
+    # Preserve the selected config directory for package exports and test replay.
+    get_filename_component(resolved_raja_dir "${RAJA_CONFIG}" DIRECTORY)
+    set(RAJA_DIR "${resolved_raja_dir}" PARENT_SCOPE)
     message(STATUS "RAJA found!")
     target_link_libraries(${target} INTERFACE RAJA)
     target_compile_definitions(${target} INTERFACE GENDIL_USE_RAJA)
