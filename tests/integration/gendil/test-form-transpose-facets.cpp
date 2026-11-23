@@ -142,18 +142,18 @@ template<class Context,class Rule>
 bool InteriorFlux(const Context& context,const Rule& rule)
 {
    const TrialSpace<"u"> u;const TestSpace<"v"> v;
-   const auto prescribed=MakeCoefficient<"prescribed",FieldValue<"w">>([](Real value){return value;});
+   const auto prescribed=MakeCoefficient<"prescribed",FieldValue<"w">>([] GENDIL_HOST_DEVICE (Real value){return value;});
    bool ok=true;
    for(Real speed:{Real(-2),Real(0),Real(2)})
    {
-      const auto beta=MakeVectorCoefficient<"beta">([speed]{return std::array<Real,1>{speed};});
+      const auto beta=MakeVectorCoefficient<"beta">([speed] GENDIL_HOST_DEVICE () {return std::array<Real,1>{speed};});
       Dense matrix(16,0);
       const Real positive=std::max(speed,Real(0)),negative=std::min(speed,Real(0));
       matrix[1*4+1]=positive;matrix[1*4+2]=negative;
       matrix[2*4+1]=-positive;matrix[2*4+2]=-negative;
       const auto value_form=integrate(InteriorFacets<"m">{},upwind(beta,u)*jump(v));
       ok=CheckForm(value_form,context,rule,matrix,4,4,"frozen-speed flux signs") && ok;
-      const auto direction=MakeVectorCoefficient<"direction">([]{return std::array<Real,1>{1};});
+      const auto direction=MakeVectorCoefficient<"direction">([] GENDIL_HOST_DEVICE () {return std::array<Real,1>{1};});
       const auto gradient_form=integrate(InteriorFacets<"m">{},dot(upwind(beta,grad(u)),direction)*jump(v));
       Dense gradient(16,0);
       // On each unit interval, the physical P1 derivatives are (-1,+1).
@@ -186,10 +186,10 @@ bool FluxAndBoundary()
    bool ok=InteriorFlux(local,rule);
    ok=InteriorFlux(global,rule) && ok;
    const TrialSpace<"u"> u;const TestSpace<"v"> v;
-   const auto inflow=MakeCoefficient<"inflow",PhysicalCoordinates>([](const std::array<Real,1>& x){return 2+x[0];});
+   const auto inflow=MakeCoefficient<"inflow",PhysicalCoordinates>([] GENDIL_HOST_DEVICE (const std::array<Real,1>& x){return 2+x[0];});
    for(Real speed:{Real(-2),Real(0),Real(2)})
    {
-      const auto beta=MakeVectorCoefficient<"beta">([speed]{return std::array<float,1>{float(speed)};});
+      const auto beta=MakeVectorCoefficient<"beta">([speed] GENDIL_HOST_DEVICE () {return std::array<float,1>{float(speed)};});
       const auto residual=integrate(BoundaryFacets<"m">{},upwind(beta,u,inflow)*v);
       Dense matrix(16,0);matrix[0]=std::max(-speed,Real(0));matrix[15]=std::max(speed,Real(0));
       ok=CheckForm(lhs(residual),local,rule,matrix,4,4,"homogeneous boundary flux") && ok;
@@ -204,13 +204,13 @@ bool FluxAndBoundary()
       for(Integer i=0;i<4;++i)ok=Near(output.ReadHostData()[i],expected[i],"prescribed boundary inflow load") && ok;
    }
    // Poison the unselected state to distinguish lazy gating from eager 0*NaN.
-   const auto coefficient=MakeCoefficient<"guard",FieldValue<"w">>([](Real value){return value;});
+   const auto coefficient=MakeCoefficient<"guard",FieldValue<"w">>([] GENDIL_HOST_DEVICE (Real value){return value;});
    for(Real speed:{Real(-2),Real(2)})
    {
       auto* values=bound.WriteHostData();
       for(Integer i=0;i<4;++i)
          values[i]=(speed>0 ? i<2 : i>=2) ? (i<2?3.:6.) : std::numeric_limits<Real>::quiet_NaN();
-      const auto beta=MakeVectorCoefficient<"lazy_beta">([speed]{return std::array<Real,1>{speed};});
+      const auto beta=MakeVectorCoefficient<"lazy_beta">([speed] GENDIL_HOST_DEVICE () {return std::array<Real,1>{speed};});
       const auto lazy=integrate(InteriorFacets<"m">{},upwind(beta,coefficient*u)*jump(v));
       Dense matrix(16,0); const Integer col=speed>0?1:2;
       matrix[1*4+col]=speed*(speed>0?3.:6.);matrix[2*4+col]=-matrix[1*4+col];
@@ -219,12 +219,12 @@ bool FluxAndBoundary()
    }
    // Global evaluation retains its canonical-minus coefficient context, so an
    // index-dependent callback remains valid there and has literal value one.
-   const auto index=MakeCoefficient<"index",ElementIndex>([](GlobalIndex i){return 1.+i;});
+   const auto index=MakeCoefficient<"index",ElementIndex>([] GENDIL_HOST_DEVICE (GlobalIndex i){return 1.+i;});
    Dense indexed(16,0);indexed[2*4+1]=1;
    ok=CheckForm(integrate(InteriorFacets<"m">{},index*minus(u)*plus(v)),global,rule,indexed,4,4,
       "global index-dependent transpose") && ok;
    // Physical-coordinate callbacks remain valid in local traversal.
-   const auto physical=MakeCoefficient<"physical",PhysicalCoordinates>([](const std::array<Real,1>& x){return 2+x[0];});
+   const auto physical=MakeCoefficient<"physical",PhysicalCoordinates>([] GENDIL_HOST_DEVICE (const std::array<Real,1>& x){return 2+x[0];});
    indexed[2*4+1]=3;
    ok=CheckForm(integrate(InteriorFacets<"m">{},physical*minus(u)*plus(v)),local,rule,indexed,4,4,
       "local physical-coordinate transpose") && ok;
@@ -268,7 +268,7 @@ bool OrientedPrescribedTrace()
       MakeFiniteElementField<"w">(local_space,values),MakeIntegrationDomain<"m">(mesh));
    const auto global=MakeWeakFormContext(MakeTrialField<"u">(global_space),MakeTestField<"v">(global_space),
       MakeFiniteElementField<"w">(global_space,values),MakeIntegrationDomain<"m">(partition));
-   const auto c=MakeCoefficient<"trace",FieldValue<"w">>([](Real value){return value;});
+   const auto c=MakeCoefficient<"trace",FieldValue<"w">>([] GENDIL_HOST_DEVICE (Real value){return value;});
    const auto form=integrate(InteriorFacets<"m">{},minus(c)*minus(TrialSpace<"u">{})*plus(TestSpace<"v">{}));
    Dense matrix(64,0);
    const Real points[3]={.5-std::sqrt(.15),.5,.5+std::sqrt(.15)};
@@ -466,7 +466,7 @@ bool CheckObliqueVectorInterior(const Context& context,const Rule& rule)
    const VectorTrialSpace<"U"> u;
    const VectorTestSpace<"V"> v;
    const InteriorFacets<"m"> faces;
-   const auto b=MakeMatrixCoefficient<"B">([] {
+   const auto b=MakeMatrixCoefficient<"B">([] GENDIL_HOST_DEVICE () {
       return std::array<std::array<Real,2>,2>{{{{2,1}},{{-.5,3}}}};
    });
    bool ok=CheckForm(integrate(faces,dot(b*normal_projection(average(u)),jump(v))),
@@ -512,7 +512,7 @@ bool ProjectionsNormalsAndAverages()
    ok=CheckForm(scalar_form,global_context,rule,scalar_matrix,8,8,"global scalar normal derivative and average") && ok;
    const VectorTrialSpace<"U"> U;
    const VectorTestSpace<"V"> V;
-   const auto b=MakeMatrixCoefficient<"B">([] {
+   const auto b=MakeMatrixCoefficient<"B">([] GENDIL_HOST_DEVICE () {
       return std::array<std::array<Real,2>,2>{{{{2,1}},{{-.5,3}}}};
    });
    const BoundaryFacets<"m"> boundary;

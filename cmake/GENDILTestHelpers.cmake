@@ -44,7 +44,8 @@ function(gendil_add_non_nvcc_test target source)
         "enable_language(CUDA) has been called before adding tests."
       )
     endif()
-    if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+    if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA" AND
+       CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.3.33")
       message(STATUS "Skipping test ${target}: excluded for NVCC compiler")
       return()
     endif()

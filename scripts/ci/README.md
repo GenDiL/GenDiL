@@ -41,7 +41,7 @@ do not need to compile them again, even without ccache.
 | `gcc` | GCC 14, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `clang` | Clang 18, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `minimal` | GCC 14, no optional TPLs or OpenMP; full CPU tests |
-| `cuda-nvcc` | NVCC 12.4.1/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
+| `cuda-nvcc` | CUDA Toolkit 13.4.2 (NVCC 13.4.92)/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `cuda-clang` | Clang 19/CUDA 12.4.1, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `hip` | ROCm 6.3.1, architecture gfx90a, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `analysis` | Clang 18 with all supported TPLs; full clang-tidy analysis |
@@ -61,18 +61,23 @@ wait for discovery to finish. Helper-test failures prevent all builds.
 
 ## CUDA compiler and target coverage
 
-CUDA has two independent jobs because NVCC and Clang accept different subsets of
-the test suite. NVCC excludes weak-form DSL tests affected by its template
-compilation bugs, as well as the other explicitly excluded tests. These tests
-remain enabled for Clang CUDA, HIP, and CPU builds. NVCC still compiles the
-registered low-level arithmetic, geometry, device, and legacy-operator tests.
-Clang 19 follows the compiler family in the repository's
-Matrix machine configuration. Both jobs use the same CUDA toolkit and GPU
-architecture, and each builds its own CUDA-enabled MFEM/Hypre installations.
-The installed consumer uses the same CUDA compiler as its producer.
-CUDA 12.4.1 replaces 12.2.2 because the older NVCC/GCC 12 combination fails on
-the C++20 `std::variant` used by current MFEM; NVIDIA reports the reproducer
-working with [CUDA 12.4.1](https://forums.developer.nvidia.com/t/nvcc-c-20-std-variant-complie-failed/270162/5).
+CUDA has two independent jobs because NVCC and Clang accept different code.
+The minimum supported NVCC is **13.3.33**, shipped in **CUDA Toolkit 13.3.0**.
+CMake enables the previously excluded tests, including the weak-form DSL, from
+that compiler version onward. Older NVCC builds emit a configuration warning
+and retain those exclusions. Toolkit releases and compiler builds have different
+version numbers; CMake compares the compiler build number.
+
+The NVCC CI job uses the newer CUDA Toolkit **13.4.2** (NVCC **13.4.92**).
+The [minimum-version validation](../../tests/experiments/nvcc-13.3-minimum/README.md)
+records the CUDA 13.3.0 compilation checks separately from CI's toolchain.
+
+Clang 19 follows the compiler family in the repository's Matrix machine
+configuration and keeps CUDA Toolkit 12.4.1. Both jobs target architecture 90,
+and each builds its own CUDA-enabled MFEM/Hypre installations. The installed
+consumer uses the same CUDA compiler as its producer. Compile-only probes and
+their limits are recorded in the [compiler-version investigation](../../tests/experiments/nvcc-version-boundary/README.md);
+the CI build checks the complete configured target set with actual dependencies.
 
 Configured executable counts and excluded test names are recorded in each job's
 coverage reports; they are not counts of executed GPU tests. The
@@ -91,7 +96,10 @@ only the tests actually executed.
 ## Toolchains and local overrides
 
 `configurations.json` records the compilers, GPU architectures, and immutable
-container images. The workflow uses standard Ubuntu CPU runners and executes
+container images. A configuration's optional `image` key selects an image instead
+of its backend default. The CUDA configurations explicitly select `cuda-clang`
+and `cuda-nvcc` images to use their respective toolkits.
+The workflow uses standard Ubuntu CPU runners and executes
 each configuration inside its selected container. [bootstrap.sh](bootstrap.sh)
 installs the selected configuration's tools **inside that Ubuntu container as root**; it is not a workstation
 installer. When running it outside GitHub Actions, add

@@ -1,15 +1,16 @@
 {
   "images": {
     "cpu": "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8",
-    "cuda": "nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5",
+    "cuda-clang": "nvidia/cuda:12.4.1-devel-ubuntu22.04@sha256:da6791294b0b04d7e65d87b7451d6f2390b4d36225ab0701ee7dfec5769829f5",
+    "cuda-nvcc": "nvidia/cuda:13.4.2-devel-ubuntu22.04@sha256:fd174bc3ff824df1d20df0c52eda9a2fd11ecd6718c73506032654c5cbe968da",
     "hip": "rocm/dev-ubuntu-22.04:6.3.1-complete@sha256:b3bf4a771a7d1048cf22b31eb289b390feb959c2813be94bfd4fbda9c4206b51"
   },
   "configurations": {
     "gcc": {"backend": "cpu", "cc": "gcc-14", "cxx": "g++-14", "tpls": true, "openmp": true, "native": true, "profile": "gcc", "benchmarks": true},
     "clang": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": true, "openmp": true, "profile": "clang", "benchmarks": true},
     "minimal": {"backend": "cpu", "cc": "gcc-14", "cxx": "g++-14", "tpls": false, "openmp": false, "profile": "gcc", "benchmarks": true},
-    "cuda-nvcc": {"backend": "cuda", "cc": "gcc-12", "cxx": "g++-12", "device_compiler": "/usr/local/cuda/bin/nvcc", "device_compiler_id": "NVIDIA", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-nvcc", "benchmarks": false},
-    "cuda-clang": {"backend": "cuda", "cc": "clang-19", "cxx": "clang++-19", "device_compiler": "clang++-19", "device_compiler_id": "Clang", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-clang", "benchmarks": false},
+    "cuda-nvcc": {"backend": "cuda", "image": "cuda-nvcc", "cc": "gcc-12", "cxx": "g++-12", "device_compiler": "/usr/local/cuda/bin/nvcc", "device_compiler_id": "NVIDIA", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-nvcc", "benchmarks": false},
+    "cuda-clang": {"backend": "cuda", "image": "cuda-clang", "cc": "clang-19", "cxx": "clang++-19", "device_compiler": "clang++-19", "device_compiler_id": "Clang", "cuda_toolkit_root": "/usr/local/cuda", "architecture": "90", "tpls": true, "openmp": true, "profile": "cuda-clang", "benchmarks": false},
     "hip": {"backend": "hip", "cc": "gcc-12", "cxx": "/opt/rocm/bin/hipcc", "host_cxx": "g++-12", "device_compiler": "/opt/rocm/llvm/bin/clang++", "architecture": "gfx90a", "tpls": true, "openmp": true, "profile": "hip", "benchmarks": false},
     "analysis": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": true, "openmp": true, "profile": "clang", "benchmarks": true},
     "sanitizers": {"backend": "cpu", "cc": "clang-18", "cxx": "clang++-18", "tpls": false, "openmp": false, "profile": "clang", "benchmarks": false}

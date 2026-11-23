@@ -106,6 +106,14 @@ add_test(
     -P ${PROJECT_SOURCE_DIR}/tests/cmake/configure-dependency-package-paths.cmake
 )
 
+add_test(
+  NAME configure-nvcc-test-admission
+  COMMAND
+    ${CMAKE_COMMAND}
+    -DSOURCE_DIR=${PROJECT_SOURCE_DIR}
+    -P ${PROJECT_SOURCE_DIR}/tests/cmake/check-nvcc-test-admission.cmake
+)
+
 get_property(gendil_configure_tests DIRECTORY PROPERTY TESTS)
 set_tests_properties(${gendil_configure_tests} PROPERTIES LABELS "configure")
 

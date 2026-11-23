@@ -147,15 +147,15 @@ bool RectangularComponentsAndOuter()
    const auto context=MakeWeakFormContext(MakeTrialField<"u">(u_space),MakeTestField<"v">(v_space),
       MakeIntegrationDomain<"m">(mesh));
    const auto rule=MakeIntegrationRule(IntegrationRuleNumPoints<2>{});
-   const auto C=MakeMatrixCoefficient<"C">([] {
+   const auto C=MakeMatrixCoefficient<"C">([] GENDIL_HOST_DEVICE () {
       return std::array<std::array<Real,2>,3>{{{{2,-1}},{{.5,3}},{{-2,.75}}}};
    });
    bool ok=CheckForm(integrate(Cells<"m">{},dot(C*VectorTrialSpace<"u">{},VectorTestSpace<"v">{})),
       context,rule,Dense{3,-1.5,.75,4.5,-3,1.125},3,2,"rectangular components");
    const auto square_context=MakeWeakFormContext(MakeTrialField<"u">(u_space),MakeTestField<"v">(u_space),
       MakeIntegrationDomain<"m">(mesh));
-   const auto a=MakeVectorCoefficient<"a">([] {return std::array<Real,2>{2,-.5};});
-   const auto b=MakeVectorCoefficient<"b">([] {return std::array<Real,2>{.75,-3};});
+   const auto a=MakeVectorCoefficient<"a">([] GENDIL_HOST_DEVICE () {return std::array<Real,2>{2,-.5};});
+   const auto b=MakeVectorCoefficient<"b">([] GENDIL_HOST_DEVICE () {return std::array<Real,2>{.75,-3};});
    // inner(a outer u, v outer b) = sum_ij a_i u_j v_i b_j.
    const auto outer_form=integrate(Cells<"m">{},inner(outer(a,VectorTrialSpace<"u">{}),
       outer(VectorTestSpace<"v">{},b)));
@@ -198,10 +198,10 @@ bool DivergenceAndTensorNodes()
    const auto rule=MakeIntegrationRule(IntegrationRuleNumPoints<3,3>{});
    const VectorTrialSpace<"u"> u;
    const VectorTestSpace<"v"> v;
-   const auto C=MakeMatrixCoefficient<"C">([] {
+   const auto C=MakeMatrixCoefficient<"C">([] GENDIL_HOST_DEVICE () {
       return std::array<std::array<Real,2>,2>{{{{2,-1}},{{.5,3}}}};
    });
-   const auto b=MakeVectorCoefficient<"b">([] {return std::array<Real,2>{.75,-1.25};});
+   const auto b=MakeVectorCoefficient<"b">([] GENDIL_HOST_DEVICE () {return std::array<Real,2>{.75,-1.25};});
    Dense divergence(4*8,0),symmetric(2*8,0),skew_part(2*8,0),transposed(2*8,0);
    const Real entries[2][2]={{2,-1},{.5,3}};
    const Real direction[2]={.75,-1.25};
@@ -250,7 +250,7 @@ bool CurlNode()
    const auto vs=MakeFiniteElementSpace(mesh,MakeVectorFiniteElement(p0,p0,p0));
    const auto context=MakeWeakFormContext(MakeTrialField<"u">(us),MakeTestField<"v">(vs),
       MakeIntegrationDomain<"m">(mesh));
-   const auto B=MakeMatrixCoefficient<"B">([] {
+   const auto B=MakeMatrixCoefficient<"B">([] GENDIL_HOST_DEVICE () {
       return std::array<std::array<Real,3>,3>{{{{2,-1,.5}},{{.25,3,-2}},{{-1.5,.75,1}}}};
    });
    Dense matrix(3*24,0);

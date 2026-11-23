@@ -211,6 +211,15 @@ class DriverTests(unittest.TestCase):
         self.assertEqual({row["configuration"] for row in scheduled}, {"minimal", "sanitizers"})
         self.assertTrue(all(not row["tpls"] for row in scheduled))
 
+    def test_cuda_frontends_select_independent_toolkit_images(self):
+        command = [sys.executable, str(Path(run.__file__)), "matrix"]
+        entries = json.loads(subprocess.check_output(command, text=True))["include"]
+        images = {row["configuration"]: row["image"] for row in entries}
+        self.assertTrue(images["cuda-nvcc"].startswith(
+            "nvidia/cuda:13.4.2-devel-ubuntu22.04@sha256:"))
+        self.assertEqual(images["cuda-clang"], run.CONFIG["images"]["cuda-clang"])
+        self.assertNotEqual(images["cuda-nvcc"], images["cuda-clang"])
+
     def test_dependency_free_prepare_needs_no_manifest_or_network(self):
         for configuration in ("minimal", "sanitizers"):
             with self.subTest(configuration=configuration), tempfile.TemporaryDirectory() as directory:

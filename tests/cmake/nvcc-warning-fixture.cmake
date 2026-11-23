@@ -1,0 +1,33 @@
+# Exercise real CUDA configuration and test-admission control flow, replacing
+# toolkit discovery and target operations so this check needs no CUDA compiler.
+include("${SOURCE_DIR}/cmake/dependencies/GENDILCUDA.cmake")
+include("${SOURCE_DIR}/cmake/GENDILTestHelpers.cmake")
+function(find_package name)
+  if(NOT name STREQUAL "CUDAToolkit")
+    message(FATAL_ERROR "Unexpected dependency ${name}")
+  endif()
+endfunction()
+function(target_link_libraries)
+endfunction()
+function(target_compile_features)
+endfunction()
+function(target_include_directories)
+endfunction()
+function(target_compile_options)
+endfunction()
+function(target_compile_definitions)
+endfunction()
+function(gendil_add_test)
+endfunction()
+
+set(USE_CUDA ON)
+set(CMAKE_CUDA_COMPILER_ID "${COMPILER_ID}")
+set(CMAKE_CUDA_COMPILER_VERSION "${COMPILER_VERSION}")
+set(GENDIL_DEVICE_SPARSE_FINALIZATION OFF)
+# Avoid feature compilation; the fixture checks only the compiler diagnostic.
+set(GENDIL_CUSPARSE_HAS_SPMV_PREPROCESS TRUE)
+set(GENDIL_CUSPARSE_HAS_GENERIC_BSR TRUE)
+gendil_configure_cuda(mock_target "" sparse_enabled)
+# Adding multiple excluded tests must not repeat the configuration warning.
+gendil_add_non_nvcc_test(first probe.cpp)
+gendil_add_non_nvcc_test(second probe.cpp)
