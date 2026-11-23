@@ -6,7 +6,6 @@
 
 #include "gendil/Utilities/types.hpp"
 #include "gendil/Utilities/Loop/constexprloop.hpp"
-#include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TensorContraction/contractionhelper.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsthreaded.hpp"

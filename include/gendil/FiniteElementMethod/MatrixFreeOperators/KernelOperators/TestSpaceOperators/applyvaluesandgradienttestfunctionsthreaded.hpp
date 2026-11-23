@@ -5,7 +5,9 @@
 #pragma once
 
 #include "gendil/Utilities/types.hpp"
-#include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applytestfunctionsthreaded.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/TestSpaceOperators/applygradienttestfunctionsthreaded.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/quadraturepointvalues.hpp"
 
 namespace gendil {

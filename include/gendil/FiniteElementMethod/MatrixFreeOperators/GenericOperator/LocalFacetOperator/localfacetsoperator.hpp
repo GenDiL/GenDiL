@@ -6,7 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/Context/operatorcontext.hpp"
-#include "gendil/FiniteElementMethod/finiteelementmethod.hpp"
+#include "gendil/Meshes/mesh.hpp"
 #include "gendil/Utilities/KernelContext/batchingeligibility.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/CellOperator/celloperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainiteration.hpp"
@@ -19,6 +19,7 @@
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/elementtensorview.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/readdofs.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/DoFIO/writedofs.hpp"
+#include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/LoopHelpers/faceloop.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/WeakFormTraits/fielddependencies.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/integrate.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/sumformexpr.hpp"
