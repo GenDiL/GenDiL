@@ -493,7 +493,7 @@ def main():
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     if args.command == "matrix":
-        entries = [{"configuration": name, "image": CONFIG["images"][cfg["backend"]], "tpls": cfg["tpls"],
+        entries = [{"configuration": name, "image": CONFIG["images"][cfg.get("image", cfg["backend"])], "tpls": cfg["tpls"],
                     "timeout": 90 if cfg["backend"] == "cpu" else 180}
                    for name, cfg in CONFIG["configurations"].items()
                    if (name != "sanitizers" or args.include_sanitizers)

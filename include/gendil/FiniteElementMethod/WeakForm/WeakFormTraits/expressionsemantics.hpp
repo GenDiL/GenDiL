@@ -324,17 +324,24 @@ struct input_semantics<InverseNormalCellSize, Symbols, Side> : empty_semantics
       Side != SemanticSide::Unqualified;
 };
 
-template<StaticString N, OperatorMask Mask, class Symbols, SemanticSide Side>
-struct named_input_semantics : field_semantics<N, SemanticShape::Unresolved,
+template<StaticString N, OperatorMask Mask, class Symbols, SemanticSide Side,
+         FieldShape Shape>
+struct named_input_semantics : field_semantics<N,
+   need_gradients(Mask) ? gradient_shape(semantic_shape(Shape)) : semantic_shape(Shape),
    Symbols::template is_active<N> ? ReadRole::Active : ReadRole::Bound,
    Mask, NamedFieldProvenance::CoefficientInput, Side>
-{};
-template<StaticString N, class Symbols, SemanticSide Side>
-struct input_semantics<FieldValue<N>, Symbols, Side>
- : named_input_semantics<N, OperatorMask::Values, Symbols, Side> {};
-template<StaticString N, class Symbols, SemanticSide Side>
-struct input_semantics<FieldGradient<N>, Symbols, Side>
- : named_input_semantics<N, OperatorMask::Gradients, Symbols, Side> {};
+{
+   using shape_obligations = type_list<ShapeObligation<ShapeOperation::CoefficientField,
+      NameTag<N>, std::integral_constant<FieldShape, Shape>,
+      std::integral_constant<SemanticSide, Side>>>;
+};
+
+template<StaticString N, FieldShape Shape, class Symbols, SemanticSide Side>
+struct input_semantics<FieldValue<N, Shape>, Symbols, Side>
+ : named_input_semantics<N, OperatorMask::Values, Symbols, Side, Shape> {};
+template<StaticString N, FieldShape Shape, class Symbols, SemanticSide Side>
+struct input_semantics<FieldGradient<N, Shape>, Symbols, Side>
+ : named_input_semantics<N, OperatorMask::Gradients, Symbols, Side, Shape> {};
 
 template<StaticString N, FieldShape Shape, class Fn, CoefficientInput... Inputs, class Symbols, SemanticSide Side>
 struct analyze<Coefficient<N, Shape, Fn, Inputs...>, Symbols, Side>

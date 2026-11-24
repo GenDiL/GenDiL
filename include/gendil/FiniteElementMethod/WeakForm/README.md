@@ -17,6 +17,7 @@ introduction with advection and diffusion examples.
 - [Facet operations](#facet-operations)
 - [SIPDG and inverse normal cell size](#sipdg-and-inverse-normal-cell-size)
 - [Combining forms and extracting loads](#combining-forms-and-extracting-loads)
+- [Transposing a bilinear form](#transposing-a-bilinear-form)
 - [Evaluation and assembly](#evaluation-and-assembly)
 - [Current scope](#current-scope)
 
@@ -150,7 +151,7 @@ depend on trial fields or prescribed data.
 | `A * B` | Matrix-matrix product. | The columns of `A` must match the rows of `B`; at most one operand may contain a test field. |
 | `dot(x, y)` | Vector dot product. | At most one operand may contain a test field. |
 | `inner(x, y)`, `inner(A, B)` | Euclidean or Frobenius inner product. | Matching non-scalar shapes; at most one operand may contain a test field. |
-| `outer(x, y)` | Matrix with entries $x_i y_j$. | If a test field occurs, it must be in the first operand. |
+| `outer(x, y)` | Matrix with entries $x_i y_j$. | At most one operand may contain a test field. |
 | `transpose(A)` | Matrix transpose. | Rectangular matrices and test-linear operands are supported. |
 | `sym(A)`, `skew(A)` | $(A+A^T)/2$ and $(A-A^T)/2$. | Square matrix; test-dependent operands are supported. |
 
@@ -176,7 +177,8 @@ test field, and `w` a prescribed vector finite-element field.
 Apply these derivatives to named fields, then combine or trace their
 results: for example, `grad(u) + grad(p)` or
 `average(normal_derivative(u))`. To obtain the gradient of a prescribed field,
-use the coefficient input `FieldGradient<"w">` described below.
+use the coefficient input `VectorFieldGradient<"w">` described below for a
+vector field, or `FieldGradient<"s">` for a scalar field.
 
 For example, a vector diffusion or elasticity contribution can use
 `inner(grad(U), grad(V))`, `inner(sym_grad(U), sym_grad(V))`, or
@@ -260,7 +262,7 @@ auto diffusion = integrate(cells, k * dot(grad(u), grad(v)));
 ```
 
 For prescribed vector values used in `dot`, `inner`, or `outer`, expose
-`FieldValue<"w">` through `MakeVectorCoefficient` with an identity callback.
+`VectorFieldValue<"w">` through `MakeVectorCoefficient` with an identity callback.
 This supplies the explicit result shape those operations require before
 context binding; a bare `FiniteElementField<"w">` has an unresolved shape
 at that stage.
@@ -279,18 +281,50 @@ facet means evaluation under `minus`, `plus`, or an operation such as
 | `JacobianDeterminant` | Parent-cell Jacobian determinant, not the facet integration measure. | Yes | Yes | Not currently supplied. |
 | `JacobianInverse` | Inverse parent-cell Jacobian. | Yes | Yes | Selected side, expressed in the canonical-minus reference-axis frame. |
 | `InverseNormalCellSize` | $\lVert J_K^{-T}\widehat n\rVert$. | No | Adjacent cell | Selected side. |
-| `FieldValue<"w">` | Named field value. | Yes | Yes | Selected side. |
-| `FieldGradient<"w">` | Named field's physical gradient. | Yes | Yes | Selected side. |
+| `FieldValue<"u">` | Scalar field value (default shape). | Yes | Yes | Selected side. |
+| `FieldGradient<"u">` | Scalar field's physical gradient (default field shape). | Yes | Yes | Selected side. |
+| `FieldValue<"u", FieldShape::Scalar>` | Explicitly scalar field value. | Yes | Yes | Selected side. |
+| `FieldGradient<"u", FieldShape::Scalar>` | Explicitly scalar field's physical gradient. | Yes | Yes | Selected side. |
+| `VectorFieldValue<"w">` | Explicitly vector field value. | Yes | Yes | Selected side. |
+| `VectorFieldGradient<"w">` | Explicitly vector field's physical gradient. | Yes | Yes | Selected side. |
 
 Interior field and side-geometry inputs have no implicit minus-side default.
 Select a trace of the coefficient or an enclosing expression, for example
 `minus(k)`, `plus(k)`, or `average(k)`. Operations such as `jump` and the
 transported operand of interior `upwind` also establish the selected sides.
 
-`FieldGradient` returns a vector for a scalar field and a component-by-direction
-matrix for a vector field. Index, geometry, and field inputs use representations
-determined by the mesh and space; generic callback parameters (`const auto&`)
-are useful for those inputs.
+`FieldValue<Name, Shape>` and `FieldGradient<Name, Shape>` declare a field
+shape, with `Shape` defaulting to `FieldShape::Scalar`.
+`VectorFieldValue<Name>` and `VectorFieldGradient<Name>` are aliases for
+`FieldValue<Name, FieldShape::Vector>` and
+`FieldGradient<Name, FieldShape::Vector>`. All declarations are checked
+against the selected FE space during operator construction, including the
+selected interior-facet side, even if a generic callback accepts any rank.
+These spellings work for both active trial and prescribed finite-element fields.
+
+The shape declaration describes the **underlying field**. For a scalar field
+on a mesh of physical dimension `d`, the gradient has length `d`. For a field
+with `m` components, the gradient has shape `m × d`, indexed as
+`dw(component, direction)`. The bound space supplies these extents; `m` need
+not equal `d`. Index, geometry, and field inputs use representations determined
+by the mesh and space; generic callback parameters (`const auto&`) are useful
+for those inputs.
+
+The factory independently declares the callback's **output** shape. For example,
+this scalar coefficient reads a three-component field on a 2D mesh, with
+arguments supplied in the order of the input tags:
+
+```cpp
+auto c = MakeCoefficient<"c", VectorFieldValue<"w">, VectorFieldGradient<"w">>(
+   [] GENDIL_HOST_DEVICE (const auto& w, const auto& dw) {
+      return w(2) + dw(2, 1);
+   });
+```
+
+For compile-time inspection, all field input tags expose `field_shape` and
+`argument_rank`: scalar value/gradient ranks are 0/1, and vector value/gradient
+ranks are 1/2.
+Declarations support scalar and componentwise vector FE fields.
 
 The interior `ReferenceCoordinates` provider currently falls back to a
 reference integration-rule point; it does not map that point to the selected
@@ -453,6 +487,7 @@ Dirichlet values also require the corresponding boundary load terms.
 | `form1 + form2` | Sum of integral contributions. |
 | `lhs(R)` | Linear trial-dependent part of a jointly affine residual. |
 | `rhs(R)` | Negative of the trial-independent part of that residual. |
+| `transpose(a)` | Bilinear form with trial and test roles exchanged. |
 
 Put subtraction and scaling inside the integrand; general `form1 - form2`
 and `c * form` overloads are not provided. For terms with the same domain
@@ -491,6 +526,105 @@ residual_operator(x, y);
 ```
 
 See [form sums](sumformexpr.hpp) and [affine extraction](affinesplit.hpp).
+
+## Transposing a bilinear form
+
+`transpose(a)` builds a weak form for the algebraic transpose of a real
+bilinear operator. It can be added to compatible forms and passed to
+`MakeGenericOperator` with the same context and quadrature as `a`. Each field
+keeps its name and finite-element space; its trial and test occurrences
+exchange roles. This works for rectangular operators as well as square ones.
+
+For example, piecewise constants on two cells have two trial DOFs, while
+discontinuous piecewise linears have four test DOFs:
+
+```cpp
+CartesianMesh<1> line({2}, {1.0}, {0.0}, false);
+auto U = MakeFiniteElementSpace(
+   line, MakeLegendreFiniteElement(FiniteElementOrders<0>{}));
+auto V = MakeFiniteElementSpace(
+   line, MakeLobattoFiniteElement(FiniteElementOrders<1>{}));
+auto rules = MakeIntegrationRule(IntegrationRuleNumPoints<2>{});
+
+TrialSpace<"u"> u;
+TestSpace<"v"> v;
+auto a = integrate(Cells<"line">{}, u * v);
+auto at = transpose(a);
+auto context = MakeWeakFormContext(
+   MakeTrialField<"u">(U), MakeTestField<"v">(V),
+   MakeIntegrationDomain<"line">(line));
+auto A = MakeGenericOperator<SerialKernelConfiguration>(a, context, rules);
+auto AT = MakeGenericOperator<SerialKernelConfiguration>(at, context, rules);
+
+Vector x(A.InputSize()), y(AT.InputSize()); // Sizes 2 and 4.
+Vector r_v(A.OutputSize()), r_u(AT.OutputSize()); // Sizes 4 and 2.
+x = 1.0;
+y = 1.0;
+A(x, r_v);   // Integrate the P0 field against the P1 tests.
+AT(y, r_u);  // Integrate the P1 field against the P0 tests.
+```
+
+With $A_{ij}=a(\phi_j^U,\psi_i^V)$, the returned form satisfies
+$a^\top(p,q)=a(q,p)$ and $y^T(Ax)=x^T(A^Ty)$. This pairing is between
+coefficient vectors and dual loads; it does not apply a mass inverse.
+`AT.InputSize()` equals `A.OutputSize()`, and `AT.OutputSize()` equals
+`A.InputSize()`, including supported offset layouts. Component ordering,
+DOF numbering, and restriction gather/scatter weights remain unchanged.
+Both operators replace their outputs with `operator()` and add to existing
+outputs with `ApplyAdd`.
+
+Supported bilinear combinations include sums, scalar and vector value or
+derivative contractions, nonsymmetric matrix coefficients, and frozen-velocity
+upwind fluxes. A multi-trial term such as `integrate(cells, (u + p) * v)`
+produces transposed contributions to both `u` and `p` rows. Their existing
+restrictions determine placement in the shared output vector; transposition
+does not allocate blocks. Trial and test occurrences sharing a name use the
+one space registered under that name, with separate input and output buffers.
+
+Transposition preserves integration domains, trace sides, oriented normals,
+boundary terms, and measures. In particular, `minus(u) * plus(v)` becomes
+a read from `v` on the plus side and a contribution to `u` on the minus side.
+For a frozen velocity, write $s=\beta\cdot n$, $s^+=\max(s,0)$, and
+$s^-=\min(s,0)$. The transpose of the interior flux
+$(s^+u^-+s^-u^+)[v]$ sends $s^+[v]$ to minus-state rows and $s^-[v]$ to
+plus-state rows. The selector and its sign are preserved. For boundary
+upwinding with prescribed inflow, use `transpose(lhs(R))`; the inflow load
+belongs to `rhs(R)`.
+
+Admission uses the complete original form before removing any terms.
+The form must be homogeneous and provably jointly linear in all active
+trials, and linear in its tests. Nonzero loads, unsplit affine residuals,
+nonlinear active dependence, and opaque callbacks reading active fields
+are rejected. An active-dependent upwind selector is also rejected.
+Runtime zero factors and numerical cancellation do not establish linearity.
+A typed zero retaining known callable input and output spaces keeps their
+swapped contract. An input-free load or zero cannot acquire an input from
+the declarations retained on `rhs(R)`.
+
+Stored callbacks and prescribed data retain their original bindings;
+transposition does not sample or freeze their values. Reference-backed
+coefficient data may change between applications, and both directions must
+use the same data when compared. The copied callbacks retain the original
+capture lifetime and device-accessibility requirements. If an originally
+prescribed read, such as `FieldValue<"v">`, conflicts with `v` becoming an
+active input, transposition diagnoses the conflicting name: one name cannot
+identify both prescribed and active read storage.
+
+Local interior traversal has one additional restriction. A transposed live
+interior term using `ElementIndex`, `QuadraturePointIndex`, or
+`ReferenceCoordinates` is rejected when preparing `MakeGenericOperator`,
+even if the input is inside `minus` or `plus`. These inputs describe the
+traversal context, which can change when output rows exchange roles. The
+restriction is conservative and also covers diagonal cases. It does not
+apply to dead zero terms, cells, boundaries, or global facet traversal.
+Physical-coordinate coefficients and explicitly traced prescribed fields
+and supported side geometry remain usable, subject to the existing local
+quadrature compatibility requirements.
+
+This overload acts on forms. The existing [pointwise transpose](transpose.hpp)
+continues to act on field and tensor expressions. Use the returned form
+through the ordinary matrix-free entry point; no operator-level
+`ApplyTranspose` call is needed. See [bilinear form transpose](transposeform.hpp).
 
 ## Evaluation and assembly
 

@@ -69,8 +69,8 @@ template < StaticString Name, FieldShape Shape, typename Fn, CoefficientInput...
 struct ScaleExpr;
 struct Normal;
 template < StaticString Name > struct FiniteElementField;
-template < StaticString Name > struct FieldValue;
-template < StaticString Name > struct FieldGradient;
+template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct FieldValue;
+template < StaticString Name, FieldShape Shape = FieldShape::Scalar > struct FieldGradient;
 
 namespace weak_form_detail
 {

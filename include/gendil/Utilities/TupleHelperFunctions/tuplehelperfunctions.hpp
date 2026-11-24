@@ -14,3 +14,9 @@
 
 // Get the first N or last N elements of a given tuple.
 #include "headtail.hpp"
+
+// Apply callbacks to tuples on either host or device.
+#include "apply.hpp"
+
+// Concatenate tuples on either host or device.
+#include "concatenate.hpp"

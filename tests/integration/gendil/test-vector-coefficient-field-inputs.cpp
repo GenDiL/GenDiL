@@ -414,14 +414,14 @@ int TestVectorCoefficientFieldInputs()
    TestSpace<"u"> v;
 
    auto value_coeff =
-      MakeCoefficient<"vector_value", FieldValue<"w_vec">>(
+      MakeCoefficient<"vector_value", VectorFieldValue<"w_vec">>(
          [] GENDIL_HOST_DEVICE (const SerialRecursiveArray<Real, 2>& w)
          {
             return 1.0 + 2.0 * w(0) - 0.5 * w(1);
          });
 
    auto gradient_coeff =
-      MakeCoefficient<"vector_gradient", FieldGradient<"w_vec">>(
+      MakeCoefficient<"vector_gradient", VectorFieldGradient<"w_vec">>(
          [] GENDIL_HOST_DEVICE (const SerialRecursiveArray<Real, 2, 2>& grad_w)
          {
             return 1.0
@@ -434,8 +434,8 @@ int TestVectorCoefficientFieldInputs()
    auto value_and_gradient_coeff =
       MakeCoefficient<
          "vector_value_and_gradient",
-         FieldValue<"w_vec">,
-         FieldGradient<"w_vec">>(
+         VectorFieldValue<"w_vec">,
+         VectorFieldGradient<"w_vec">>(
          [] GENDIL_HOST_DEVICE (
             const SerialRecursiveArray<Real, 2>& w,
             const SerialRecursiveArray<Real, 2, 2>& grad_w)

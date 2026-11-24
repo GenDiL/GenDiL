@@ -32,16 +32,44 @@ struct JacobianInverse       : CoefficientInputBase {};
  */
 struct InverseNormalCellSize : CoefficientInputBase {};
 
-template <StaticString Name>
-struct FieldValue : CoefficientInputBase
+namespace weak_form_detail
+{
+
+template<bool Gradient, FieldShape Shape>
+struct FieldInputShape
+{
+   static_assert(Shape == FieldShape::Scalar || Shape == FieldShape::Vector,
+      "Coefficient field inputs support scalar or componentwise vector fields.");
+   static constexpr auto field_shape = Shape;
+   static constexpr unsigned argument_rank =
+      (Shape == FieldShape::Vector ? 1u : 0u) + (Gradient ? 1u : 0u);
+};
+
+} // namespace weak_form_detail
+
+// Read a scalar field by default; use VectorFieldValue for vector fields.
+// The declared shape is checked when constructing an operator. Extents always
+// come from the selected FE space; field_shape and argument_rank describe rank.
+template <StaticString Name, FieldShape Shape>
+struct FieldValue : CoefficientInputBase,
+                    weak_form_detail::FieldInputShape<false, Shape>
+{
+   static constexpr auto name = Name;
+};
+
+// Shape describes the underlying field: a scalar gradient has rank one;
+// a vector gradient has rank two, indexed by (component, physical direction).
+template <StaticString Name, FieldShape Shape>
+struct FieldGradient : CoefficientInputBase,
+                       weak_form_detail::FieldInputShape<true, Shape>
 {
    static constexpr auto name = Name;
 };
 
 template <StaticString Name>
-struct FieldGradient : CoefficientInputBase
-{
-   static constexpr auto name = Name;
-};
+using VectorFieldValue = FieldValue<Name, FieldShape::Vector>;
+
+template <StaticString Name>
+using VectorFieldGradient = FieldGradient<Name, FieldShape::Vector>;
 
 } // namespace gendil

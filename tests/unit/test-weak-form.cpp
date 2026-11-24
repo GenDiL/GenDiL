@@ -178,7 +178,7 @@ int main()
       PhysicalCoordinates,
       ReferenceCoordinates,
       Jacobian,
-      FieldValue<"displacement">>(
+      VectorFieldValue<"displacement">>(
       []( const auto& x_phys,
           const auto& x_ref,
           const auto& J,

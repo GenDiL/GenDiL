@@ -201,10 +201,6 @@ using the raw matrix. Built-in cell, global-facet, and boundary inputs read
 Custom implementations of `GetMinusSide`, `GetPlusSide`, and
 `GetCoefficientJacobianInverse` use free overloads in the context or point type's
 namespace. Mark overloads used in GPU kernels `GENDIL_HOST_DEVICE`.
-The former member hooks `facet.MinusSide(point)`, `facet.PlusSide(point)`,
-`context.GetCoefficientJacobianInverse(raw)`, and
-`point.GetCoefficientJacobianInverse()` are no longer called; convert these
-customizations to the corresponding free overloads.
 
 `GetCoefficientJacobianInverse` preserves a const reference when it can use a
 named built-in point's matrix directly. Transformed results and results from

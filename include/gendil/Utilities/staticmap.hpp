@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "gendil/Utilities/TupleHelperFunctions/apply.hpp"
+
 #include "gendil/prelude.hpp"
 #include "gendil/Utilities/staticstring.hpp"
 
@@ -49,18 +51,21 @@ struct are_unique<T, Rest...>
 {};
 
 template<class Key, class T>
+GENDIL_HOST_DEVICE
 constexpr auto MakeEntry(T&& value)
 {
    return Entry<Key, std::decay_t<T>>{ std::forward<T>(value) };
 }
 
 template<class Key, class... Entries>
+GENDIL_HOST_DEVICE
 constexpr decltype(auto) Get(const std::tuple<Entries...>& t) {
    using E = find_entry_t<Key, Entries...>;
    return std::get<E>(t).value;
 }
 
 template<StaticString Name, class... Entries>
+GENDIL_HOST_DEVICE
 constexpr decltype(auto) Get(const std::tuple<Entries...>& t) {
    using E = find_entry_t<StringKey<Name>, Entries...>;
    return std::get<E>(t).value;
@@ -80,12 +85,14 @@ struct StaticMap {
    }
 
    template<class Key>
+   GENDIL_HOST_DEVICE
    constexpr decltype(auto) Get() & {
       using E = find_entry_t<Key, Entries...>;
       return (std::get<E>(entries).value);
    }
 
    template<class Key>
+   GENDIL_HOST_DEVICE
    constexpr decltype(auto) Get() const & {
       using E = find_entry_t<Key, Entries...>;
       return (std::get<E>(entries).value);
@@ -93,6 +100,7 @@ struct StaticMap {
 };
 
 template<class... Es>
+GENDIL_HOST_DEVICE
 constexpr auto MakeStaticMap(Es&&... es) {
    using Map = StaticMap<std::decay_t<Es>...>;
    return Map{ std::tuple<std::decay_t<Es>...>{ std::forward<Es>(es)... } };
@@ -105,8 +113,9 @@ constexpr auto MakeStaticMap(Es&&... es) {
 // }
 
 template<class Tuple>
+GENDIL_HOST_DEVICE
 constexpr auto ToStaticMap(Tuple&& t) {
-   return std::apply(
+   return Apply(
       [](auto&&... es) {
       return MakeStaticMap(std::forward<decltype(es)>(es)...);
       },
@@ -115,6 +124,7 @@ constexpr auto ToStaticMap(Tuple&& t) {
 }
 
 template<class... Entries, class NewEntry>
+GENDIL_HOST_DEVICE
 constexpr auto MapAppend(StaticMap<Entries...> map, NewEntry&& new_entry)
 {
    using E = std::decay_t<NewEntry>;
@@ -122,7 +132,7 @@ constexpr auto MapAppend(StaticMap<Entries...> map, NewEntry&& new_entry)
       !StaticMap<Entries...>::template Contains<typename E::key_type>(),
       "StaticMap: duplicate key in MapAppend.");
 
-   return std::apply(
+   return Apply(
       [&](auto&&... es)
       {
          return MakeStaticMap(
@@ -134,6 +144,7 @@ constexpr auto MapAppend(StaticMap<Entries...> map, NewEntry&& new_entry)
 }
 
 template<class Key, class EntryT, class MergeValueFn>
+GENDIL_HOST_DEVICE
 constexpr auto ReplaceEntry(EntryT&& entry, MergeValueFn&& merge_value_fn)
 {
    using E = std::remove_cvref_t<EntryT>;
@@ -150,13 +161,14 @@ constexpr auto ReplaceEntry(EntryT&& entry, MergeValueFn&& merge_value_fn)
 }
 
 template<class Key, class... Entries, class MergeValueFn>
+GENDIL_HOST_DEVICE
 constexpr auto MapReplace(StaticMap<Entries...> map, MergeValueFn&& merge_value_fn)
 {
    static_assert(
       StaticMap<Entries...>::template Contains<Key>(),
       "StaticMap: key not present in MapReplace.");
 
-   return std::apply(
+   return Apply(
       [&](auto&&... es)
       {
          return MakeStaticMap(
@@ -169,6 +181,7 @@ constexpr auto MapReplace(StaticMap<Entries...> map, MergeValueFn&& merge_value_
 }
 
 template<class Key, class... Entries, class Value, class MergeFn>
+GENDIL_HOST_DEVICE
 constexpr auto MapInsertOrMerge(
    StaticMap<Entries...> map,
    Value&& value,
@@ -197,9 +210,10 @@ constexpr auto MapInsertOrMerge(
 }
 
 template<class Acc, class Fn, class... Entries>
+GENDIL_HOST_DEVICE
 constexpr auto MapFold(Acc acc, const StaticMap<Entries...>& map, Fn&& fn)
 {
-   return std::apply(
+   return Apply(
       [&](const auto&... es)
       {
          auto result = std::move(acc);

@@ -294,12 +294,18 @@ bool CheckInactive(const Pullback& pullback, const Point& point, const Entity& e
           CheckValue(std::get<2>(row.gradients).values, untouched[2], "inactive local curl trace");
 }
 
+// NVCC forbids extended lambdas inside functions with a deduced return type.
+struct LocalCurlSeed
+{
+   GENDIL_HOST_DEVICE
+   auto operator()() const { return Coordinates<3>{2, -3, 5}; }
+};
+
 template<int Sign>
 auto MakeLocalCurlPullbacks()
 {
    // DSL construction stays on the host; kernels evaluate the captured pullbacks.
-   const auto coefficient = MakeVectorCoefficient<"seed3">(
-      [] GENDIL_HOST_DEVICE () { return Coordinates<3>{2, -3, 5}; });
+   const auto coefficient = MakeVectorCoefficient<"seed3">(LocalCurlSeed{});
    const auto test_curl = curl(VectorTestSpace<"v">{});
    return std::tuple{
       MakeLocalInteriorFacetPullback<Sign>(

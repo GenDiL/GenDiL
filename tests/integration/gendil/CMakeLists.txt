@@ -78,6 +78,7 @@ gendil_add_non_nvcc_test(test-coefficient-field-inputs-cell test-coefficient-fie
 gendil_add_non_nvcc_test(test-boundary-coefficient-field-inputs test-boundary-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-interior-coefficient-field-inputs test-interior-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-vector-coefficient-field-inputs test-vector-coefficient-field-inputs.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-field-inputs test-shaped-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-upwind-vector-coefficient-field-inputs test-upwind-vector-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-sipdg-coefficient-field-inputs test-sipdg-coefficient-field-inputs.cpp)
 gendil_add_non_nvcc_test(test-anisotropic-diffusion-coefficient test-anisotropic-diffusion-coefficient.cpp)
@@ -131,3 +132,7 @@ gendil_add_non_nvcc_test(test-cartesian-product-partition-structure test-cartesi
 gendil_add_non_nvcc_test(test-cartesian-product-partition-operators test-cartesian-product-partition-operators.cpp)
 gendil_add_non_nvcc_test(test-cartesian-product-partition-nonconforming test-cartesian-product-partition-nonconforming.cpp)
 gendil_add_non_nvcc_test(test-cartesian-product-partition-device-smoke test-cartesian-product-partition-device-smoke.cpp)
+
+# Bilinear weak-form transpose: independent cell and facet oracles.
+gendil_add_non_nvcc_test(test-form-transpose-operator test-form-transpose-operator.cpp)
+gendil_add_non_nvcc_test(test-form-transpose-facets test-form-transpose-facets.cpp)

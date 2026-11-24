@@ -1,5 +1,5 @@
-# NVCC template bugs prevent these named weak-form tests from compiling.
-# Keep them enabled for CPU, Clang CUDA, and HIP.
+# Named weak-form tests remain excluded for NVCC, including CUDA 13.5.0.
+# The shared helper keeps CPU, Clang CUDA, and HIP coverage enabled.
 gendil_add_non_nvcc_test(test-generalized-interior-residual test-generalized-interior-residual.cpp)
 gendil_add_non_nvcc_test(test-upwind-transported-fields test-upwind-transported-fields.cpp)
 gendil_add_non_nvcc_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)
@@ -351,6 +351,27 @@ endif()
 gendil_add_non_nvcc_test(test-weak-form test-weak-form.cpp)
 gendil_add_non_nvcc_test(test-vector-h1-generic-operator test-vector-h1-generic-operator.cpp)
 gendil_add_non_nvcc_test(test-named-field-requirements test-named-field-requirements.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-inputs test-shaped-coefficient-inputs.cpp)
+gendil_add_non_nvcc_test(test-shaped-coefficient-construction test-shaped-coefficient-construction.cpp)
+if(TARGET test-shaped-coefficient-construction)
+  set(shaped_case 0)
+  foreach(mode bound-value-vector-on-scalar bound-value-scalar-on-vector
+               bound-gradient-vector-on-scalar bound-gradient-scalar-on-vector
+               active-value-vector-on-scalar active-value-scalar-on-vector
+               active-gradient-vector-on-scalar active-gradient-scalar-on-vector
+               plus-value-vector-on-scalar plus-value-scalar-on-vector
+               plus-gradient-vector-on-scalar plus-gradient-scalar-on-vector
+               default-bound-value-on-vector default-bound-gradient-on-vector
+               default-active-value-on-vector default-active-gradient-on-vector
+               default-plus-value-on-vector default-plus-gradient-on-vector)
+    math(EXPR shaped_case "${shaped_case} + 1")
+    set(shaped_target test-shaped-coefficient-reject-${mode})
+    gendil_add_target_compile_failure_test(${shaped_target}
+      test-shaped-coefficient-construction.cpp
+      "Coefficient field input shape declaration does not match the selected finite-element space.")
+    target_compile_definitions(${shaped_target}-probe PRIVATE GENDIL_SHAPED_REJECT_CASE=${shaped_case})
+  endforeach()
+endif()
 gendil_add_non_nvcc_test(test-facet-size-dimensions test-facet-size-dimensions.cpp)
 gendil_add_non_nvcc_test(test-vector-weakform-traits test-vector-weakform-traits.cpp)
 gendil_add_non_nvcc_test(test-vector-expression-construction test-vector-expression-construction.cpp)
@@ -361,3 +382,46 @@ gendil_add_non_nvcc_test(test-pullback-generic-cell test-pullback-generic-cell.c
 if(USE_OPENMP)
   gendil_add_test(test-openmp test-openmp.cpp)
 endif()
+
+gendil_add_non_nvcc_test(test-form-transpose-traits test-form-transpose-traits.cpp)
+gendil_add_non_nvcc_test(test-form-transpose-admission-controls test-form-transpose-rejections.cpp)
+if(TARGET test-form-transpose-admission-controls)
+  set(transpose_case 0)
+  foreach(mode load rhs-load affine joint-nonlinear opaque-active active-selector
+               prescribed-callback-name invalid-test rhs-zero local-element-index
+               traced-local-element-index local-quadrature-index local-reference-coordinates
+               runtime-zero-nonlinear cancelling-loads prescribed-expression-name input-free-zero
+               nonscalar-prescribed-multiplier)
+    math(EXPR transpose_case "${transpose_case} + 1")
+    if(transpose_case EQUAL 1 OR transpose_case EQUAL 2 OR transpose_case EQUAL 9 OR transpose_case EQUAL 17)
+      set(diagnostic "transpose requires a callable input space.")
+    elseif(transpose_case EQUAL 3 OR transpose_case EQUAL 15)
+      set(diagnostic "transpose rejects an affine residual or nonzero load; use lhs first.")
+    elseif(transpose_case EQUAL 4 OR transpose_case EQUAL 14)
+      set(diagnostic "transpose rejects nonlinear active dependence.")
+    elseif(transpose_case EQUAL 5 OR transpose_case EQUAL 6)
+      set(diagnostic "transpose cannot prove linearity of active-dependent callbacks or selectors.")
+    elseif(transpose_case EQUAL 7 OR transpose_case EQUAL 16)
+      set(diagnostic "transpose would rebind a prescribed field as an active trial.")
+    elseif(transpose_case EQUAL 8)
+      set(diagnostic "transpose requires a valid bilinear weak form.")
+    elseif(transpose_case EQUAL 10 OR transpose_case EQUAL 11)
+      set(diagnostic "transpose on local interior facets does not support ElementIndex.")
+    elseif(transpose_case EQUAL 12)
+      set(diagnostic "transpose on local interior facets does not support QuadraturePointIndex.")
+    elseif(transpose_case EQUAL 18)
+      set(diagnostic "Weak-form field shape obligations are incompatible with the selected finite element spaces.")
+    else()
+      set(diagnostic "transpose on local interior facets does not support ReferenceCoordinates.")
+    endif()
+    set(transpose_target test-form-transpose-reject-${mode})
+    gendil_add_target_compile_failure_test(${transpose_target}
+      test-form-transpose-rejections.cpp "${diagnostic}")
+    target_compile_definitions(${transpose_target}-probe PRIVATE GENDIL_TRANSPOSE_REJECT_CASE=${transpose_case})
+  endforeach()
+endif()
+
+# Host/device tuple construction must retain non-literal expression values.
+gendil_add_test(test-device-tuple test-device-tuple.cpp)
+target_compile_options(test-device-tuple PRIVATE
+  "$<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:--diag-error=20011,20014>")

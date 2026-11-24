@@ -10,6 +10,7 @@
 #include "gendil/Meshes/Geometries/hypercube.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/KernelOperators/doftoquad.hpp"
 #include "gendil/FiniteElementMethod/ShapeFunctions/GLLshapefunctions.hpp"
+#include "gendil/Utilities/View/Layouts/orientedlayout.hpp"
 #include "gendil/Utilities/View/Layouts/stridedlayout.hpp"
 
 namespace gendil {

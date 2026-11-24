@@ -6,6 +6,7 @@
 
 #include "gendil/prelude.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/dslbase.hpp"
+#include "gendil/FiniteElementMethod/WeakForm/fieldshapetraits.hpp"
 #include "gendil/FiniteElementMethod/WeakForm/zero.hpp"
 
 namespace gendil
@@ -191,19 +192,30 @@ struct combine_mult_linearity<TestLinearity::TestLinear, TestLinearity::TestLine
    static constexpr auto test_name = StaticString{""};
 };
 
-// TestFree * TestLinear -> Unsupported (ambiguous: scalar mult, normal contraction, etc.)
-template<class LHS, class RHS>
-struct combine_mult_linearity<TestLinearity::TestFree, TestLinearity::TestLinear, LHS, RHS> {
-   static constexpr TestLinearity value = TestLinearity::Unsupported;
-   static constexpr auto test_name = StaticString{""};
+// A deferred bound multiplier can be scalar. Preserve test dependence through
+// nested products; context validation and ScalarMultiplierSeed still check its
+// actual shape. Known vector/matrix multipliers remain unsupported here.
+template<class Factor, class Test>
+struct scalar_mult_linearity {
+   static constexpr bool possible_scalar = [] {
+      if constexpr (has_field_shape_v<Factor>) return field_shape_v<Factor> == FieldShape::Scalar;
+      else return true;
+   }();
+   static constexpr TestLinearity value = possible_scalar
+      ? TestLinearity::TestLinear : TestLinearity::Unsupported;
+   static constexpr auto test_name = [] {
+      if constexpr (possible_scalar) return test_linearity<Test>::test_name;
+      else return StaticString{""};
+   }();
 };
 
-// TestLinear * TestFree -> Unsupported (ambiguous)
 template<class LHS, class RHS>
-struct combine_mult_linearity<TestLinearity::TestLinear, TestLinearity::TestFree, LHS, RHS> {
-   static constexpr TestLinearity value = TestLinearity::Unsupported;
-   static constexpr auto test_name = StaticString{""};
-};
+struct combine_mult_linearity<TestLinearity::TestFree, TestLinearity::TestLinear, LHS, RHS>
+   : scalar_mult_linearity<LHS, RHS> {};
+
+template<class LHS, class RHS>
+struct combine_mult_linearity<TestLinearity::TestLinear, TestLinearity::TestFree, LHS, RHS>
+   : scalar_mult_linearity<RHS, LHS> {};
 
 // If either is NonlinearInTest, result is NonlinearInTest
 template<class LHS, class RHS>

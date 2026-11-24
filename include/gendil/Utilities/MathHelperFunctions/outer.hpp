@@ -99,4 +99,18 @@ SerialRecursiveArray<T, M, N> Outer(
    return result;
 }
 
+/** Form an owning matrix with the finite-element vector in the second slot. */
+template<typename T, size_t M, Integer N>
+GENDIL_HOST_DEVICE
+SerialRecursiveArray<T, static_cast<Integer>(M), N> Outer(
+   const std::array<T, M>& a,
+   const SerialRecursiveArray<T, N>& b)
+{
+   SerialRecursiveArray<T, static_cast<Integer>(M), N> result;
+   for (size_t i = 0; i < M; ++i)
+      for (Integer j = 0; j < N; ++j)
+         result(static_cast<Integer>(i), j) = a[i] * b(j);
+   return result;
+}
+
 } // namespace gendil

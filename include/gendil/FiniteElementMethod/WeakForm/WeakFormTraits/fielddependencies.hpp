@@ -27,8 +27,8 @@ template<class Input> struct coefficient_input_named_field_requirements
    using type = type_list<>;
 };
 
-template<StaticString Name>
-struct coefficient_input_named_field_requirements<FieldValue<Name>>
+template<StaticString Name, FieldShape Shape>
+struct coefficient_input_named_field_requirements<FieldValue<Name, Shape>>
 {
    using type = type_list<
       NamedFieldRequirement<
@@ -37,8 +37,8 @@ struct coefficient_input_named_field_requirements<FieldValue<Name>>
          NamedFieldProvenance::CoefficientInput>>;
 };
 
-template<StaticString Name>
-struct coefficient_input_named_field_requirements<FieldGradient<Name>>
+template<StaticString Name, FieldShape Shape>
+struct coefficient_input_named_field_requirements<FieldGradient<Name, Shape>>
 {
    using type = type_list<
       NamedFieldRequirement<
@@ -624,8 +624,8 @@ inline constexpr bool has_unqualified_interior_test_trace_v =
 template<class Input>
 struct coefficient_input_requires_cell_jacobian : std::false_type {};
 
-template<StaticString Name>
-struct coefficient_input_requires_cell_jacobian<FieldGradient<Name>>
+template<StaticString Name, FieldShape Shape>
+struct coefficient_input_requires_cell_jacobian<FieldGradient<Name, Shape>>
    : std::true_type {};
 
 template<>

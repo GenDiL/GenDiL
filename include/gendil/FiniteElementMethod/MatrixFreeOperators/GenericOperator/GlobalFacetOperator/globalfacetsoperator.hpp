@@ -5,6 +5,7 @@
 #pragma once
 
 #include "gendil/prelude.hpp"
+#include "gendil/Meshes/facemesh.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/CellOperator/celloperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/LocalFacetOperator/localfacetsoperator.hpp"
 #include "gendil/FiniteElementMethod/MatrixFreeOperators/GenericOperator/domainiteration.hpp"

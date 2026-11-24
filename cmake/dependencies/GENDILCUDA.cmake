@@ -1,6 +1,15 @@
 include_guard(GLOBAL)
 
 function(gendil_configure_cuda target openmp_flags output_sparse_enabled)
+  # Device-only success is insufficient: NVCC 13.5.37 still generates invalid
+  # host stubs for named weak forms. No supported NVCC minimum is established.
+  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+    message(WARNING
+      "Weak-Form DSL is not supported with NVCC. "
+      "Detected NVCC ${CMAKE_CUDA_COMPILER_VERSION}; "
+      "tests requiring this support will be skipped.")
+  endif()
+
   include(CheckCXXSourceCompiles)
   include(CheckSourceCompiles)
   include(CMakePushCheckState)

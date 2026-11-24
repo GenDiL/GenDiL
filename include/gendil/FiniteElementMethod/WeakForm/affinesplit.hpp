@@ -70,7 +70,56 @@ struct SplitZero {};
 template<class T>
 inline constexpr bool is_split_zero_v = std::is_same_v<std::remove_cvref_t<T>, SplitZero>;
 
-template<class E> struct affine_node;
+// The transpose adapters are defined in transposeform.hpp, which includes this
+// header. Forward declarations expose their split rules without an include cycle.
+enum class FluxBranch;
+template<FieldExpr E, GeometryRequirement M> struct TransposedBilinearExpr;
+template<FieldExpr A, FieldExpr E, FluxBranch B> struct UpwindFluxBranchExpr;
+
+// SplitAffineNode decomposes a mixed affine subtree. AffineSplit below first
+// handles whole independent/linear subtrees, so leaves need no structural rule.
+// Unknown mixed nodes must provide a rule rather than silently retain both parts.
+template<AffinePart Part, class Symbols, SemanticEntity Entity, class E>
+auto SplitAffineNode(const E& expr) = delete;
+
+// Qualified dispatch must see the complete overload set before its definition,
+// including adapters implemented by headers that include this one.
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Head, FieldExpr... Tail>
+auto SplitAffineNode(const SumExpr<Head,Tail...>& expr);
+
+#define GENDIL_DECLARE_AFFINE_UNARY(Node) \
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr E> \
+auto SplitAffineNode(const Node<E>& expr);
+GENDIL_DECLARE_AFFINE_UNARY(NegExpr)
+GENDIL_DECLARE_AFFINE_UNARY(TransposeExpr)
+GENDIL_DECLARE_AFFINE_UNARY(SymExpr)
+GENDIL_DECLARE_AFFINE_UNARY(SkewExpr)
+GENDIL_DECLARE_AFFINE_UNARY(NormalProjectionExpr)
+GENDIL_DECLARE_AFFINE_UNARY(TangentialProjectionExpr)
+GENDIL_DECLARE_AFFINE_UNARY(MinusTraceExpr)
+GENDIL_DECLARE_AFFINE_UNARY(PlusTraceExpr)
+GENDIL_DECLARE_AFFINE_UNARY(AverageExpr)
+GENDIL_DECLARE_AFFINE_UNARY(JumpExpr)
+#undef GENDIL_DECLARE_AFFINE_UNARY
+
+#define GENDIL_DECLARE_AFFINE_BINARY(Node) \
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr L, FieldExpr R> \
+auto SplitAffineNode(const Node<L,R>& expr);
+GENDIL_DECLARE_AFFINE_BINARY(ProductExpr)
+GENDIL_DECLARE_AFFINE_BINARY(MultFieldExpr)
+GENDIL_DECLARE_AFFINE_BINARY(DotExpr)
+GENDIL_DECLARE_AFFINE_BINARY(InnerExpr)
+GENDIL_DECLARE_AFFINE_BINARY(OuterExpr)
+#undef GENDIL_DECLARE_AFFINE_BINARY
+
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Selector, FieldExpr E>
+auto SplitAffineNode(const UpwindExpr<Selector,E>& expr);
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Selector, class Interior, class Exterior>
+auto SplitAffineNode(const BoundaryUpwindExpr<Selector,Interior,Exterior>& expr);
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr E, GeometryRequirement M>
+auto SplitAffineNode(const TransposedBilinearExpr<E,M>& expr);
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr A, FieldExpr E, FluxBranch B>
+auto SplitAffineNode(const UpwindFluxBranchExpr<A,E,B>& expr);
 
 // Construct only the requested part. Whole independent or linear subtrees can
 // be retained or discarded directly; mixed affine subtrees use the visitors below.
@@ -86,7 +135,7 @@ auto AffineSplit(const E& expr)
                       Semantics::active_affinity == ActiveAffinity::Linear)
       return expr;
    else
-      return affine_node<E>::template split<Part, Symbols, Entity>(expr);
+      return weak_form_detail::SplitAffineNode<Part, Symbols, Entity>(expr);
 }
 
 // Omit a vanished summand before reconstructing the sum's expression type.
@@ -97,39 +146,33 @@ auto NonzeroSplitTuple(T&& result)
    else return std::tuple<std::remove_cvref_t<T>>{std::forward<T>(result)};
 }
 
-template<FieldExpr Head, FieldExpr... Tail>
-struct affine_node<SumExpr<Head, Tail...>>
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Head, FieldExpr... Tail>
+auto SplitAffineNode(const SumExpr<Head,Tail...>& expr)
 {
-   template<AffinePart Part, class Symbols, SemanticEntity Entity>
-   static auto split(const SumExpr<Head, Tail...>& expr)
-   {
-      return std::apply([](const auto&... term) {
-         // Build only the requested branch, once per term in source order.
-         auto parts = std::tuple{AffineSplit<Part, Symbols, Entity>(term)...};
-         return std::apply([](auto&&... part) {
-            auto nonzero = std::tuple_cat(NonzeroSplitTuple(std::forward<decltype(part)>(part))...);
-            if constexpr (std::tuple_size_v<decltype(nonzero)> == 0) return SplitZero{};
-            else if constexpr (std::tuple_size_v<decltype(nonzero)> == 1) return std::get<0>(std::move(nonzero));
-            else return MakeSumExprFromTuple(std::move(nonzero));
-         }, std::move(parts));
-      }, expr.terms);
-   }
-};
+   return std::apply([](const auto&... term) {
+      // Build only the requested branch, once per term in source order.
+      auto parts = std::tuple{weak_form_detail::AffineSplit<Part, Symbols, Entity>(term)...};
+      return std::apply([](auto&&... part) {
+         auto nonzero = std::tuple_cat(NonzeroSplitTuple(std::forward<decltype(part)>(part))...);
+         if constexpr (std::tuple_size_v<decltype(nonzero)> == 0) return SplitZero{};
+         else if constexpr (std::tuple_size_v<decltype(nonzero)> == 1) return std::get<0>(std::move(nonzero));
+         else return MakeSumExprFromTuple(std::move(nonzero));
+      }, std::move(parts));
+   }, expr.terms);
+}
 
 // Linear unary operations and supported traces preserve the operand's split.
-template<template<class> class Node, class E>
-struct affine_unary
+template<AffinePart Part, class Symbols, SemanticEntity Entity, template<class> class Node, class E>
+auto SplitAffineUnary(const Node<E>& expr)
 {
-   template<AffinePart Part, class Symbols, SemanticEntity Entity>
-   static auto split(const Node<E>& expr)
-   {
-      auto part = AffineSplit<Part, Symbols, Entity>(expr.expr);
-      if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
-      else return Node<decltype(part)>{part};
-   }
-};
+   auto part = weak_form_detail::AffineSplit<Part, Symbols, Entity>(expr.expr);
+   if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
+   else return Node<decltype(part)>{part};
+}
 #define GENDIL_AFFINE_UNARY(Node) \
-template<FieldExpr E> struct affine_node<Node<E>> : affine_unary<Node, E> {};
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr E> \
+auto SplitAffineNode(const Node<E>& expr) \
+{ return weak_form_detail::SplitAffineUnary<Part, Symbols, Entity>(expr); }
 GENDIL_AFFINE_UNARY(NegExpr)
 GENDIL_AFFINE_UNARY(TransposeExpr)
 GENDIL_AFFINE_UNARY(SymExpr)
@@ -144,28 +187,26 @@ GENDIL_AFFINE_UNARY(JumpExpr)
 
 // Complete-form admission has established that at most one operand depends on
 // active fields. Split that operand while retaining the other in its original order.
-template<template<class, class> class Node, class L, class R>
-struct affine_binary
+template<AffinePart Part, class Symbols, SemanticEntity Entity, template<class, class> class Node, class L, class R>
+auto SplitAffineBinary(const Node<L,R>& expr)
 {
-   template<AffinePart Part, class Symbols, SemanticEntity Entity>
-   static auto split(const Node<L, R>& expr)
+   if constexpr (expression_semantics_t<L, Symbols, Entity>::active_affinity == ActiveAffinity::Independent)
    {
-      if constexpr (expression_semantics_t<L, Symbols, Entity>::active_affinity == ActiveAffinity::Independent)
-      {
-         auto part = AffineSplit<Part, Symbols, Entity>(expr.rhs);
-         if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
-         else return Node<L, decltype(part)>{expr.lhs, part};
-      }
-      else
-      {
-         auto part = AffineSplit<Part, Symbols, Entity>(expr.lhs);
-         if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
-         else return Node<decltype(part), R>{part, expr.rhs};
-      }
+      auto part = weak_form_detail::AffineSplit<Part, Symbols, Entity>(expr.rhs);
+      if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
+      else return Node<L, decltype(part)>{expr.lhs, part};
    }
-};
+   else
+   {
+      auto part = weak_form_detail::AffineSplit<Part, Symbols, Entity>(expr.lhs);
+      if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
+      else return Node<decltype(part), R>{part, expr.rhs};
+   }
+}
 #define GENDIL_AFFINE_BINARY(Node) \
-template<FieldExpr L, FieldExpr R> struct affine_node<Node<L, R>> : affine_binary<Node, L, R> {};
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr L, FieldExpr R> \
+auto SplitAffineNode(const Node<L,R>& expr) \
+{ return weak_form_detail::SplitAffineBinary<Part, Symbols, Entity>(expr); }
 GENDIL_AFFINE_BINARY(ProductExpr)
 GENDIL_AFFINE_BINARY(MultFieldExpr)
 GENDIL_AFFINE_BINARY(DotExpr)
@@ -175,50 +216,44 @@ GENDIL_AFFINE_BINARY(OuterExpr)
 
 // Admission requires an independent selector, so both parts use the same upwind
 // choice. Only the transported expression needs splitting.
-template<FieldExpr Selector, FieldExpr E>
-struct affine_node<UpwindExpr<Selector, E>>
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Selector, FieldExpr E>
+auto SplitAffineNode(const UpwindExpr<Selector,E>& expr)
 {
-   template<AffinePart Part, class Symbols, SemanticEntity Entity>
-   static auto split(const UpwindExpr<Selector, E>& expr)
-   {
-      auto part = AffineSplit<Part, Symbols, Entity>(expr.expr);
-      if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
-      else return UpwindExpr<Selector, decltype(part)>{expr.adv_expr, part};
-   }
-};
+   auto part = weak_form_detail::AffineSplit<Part, Symbols, Entity>(expr.expr);
+   if constexpr (is_split_zero_v<decltype(part)>) return SplitZero{};
+   else return UpwindExpr<Selector, decltype(part)>{expr.adv_expr, part};
+}
 
-template<FieldExpr Selector, class Interior, class Exterior>
-struct affine_node<BoundaryUpwindExpr<Selector, Interior, Exterior>>
+// A vanished boundary state retains its known shape, or Empty when unresolved.
+// These markers let boundary upwind preserve the surviving state's value type.
+template<AffinePart Part, class Symbols, SemanticEntity Entity, class E>
+auto SplitBoundaryUpwindState(const E& expr)
 {
-   template<AffinePart Part, class Symbols, SemanticEntity Entity, class E>
-   static auto split_state(const E& expr)
+   if constexpr (weak_form_traits::is_boundary_upwind_zero_v<E>) return expr;
+   else
    {
-      if constexpr (weak_form_traits::is_boundary_upwind_zero_v<E>) return expr;
-      else
+      auto part = weak_form_detail::AffineSplit<Part, Symbols, Entity>(expr);
+      if constexpr (is_split_zero_v<decltype(part)>)
       {
-         auto part = AffineSplit<Part, Symbols, Entity>(expr);
-         if constexpr (is_split_zero_v<decltype(part)>)
-         {
-            if constexpr (has_field_shape_v<E>) return BoundaryUpwindZero<field_shape_v<E>>{};
-            else return Empty{};
-         }
-         else return part;
+         if constexpr (has_field_shape_v<E>) return BoundaryUpwindZero<field_shape_v<E>>{};
+         else return Empty{};
       }
+      else return part;
    }
+}
 
-   template<AffinePart Part, class Symbols, SemanticEntity Entity>
-   static auto split(const BoundaryUpwindExpr<Selector, Interior, Exterior>& expr)
-   {
-      auto interior = split_state<Part, Symbols, Entity>(expr.interior_expr);
-      auto exterior = split_state<Part, Symbols, Entity>(expr.exterior_expr);
-      if constexpr (weak_form_traits::is_boundary_upwind_zero_v<decltype(interior)> &&
-                    weak_form_traits::is_boundary_upwind_zero_v<decltype(exterior)>)
-         return SplitZero{};
-      else
-         return BoundaryUpwindExpr<Selector, decltype(interior), decltype(exterior)>{
-            expr.adv_expr, interior, exterior};
-   }
-};
+template<AffinePart Part, class Symbols, SemanticEntity Entity, FieldExpr Selector, class Interior, class Exterior>
+auto SplitAffineNode(const BoundaryUpwindExpr<Selector,Interior,Exterior>& expr)
+{
+   auto interior = weak_form_detail::SplitBoundaryUpwindState<Part, Symbols, Entity>(expr.interior_expr);
+   auto exterior = weak_form_detail::SplitBoundaryUpwindState<Part, Symbols, Entity>(expr.exterior_expr);
+   if constexpr (weak_form_traits::is_boundary_upwind_zero_v<decltype(interior)> &&
+                 weak_form_traits::is_boundary_upwind_zero_v<decltype(exterior)>)
+      return SplitZero{};
+   else
+      return BoundaryUpwindExpr<Selector, decltype(interior), decltype(exterior)>{
+         expr.adv_expr, interior, exterior};
+}
 
 template<class E> inline constexpr bool is_negated_expr_v = false;
 template<FieldExpr E> inline constexpr bool is_negated_expr_v<NegExpr<E>> = true;
@@ -264,7 +299,7 @@ auto SplitResidual(const Form& form)
       auto transformed = TransformIntegrands(form, [](const auto& term) {
          using Term = std::remove_cvref_t<decltype(term)>;
          using TermSignature = integrand_signature_t<Term, Symbols>;
-         auto part = AffineSplit<Part, Symbols, TermSignature::entity>(term.expr);
+         auto part = weak_form_detail::AffineSplit<Part, Symbols, TermSignature::entity>(term.expr);
          if constexpr (is_split_zero_v<decltype(part)>)
          {
             // Keep output identity and declarations as types, without dead captures.
