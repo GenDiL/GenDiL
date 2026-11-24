@@ -72,6 +72,10 @@ endfunction()
 function(gendil_add_target_compile_failure_test target source expected_text)
   set(probe_target "${target}-probe")
   add_executable(${probe_target} EXCLUDE_FROM_ALL "${source}")
+  # clang-tidy reads the compilation database, including EXCLUDE_FROM_ALL
+  # targets. Keep intentional failures out while retaining valid variants of
+  # the same source and the explicit CTest builds that check their diagnostics.
+  set_target_properties(${probe_target} PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
   target_link_libraries(${probe_target} PRIVATE GENDIL::GENDIL)
   gendil_set_device_source_language(${probe_target} "${source}")
 
