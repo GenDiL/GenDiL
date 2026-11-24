@@ -41,7 +41,7 @@ do not need to compile them again, even without ccache.
 | `gcc` | GCC 14, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `clang` | Clang 18, OpenMP, MFEM/Hypre/Caliper; full CPU tests |
 | `minimal` | GCC 14, no optional TPLs or OpenMP; full CPU tests |
-| `cuda-nvcc` | CUDA Toolkit 13.4.2 (NVCC 13.4.92)/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
+| `cuda-nvcc` | CUDA Toolkit 13.5.0 (NVCC 13.5.37)/GCC 12, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `cuda-clang` | Clang 19/CUDA 12.4.1, architecture 90, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `hip` | ROCm 6.3.1, architecture gfx90a, matching MFEM/Hypre, Caliper; compilation and host-only checks |
 | `analysis` | Clang 18 with all supported TPLs; full clang-tidy analysis |
@@ -62,13 +62,18 @@ wait for discovery to finish. Helper-test failures prevent all builds.
 ## CUDA compiler and target coverage
 
 CUDA has two independent jobs because NVCC and Clang accept different code.
-The minimum supported NVCC is **13.3.33**, shipped in **CUDA Toolkit 13.3.0**.
+The current NVCC test admission threshold is **13.3.33**, shipped in
+**CUDA Toolkit 13.3.0**.
 CMake enables the previously excluded tests, including the weak-form DSL, from
 that compiler version onward. Older NVCC builds emit a configuration warning
 and retain those exclusions. Toolkit releases and compiler builds have different
 version numbers; CMake compares the compiler build number.
 
-The NVCC CI job uses the newer CUDA Toolkit **13.4.2** (NVCC **13.4.92**).
+The NVCC CI job uses CUDA Toolkit **13.5.0** (NVCC **13.5.37**) to check
+whether it resolves the generated host-stub compilation failure observed with
+13.3.33 and 13.4.92. Those versions passed the device-only probes but failed
+complete compilation. The admission threshold is retained for this CI attempt;
+it does not establish complete weak-form support at that version.
 The [minimum-version validation](../../tests/experiments/nvcc-13.3-minimum/README.md)
 records the CUDA 13.3.0 compilation checks separately from CI's toolchain.
 

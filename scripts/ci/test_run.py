@@ -216,7 +216,7 @@ class DriverTests(unittest.TestCase):
         entries = json.loads(subprocess.check_output(command, text=True))["include"]
         images = {row["configuration"]: row["image"] for row in entries}
         self.assertTrue(images["cuda-nvcc"].startswith(
-            "nvidia/cuda:13.4.2-devel-ubuntu22.04@sha256:"))
+            "nvidia/cuda:13.5.0-devel-ubuntu22.04@sha256:"))
         self.assertEqual(images["cuda-clang"], run.CONFIG["images"]["cuda-clang"])
         self.assertNotEqual(images["cuda-nvcc"], images["cuda-clang"])
 
