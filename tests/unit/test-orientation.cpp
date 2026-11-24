@@ -1396,7 +1396,8 @@ bool TestRuntimeIdentityIsProductCellNoOp()
       "static identity changed ProductCell coordinates or Jacobians" ) &&
       success;
 
-   const ProductCell nested_original{ original, MakeNonAffineLineCell() };
+   using NestedProductCell = ProductCell< HighOrderProductCell, LineCell< 3 > >;
+   const NestedProductCell nested_original{ original, MakeNonAffineLineCell() };
    auto nested_runtime_identity = nested_original;
    auto nested_static_identity = nested_original;
    const auto nested_runtime_identity_orientation =
@@ -1407,7 +1408,7 @@ bool TestRuntimeIdentityIsProductCellNoOp()
       nested_runtime_identity_orientation,
       nested_runtime_identity );
    ApplyOrientationToCell(
-      IdentityOrientation< decltype( nested_original )::Dim >{},
+      IdentityOrientation< NestedProductCell::Dim >{},
       nested_static_identity );
    const auto nested_qdata =
       MakeTensorProductData( product_qdata, line_qdata );

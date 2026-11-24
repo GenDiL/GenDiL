@@ -21,8 +21,9 @@ bool CheckOrientation(const Real seed, const bool alternate)
 {
    constexpr Integer Dim = Cell::Dim;
    constexpr Integer D1D = std::extent_v<decltype(Cell::nodes)>;
-   static_assert(Dim == 2 || Dim == 3);
-   constexpr Integer Dofs = Dim == 2 ? D1D * D1D : D1D * D1D * D1D;
+   static_assert(Dim >= 1 && Dim <= 3);
+   constexpr Integer Dofs = Dim == 1 ? D1D :
+      (Dim == 2 ? D1D * D1D : D1D * D1D * D1D);
    Real nodes[Dim * Dofs];
    int restriction[Dofs];
    for (Integer node = 0; node < Dofs; ++node)
@@ -31,7 +32,6 @@ bool CheckOrientation(const Real seed, const bool alternate)
       for (Integer component = 0; component < Dim; ++component)
          nodes[component + Dim * node] = seed + 100.0 * component + node;
    }
-   const auto node_view = MakeFIFOView(static_cast<const Real*>(nodes), Dim, Dofs);
    HostDevicePointer<const int> indices;
    indices.host_pointer = restriction;
 #ifdef GENDIL_USE_DEVICE
@@ -40,13 +40,22 @@ bool CheckOrientation(const Real seed, const bool alternate)
 #endif
    Cell cell = [&]()
    {
-      if constexpr (Dim == 2)
-         return Cell(node_view, MakeFIFOView(indices, D1D, D1D, Integer{1}), 0);
+      if constexpr (Dim == 1)
+         return Cell(MakeFIFOView(static_cast<const Real*>(nodes), Dofs),
+                     MakeFIFOView(indices, D1D, Integer{1}), 0);
       else
-         return Cell(node_view, MakeFIFOView(indices, D1D, D1D, D1D, Integer{1}), 0);
+      {
+         const auto node_view = MakeFIFOView(static_cast<const Real*>(nodes), Dim, Dofs);
+         if constexpr (Dim == 2)
+            return Cell(node_view, MakeFIFOView(indices, D1D, D1D, Integer{1}), 0);
+         else
+            return Cell(node_view, MakeFIFOView(indices, D1D, D1D, D1D, Integer{1}), 0);
+      }
    }();
    Permutation<Dim> orientation;
-   if constexpr (Dim == 2)
+   if constexpr (Dim == 1)
+      orientation = alternate ? Permutation<Dim>{{-1}} : Permutation<Dim>{{1}};
+   else if constexpr (Dim == 2)
       orientation = alternate ? Permutation<Dim>{{-2, 1}} : Permutation<Dim>{{2, -1}};
    else
       orientation = alternate ? Permutation<Dim>{{3, -1, 2}} : Permutation<Dim>{{-2, 3, -1}};
@@ -68,7 +77,9 @@ bool CheckOrientation(const Real seed, const bool alternate)
       for (Integer component = 0; component < Dim; ++component)
       {
          Real actual;
-         if constexpr (Dim == 2)
+         if constexpr (Dim == 1)
+            actual = cell.nodes[canonical[0]];
+         else if constexpr (Dim == 2)
             actual = cell.nodes[canonical[0]][canonical[1]][component];
          else
             actual = cell.nodes[canonical[0]][canonical[1]][canonical[2]][component];
