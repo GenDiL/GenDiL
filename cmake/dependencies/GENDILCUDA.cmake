@@ -1,12 +1,12 @@
 include_guard(GLOBAL)
 
 function(gendil_configure_cuda target openmp_flags output_sparse_enabled)
-  # Compare NVCC's component version; CUDA Toolkit 13.3.0 ships 13.3.33.
-  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA" AND
-     CMAKE_CUDA_COMPILER_VERSION VERSION_LESS "13.3.33")
+  # Device-only success is insufficient: NVCC 13.5.37 still generates invalid
+  # host stubs for named weak forms. No supported NVCC minimum is established.
+  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
     message(WARNING
-      "Weak-Form DSL is not supported for NVCC versions prior to 13.3.33 "
-      "(CUDA Toolkit 13.3.0). Detected NVCC ${CMAKE_CUDA_COMPILER_VERSION}; "
+      "Weak-Form DSL is not supported with NVCC. "
+      "Detected NVCC ${CMAKE_CUDA_COMPILER_VERSION}; "
       "tests requiring this support will be skipped.")
   endif()
 

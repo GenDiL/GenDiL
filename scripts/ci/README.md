@@ -62,20 +62,17 @@ wait for discovery to finish. Helper-test failures prevent all builds.
 ## CUDA compiler and target coverage
 
 CUDA has two independent jobs because NVCC and Clang accept different code.
-The current NVCC test admission threshold is **13.3.33**, shipped in
-**CUDA Toolkit 13.3.0**.
-CMake enables the previously excluded tests, including the weak-form DSL, from
-that compiler version onward. Older NVCC builds emit a configuration warning
-and retain those exclusions. Toolkit releases and compiler builds have different
-version numbers; CMake compares the compiler build number.
+CMake excludes tests registered with `gendil_add_non_nvcc_test` for every
+NVCC version and emits a configuration warning. These include the named
+weak-form DSL tests. CPU, Clang CUDA, and HIP retain their coverage.
 
-The NVCC CI job uses CUDA Toolkit **13.5.0** (NVCC **13.5.37**) to check
-whether it resolves the generated host-stub compilation failure observed with
-13.3.33 and 13.4.92. Those versions passed the device-only probes but failed
-complete compilation. The admission threshold is retained for this CI attempt;
-it does not establish complete weak-form support at that version.
-The [minimum-version validation](../../tests/experiments/nvcc-13.3-minimum/README.md)
-records the CUDA 13.3.0 compilation checks separately from CI's toolchain.
+The NVCC CI job keeps CUDA Toolkit **13.5.0** (NVCC **13.5.37**) for the
+remaining CUDA targets. NVCC 13.3.33, 13.4.92, and 13.5.37 fail generated
+host-stub compilation for named weak forms, despite successful device-only
+compilation. No supported NVCC minimum is established; a newer version must
+pass complete compilation before these exclusions can be removed.
+The [earlier device-only validation](../../tests/experiments/nvcc-13.3-minimum/README.md)
+records the CUDA 13.3.0 probes and does not establish complete-build support.
 
 Clang 19 follows the compiler family in the repository's Matrix machine
 configuration and keeps CUDA Toolkit 12.4.1. Both jobs target architecture 90,

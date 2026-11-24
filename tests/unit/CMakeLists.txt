@@ -1,5 +1,5 @@
-# Named weak-form tests require a sufficiently recent NVCC. The shared helper
-# retains older compiler exclusions while enabling CPU, Clang CUDA, and HIP.
+# Named weak-form tests remain excluded for NVCC, including CUDA 13.5.0.
+# The shared helper keeps CPU, Clang CUDA, and HIP coverage enabled.
 gendil_add_non_nvcc_test(test-generalized-interior-residual test-generalized-interior-residual.cpp)
 gendil_add_non_nvcc_test(test-upwind-transported-fields test-upwind-transported-fields.cpp)
 gendil_add_non_nvcc_test(test-generalized-partition-facets test-generalized-partition-facets.cpp)

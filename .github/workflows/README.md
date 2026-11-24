@@ -30,10 +30,11 @@ Sanitizers run only weekly/manually. New PR runs replace obsolete ones.
 Test jobs also check `find_package(GENDIL)` using a separate installed-package
 consumer. GPU consumers only compile. Release builds compile examples without
 running them; CPU jobs also compile benchmarks. GPU benchmark compilation is
-disabled because of its cost. The NVCC job uses CUDA Toolkit 13.4.2 to include
-the weak-form tests previously excluded for older NVCC compilers. The CMake
-minimum is NVCC 13.3.33 (CUDA Toolkit 13.3.0); compiler exclusions are listed
-in reports.
+disabled because of its cost. The NVCC job keeps CUDA Toolkit 13.5.0, but
+named weak-form tests remain excluded: NVCC 13.5.37 still fails while compiling
+their generated host stubs. CMake warns for NVCC and does not assume support
+based on a minimum version. Compiler exclusions are listed in reports;
+Clang CUDA and HIP retain their weak-form test coverage.
 
 Most extra YAML manages **caches and failure reports**. Separate library caches
 avoid rebuilding unchanged dependencies; saving each immediately preserves that
